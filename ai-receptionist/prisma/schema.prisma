@@ -1,0 +1,164 @@
+// Prisma schema for the AI Receptionist SaaS.
+// Tenant == "Portal" (one client business). Users log in and are scoped to a
+// portal (except SUPER_ADMIN, who manages all portals).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CallStatus {
+  INIT
+  GREETING
+  COLLECTING_INFO
+  COMPLETED
+  FAILED
+}
+
+enum Role {
+  SUPER_ADMIN
+  PORTAL_ADMIN
+  CLIENT_USER
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Tenant {
+  id           String        @id @default(cuid())
+  name         String
+  phoneNumber  String?       @unique
+  greeting     String        @default("Thank you for calling. How can I help you today?")
+  businessType String        @default("general business")
+  notifyEmail  String
+  status       TenantStatus  @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  contacts     Contact[]
+  callSessions CallSession[]
+  users        User[]
+  savedFilters SavedFilter[]
+  exports      ExportRecord[]
+  fieldDefs    FieldDef[]
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String
+  name             String?
+  role             Role      @default(CLIENT_USER)
+  tenantId         String?
+  tenant           Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  resetToken       String?   @unique
+  resetTokenExpiry DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  sessions         Session[]
+
+  @@index([tenantId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Contact {
+  id           String        @id @default(cuid())
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String?
+  phone        String
+  email        String?
+  intent       String?
+  customFields Json          @default("{}")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  callSessions CallSession[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+}
+
+model CallSession {
+  id          String     @id @default(cuid())
+  callSid     String     @unique
+  tenantId    String
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId   String?
+  contact     Contact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  fromNumber  String
+  toNumber    String?
+  status      CallStatus @default(INIT)
+  transcript  Json       @default("[]")
+  extracted   Json       @default("{}")
+  turnCount   Int        @default(0)
+  emptyCount  Int        @default(0)
+  finalizedAt DateTime?
+  emailSentAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([tenantId])
+}
+
+model SavedFilter {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  view        String   @default("contacts")
+  definition  Json     @default("{}")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model ExportRecord {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  rowCount    Int      @default(0)
+  fields      Json     @default("[]")
+  csv         String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model FieldDef {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key       String
+  label     String
+  type      String   @default("text")
+  required  Boolean  @default(false)
+  options   Json     @default("[]")
+  formula   String?
+  order     Int      @default(0)
+  system    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}

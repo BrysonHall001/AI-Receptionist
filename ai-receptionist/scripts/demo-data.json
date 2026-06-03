@@ -1,0 +1,1032 @@
+[
+  {
+    "sid": "DEMO-0001",
+    "status": "COMPLETED",
+    "name": "Jordan Lee",
+    "phone": "(919) 555-0148",
+    "email": "jordan.lee@gmail.com",
+    "intent": "Water heater is leaking and needs someone out today",
+    "daysAgo": 0,
+    "hour": 9,
+    "minute": 12,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "Hi, this is Jordan Lee."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Jordan! What's the best phone number to reach you?"
+      },
+      {
+        "role": "caller",
+        "text": "It's 919-555-0148, and my email is jordan.lee@gmail.com."
+      },
+      {
+        "role": "assistant",
+        "text": "Got it. How can we help you today, Jordan?"
+      },
+      {
+        "role": "caller",
+        "text": "My water heater is leaking and I need someone out today."
+      },
+      {
+        "role": "assistant",
+        "text": "Perfect, Jordan. Someone will follow up shortly. Thanks for calling!"
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0002",
+    "status": "COMPLETED",
+    "name": "Maria Gonzalez",
+    "phone": "(919) 555-0211",
+    "email": null,
+    "intent": "Schedule a routine furnace tune-up before winter",
+    "daysAgo": 0,
+    "hour": 11,
+    "minute": 3,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "This is Maria Gonzalez."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Maria! What's the best number to reach you?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-0211."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help, Maria?"
+      },
+      {
+        "role": "caller",
+        "text": "I'd like to schedule a routine furnace tune-up before winter."
+      },
+      {
+        "role": "assistant",
+        "text": "Great, Maria. We'll be in touch shortly. Thanks!"
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0003",
+    "status": "COMPLETED",
+    "name": "Derek Olsen",
+    "phone": "(919) 555-0356",
+    "email": "d.olsen@outlook.com",
+    "intent": "Quote for replacing roof after storm damage",
+    "daysAgo": 1,
+    "hour": 14,
+    "minute": 28,
+    "turnCount": 5,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "Hi, my name is Derek Olsen."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Derek! Best number to reach you?"
+      },
+      {
+        "role": "caller",
+        "text": "You can reach me at 919-555-0356."
+      },
+      {
+        "role": "assistant",
+        "text": "And your email if you have one?"
+      },
+      {
+        "role": "caller",
+        "text": "d.olsen@outlook.com."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help, Derek?"
+      },
+      {
+        "role": "caller",
+        "text": "I need a quote for replacing my roof after some storm damage."
+      },
+      {
+        "role": "assistant",
+        "text": "Understood, Derek. Someone will follow up shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0004",
+    "status": "COMPLETED",
+    "name": "Aisha Bello",
+    "phone": "(919) 555-0419",
+    "email": null,
+    "intent": "Kitchen sink is clogged and won't drain",
+    "daysAgo": 2,
+    "hour": 10,
+    "minute": 45,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "This is Aisha Bello."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Aisha! What number should we use?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-0419."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help today?"
+      },
+      {
+        "role": "caller",
+        "text": "My kitchen sink is clogged and the water won't drain at all."
+      },
+      {
+        "role": "assistant",
+        "text": "Got it, Aisha. We'll reach out shortly. Thanks for calling!"
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0005",
+    "status": "COMPLETED",
+    "name": "Tom Whitfield",
+    "phone": "(919) 555-0523",
+    "email": "tomw@company.com",
+    "intent": "Deep cleaning for a 3-bedroom house",
+    "daysAgo": 3,
+    "hour": 16,
+    "minute": 9,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "Hi, this is Tom Whitfield."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Tom! Best number to reach you?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-0523, email tomw@company.com."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help, Tom?"
+      },
+      {
+        "role": "caller",
+        "text": "I'm interested in booking a deep cleaning for a 3-bedroom house."
+      },
+      {
+        "role": "assistant",
+        "text": "Wonderful, Tom. Someone will be in touch shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0006",
+    "status": "COMPLETED",
+    "name": "Priya Nair",
+    "phone": "(919) 555-0637",
+    "email": null,
+    "intent": "AC stopped blowing cold air, emergency",
+    "daysAgo": 3,
+    "hour": 8,
+    "minute": 52,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "My name is Priya Nair."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Priya! What's your callback number?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-0637."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help?"
+      },
+      {
+        "role": "caller",
+        "text": "My AC stopped blowing cold air and it's an emergency."
+      },
+      {
+        "role": "assistant",
+        "text": "I understand, Priya. We'll prioritize this and follow up shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0007",
+    "status": "COMPLETED",
+    "name": "Sam Carter",
+    "phone": "(919) 555-0742",
+    "email": "sam.carter@gmail.com",
+    "intent": "Estimate for installing a new garage door",
+    "daysAgo": 4,
+    "hour": 13,
+    "minute": 17,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "This is Sam Carter."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Sam! Best number?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-0742, and sam.carter@gmail.com."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help, Sam?"
+      },
+      {
+        "role": "caller",
+        "text": "I want an estimate for installing a new garage door."
+      },
+      {
+        "role": "assistant",
+        "text": "Great, Sam. Someone will follow up shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0008",
+    "status": "COMPLETED",
+    "name": "Helen Park",
+    "phone": "(919) 555-0856",
+    "email": null,
+    "intent": "Reschedule appointment from Thursday to next week",
+    "daysAgo": 5,
+    "hour": 9,
+    "minute": 40,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "Hi, this is Helen Park."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Helen! What number should we use?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-0856."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help?"
+      },
+      {
+        "role": "caller",
+        "text": "I need to reschedule my appointment from Thursday to next week."
+      },
+      {
+        "role": "assistant",
+        "text": "No problem, Helen. We'll take care of it and confirm shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0009",
+    "status": "COMPLETED",
+    "name": "Marcus Reed",
+    "phone": "(919) 555-0964",
+    "email": "marcus.reed@yahoo.com",
+    "intent": "Burst pipe under the sink, water everywhere",
+    "daysAgo": 6,
+    "hour": 7,
+    "minute": 22,
+    "turnCount": 5,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "My name is Marcus Reed."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Marcus! Best number?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-0964."
+      },
+      {
+        "role": "assistant",
+        "text": "Email too if you'd like."
+      },
+      {
+        "role": "caller",
+        "text": "marcus.reed@yahoo.com."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help, Marcus?"
+      },
+      {
+        "role": "caller",
+        "text": "A pipe burst under the sink and there's water everywhere."
+      },
+      {
+        "role": "assistant",
+        "text": "On it, Marcus. Someone will follow up right away."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0010",
+    "status": "COMPLETED",
+    "name": "Nina Alvarez",
+    "phone": "(919) 555-1073",
+    "email": null,
+    "intent": "Annual HVAC maintenance plan pricing",
+    "daysAgo": 7,
+    "hour": 15,
+    "minute": 5,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "This is Nina Alvarez."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Nina! Callback number?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-1073."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help?"
+      },
+      {
+        "role": "caller",
+        "text": "I'd like pricing on an annual HVAC maintenance plan."
+      },
+      {
+        "role": "assistant",
+        "text": "Happy to help, Nina. Someone will follow up shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0011",
+    "status": "COMPLETED",
+    "name": "Greg Sullivan",
+    "phone": "(919) 555-1188",
+    "email": "greg.s@protonmail.com",
+    "intent": "Gutter cleaning and minor repair",
+    "daysAgo": 9,
+    "hour": 11,
+    "minute": 33,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "Hi, my name is Greg Sullivan."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Greg! Best number to reach you?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-1188, email greg.s@protonmail.com."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help, Greg?"
+      },
+      {
+        "role": "caller",
+        "text": "I need gutter cleaning and a minor repair on one section."
+      },
+      {
+        "role": "assistant",
+        "text": "Got it, Greg. We'll be in touch shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0012",
+    "status": "COMPLETED",
+    "name": "Lena Fischer",
+    "phone": "(919) 555-1290",
+    "email": null,
+    "intent": "Thermostat replacement with a smart model",
+    "daysAgo": 11,
+    "hour": 10,
+    "minute": 8,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "This is Lena Fischer."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Lena! What's your number?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-1290."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help?"
+      },
+      {
+        "role": "caller",
+        "text": "I'd like to replace my thermostat with a smart model."
+      },
+      {
+        "role": "assistant",
+        "text": "Great choice, Lena. Someone will follow up shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0013",
+    "status": "COMPLETED",
+    "name": "Omar Haddad",
+    "phone": "(919) 555-1342",
+    "email": "omar.haddad@gmail.com",
+    "intent": "Sump pump failed during the last storm",
+    "daysAgo": 14,
+    "hour": 18,
+    "minute": 46,
+    "turnCount": 5,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "My name is Omar Haddad."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Omar! Best number?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-1342."
+      },
+      {
+        "role": "assistant",
+        "text": "And an email?"
+      },
+      {
+        "role": "caller",
+        "text": "omar.haddad@gmail.com."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help, Omar?"
+      },
+      {
+        "role": "caller",
+        "text": "My sump pump failed during the last storm and I need it looked at."
+      },
+      {
+        "role": "assistant",
+        "text": "Understood, Omar. We'll reach out shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0014",
+    "status": "COMPLETED",
+    "name": "Carla Jensen",
+    "phone": "(919) 555-1457",
+    "email": null,
+    "intent": "Quote for window cleaning, two-story home",
+    "daysAgo": 17,
+    "hour": 13,
+    "minute": 2,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "Hi, this is Carla Jensen."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Carla! Callback number?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-1457."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help?"
+      },
+      {
+        "role": "caller",
+        "text": "I'd like a quote for window cleaning on a two-story home."
+      },
+      {
+        "role": "assistant",
+        "text": "Happy to help, Carla. Someone will follow up shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0015",
+    "status": "COMPLETED",
+    "name": "Victor Cruz",
+    "phone": "(919) 555-1568",
+    "email": "victor.cruz@icloud.com",
+    "intent": "Furnace making loud banging noise",
+    "daysAgo": 21,
+    "hour": 9,
+    "minute": 19,
+    "turnCount": 4,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "This is Victor Cruz."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Victor! Best number to reach you?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-1568, victor.cruz@icloud.com."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help, Victor?"
+      },
+      {
+        "role": "caller",
+        "text": "My furnace is making a loud banging noise when it starts."
+      },
+      {
+        "role": "assistant",
+        "text": "Got it, Victor. Someone will follow up shortly."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0016",
+    "status": "COLLECTING_INFO",
+    "name": "Rachel Kim",
+    "phone": "(919) 555-1672",
+    "email": null,
+    "intent": null,
+    "daysAgo": 0,
+    "hour": 12,
+    "minute": 30,
+    "turnCount": 2,
+    "emptyCount": 0,
+    "hasContact": false,
+    "finalized": false,
+    "emailSent": false,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "Hi, this is Rachel Kim."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Rachel! What's the best phone number to reach you?"
+      },
+      {
+        "role": "caller",
+        "text": "It's 919-555-1672."
+      },
+      {
+        "role": "assistant",
+        "text": "Got it. And how can we help you today, Rachel?"
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0017",
+    "status": "COLLECTING_INFO",
+    "name": "Daniel Foster",
+    "phone": null,
+    "email": null,
+    "intent": null,
+    "daysAgo": 0,
+    "hour": 13,
+    "minute": 5,
+    "turnCount": 1,
+    "emptyCount": 0,
+    "hasContact": false,
+    "finalized": false,
+    "emailSent": false,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "Hello, my name is Daniel Foster."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Daniel! What's the best phone number to reach you?"
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0018",
+    "status": "COLLECTING_INFO",
+    "name": "Sophie Bennett",
+    "phone": "(919) 555-1789",
+    "email": null,
+    "intent": "Asked about pricing",
+    "daysAgo": 1,
+    "hour": 10,
+    "minute": 14,
+    "turnCount": 2,
+    "emptyCount": 0,
+    "hasContact": false,
+    "finalized": false,
+    "emailSent": false,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "This is Sophie Bennett."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Sophie! What number should we use?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-1789."
+      },
+      {
+        "role": "assistant",
+        "text": "How can we help today, Sophie?"
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0019",
+    "status": "COLLECTING_INFO",
+    "name": null,
+    "phone": null,
+    "email": null,
+    "intent": null,
+    "daysAgo": 2,
+    "hour": 16,
+    "minute": 48,
+    "turnCount": 1,
+    "emptyCount": 0,
+    "hasContact": false,
+    "finalized": false,
+    "emailSent": false,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "Um, hi, I had a question about..."
+      },
+      {
+        "role": "assistant",
+        "text": "Of course \u2014 may I have your name, please?"
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0020",
+    "status": "COLLECTING_INFO",
+    "name": "Eli Brooks",
+    "phone": "(919) 555-1893",
+    "email": null,
+    "intent": null,
+    "daysAgo": 4,
+    "hour": 11,
+    "minute": 7,
+    "turnCount": 2,
+    "emptyCount": 0,
+    "hasContact": false,
+    "finalized": false,
+    "emailSent": false,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": "My name is Eli Brooks."
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, Eli! Best number to reach you?"
+      },
+      {
+        "role": "caller",
+        "text": "919-555-1893."
+      },
+      {
+        "role": "assistant",
+        "text": "And how can we help today, Eli?"
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0021",
+    "status": "FAILED",
+    "name": null,
+    "phone": "(919) 555-1944",
+    "email": null,
+    "intent": null,
+    "daysAgo": 0,
+    "hour": 8,
+    "minute": 2,
+    "turnCount": 1,
+    "emptyCount": 2,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": ""
+      },
+      {
+        "role": "system",
+        "text": "Caller silent; ending call."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0022",
+    "status": "FAILED",
+    "name": null,
+    "phone": "(919) 555-2055",
+    "email": null,
+    "intent": null,
+    "daysAgo": 1,
+    "hour": 19,
+    "minute": 38,
+    "turnCount": 0,
+    "emptyCount": 2,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "system",
+        "text": "Caller hung up before responding."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0023",
+    "status": "FAILED",
+    "name": null,
+    "phone": "(919) 555-2167",
+    "email": null,
+    "intent": null,
+    "daysAgo": 3,
+    "hour": 7,
+    "minute": 15,
+    "turnCount": 1,
+    "emptyCount": 2,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": ""
+      },
+      {
+        "role": "system",
+        "text": "Caller silent; ending call."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0024",
+    "status": "FAILED",
+    "name": null,
+    "phone": "(919) 555-2278",
+    "email": null,
+    "intent": null,
+    "daysAgo": 8,
+    "hour": 21,
+    "minute": 9,
+    "turnCount": 0,
+    "emptyCount": 0,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "system",
+        "text": "Call ended abnormally: no-answer."
+      }
+    ]
+  },
+  {
+    "sid": "DEMO-0025",
+    "status": "FAILED",
+    "name": null,
+    "phone": "(919) 555-2389",
+    "email": null,
+    "intent": null,
+    "daysAgo": 12,
+    "hour": 6,
+    "minute": 51,
+    "turnCount": 1,
+    "emptyCount": 2,
+    "hasContact": true,
+    "finalized": true,
+    "emailSent": true,
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "Thanks for calling Acme Services. How can I help you today?"
+      },
+      {
+        "role": "caller",
+        "text": ""
+      },
+      {
+        "role": "system",
+        "text": "Caller silent; ending call."
+      }
+    ]
+  }
+]

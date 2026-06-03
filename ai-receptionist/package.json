@@ -1,0 +1,39 @@
+{
+  "name": "ai-receptionist-mvp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Phone Receptionist SaaS MVP — inbound call -> AI conversation -> structured extraction -> DB -> email.",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "seed": "tsx src/db/seed.ts",
+    "simulate": "tsx scripts/simulate-call.ts",
+    "seed:demo": "tsx src/db/seedDemo.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "openai": "^4.77.0",
+    "resend": "^4.0.1",
+    "twilio": "^5.4.0",
+    "zod": "^3.24.1",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "prisma": "^6.2.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.8"
+  }
+}
