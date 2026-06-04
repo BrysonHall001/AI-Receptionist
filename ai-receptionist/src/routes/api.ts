@@ -4,10 +4,21 @@ import { getStats, listCalls, getCall, listContacts, getContact } from "../servi
 import { runSimulatedCall } from "../services/simulationService";
 import { importContacts, updateContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields } from "../services/fieldService";
+import { listTimeline, log as logActivity } from "../services/activityService";
+import { sendRichEmail } from "../services/notificationService";
+import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
+import { sendSms } from "../services/smsService";
+import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listExports, createExport, getExportCsv } from "../services/exportService";
 import { updatePortal, getPortal } from "../services/portalService";
 import { createUser, listUsers, deleteUser, setPassword, publicUser } from "../services/userService";
+import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents } from "../services/automationService";
+import { testRunAutomation } from "../automation/engine";
+import { loadFieldDefs, conditionFields } from "../automation/contactRow";
+import { ACTION_TYPES } from "../automation/actions";
+import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
+import { emitEvent } from "../events/bus";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 
@@ -74,7 +85,7 @@ apiRouter.post("/contacts/import", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const result = await importContacts(tenantId, rows);
+    const result = await importContacts(tenantId, rows, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -86,12 +97,172 @@ apiRouter.patch("/contacts/:id", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const { name, phone, email, intent, customFields } = (req.body ?? {}) as any;
   try {
-    await updateContact(req.params.id, tenantId, { name, phone, email, intent, customFields });
+    await updateContact(req.params.id, tenantId, { name, phone, email, intent, customFields }, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
     res.json({ ok: true });
   } catch (err) {
     const msg = (err as Error).message.includes("Unique") ? "That phone number is already used by another contact" : (err as Error).message;
     res.status(400).json({ error: msg });
   }
+});
+
+apiRouter.get("/contacts/:id/timeline", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const items = await listTimeline(req.params.id, tenantId);
+  if (!items) {
+    res.status(404).json({ error: "Contact not found" });
+    return;
+  }
+  res.json(items);
+});
+
+apiRouter.post("/contacts/:id/email", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { subject, html } = (req.body ?? {}) as { subject?: string; html?: string };
+  if (!subject || !subject.trim()) {
+    res.status(400).json({ error: "A subject is required" });
+    return;
+  }
+  const contact = await getContact(req.params.id, tenantId);
+  if (!contact) {
+    res.status(404).json({ error: "Contact not found" });
+    return;
+  }
+  if (!contact.email) {
+    res.status(400).json({ error: "This contact has no email address" });
+    return;
+  }
+  try {
+    await sendRichEmail({ to: contact.email, subject, html: html || "", fromEmail: req.user!.email, fromName: req.user!.name });
+    await logActivity({
+      tenantId,
+      contactId: req.params.id,
+      type: "email_sent",
+      summary: `Email sent: ${subject.trim()}`,
+      detail: { subject: subject.trim(), to: contact.email, from: req.user!.email },
+      actor: { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" },
+    });
+    await emitEvent({ tenantId, type: EVENT_TYPES.EmailSent, actor: { type: "user", id: req.user!.id, name: req.user!.name || req.user!.email }, subject: { type: "contact", id: req.params.id }, payload: { subject: subject.trim(), to: contact.email } });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+apiRouter.post("/contacts/:id/text", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { body } = (req.body ?? {}) as { body?: string };
+  if (!body || !body.trim()) {
+    res.status(400).json({ error: "Message can't be empty" });
+    return;
+  }
+  const contact = await getContact(req.params.id, tenantId);
+  if (!contact) {
+    res.status(404).json({ error: "Contact not found" });
+    return;
+  }
+  if (!contact.phone) {
+    res.status(400).json({ error: "This contact has no phone number" });
+    return;
+  }
+  try {
+    const portal = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    await sendSms({ to: contact.phone, body: body.trim(), from: portal?.phoneNumber });
+    await logActivity({
+      tenantId,
+      contactId: req.params.id,
+      type: "text_sent",
+      summary: "Text message sent",
+      detail: { to: contact.phone, body: body.trim() },
+      actor: { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" },
+    });
+    await emitEvent({ tenantId, type: EVENT_TYPES.SMSSent, actor: { type: "user", id: req.user!.id, name: req.user!.name || req.user!.email }, subject: { type: "contact", id: req.params.id }, payload: { to: contact.phone } });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// ---- Email/SMS templates (shared across the portal) ----
+apiRouter.get("/templates", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const kind = (req.query.kind as string | undefined) || undefined;
+  res.json(await listTemplates(tenantId, kind));
+});
+
+apiRouter.post("/templates", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, kind, subject, body } = (req.body ?? {}) as any;
+  if (!name || !name.trim()) {
+    res.status(400).json({ error: "A template name is required" });
+    return;
+  }
+  res.json(await createTemplate({ tenantId, name, kind, subject, body: body || "", createdById: req.user!.id }));
+});
+
+apiRouter.delete("/templates/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ok = await deleteTemplate(req.params.id, tenantId);
+  if (!ok) { res.status(404).json({ error: "Template not found" }); return; }
+  res.json({ ok: true });
+});
+
+// ---- Dashboards / Reports (shared across the portal) ----
+apiRouter.get("/dashboards", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listDashboards(tenantId));
+});
+
+// Dedicated home/overview dashboard for the main "Dashboard" screen (separate
+// from the user-created Reports dashboards).
+apiRouter.get("/dashboards/home", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await getOrCreateHomeDashboard(tenantId, req.user!.id));
+});
+
+apiRouter.post("/dashboards", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name } = (req.body ?? {}) as { name?: string };
+  res.json(await createDashboard(tenantId, name || "Untitled dashboard", req.user!.id));
+});
+
+apiRouter.patch("/dashboards/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, widgets } = (req.body ?? {}) as any;
+  try {
+    res.json(await updateDashboard(req.params.id, tenantId, { name, widgets }));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+apiRouter.delete("/dashboards/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ok = await deleteDashboard(req.params.id, tenantId);
+  if (!ok) { res.status(404).json({ error: "Dashboard not found" }); return; }
+  res.json({ ok: true });
+});
+
+// ---- Personal email signature ----
+apiRouter.get("/account/signature", async (req: Request, res: Response) => {
+  const u = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { signature: true } });
+  res.json({ signature: u?.signature ?? "" });
+});
+
+apiRouter.patch("/account/signature", async (req: Request, res: Response) => {
+  const { signature } = (req.body ?? {}) as { signature?: string };
+  await prisma.user.update({ where: { id: req.user!.id }, data: { signature: signature ?? "" } });
+  res.json({ ok: true });
 });
 
 // ---- Custom fields (definitions are admin-managed; values editable by all) ----
@@ -311,6 +482,86 @@ apiRouter.get("/exports/:id/download", async (req: Request, res: Response) => {
     return;
   }
   res.json(result);
+});
+
+// ---- Automations (event-driven workflows) ----
+apiRouter.get("/automations", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listAutomations(tenantId));
+});
+
+// Builder metadata: triggers, action types, condition fields, tag fields,
+// templates and users for action config dropdowns.
+apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const custom = await loadFieldDefs(tenantId);
+  const fields = conditionFields(custom);
+  const tagFields = custom.filter((f) => f.type === "multi_select");
+  const templates = await listTemplates(tenantId);
+  const users = await prisma.user.findMany({ where: { tenantId }, select: { id: true, name: true, email: true } });
+  res.json({
+    triggers: TRIGGERABLE_EVENT_TYPES,
+    actions: ACTION_TYPES,
+    fields,
+    tagFields,
+    templates: templates.map((t: any) => ({ id: t.id, name: t.name, kind: t.kind })),
+    users: users.map((u: any) => ({ id: u.id, name: u.name || u.email })),
+  });
+});
+
+apiRouter.get("/automations/runs", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const automationId = (req.query.automationId as string | undefined) || undefined;
+  res.json(await listRuns(tenantId, { automationId, limit: Number(req.query.limit) || 100 }));
+});
+
+apiRouter.get("/automations/events", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const type = (req.query.type as string | undefined) || undefined;
+  res.json(await listEvents(tenantId, { type, limit: Number(req.query.limit) || 100 }));
+});
+
+apiRouter.post("/automations", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, triggerType, conditions, actions, enabled } = (req.body ?? {}) as any;
+  res.json(await createAutomation(tenantId, { name, triggerType, conditions, actions, enabled }, req.user!.id));
+});
+
+apiRouter.patch("/automations/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, triggerType, conditions, actions, enabled } = (req.body ?? {}) as any;
+  try {
+    res.json(await updateAutomation(req.params.id, tenantId, { name, triggerType, conditions, actions, enabled }));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+apiRouter.delete("/automations/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ok = await deleteAutomation(req.params.id, tenantId);
+  if (!ok) { res.status(404).json({ error: "Automation not found" }); return; }
+  res.json({ ok: true });
+});
+
+apiRouter.post("/automations/:id/test", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { contactId } = (req.body ?? {}) as { contactId?: string };
+  if (!contactId) { res.status(400).json({ error: "A contactId is required" }); return; }
+  try {
+    const run = await testRunAutomation(req.params.id, contactId, tenantId);
+    res.json(run);
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 // ---- Change own password ----

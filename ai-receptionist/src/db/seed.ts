@@ -1,4 +1,4 @@
-import { env } from "../config/env";
+import { env, isProduction, isWeakPassword } from "../config/env";
 import { prisma, disconnectDb } from "./client";
 import { logger } from "../utils/logger";
 import { hashPassword } from "../auth/passwords";
@@ -10,6 +10,21 @@ import { hashPassword } from "../auth/passwords";
  *  - a PORTAL_ADMIN login for that portal (a sample client)
  */
 async function seed(): Promise<void> {
+  // Safety: never create the all-powerful super-admin with a weak/default
+  // password in production. In local dev we only warn, so the seeded default
+  // login keeps working for you.
+  if (isWeakPassword(env.SUPER_ADMIN_PASSWORD)) {
+    const msg =
+      "SUPER_ADMIN_PASSWORD is missing, default, or too weak (need 12+ chars, not 'changeme123'). " +
+      "Set a strong SUPER_ADMIN_PASSWORD in your environment before seeding.";
+    if (isProduction()) {
+      logger.error(`Refusing to seed in production: ${msg}`);
+      await disconnectDb();
+      process.exit(1);
+    }
+    logger.warn(`[dev only] ${msg}`);
+  }
+
   // Super admin
   const adminEmail = env.SUPER_ADMIN_EMAIL.toLowerCase();
   const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });

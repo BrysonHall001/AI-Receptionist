@@ -97,3 +97,23 @@ export async function sendPlainEmail(to: string, subject: string, body: string):
   });
   if (error) throw new Error(`Resend send failed: ${JSON.stringify(error)}`);
 }
+
+/**
+ * Send an HTML email to a contact. `fromEmail` is the logged-in user's address;
+ * in real mode we send via the verified domain and set reply-to to that user so
+ * replies reach them (sending "as" an arbitrary address needs domain verification).
+ */
+export async function sendRichEmail(input: { to: string; subject: string; html: string; fromEmail: string; fromName?: string | null }): Promise<void> {
+  if (useMockEmail()) {
+    logger.info(`[mock email] from ${input.fromEmail} to ${input.to} | subject: "${input.subject}"`);
+    return;
+  }
+  const { error } = await resend.emails.send({
+    from: env.RESEND_FROM,
+    to: [input.to],
+    replyTo: input.fromEmail,
+    subject: input.subject,
+    html: input.html,
+  });
+  if (error) throw new Error(`Resend send failed: ${JSON.stringify(error)}`);
+}

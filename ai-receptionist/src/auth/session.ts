@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { Response } from "express";
-import { env } from "../config/env";
+import { env, isProduction } from "../config/env";
 import { prisma } from "../db/client";
 
 export const SESSION_COOKIE = "air_session";
@@ -39,7 +39,9 @@ export function setSessionCookie(res: Response, token: string): void {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: env.COOKIE_SECURE === "true",
+    // Always secure (HTTPS-only) in production; in dev it follows COOKIE_SECURE
+    // so http://localhost still works.
+    secure: isProduction() || env.COOKIE_SECURE === "true",
     maxAge: ttlMs(),
     path: "/",
   });

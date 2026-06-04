@@ -12,6 +12,8 @@
     if (v === "calls") return renderCalls();
     if (v === "contacts") return renderContacts();
     if (v === "fields") return renderFields();
+    if (v === "reports") return App.reports.render(view());
+    if (v === "automations") return App.automations.render(view());
     if (v === "settings") return renderSettings();
     return renderDashboard();
   }
@@ -22,18 +24,24 @@
   // ---------------- Dashboard ----------------
   async function renderDashboard() {
     loading();
-    const [stats, calls] = await Promise.all([App.portalApi("/api/stats"), App.portalApi("/api/calls")]);
+    const calls = await App.portalApi("/api/calls");
     const wrap = el("div", "fade-in");
 
-    const cards = [["Total calls", stats.totalCalls], ["Completed", stats.completed], ["Leads captured", stats.leads], ["Today", stats.today]];
-    const statsEl = el("div", "stats stagger");
-    cards.forEach(([label, val]) => {
-      const c = el("div", "stat-card");
-      c.appendChild(el("div", "stat-label", esc(label)));
-      c.appendChild(el("div", "stat-value", String(val)));
-      statsEl.appendChild(c);
-    });
-    wrap.appendChild(statsEl);
+    // Top section: a full dashboard (same widgets/grid/buttons as Reports).
+    const dashHead = el("div", "section-head");
+    dashHead.appendChild(el("h2", null, "Overview"));
+    const reportsLink = el("a", "muted-link", "Open Reports →");
+    reportsLink.href = "#/reports";
+    dashHead.appendChild(reportsLink);
+    wrap.appendChild(dashHead);
+    const homeHost = el("div", "home-dashboard");
+    homeHost.style.maxHeight = "40vh";
+    homeHost.style.overflowY = "auto";
+    homeHost.style.overflowX = "hidden";
+    wrap.appendChild(homeHost);
+
+    const divider = el("div", "section-divider");
+    wrap.appendChild(divider);
 
     const head = el("div", "section-head");
     head.appendChild(el("h2", null, "Recent calls"));
@@ -65,6 +73,7 @@
     }
     view().innerHTML = "";
     view().appendChild(wrap);
+    App.reports.mountHome(homeHost);
   }
 
   // ---------------- Calls ----------------
@@ -115,7 +124,7 @@
     container.appendChild(tableHost);
     view().appendChild(container);
     const handle = App.table.mount({
-      container: tableHost, columns, rows: contacts, onRowClick: (r) => openContact(r.id),
+      container: tableHost, columns, rows: contacts, onRowClick: (r) => App.go("#/contact/" + r.id),
       defaultSort: "createdAt", defaultSortDir: "desc",
       emptyHtml: `<div class="empty"><div class="empty-emoji">&#128100;</div><h3>No contacts yet</h3><p>Contacts appear after calls are completed, or import a list.</p><button class="btn btn-primary" id="empty-import"><span class="btn-icon">&#8681;</span> Import contacts</button></div>`,
       onEmptyMount: (w) => { const b = w.querySelector("#empty-import"); if (b) b.onclick = openImport; },
@@ -527,54 +536,170 @@
     } catch (err) { App.util.$("#drawer-body").innerHTML = `<p class="cell-muted">${esc(err.message)}</p>`; }
   }
 
-  async function openContact(id) {
-    ensureDrawer();
-    App.util.$("#drawer-eyebrow").textContent = "Contact";
-    App.util.$("#drawer-title").textContent = "Loading…";
-    App.util.$("#drawer-body").innerHTML = `<div class="skeleton">Loading…</div>`;
-    showDrawer();
-    try {
-      const [c, fields] = await Promise.all([App.portalApi(`/api/contacts/${id}`), App.portalApi("/api/fields")]);
-      App.util.$("#drawer-title").textContent = c.name || "Unknown";
+  // ---------------- Contact profile page ----------------
+  async function renderContact(id) {
+    loading();
+    let c, fields;
+    try { [c, fields] = await Promise.all([App.portalApi(`/api/contacts/${id}`), App.portalApi("/api/fields")]); }
+    catch (err) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(err.message)}</p></div>`; return; }
 
-      // Flatten system + custom values into one object the editor can mutate.
+    const wrap = el("div", "fade-in contact-page");
+    const back = el("a", "back-link", "← Contacts");
+    back.href = "#/contacts";
+    wrap.appendChild(back);
+
+    const head = el("div", "contact-head");
+    head.innerHTML = `<div class="contact-avatar">${esc((c.name || c.phone || "?").charAt(0).toUpperCase())}</div>
+      <div><h1 class="contact-name">${esc(c.name || "Unknown")}</h1>
+      <div class="contact-sub">${esc(c.phone || "")}${c.email ? " · " + esc(c.email) : ""}</div></div>`;
+    wrap.appendChild(head);
+
+    const tabsBar = el("div", "tabs");
+    const tabBody = el("div", "tab-body");
+    const tabs = [["fields", "All fields"], ["timeline", "Timeline"], ["email", "Email"], ["text", "Text"]];
+    let active = "fields";
+    function setTab(key) {
+      active = key;
+      App.util.$$(".tab", tabsBar).forEach((t) => t.classList.toggle("active", t.dataset.tab === key));
+      if (key === "fields") tabFields();
+      else if (key === "timeline") tabTimeline();
+      else if (key === "text") tabText();
+      else tabEmail();
+    }
+    tabs.forEach(([key, label]) => {
+      const t = el("button", "tab" + (key === "fields" ? " active" : ""), esc(label));
+      t.dataset.tab = key;
+      t.onclick = () => setTab(key);
+      tabsBar.appendChild(t);
+    });
+    wrap.appendChild(tabsBar);
+    wrap.appendChild(tabBody);
+    view().innerHTML = "";
+    view().appendChild(wrap);
+
+    // ---- All fields tab ----
+    function tabFields() {
+      tabBody.innerHTML = "";
       const values = { name: c.name || "", phone: c.phone || "", email: c.email || "", intent: c.intent || "", ...(c.customFields || {}) };
-
-      const body = App.util.$("#drawer-body");
-      body.innerHTML = "";
-      const meta = el("div", "drawer-meta");
-      meta.innerHTML = `<span>First seen ${fmtDate(c.createdAt)}</span><span>·</span><span>Updated ${fmtDate(c.updatedAt)}</span>`;
-      body.appendChild(meta);
-
+      const card = el("div", "card");
       const editorHost = el("div", "field-editor");
-      body.appendChild(editorHost);
+      card.appendChild(editorHost);
       App.fields.renderEditor(editorHost, fields, values, {});
-
       const saveBar = el("div", "drawer-save-bar");
       const save = el("button", "btn btn-primary btn-sm", "Save changes");
       save.onclick = async () => {
         const custom = {};
         fields.forEach((f) => { if (!App.fields.SYSTEM_KEYS.includes(f.key) && f.type !== "formula") custom[f.key] = values[f.key]; });
-        const payload = { name: values.name, phone: values.phone, email: values.email, intent: values.intent, customFields: custom };
         save.disabled = true; save.textContent = "Saving…";
-        try { await App.portalApi(`/api/contacts/${id}`, { method: "PATCH", body: JSON.stringify(payload) }); App.util.toast("Contact saved"); App.util.$("#drawer-title").textContent = values.name || "Unknown"; }
-        catch (e) { App.util.toast(e.message, true); }
+        try {
+          await App.portalApi(`/api/contacts/${id}`, { method: "PATCH", body: JSON.stringify({ name: values.name, phone: values.phone, email: values.email, intent: values.intent, customFields: custom }) });
+          App.util.toast("Contact saved");
+          c.name = values.name; c.email = values.email; c.phone = values.phone;
+          App.util.$(".contact-name", wrap).textContent = values.name || "Unknown";
+        } catch (e) { App.util.toast(e.message, true); }
         finally { save.disabled = false; save.textContent = "Save changes"; }
       };
       saveBar.appendChild(save);
-      body.appendChild(saveBar);
+      card.appendChild(saveBar);
+      tabBody.appendChild(card);
+    }
 
-      let hist = `<div class="drawer-section-title">Call history (${c.calls.length})</div>`;
-      if (!c.calls.length) hist += `<p class="cell-muted">No calls.</p>`;
-      else c.calls.forEach((call) => {
-        hist += `<div class="mini-call" data-call="${esc(call.id)}"><div><div class="mini-reason">${esc(call.intent || "—")}</div><div class="mini-date">${fmtDate(call.createdAt)}</div></div>${statusBadge(call.status)}</div>`;
+    // ---- Timeline tab ----
+    async function tabTimeline() {
+      tabBody.innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`;
+      let items;
+      try { items = await App.portalApi(`/api/contacts/${id}/timeline`); }
+      catch (e) { tabBody.innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
+      const card = el("div", "card");
+      if (!items.length) { card.innerHTML = `<p class="cell-muted">No activity yet.</p>`; tabBody.innerHTML = ""; tabBody.appendChild(card); return; }
+      const tl = el("div", "timeline");
+      const icons = { created: "✨", field_update: "✏️", email_sent: "✉️", call: "📞" };
+      items.forEach((ev) => {
+        const row = el("div", "tl-item");
+        const who = ev.actorType === "system" ? "System" : (ev.actorName || "A user");
+        let extra = "";
+        if (ev.type === "field_update" && ev.detail && ev.detail.changes) {
+          extra = `<div class="tl-changes">` + ev.detail.changes.map((ch) =>
+            `<div><span class="tl-field">${esc(ch.label)}:</span> <span class="tl-from">${esc(scalarStr(ch.from)) || "—"}</span> → <span class="tl-to">${esc(scalarStr(ch.to)) || "—"}</span></div>`).join("") + `</div>`;
+        } else if (ev.type === "email_sent" && ev.detail) {
+          extra = `<div class="tl-changes"><div class="cell-muted">To ${esc(ev.detail.to || "")}</div></div>`;
+        } else if (ev.type === "call" && ev.detail && ev.detail.intent) {
+          extra = `<div class="tl-changes"><div class="cell-muted">${esc(ev.detail.intent)}</div></div>`;
+        }
+        row.innerHTML = `<div class="tl-icon">${icons[ev.type] || "•"}</div>
+          <div class="tl-main"><div class="tl-summary">${esc(ev.summary)}</div>
+          <div class="tl-meta">${esc(who)} · ${fmtDate(ev.createdAt)}</div>${extra}</div>`;
+        tl.appendChild(row);
       });
-      const histEl = el("div");
-      histEl.innerHTML = hist;
-      body.appendChild(histEl);
-      App.util.$$(".mini-call", histEl).forEach((row) => { row.style.cursor = "pointer"; row.onclick = () => openCall(row.dataset.call); });
-    } catch (err) { App.util.$("#drawer-body").innerHTML = `<p class="cell-muted">${esc(err.message)}</p>`; }
+      card.appendChild(tl);
+      tabBody.innerHTML = "";
+      tabBody.appendChild(card);
+    }
+
+    // ---- Email tab ----
+    function tabEmail() {
+      tabBody.innerHTML = "";
+      const card = el("div", "card");
+      if (!c.email) {
+        card.innerHTML = `<p class="cell-muted">This contact has no email address. Add one in the All fields tab to send email.</p>`;
+        tabBody.appendChild(card);
+        return;
+      }
+      card.appendChild(el("div", "email-meta", `To: <strong>${esc(c.email)}</strong> · From: ${esc(App.state.me.email)}`));
+      const composerHost = el("div");
+      card.appendChild(composerHost);
+      const api = App.compose.mount(composerHost, { kind: "email" });
+      const send = el("button", "btn btn-primary btn-sm", "Send email");
+      send.style.marginTop = "14px";
+      send.onclick = async () => {
+        const subject = api.getSubject();
+        if (!subject) { App.util.toast("Add a subject", true); return; }
+        send.disabled = true; send.textContent = "Sending…";
+        try {
+          await App.portalApi(`/api/contacts/${id}/email`, { method: "POST", body: JSON.stringify({ subject, html: api.getHTML() }) });
+          App.util.toast("Email sent");
+          api.setSubject(""); api.setBody("");
+        } catch (e) { App.util.toast(e.message, true); }
+        finally { send.disabled = false; send.textContent = "Send email"; }
+      };
+      card.appendChild(send);
+      tabBody.appendChild(card);
+    }
+
+    // ---- Text tab ----
+    function tabText() {
+      tabBody.innerHTML = "";
+      const card = el("div", "card");
+      if (!c.phone) {
+        card.innerHTML = `<p class="cell-muted">This contact has no phone number.</p>`;
+        tabBody.appendChild(card);
+        return;
+      }
+      card.appendChild(el("div", "email-meta", `To: <strong>${esc(c.phone)}</strong>`));
+      const composerHost = el("div");
+      card.appendChild(composerHost);
+      const api = App.compose.mount(composerHost, { kind: "sms" });
+      const send = el("button", "btn btn-primary btn-sm", "Send text");
+      send.style.marginTop = "14px";
+      send.onclick = async () => {
+        const body = api.getText().trim();
+        if (!body) { App.util.toast("Type a message", true); return; }
+        send.disabled = true; send.textContent = "Sending…";
+        try {
+          await App.portalApi(`/api/contacts/${id}/text`, { method: "POST", body: JSON.stringify({ body }) });
+          App.util.toast("Text sent");
+          api.setBody("");
+        } catch (e) { App.util.toast(e.message, true); }
+        finally { send.disabled = false; send.textContent = "Send text"; }
+      };
+      card.appendChild(send);
+      tabBody.appendChild(card);
+    }
+
+    tabFields();
   }
+
+  function scalarStr(v) { return v == null ? "" : Array.isArray(v) ? v.join(", ") : String(v); }
 
   // ---------------- Simulate ----------------
   async function simulate() {
@@ -640,7 +765,10 @@
       </div>
       <label class="field-label">Change password</label>
       <div class="add-user"><input id="acct-pass" class="input" type="password" placeholder="New password (8+)" />
-        <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>`;
+        <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>
+      <label class="field-label" style="margin-top:8px">Email signature</label>
+      <div id="sig-host"></div>
+      <button id="sig-save" class="btn btn-ghost btn-sm" style="margin-top:10px">Save signature</button>`;
     sections.appendChild(acct);
 
     view().innerHTML = "";
@@ -670,6 +798,14 @@
       const pass = App.util.$("#acct-pass").value;
       if (!pass || pass.length < 8) { toast("Password must be at least 8 characters", true); return; }
       try { await App.portalApi("/api/account/password", { method: "POST", body: JSON.stringify({ password: pass }) }); toast("Password updated"); App.util.$("#acct-pass").value = ""; }
+      catch (err) { toast(err.message, true); }
+    };
+
+    // Signature editor (same composer as emails)
+    const sigApi = App.compose.mount(App.util.$("#sig-host"), { kind: "richtext" });
+    App.portalApi("/api/account/signature").then((r) => { sigApi.setBody((r && r.signature) || ""); }).catch(() => {});
+    App.util.$("#sig-save").onclick = async () => {
+      try { await App.portalApi("/api/account/signature", { method: "PATCH", body: JSON.stringify({ signature: sigApi.getHTML() }) }); toast("Signature saved"); }
       catch (err) { toast(err.message, true); }
     };
   }
@@ -785,5 +921,5 @@
     };
   }
 
-  App.portal = { render, refresh, simulate, current: () => current };
+  App.portal = { render, refresh, simulate, renderContact, current: () => current };
 })(typeof window !== "undefined" ? window : globalThis);

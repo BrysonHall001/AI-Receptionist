@@ -29,6 +29,7 @@ export interface ContactDTO {
   phone: string;
   email: string | null;
   intent: string | null;
+  customFields: Record<string, unknown>;
   callCount: number;
   createdAt: string;
   updatedAt: string;
@@ -91,6 +92,7 @@ export async function listContacts(tenantId?: string | null, limit = 500): Promi
     phone: c.phone,
     email: c.email ?? null,
     intent: c.intent ?? null,
+    customFields: (c.customFields as any) ?? {},
     callCount: c._count?.callSessions ?? 0,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),

@@ -10,7 +10,10 @@ const BASE = process.env.SIMULATE_BASE_URL || "http://localhost:3000";
 async function post(path: string, body: unknown): Promise<{ status: number; json: any }> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(process.env.INTERNAL_API_SECRET ? { "x-internal-secret": process.env.INTERNAL_API_SECRET } : {}),
+    },
     body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));

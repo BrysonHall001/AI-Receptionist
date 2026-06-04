@@ -38,6 +38,11 @@ const envSchema = z.object({
   APP_BASE_URL: z.string().default("http://localhost:3000"),
   SUPER_ADMIN_EMAIL: z.string().default("admin@example.com"),
   SUPER_ADMIN_PASSWORD: z.string().default("changeme123"),
+
+  // Shared secret that protects the unauthenticated /internal call endpoints in
+  // production. Empty in dev (endpoints stay open locally); REQUIRED to use
+  // them in production.
+  INTERNAL_API_SECRET: z.string().default(""),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -67,6 +72,22 @@ export function loadEnv(): Env {
 // Eagerly validated on first import so misconfiguration fails fast at boot.
 export const env: Env = loadEnv();
 
+/** True when the app is running in production (NODE_ENV=production). */
+export function isProduction(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+/**
+ * A password that must never be used in production: empty, a known seed default,
+ * a copy-paste placeholder, or simply too short to be safe.
+ */
+export function isWeakPassword(value: string): boolean {
+  if (!value) return true;
+  if (value.length < 12) return true;
+  if (value.toLowerCase() === "changeme123") return true;
+  return isPlaceholderSecret(value);
+}
+
 /** A secret that is empty or still a copy-paste placeholder (xxxx, your_, etc). */
 export function isPlaceholderSecret(value: string): boolean {
   if (!value) return true;
@@ -93,4 +114,9 @@ export function useMockEmail(): boolean {
   if (env.EMAIL_PROVIDER === "mock") return true;
   if (env.EMAIL_PROVIDER === "resend") return false;
   return isPlaceholderSecret(env.RESEND_API_KEY);
+}
+
+/** Whether to log texts locally instead of sending via Twilio. */
+export function useMockSms(): boolean {
+  return isPlaceholderSecret(env.TWILIO_AUTH_TOKEN);
 }

@@ -1,6 +1,6 @@
 import { Request } from "express";
 import twilio from "twilio";
-import { env } from "../config/env";
+import { env, isProduction } from "../config/env";
 import { logger } from "../utils/logger";
 
 export interface TwilioVoiceParams {
@@ -24,11 +24,13 @@ export function parseVoiceParams(req: Request): TwilioVoiceParams {
 }
 
 /**
- * Verify the X-Twilio-Signature header. No-op (returns true) unless
- * TWILIO_VALIDATE_SIGNATURE=true, so local/ngrok testing works out of the box.
+ * Verify the X-Twilio-Signature header. Always enforced in production. In dev
+ * it's skipped unless TWILIO_VALIDATE_SIGNATURE=true, so local/ngrok testing
+ * works out of the box.
  */
 export function validateTwilioSignature(req: Request): boolean {
-  if (env.TWILIO_VALIDATE_SIGNATURE !== "true") return true;
+  const mustValidate = isProduction() || env.TWILIO_VALIDATE_SIGNATURE === "true";
+  if (!mustValidate) return true;
   const signature = req.header("X-Twilio-Signature") || "";
   const url = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
   const valid = twilio.validateRequest(
