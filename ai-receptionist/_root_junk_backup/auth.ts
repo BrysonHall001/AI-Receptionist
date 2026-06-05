@@ -37,7 +37,6 @@ model Tenant {
   greeting     String        @default("Thank you for calling. How can I help you today?")
   businessType String        @default("general business")
   notifyEmail  String
-  theme        Json          @default("{}")
   status       TenantStatus  @default(ACTIVE)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -50,9 +49,6 @@ model Tenant {
   activity     ActivityLog[]
   templates    EmailTemplate[]
   dashboards   Dashboard[]
-  events         Event[]
-  automations    Automation[]
-  automationRuns AutomationRun[]
 }
 
 model User {
@@ -67,8 +63,6 @@ model User {
   resetTokenExpiry DateTime?
   lastLoginAt      DateTime?
   signature        String?
-  themePrefs       Json      @default("{}")
-  contactColumns   Json      @default("{}")
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   sessions         Session[]
@@ -98,13 +92,11 @@ model Contact {
   customFields Json          @default("{}")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-  deletedAt    DateTime?
   callSessions CallSession[]
   activity     ActivityLog[]
 
   @@unique([tenantId, phone])
   @@index([tenantId])
-  @@index([tenantId, deletedAt])
 }
 
 model CallSession {
@@ -221,69 +213,4 @@ model Dashboard {
   updatedAt   DateTime @updatedAt
 
   @@index([tenantId])
-}
-
-// ===================== Event-driven automation =====================
-
-// Append-only log of domain events. Decoupled from any consumer: emitters write
-// here via the event bus; the automation engine (and future consumers) subscribe.
-// `type` is an open string so new event types need no schema change.
-model Event {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  type        String
-  actorType   String   @default("system") // user | system | automation
-  actorId     String?
-  actorName   String?
-  subjectType String   @default("contact")
-  subjectId   String?
-  payload     Json     @default("{}")
-  occurredAt  DateTime @default(now())
-
-  @@index([tenantId, type])
-  @@index([tenantId, occurredAt])
-  @@index([subjectId])
-}
-
-// A workflow: when an event of `triggerType` fires, evaluate `conditions`
-// (table.js rule shape) and, if they pass, run `actions` in order.
-// conditions/actions are JSON so adding new condition operators or action types
-// requires no migration.
-model Automation {
-  id          String          @id @default(cuid())
-  tenantId    String
-  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name        String
-  enabled     Boolean         @default(true)
-  triggerType String
-  conditions  Json            @default("[]")
-  actions     Json            @default("[]")
-  createdById String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  runs        AutomationRun[]
-
-  @@index([tenantId])
-  @@index([tenantId, triggerType, enabled])
-}
-
-// One row per automation execution attempt — the execution history.
-model AutomationRun {
-  id           String     @id @default(cuid())
-  tenantId     String
-  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  automationId String
-  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  eventId      String?
-  eventType    String
-  contactId    String?
-  status       String // success | failed | skipped
-  matched      Boolean    @default(false)
-  results      Json       @default("[]")
-  error        String?
-  createdAt    DateTime   @default(now())
-
-  @@index([tenantId, createdAt])
-  @@index([automationId])
 }

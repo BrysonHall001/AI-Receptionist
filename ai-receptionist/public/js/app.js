@@ -22,6 +22,7 @@
     App.state.me = null;
     App.state.currentPortalId = null;
     App.state.currentPortalName = null;
+    if (App.theme) App.theme.resetToDefault();
     location.hash = "#/login";
   }
 
@@ -32,6 +33,11 @@
     const me = App.state.me;
     const root = App.util.$("#app");
     root.innerHTML = "";
+
+    // Per-user theming: the signed-in user's personal theme applies everywhere,
+    // independent of portal context.
+    if (App.theme) App.theme.loadAndApply();
+
     const layout = el("div", "app-shell");
 
     // Sidebar
@@ -50,9 +56,16 @@
     side.appendChild(nav);
 
     const userBox = el("div", "sidebar-user");
-    userBox.innerHTML = `<div class="user-chip"><div class="user-avatar">${esc((me.name || me.email).charAt(0).toUpperCase())}</div>
+    if (section === "portal") {
+      const rb = el("a", "recycle-link" + (activePath === "#/recycle" ? " active" : ""), `<span class="rb-icon">&#128465;</span><span>Recycle Bin</span>`);
+      rb.href = "#/recycle";
+      userBox.appendChild(rb);
+    }
+    const chip = el("div");
+    chip.innerHTML = `<div class="user-chip"><div class="user-avatar">${esc((me.name || me.email).charAt(0).toUpperCase())}</div>
       <div class="user-meta"><div class="user-name">${esc(me.name || me.email)}</div><div class="user-role">${esc(roleLabel(me.role))}</div></div></div>
       <button class="btn btn-ghost btn-sm btn-block" id="logout-btn">Sign out</button>`;
+    userBox.appendChild(chip);
     side.appendChild(userBox);
     layout.appendChild(side);
 
@@ -138,7 +151,7 @@
     }
 
     // Portal section
-    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/settings": "settings" };
+    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/settings": "settings" };
     if (portalViews[path]) {
       if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
       buildShell("portal", path === "/settings" ? "#/settings" : "#" + path);

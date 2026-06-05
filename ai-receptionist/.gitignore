@@ -2,8 +2,3 @@ node_modules/
 dist/
 .env
 *.log
-
-# build artifacts and local junk
-*.zip
-_root_junk_backup/
-dist/

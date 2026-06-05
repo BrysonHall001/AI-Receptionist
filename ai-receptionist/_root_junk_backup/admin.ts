@@ -51,7 +51,7 @@ export async function getStats(tenantId?: string | null) {
   const [totalCalls, completed, leads, today] = await Promise.all([
     prisma.callSession.count({ where: base }),
     prisma.callSession.count({ where: { ...base, status: "COMPLETED" } }),
-    prisma.contact.count({ where: { ...base, deletedAt: null } }),
+    prisma.contact.count({ where: base }),
     prisma.callSession.count({ where: { ...base, createdAt: { gte: startOfToday } } }),
   ]);
 
@@ -79,10 +79,14 @@ export async function getCall(id: string, tenantId?: string | null): Promise<Cal
   };
 }
 
-export const RETENTION_DAYS = 30;
-
-function mapContact(c: any) {
-  return {
+export async function listContacts(tenantId?: string | null, limit = 500): Promise<ContactDTO[]> {
+  const rows = await prisma.contact.findMany({
+    where: scope(tenantId),
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+    include: { _count: { select: { callSessions: true } } },
+  });
+  return rows.map((c: any) => ({
     id: c.id,
     name: c.name ?? null,
     phone: c.phone,
@@ -92,35 +96,7 @@ function mapContact(c: any) {
     callCount: c._count?.callSessions ?? 0,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
-  };
-}
-
-export async function listContacts(tenantId?: string | null, limit = 500): Promise<ContactDTO[]> {
-  const rows = await prisma.contact.findMany({
-    where: { ...scope(tenantId), deletedAt: null }, // active only — never show soft-deleted
-    orderBy: { updatedAt: "desc" },
-    take: limit,
-    include: { _count: { select: { callSessions: true } } },
-  });
-  return rows.map(mapContact);
-}
-
-// Recycle bin: soft-deleted contacts only, newest-deleted first, with a
-// days-until-permanent-deletion countdown (RETENTION_DAYS from deletion).
-export async function listDeletedContacts(tenantId?: string | null, limit = 500) {
-  const rows = await prisma.contact.findMany({
-    where: { ...scope(tenantId), deletedAt: { not: null } },
-    orderBy: { deletedAt: "desc" },
-    take: limit,
-    include: { _count: { select: { callSessions: true } } },
-  });
-  const now = Date.now();
-  return rows.map((c: any) => {
-    const deletedMs = new Date(c.deletedAt).getTime();
-    const expiresMs = deletedMs + RETENTION_DAYS * 86400000;
-    const daysLeft = Math.max(0, Math.ceil((expiresMs - now) / 86400000));
-    return { ...mapContact(c), deletedAt: new Date(c.deletedAt).toISOString(), daysLeft };
-  });
+  }));
 }
 
 export async function getContact(id: string, tenantId?: string | null) {

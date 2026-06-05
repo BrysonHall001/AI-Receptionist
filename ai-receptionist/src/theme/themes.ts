@@ -1,0 +1,177 @@
+// Central theme definitions + server-side sanitizers.
+//
+// SECURITY: nothing here turns user input into raw CSS. Presets are referenced
+// by id only (styling is author-written CSS keyed by a data-theme attribute).
+// Custom values are strictly validated: colors must be #rgb/#rrggbb hex, the
+// font must be one of a fixed set of ids, and a theme NAME is treated as plain
+// text (control chars / angle brackets stripped, length capped). Anything else
+// is rejected and replaced with a safe default, so only known-good values can
+// ever be stored.
+import { randomBytes } from "crypto";
+
+export type ThemeMode = "preset" | "custom";
+
+// A custom palette. topbar + panel are explicit now (the designer exposes them).
+export interface CustomTheme {
+  background: string; // hex — page background
+  fontColor: string; // hex — body text
+  sidebar: string; // hex — left navigation background
+  topbar: string; // hex — top bar background
+  panel: string; // hex — content panels/cards
+  font: string; // a FONT id from the allow-list
+}
+
+export interface NamedCustom extends CustomTheme {
+  id: string; // charset-safe id, server-assigned
+  name: string; // user-supplied text (sanitized)
+}
+
+// What we now store PER USER (User.themePrefs): the active selection plus any
+// number of named custom palettes.
+export interface UserTheme {
+  active: { mode: "preset"; preset: string } | { mode: "custom"; customId: string };
+  customs: NamedCustom[];
+}
+
+// ---- Legacy per-portal shape (kept only to import old Tenant.theme data) ----
+export interface Theme {
+  mode: ThemeMode;
+  preset?: string;
+  custom?: { background: string; fontColor: string; sidebar: string; font: string };
+}
+
+// The shipped presets. Adding one = add an entry here AND a matching
+// `body[data-theme="<id>"]` block in public/styles.css.
+export const PRESETS = [
+  { id: "light", label: "Clean Light", group: "basic", swatches: ["#fbfbfa", "#5b59d6", "#1a1a1e"] },
+  { id: "warm", label: "Warm Light", group: "basic", swatches: ["#fbf8f3", "#5b59d6", "#2b2722"] },
+  { id: "neutral", label: "Neutral Pro", group: "basic", swatches: ["#f5f6f7", "#2f6f8f", "#22282e"] },
+  { id: "slate", label: "Slate", group: "basic", swatches: ["#eef1f4", "#4a6076", "#2b3440"] },
+  { id: "steel", label: "Steel Blue", group: "basic", swatches: ["#f4f6f9", "#2a4d7a", "#1f2733"] },
+  { id: "sand", label: "Sand", group: "basic", swatches: ["#f3ecdf", "#a9763e", "#43392b"] },
+  { id: "contrast", label: "High Contrast", group: "basic", swatches: ["#ffffff", "#0b5bd3", "#000000"] },
+  { id: "graphite", label: "Graphite", group: "basic", swatches: ["#2b2d31", "#8a88f0", "#e7e8ea"] },
+  { id: "dark", label: "Dark", group: "basic", swatches: ["#15151a", "#8482f5", "#e9e9f0"] },
+  { id: "midnight", label: "Midnight", group: "basic", swatches: ["#07070b", "#6f6df0", "#e6e7ee"] },
+  { id: "aero", label: "Frutiger Aero", group: "fun", swatches: ["#7fd2ff", "#c9f5e6", "#0a8ed9"] },
+  { id: "dusk", label: "Neon Dusk", group: "fun", swatches: ["#0f0c29", "#ff3df0", "#22e0ff"] },
+  { id: "cottage", label: "Cottage Warm", group: "fun", swatches: ["#f4ecdd", "#7c9473", "#c8843c"] },
+  { id: "vaporwave", label: "Vaporwave", group: "fun", swatches: ["#1a1130", "#ff6ad5", "#6be1ff"] },
+  { id: "forest", label: "Deep Woods", group: "fun", swatches: ["#1c2a22", "#7fae6a", "#eef0e6"] },
+  { id: "sunset", label: "Golden Hour", group: "fun", swatches: ["#f8c69a", "#e8743c", "#3a2a33"] },
+  { id: "mono", label: "Brutalist", group: "fun", swatches: ["#ffffff", "#0040ff", "#000000"] },
+  { id: "ocean", label: "Deep Sea", group: "fun", swatches: ["#06243a", "#2fd6d0", "#eaf7fb"] },
+  { id: "sakura", label: "Cherry Blossom", group: "fun", swatches: ["#fdf4f7", "#d96a93", "#4a3a42"] },
+  { id: "terminal", label: "Terminal", group: "fun", swatches: ["#050805", "#39ff14", "#5fff9f"] },
+] as const;
+
+export const PRESET_IDS: string[] = PRESETS.map((p) => p.id);
+
+export const FONTS = [
+  { id: "system", label: "System Sans" },
+  { id: "rounded", label: "Rounded (Nunito)" },
+  { id: "geometric", label: "Geometric (Poppins)" },
+  { id: "humanist", label: "Humanist" },
+  { id: "serif", label: "Serif (Georgia)" },
+  { id: "mono", label: "Monospace" },
+] as const;
+
+export const FONT_IDS: string[] = FONTS.map((f) => f.id);
+
+export const MAX_CUSTOMS = 24;
+export const MAX_NAME_LEN = 40;
+
+export const DEFAULT_CUSTOM: CustomTheme = {
+  background: "#ffffff", fontColor: "#1a1a1e", sidebar: "#ffffff", topbar: "#ffffff", panel: "#ffffff", font: "system",
+};
+export const DEFAULT_USER_THEME: UserTheme = { active: { mode: "preset", preset: "light" }, customs: [] };
+
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const ID_RE = /^[a-z0-9_-]{1,40}$/;
+
+export function isValidHex(v: unknown): v is string {
+  return typeof v === "string" && HEX_RE.test(v.trim());
+}
+
+function genId(): string {
+  return "c" + randomBytes(6).toString("hex");
+}
+
+// Theme NAME is plain text: strip control chars + angle brackets, cap length.
+function sanitizeName(v: unknown): string {
+  let s = typeof v === "string" ? v : "";
+  s = s.replace(/[\u0000-\u001f\u007f<>]/g, "").trim();
+  if (s.length > MAX_NAME_LEN) s = s.slice(0, MAX_NAME_LEN);
+  return s || "My theme";
+}
+
+function sanitizeCustomFields(o: any): CustomTheme {
+  o = o || {};
+  return {
+    background: isValidHex(o.background) ? String(o.background).trim() : "#ffffff",
+    fontColor: isValidHex(o.fontColor) ? String(o.fontColor).trim() : "#1a1a1e",
+    sidebar: isValidHex(o.sidebar) ? String(o.sidebar).trim() : "#ffffff",
+    topbar: isValidHex(o.topbar) ? String(o.topbar).trim() : "#ffffff",
+    panel: isValidHex(o.panel) ? String(o.panel).trim() : "#ffffff",
+    font: FONT_IDS.includes(o.font) ? String(o.font) : "system",
+  };
+}
+
+/** Normalize an untrusted per-user theme. Never throws. */
+export function sanitizeUserTheme(input: unknown): UserTheme {
+  const obj = (input && typeof input === "object" ? input : {}) as Record<string, any>;
+
+  const rawCustoms = Array.isArray(obj.customs) ? obj.customs.slice(0, MAX_CUSTOMS) : [];
+  const seen = new Set<string>();
+  const customs: NamedCustom[] = rawCustoms.map((rc: any) => {
+    let id = typeof rc?.id === "string" && ID_RE.test(rc.id) ? rc.id : genId();
+    while (seen.has(id)) id = genId();
+    seen.add(id);
+    return { id, name: sanitizeName(rc?.name), ...sanitizeCustomFields(rc) };
+  });
+
+  const a = (obj.active && typeof obj.active === "object" ? obj.active : {}) as Record<string, any>;
+  let active: UserTheme["active"] = { mode: "preset", preset: "light" };
+  if (a.mode === "custom" && typeof a.customId === "string" && customs.some((c) => c.id === a.customId)) {
+    active = { mode: "custom", customId: a.customId };
+  } else {
+    active = { mode: "preset", preset: PRESET_IDS.includes(a.preset) ? String(a.preset) : "light" };
+  }
+  return { active, customs };
+}
+
+// Parse a legacy Tenant.theme value (best-effort) so we can import it per-user.
+export function sanitizeLegacyTheme(input: unknown): Theme {
+  if (!input || typeof input !== "object") return { mode: "preset", preset: "light" };
+  const o = input as Record<string, any>;
+  const preset = PRESET_IDS.includes(o.preset) ? String(o.preset) : "light";
+  if (o.mode === "custom" && o.custom && typeof o.custom === "object") {
+    const c = o.custom;
+    if (isValidHex(c.background) || isValidHex(c.fontColor) || isValidHex(c.sidebar)) {
+      return {
+        mode: "custom",
+        preset,
+        custom: {
+          background: isValidHex(c.background) ? String(c.background).trim() : "#ffffff",
+          fontColor: isValidHex(c.fontColor) ? String(c.fontColor).trim() : "#1a1a1e",
+          sidebar: isValidHex(c.sidebar) ? String(c.sidebar).trim() : "#ffffff",
+          font: FONT_IDS.includes(c.font) ? String(c.font) : "system",
+        },
+      };
+    }
+  }
+  return { mode: "preset", preset };
+}
+
+// Convert a legacy per-portal theme into an initial per-user theme so a user
+// who hasn't personalized yet still sees their portal's previous look.
+export function legacyToUserTheme(t: Theme): UserTheme {
+  if (t.mode === "custom" && t.custom) {
+    const id = genId();
+    return {
+      active: { mode: "custom", customId: id },
+      customs: [{ id, name: "Portal theme", ...DEFAULT_CUSTOM, background: t.custom.background, fontColor: t.custom.fontColor, sidebar: t.custom.sidebar, font: t.custom.font }],
+    };
+  }
+  return { active: { mode: "preset", preset: t.preset || "light" }, customs: [] };
+}

@@ -134,9 +134,14 @@
   // ---------- rendering ----------
   function mount(opts) {
     if (!hasDOM) return;
-    const { container, columns, rows, onRowClick, emptyHtml } = opts;
+    const { container, rows, onRowClick, emptyHtml } = opts;
+    let columns = (opts.columns || []).slice();
+    const rowId = opts.rowId || ((r) => r.id);
+    const selectable = !!opts.selectable;
+    const selected = new Set();
     const state = { search: "", colFilters: {}, rules: [], sortKey: opts.defaultSort || null, sortDir: opts.defaultSortDir || "desc", railOpen: false };
     const { el, esc, debounce } = App.util;
+    function fireSel() { if (opts.onSelectionChange) opts.onSelectionChange(Array.from(selected)); }
 
     container.innerHTML = "";
     const layout = el("div", "table-layout");
@@ -206,6 +211,21 @@
       const table = el("table");
       const thead = el("thead");
       const htr = el("tr");
+      let selAll = null;
+      if (selectable) {
+        const th = el("th", "sel-col");
+        selAll = el("input"); selAll.type = "checkbox"; selAll.title = "Select all shown";
+        selAll.onclick = (e) => e.stopPropagation();
+        selAll.onchange = () => {
+          const ids = filtered.map(rowId);
+          if (selAll.checked) ids.forEach((id) => selected.add(id));
+          else ids.forEach((id) => selected.delete(id));
+          fireSel();
+          render();
+        };
+        th.appendChild(selAll);
+        htr.appendChild(th);
+      }
       columns.forEach((c) => {
         const th = el("th");
         const wrap = el("div", "th-wrap");
@@ -229,10 +249,11 @@
       table.appendChild(thead);
 
       const tb = el("tbody");
+      const span = columns.length + (selectable ? 1 : 0);
       if (!filtered.length) {
         const tr = el("tr");
         const td = el("td", "cell-muted", "No results match your filters.");
-        td.colSpan = columns.length;
+        td.colSpan = span;
         td.style.textAlign = "center";
         td.style.padding = "32px";
         tr.appendChild(td);
@@ -241,6 +262,21 @@
         filtered.forEach((row) => {
           const tr = el("tr");
           if (opts.highlightId && row.id === opts.highlightId) tr.classList.add("row-new");
+          const id = rowId(row);
+          if (selectable) {
+            if (selected.has(id)) tr.classList.add("row-selected");
+            const td = el("td", "sel-col");
+            const cb = el("input"); cb.type = "checkbox"; cb.checked = selected.has(id);
+            cb.onclick = (e) => e.stopPropagation();
+            cb.onchange = () => {
+              if (cb.checked) selected.add(id); else selected.delete(id);
+              tr.classList.toggle("row-selected", cb.checked);
+              if (selAll) { const ids = filtered.map(rowId); selAll.checked = ids.every((x) => selected.has(x)); selAll.indeterminate = !selAll.checked && ids.some((x) => selected.has(x)); }
+              fireSel();
+            };
+            td.appendChild(cb);
+            tr.appendChild(td);
+          }
           columns.forEach((c) => {
             const td = el("td", c.cellClass || "");
             td.innerHTML = c.render ? c.render(row) : esc(colText(c, row) || "—");
@@ -252,6 +288,12 @@
       }
       table.appendChild(tb);
       tableWrap.appendChild(table);
+
+      if (selectable && selAll) {
+        const ids = filtered.map(rowId);
+        selAll.checked = ids.length > 0 && ids.every((x) => selected.has(x));
+        selAll.indeterminate = !selAll.checked && ids.some((x) => selected.has(x));
+      }
 
       const count = el("div", "table-count", `${filtered.length} of ${rows.length}`);
       tableWrap.appendChild(count);
@@ -318,7 +360,11 @@
     }
     function getFiltered() { return pipeline(rows, columns, state); }
 
-    return { getState, applyState, getFiltered, toolbarLeft: left, columns, rows };
+    function setColumns(newCols) { columns = (newCols || []).slice(); render(); }
+    function getSelected() { return Array.from(selected); }
+    function clearSelection() { selected.clear(); fireSel(); render(); }
+
+    return { getState, applyState, getFiltered, setColumns, getSelected, clearSelection, getColumns: () => columns, toolbarLeft: left, toolbarRight: right, columns, rows };
   }
 
   // Reusable rule-builder used by the rail and the Export dialog.

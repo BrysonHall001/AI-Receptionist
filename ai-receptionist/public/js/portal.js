@@ -11,6 +11,7 @@
     setView(v);
     if (v === "calls") return renderCalls();
     if (v === "contacts") return renderContacts();
+    if (v === "recycle") return renderRecycleBin();
     if (v === "fields") return renderFields();
     if (v === "reports") return App.reports.render(view());
     if (v === "automations") return App.automations.render(view());
@@ -99,37 +100,260 @@
   }
 
   // ---------------- Contacts ----------------
+  // Build the full set of available columns from Fields (system + custom),
+  // plus two synthetic columns (Calls, Time Created). Used by Contacts + Recycle Bin.
+  function contactColumnDefs(fields) {
+    const SYS = { name: 1, phone: 1, email: 1, intent: 1 };
+    const colType = (t) => (t === "number" ? "number" : t === "date" ? "date" : "text");
+    const cols = (fields || []).map((f) => {
+      const isSys = !!SYS[f.key];
+      const get = isSys ? (r) => r[f.key] : (r) => (r.customFields || {})[f.key];
+      const disp = (r) => { const v = get(r); return Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); };
+      return {
+        key: f.key, label: f.label, type: colType(f.type), get, text: disp,
+        cellClass: f.key === "name" ? "cell-strong" : f.key === "phone" ? "cell-mono" : f.key === "email" || f.key === "intent" ? "cell-muted" : "",
+        render: f.key === "name" ? (r) => esc(disp(r) || "Unknown") : (r) => esc(disp(r) || "—"),
+      };
+    });
+    cols.push({ key: "callCount", label: "Calls", type: "number", get: (r) => r.callCount, text: (r) => String(r.callCount || 0) });
+    cols.push({ key: "createdAt", label: "Time Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` });
+    return cols;
+  }
+
+  const DEFAULT_COLS = ["name", "phone", "email", "intent", "callCount", "createdAt"];
+  function applyColumnLayout(all, layout) {
+    const byKey = {}; all.forEach((c) => (byKey[c.key] = c));
+    const hasLayout = (layout && ((layout.order || []).length || (layout.hidden || []).length));
+    if (!hasLayout) return DEFAULT_COLS.filter((k) => byKey[k]).map((k) => byKey[k]); // custom fields hidden by default
+    const hidden = new Set(layout.hidden || []);
+    const ordered = [];
+    (layout.order || []).forEach((k) => { if (byKey[k]) ordered.push(byKey[k]); });
+    all.forEach((c) => { if (ordered.indexOf(c) === -1) ordered.push(c); });
+    return ordered.filter((c) => !hidden.has(c.key));
+  }
+
   async function renderContacts() {
     loading();
-    const contacts = await App.portalApi("/api/contacts");
-    const columns = [
-      { key: "name", label: "Name", type: "text", get: (r) => r.name, text: (r) => r.name || "Unknown", cellClass: "cell-strong", render: (r) => esc(r.name || "Unknown") },
-      { key: "phone", label: "Phone", type: "text", get: (r) => r.phone, cellClass: "cell-mono" },
-      { key: "email", label: "Email", type: "text", get: (r) => r.email, cellClass: "cell-muted", render: (r) => esc(r.email || "—") },
-      { key: "intent", label: "Last reason", type: "text", get: (r) => r.intent, cellClass: "cell-muted cell-truncate", render: (r) => esc(r.intent || "—") },
-      { key: "callCount", label: "Calls", type: "number", get: (r) => r.callCount },
-      { key: "createdAt", label: "Time Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
-    ];
+    const [contacts, fields, colResp] = await Promise.all([
+      App.portalApi("/api/contacts"),
+      App.portalApi("/api/fields").catch(() => []),
+      App.portalApi("/api/account/contact-columns").catch(() => ({ layout: {} })),
+    ]);
+    const allColumns = contactColumnDefs(fields);
+    let layout = (colResp && colResp.layout) || {};
+    let columns = applyColumnLayout(allColumns, layout);
+
     view().innerHTML = "";
     const container = el("div", "fade-in");
     const bar = el("div", "page-actions");
     const importBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8681;</span> Import contacts`);
     importBtn.onclick = openImport;
     const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export contacts`);
-    exportBtn.onclick = () => openExport(columns, contacts);
+    exportBtn.onclick = () => openExport(handle ? handle.getColumns() : columns, contacts);
     bar.appendChild(importBtn);
     bar.appendChild(exportBtn);
     container.appendChild(bar);
     const tableHost = el("div");
     container.appendChild(tableHost);
     view().appendChild(container);
-    const handle = App.table.mount({
-      container: tableHost, columns, rows: contacts, onRowClick: (r) => App.go("#/contact/" + r.id),
+
+    let handle;
+    handle = App.table.mount({
+      container: tableHost, columns, rows: contacts, selectable: true, rowId: (r) => r.id,
+      onRowClick: (r) => App.go("#/contact/" + r.id),
+      onSelectionChange: (ids) => updateBulkBar(ids),
       defaultSort: "createdAt", defaultSortDir: "desc",
       emptyHtml: `<div class="empty"><div class="empty-emoji">&#128100;</div><h3>No contacts yet</h3><p>Contacts appear after calls are completed, or import a list.</p><button class="btn btn-primary" id="empty-import"><span class="btn-icon">&#8681;</span> Import contacts</button></div>`,
       onEmptyMount: (w) => { const b = w.querySelector("#empty-import"); if (b) b.onclick = openImport; },
     });
     if (handle && handle.toolbarLeft) mountSavedFilters(handle, "contacts");
+
+    // Bulk actions (left) + selected count
+    const bulkWrap = el("div", "bulk-wrap");
+    const bulkBtn = el("button", "btn btn-ghost btn-sm", "Bulk Actions &#9662;");
+    const bulkMenu = el("div", "bulk-menu hidden");
+    const selCount = el("span", "bulk-count", "");
+    bulkWrap.appendChild(bulkBtn); bulkWrap.appendChild(bulkMenu); bulkWrap.appendChild(selCount);
+    handle.toolbarLeft.appendChild(bulkWrap);
+    function updateBulkBar(ids) { selCount.textContent = ids.length ? `${ids.length} selected` : ""; }
+    function selectedRows() { const set = new Set(handle.getSelected()); return contacts.filter((c) => set.has(c.id)); }
+    const bulkMsg = el("div", "bulk-empty hidden", "Select a contact first.");
+    bulkMenu.appendChild(bulkMsg);
+    let msgTimer = null;
+    function needSelection() { bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
+    function bulkItem(label, fn) { const b = el("button", "bulk-item", label); b.onclick = () => fn(); return b; }
+    bulkMenu.appendChild(bulkItem("Email selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("email", selectedRows()); }));
+    bulkMenu.appendChild(bulkItem("Text selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("sms", selectedRows()); }));
+    bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openExport(handle.getColumns(), rows); }));
+    bulkMenu.appendChild(el("div", "pop-sep"));
+    bulkMenu.appendChild(bulkItem("Delete selected", async () => {
+      const ids = handle.getSelected(); if (!ids.length) return needSelection();
+      bulkMenu.classList.add("hidden");
+      if (!confirm(`Move ${ids.length} contact${ids.length > 1 ? "s" : ""} to the Recycle Bin?`)) return;
+      try { await App.portalApi("/api/contacts/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Moved to Recycle Bin"); renderContacts(); }
+      catch (e) { App.util.toast(e.message, true); }
+    }));
+    bulkBtn.onclick = (e) => { e.stopPropagation(); bulkMenu.classList.toggle("hidden"); if (!bulkMenu.classList.contains("hidden")) setTimeout(() => document.addEventListener("click", () => bulkMenu.classList.add("hidden"), { once: true }), 0); };
+    bulkMenu.addEventListener("click", (e) => e.stopPropagation());
+
+    // Manage columns (right, next to search)
+    const mc = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#9776;</span> Manage columns`);
+    mc.onclick = () => openManageColumns(allColumns, layout, async (newLayout) => {
+      layout = newLayout;
+      try { const r = await App.portalApi("/api/account/contact-columns", { method: "PATCH", body: JSON.stringify({ layout }) }); layout = r.layout; }
+      catch (e) { App.util.toast(e.message, true); }
+      handle.setColumns(applyColumnLayout(allColumns, layout));
+    });
+    if (handle.toolbarRight) handle.toolbarRight.insertBefore(mc, handle.toolbarRight.firstChild);
+  }
+
+  // ---------------- Manage columns popup (show/hide + drag reorder) ----------------
+  function openManageColumns(allColumns, layout, onSave) {
+    const byKey = {}; allColumns.forEach((c) => (byKey[c.key] = c));
+    // working order: existing order first (known keys), then any remaining; default order if none.
+    let order = (layout && layout.order && layout.order.length) ? layout.order.filter((k) => byKey[k]) : DEFAULT_COLS.filter((k) => byKey[k]);
+    allColumns.forEach((c) => { if (order.indexOf(c.key) === -1) order.push(c.key); });
+    const hidden = new Set((layout && layout.hidden) || allColumns.filter((c) => DEFAULT_COLS.indexOf(c.key) === -1).map((c) => c.key));
+    if (layout && layout.order && layout.order.length) { /* explicit layout: trust its hidden set */ }
+
+    const overlay = el("div", "modal-overlay");
+    const modal = el("div", "modal");
+    modal.innerHTML = `<div class="modal-head"><h2>Manage columns</h2><button class="icon-btn" id="mc-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    const help = el("p", "cell-muted", "Check to show, drag to reorder. Saved to your account.");
+    help.style.marginBottom = "10px";
+    body.appendChild(help);
+    const list = el("div", "mc-list");
+    body.appendChild(list);
+
+    function paint() {
+      list.innerHTML = "";
+      order.forEach((key) => {
+        const c = byKey[key]; if (!c) return;
+        const row = el("div", "mc-row"); row.draggable = true; row.dataset.key = key;
+        const handle = el("span", "mc-drag", "⠿");
+        const lab = el("label", "mc-label");
+        const cb = el("input"); cb.type = "checkbox"; cb.checked = !hidden.has(key);
+        cb.onchange = () => { if (cb.checked) hidden.delete(key); else hidden.add(key); };
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(" " + c.label));
+        row.appendChild(handle); row.appendChild(lab);
+        row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.setData("text/plain", key); });
+        row.addEventListener("dragend", () => row.classList.remove("dragging"));
+        row.addEventListener("dragover", (e) => { e.preventDefault(); });
+        row.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const from = e.dataTransfer.getData("text/plain"); const to = key;
+          if (from === to) return;
+          order = order.filter((k) => k !== from);
+          const idx = order.indexOf(to);
+          order.splice(idx, 0, from);
+          paint();
+        });
+        list.appendChild(row);
+      });
+    }
+    paint();
+
+    const foot = el("div", "modal-foot");
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    const save = el("button", "btn btn-primary btn-sm", "Save columns");
+    foot.appendChild(cancel); foot.appendChild(save);
+
+    modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    modal.querySelector("#mc-close").onclick = close;
+    cancel.onclick = close;
+    save.onclick = () => { onSave({ order: order.slice(), hidden: Array.from(hidden) }); close(); App.util.toast("Columns updated"); };
+  }
+
+  // ---------------- Bulk email/text (reuses the single-contact send endpoints) ----------------
+  function bulkCompose(kind, rows) {
+    const reachable = rows.filter((r) => (kind === "email" ? r.email : r.phone));
+    const overlay = el("div", "modal-overlay");
+    const modal = el("div", "modal");
+    const title = kind === "email" ? "Email selected contacts" : "Text selected contacts";
+    modal.innerHTML = `<div class="modal-head"><h2>${title}</h2><button class="icon-btn" id="bc-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    const note = el("p", "cell-muted");
+    note.textContent = `${reachable.length} of ${rows.length} selected ${kind === "email" ? "have an email address" : "have a phone number"} and will receive this.`;
+    note.style.marginBottom = "10px";
+    body.appendChild(note);
+    const composerHost = el("div");
+    body.appendChild(composerHost);
+    const api = App.compose.mount(composerHost, { kind: kind === "email" ? "email" : "sms" });
+    const foot = el("div", "modal-foot");
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    const send = el("button", "btn btn-primary btn-sm", kind === "email" ? "Send emails" : "Send texts");
+    foot.appendChild(cancel); foot.appendChild(send);
+    modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    modal.querySelector("#bc-close").onclick = close;
+    cancel.onclick = close;
+    send.onclick = async () => {
+      if (kind === "email" && !api.getSubject()) { App.util.toast("Add a subject", true); return; }
+      if (!reachable.length) { App.util.toast("No reachable recipients", true); return; }
+      send.disabled = true; send.textContent = "Sending…";
+      let ok = 0, fail = 0;
+      for (const r of reachable) {
+        try {
+          if (kind === "email") await App.portalApi(`/api/contacts/${r.id}/email`, { method: "POST", body: JSON.stringify({ subject: api.getSubject(), html: api.getHTML() }) });
+          else await App.portalApi(`/api/contacts/${r.id}/text`, { method: "POST", body: JSON.stringify({ body: api.getHTML ? (api.getText ? api.getText() : api.getHTML()) : "" }) });
+          ok++;
+        } catch (e) { fail++; }
+      }
+      App.util.toast(`Sent ${ok}${fail ? `, ${fail} failed` : ""}`);
+      close();
+    };
+  }
+
+  // ---------------- Recycle Bin ----------------
+  async function renderRecycleBin() {
+    loading();
+    const [deleted, fields, colResp] = await Promise.all([
+      App.portalApi("/api/contacts/deleted"),
+      App.portalApi("/api/fields").catch(() => []),
+      App.portalApi("/api/account/contact-columns").catch(() => ({ layout: {} })),
+    ]);
+    const allColumns = contactColumnDefs(fields);
+    const layout = (colResp && colResp.layout) || {};
+    let columns = applyColumnLayout(allColumns, layout).slice();
+    // Override the name column to show the countdown beneath the name.
+    columns = columns.map((c) => c.key === "name"
+      ? { ...c, render: (r) => `${esc((r.name) || "Unknown")}<div class="rb-countdown">${r.daysLeft} day${r.daysLeft === 1 ? "" : "s"} until permanent deletion</div>` }
+      : c);
+
+    view().innerHTML = "";
+    const container = el("div", "fade-in");
+    const head = el("div", "rb-head");
+    head.innerHTML = `<div><h1 class="rb-title">&#128465; Recycle Bin</h1><p class="cell-muted">Deleted contacts are kept for 30 days, then permanently removed. They don't appear anywhere else.</p></div>`;
+    const backBtn = el("a", "btn btn-ghost btn-sm", "← Back to Contacts");
+    backBtn.href = "#/contacts";
+    head.appendChild(backBtn);
+    container.appendChild(head);
+    const tableHost = el("div");
+    container.appendChild(tableHost);
+    view().appendChild(container);
+
+    let handle;
+    handle = App.table.mount({
+      container: tableHost, columns, rows: deleted, selectable: true, rowId: (r) => r.id,
+      onSelectionChange: (ids) => { rc.textContent = ids.length ? `${ids.length} selected` : ""; },
+      defaultSort: "createdAt", defaultSortDir: "desc",
+      emptyHtml: `<div class="empty"><div class="empty-emoji">&#128465;</div><h3>Recycle Bin is empty</h3><p>Deleted contacts will appear here for 30 days.</p></div>`,
+    });
+    const restoreBtn = el("button", "btn btn-primary btn-sm", "Restore selected");
+    const rc = el("span", "bulk-count", "");
+    restoreBtn.onclick = async () => {
+      const ids = handle.getSelected();
+      if (!ids.length) { App.util.toast("Select a contact first.", true); return; }
+      try { await App.portalApi("/api/contacts/restore", { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Restored to Contacts"); renderRecycleBin(); }
+      catch (e) { App.util.toast(e.message, true); }
+    };
+    if (handle.toolbarLeft) { handle.toolbarLeft.appendChild(restoreBtn); handle.toolbarLeft.appendChild(rc); }
   }
 
   // ---------------- Saved filters dropdown ----------------
@@ -736,6 +960,13 @@
         </div>
         <button id="set-save" class="btn btn-primary btn-sm">Save changes</button>`;
       sections.appendChild(card);
+
+      // Appearance / theme (per-portal)
+      const themeCard = el("div", "card settings-card");
+      themeCard.innerHTML = `<h2 class="settings-h">Appearance</h2>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:6px">Pick a theme for this portal, or design your own. Applies to everyone in this portal.</p>
+        <div id="theme-host"></div>`;
+      sections.appendChild(themeCard);
     }
 
     // User management (admins only)
@@ -773,6 +1004,11 @@
 
     view().innerHTML = "";
     view().appendChild(sections);
+
+    if (canEditPortal && App.theme) {
+      const themeHost = App.util.$("#theme-host");
+      if (themeHost) App.theme.mountSettings(themeHost);
+    }
 
     if (canEditPortal) {
       App.util.$("#set-save").onclick = async () => {

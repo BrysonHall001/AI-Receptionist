@@ -199,3 +199,37 @@ export async function importContacts(
   }
   return { imported, skipped };
 }
+
+// ---- Soft delete + recycle bin ----
+import { RETENTION_DAYS } from "./readModels";
+
+// Mark contacts deleted (moves them to the recycle bin). Tenant-scoped; only
+// affects currently-active contacts owned by this tenant.
+export async function softDeleteContacts(tenantId: string, ids: string[]): Promise<number> {
+  if (!Array.isArray(ids) || !ids.length) return 0;
+  const r = await prisma.contact.updateMany({
+    where: { id: { in: ids }, tenantId, deletedAt: null },
+    data: { deletedAt: new Date() } as any,
+  });
+  return r.count;
+}
+
+// Restore contacts from the recycle bin back into the active list.
+export async function restoreContacts(tenantId: string, ids: string[]): Promise<number> {
+  if (!Array.isArray(ids) || !ids.length) return 0;
+  const r = await prisma.contact.updateMany({
+    where: { id: { in: ids }, tenantId, deletedAt: { not: null } },
+    data: { deletedAt: null } as any,
+  });
+  return r.count;
+}
+
+// Permanently remove anything past the retention window. Called lazily when the
+// recycle bin is loaded (no scheduled job needed).
+export async function purgeExpiredContacts(tenantId: string): Promise<number> {
+  const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400000);
+  const r = await prisma.contact.deleteMany({
+    where: { tenantId, deletedAt: { not: null, lt: cutoff } } as any,
+  });
+  return r.count;
+}

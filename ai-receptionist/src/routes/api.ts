@@ -1,8 +1,8 @@
 import { Router, Request, Response } from "express";
 import { requireAuth, resolveTenantScope } from "../middleware/auth";
-import { getStats, listCalls, getCall, listContacts, getContact } from "../services/readModels";
+import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
 import { runSimulatedCall } from "../services/simulationService";
-import { importContacts, updateContact } from "../services/contactService";
+import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields } from "../services/fieldService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
@@ -12,7 +12,8 @@ import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getO
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listExports, createExport, getExportCsv } from "../services/exportService";
 import { updatePortal, getPortal } from "../services/portalService";
-import { createUser, listUsers, deleteUser, setPassword, publicUser } from "../services/userService";
+import { PRESETS, FONTS } from "../theme/themes";
+import { createUser, listUsers, deleteUser, setPassword, publicUser, getUserTheme, setUserTheme, getContactColumns, setContactColumns } from "../services/userService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents } from "../services/automationService";
 import { testRunAutomation } from "../automation/engine";
 import { loadFieldDefs, conditionFields } from "../automation/contactRow";
@@ -63,6 +64,44 @@ apiRouter.get("/contacts", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await listContacts(tenantId));
+});
+
+// ---- Recycle bin (soft-deleted contacts) ----
+// MUST be registered before "/contacts/:id" so "deleted" isn't read as an id.
+apiRouter.get("/contacts/deleted", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  // Lazy purge: anything past the 30-day window is permanently removed on load.
+  await purgeExpiredContacts(tenantId);
+  res.json(await listDeletedContacts(tenantId));
+});
+
+apiRouter.post("/contacts/bulk-delete", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ids = (req.body ?? {}).ids;
+  const count = await softDeleteContacts(tenantId, Array.isArray(ids) ? ids : []);
+  res.json({ ok: true, count });
+});
+
+apiRouter.post("/contacts/restore", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ids = (req.body ?? {}).ids;
+  const count = await restoreContacts(tenantId, Array.isArray(ids) ? ids : []);
+  res.json({ ok: true, count });
+});
+
+apiRouter.delete("/contacts/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  // Soft delete — moves the contact to the recycle bin, never erases it here.
+  const count = await softDeleteContacts(tenantId, [req.params.id]);
+  if (!count) {
+    res.status(404).json({ error: "Contact not found" });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 apiRouter.get("/contacts/:id", async (req: Request, res: Response) => {
@@ -253,9 +292,18 @@ apiRouter.delete("/dashboards/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ---- Per-user Contacts column layout (order + hidden); survives reloads ----
+apiRouter.get("/account/contact-columns", async (req: Request, res: Response) => {
+  res.json({ layout: await getContactColumns(req.user!.id) });
+});
+
+apiRouter.patch("/account/contact-columns", async (req: Request, res: Response) => {
+  const layout = await setContactColumns(req.user!.id, (req.body ?? {}).layout ?? req.body);
+  res.json({ layout });
+});
+
 // ---- Personal email signature ----
-apiRouter.get("/account/signature", async (req: Request, res: Response) => {
-  const u = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { signature: true } });
+apiRouter.get("/account/signature", async (req: Request, res: Response) => {  const u = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { signature: true } });
   res.json({ signature: u?.signature ?? "" });
 });
 
@@ -335,6 +383,19 @@ apiRouter.post("/simulate", async (req: Request, res: Response) => {
     logger.error(`simulate failed: ${(err as Error).message}`);
     res.status(500).json({ error: (err as Error).message });
   }
+});
+
+// ---- Per-user theme (Appearance). Personal to each account, independent of
+// portal context. Every authenticated user controls their own theme. ----
+apiRouter.get("/theme", async (req: Request, res: Response) => {
+  res.json({ theme: await getUserTheme(req.user!.id), presets: PRESETS, fonts: FONTS });
+});
+
+apiRouter.patch("/theme", async (req: Request, res: Response) => {
+  // sanitizeUserTheme rejects anything that isn't a known preset, a strict-hex
+  // + allow-listed-font custom, or a clean (length-capped, escaped) name.
+  const theme = await setUserTheme(req.user!.id, (req.body ?? {}).theme ?? req.body);
+  res.json({ theme });
 });
 
 // ---- Portal settings (PORTAL_ADMIN for own portal, SUPER_ADMIN anywhere) ----
