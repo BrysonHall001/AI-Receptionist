@@ -1,6 +1,9 @@
 (function (global) {
   const App = global.App || (global.App = {});
 
+  // Product brand — change this one line to rename the app everywhere in-app.
+  App.BRAND = "Clarity CRM";
+
   App.state = { me: null, currentPortalId: null, currentPortalName: null };
 
   const $ = (sel, root) => (root || document).querySelector(sel);

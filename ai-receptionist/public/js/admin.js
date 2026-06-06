@@ -49,9 +49,23 @@
           <div class="portal-name">${esc(p.name)}</div>
           <div class="portal-type">${esc(p.businessType)}</div>
           <div class="portal-metrics"><span><strong>${p.calls}</strong> calls</span><span><strong>${p.contacts}</strong> contacts</span><span><strong>${p.users}</strong> users</span></div>
+          <div class="portal-rule">
+            <label class="field-label" style="margin:0 0 4px">Contact identity rule</label>
+            <select class="input portal-rule-sel">
+              <option value="email" ${p.requireEmail !== false ? "selected" : ""}>Require unique email</option>
+              <option value="either" ${p.requireEmail === false ? "selected" : ""}>Phone or email</option>
+            </select>
+          </div>
           <div class="portal-actions"><button class="btn btn-primary btn-sm portal-enter">Open portal →</button>
             <button class="btn btn-ghost btn-sm portal-toggle">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button></div>`;
         card.querySelector(".portal-enter").onclick = () => enterPortal(p);
+        const ruleSel = card.querySelector(".portal-rule-sel");
+        ruleSel.onclick = (e) => e.stopPropagation();
+        ruleSel.onchange = async () => {
+          const requireEmail = ruleSel.value === "email";
+          try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ requireEmail }) }); p.requireEmail = requireEmail; toast(requireEmail ? "Now requires a unique email" : "Now accepts phone or email"); }
+          catch (err) { toast(err.message, true); ruleSel.value = p.requireEmail !== false ? "email" : "either"; }
+        };
         card.querySelector(".portal-toggle").onclick = async () => {
           try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ status: p.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }) }); toast("Portal updated"); renderPortals(); }
           catch (err) { toast(err.message, true); }
@@ -79,7 +93,12 @@
         <label class="field-label">Phone number</label><input id="cp-phone" class="input" placeholder="+19195551234" />
         <label class="field-label">Notify email *</label><input id="cp-email" class="input" placeholder="owner@acme.com" />
         <label class="field-label">Greeting</label><textarea id="cp-greet" class="input" rows="2" placeholder="Thanks for calling Acme. How can I help?"></textarea>
-        <button id="cp-go" class="btn btn-primary btn-block">Create portal</button>
+        <label class="field-label">Contact identity rule</label>
+        <select id="cp-rule" class="input">
+          <option value="email">Require unique email (default)</option>
+          <option value="either">Phone or email</option>
+        </select>
+        <button id="cp-go" class="btn btn-primary btn-block" style="margin-top:14px">Create portal</button>
       </div>`;
     const overlay = modal(inner);
     inner.querySelector("#cp-close").onclick = () => overlay.remove();
@@ -90,6 +109,7 @@
         phoneNumber: inner.querySelector("#cp-phone").value.trim(),
         notifyEmail: inner.querySelector("#cp-email").value.trim(),
         greeting: inner.querySelector("#cp-greet").value.trim(),
+        requireEmail: inner.querySelector("#cp-rule").value === "email",
       };
       if (!body.name || !body.notifyEmail) { toast("Name and notify email are required", true); return; }
       try { await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify(body) }); toast("Portal created"); overlay.remove(); renderPortals(); }

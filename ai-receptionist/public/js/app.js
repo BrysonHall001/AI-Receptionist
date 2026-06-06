@@ -1,6 +1,7 @@
 (function (global) {
   const App = global.App || (global.App = {});
   const { el, esc, roleLabel } = App.util;
+  try { document.title = App.BRAND || "CRM"; } catch (e) {}
 
   function parseHash() {
     const raw = (location.hash || "#/").replace(/^#/, "");
@@ -26,7 +27,7 @@
     location.hash = "#/login";
   }
 
-  const PORTAL_NAV = [["#/dashboard", "Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"]];
+  const PORTAL_NAV = [["#/dashboard", "Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"]];
   const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"]];
 
   function buildShell(section, activePath) {
@@ -43,7 +44,7 @@
     // Sidebar
     const side = el("aside", "sidebar");
     const brand = el("div", "sidebar-brand");
-    brand.innerHTML = `<div class="brand-mark">R</div><div class="brand-name">Receptionist</div>`;
+    brand.innerHTML = `<div class="brand-mark">${esc((App.BRAND||"C").charAt(0))}</div><div class="brand-name">${esc(App.BRAND||"CRM")}</div>`;
     side.appendChild(brand);
 
     const nav = el("nav", "sidebar-nav");
@@ -91,12 +92,6 @@
       const refresh = el("button", "btn btn-ghost btn-sm", "Refresh");
       refresh.onclick = () => App.portal.refresh();
       topRight.appendChild(refresh);
-
-      const sim = el("button", "btn btn-ghost btn-sm");
-      sim.id = "simulate-btn";
-      sim.innerHTML = `<span class="btn-icon">&#9654;</span> Simulate call`;
-      sim.onclick = () => App.portal.simulate();
-      topRight.appendChild(sim);
 
       const gear = el("a", "icon-btn gear");
       gear.href = "#/settings";
@@ -151,7 +146,7 @@
     }
 
     // Portal section
-    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/settings": "settings" };
+    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/settings": "settings" };
     if (portalViews[path]) {
       if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
       buildShell("portal", path === "/settings" ? "#/settings" : "#" + path);

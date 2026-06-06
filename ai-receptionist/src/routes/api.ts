@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { requireAuth, resolveTenantScope } from "../middleware/auth";
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
 import { runSimulatedCall } from "../services/simulationService";
-import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts } from "../services/contactService";
+import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields } from "../services/fieldService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
@@ -90,6 +90,57 @@ apiRouter.post("/contacts/restore", async (req: Request, res: Response) => {
   const ids = (req.body ?? {}).ids;
   const count = await restoreContacts(tenantId, Array.isArray(ids) ? ids : []);
   res.json({ ok: true, count });
+});
+
+// Manual single create
+apiRouter.post("/contacts", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, phone, email, intent, customFields } = (req.body ?? {}) as any;
+  try {
+    const c = await createContact(tenantId, { name, phone, email, intent, customFields }, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    res.json({ ok: true, id: c.id });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Mass-update one field across selected contacts
+apiRouter.post("/contacts/bulk-update", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { ids, field, value } = (req.body ?? {}) as any;
+  try {
+    const count = await bulkUpdateField(tenantId, Array.isArray(ids) ? ids : [], String(field || ""), value, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    res.json({ ok: true, count });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Merge contacts (losers -> survivor)
+apiRouter.post("/contacts/merge", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { survivorId, loserIds, fieldValues } = (req.body ?? {}) as any;
+  try {
+    const survivor = await mergeContacts(tenantId, String(survivorId || ""), Array.isArray(loserIds) ? loserIds : [], fieldValues || {}, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    res.json({ ok: true, id: survivor?.id });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Create a dummy contact (testing aid)
+apiRouter.post("/contacts/dummy", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const c = await generateDummyContact(tenantId, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    res.json({ ok: true, id: c.id });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 apiRouter.delete("/contacts/:id", async (req: Request, res: Response) => {
@@ -417,8 +468,10 @@ apiRouter.patch("/settings", async (req: Request, res: Response) => {
     res.status(403).json({ error: "Not authorized to change portal settings" });
     return;
   }
-  const { name, businessType, phoneNumber, notifyEmail, greeting } = (req.body ?? {}) as Record<string, string>;
+  const { name, businessType, phoneNumber, notifyEmail, greeting } = (req.body ?? {}) as Record<string, any>;
   try {
+    // NOTE: the email/phone identity rule (requireEmail) is intentionally NOT
+    // accepted here. It can only be changed by a SUPER_ADMIN via /api/admin/portals.
     const updated = await updatePortal(tenantId, { name, businessType, phoneNumber, notifyEmail, greeting });
     res.json({ ok: true, portal: { id: updated.id } });
   } catch (err) {

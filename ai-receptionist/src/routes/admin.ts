@@ -23,13 +23,13 @@ adminRouter.get("/portals/:id", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/portals", async (req: Request, res: Response) => {
-  const { name, businessType, phoneNumber, notifyEmail, greeting } = (req.body ?? {}) as Record<string, string>;
+  const { name, businessType, phoneNumber, notifyEmail, greeting, requireEmail } = (req.body ?? {}) as Record<string, any>;
   if (!name || !notifyEmail) {
     res.status(400).json({ error: "name and notifyEmail are required" });
     return;
   }
   try {
-    const portal = await createPortal({ name, businessType, phoneNumber: phoneNumber || null, notifyEmail, greeting });
+    const portal = await createPortal({ name, businessType, phoneNumber: phoneNumber || null, notifyEmail, greeting, requireEmail: requireEmail !== false });
     logger.info(`Portal created: ${portal.name} (${portal.id})`);
     res.json(portal);
   } catch (err) {
@@ -39,7 +39,15 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
 
 adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
   try {
-    const portal = await updatePortal(req.params.id, req.body ?? {});
+    // Whitelist updatable fields. requireEmail (the identity rule) is settable
+    // here because this whole router is SUPER_ADMIN-only.
+    const b = (req.body ?? {}) as Record<string, any>;
+    const data: any = {};
+    for (const k of ["name", "businessType", "phoneNumber", "notifyEmail", "greeting", "status"]) {
+      if (b[k] !== undefined) data[k] = b[k];
+    }
+    if (typeof b.requireEmail === "boolean") data.requireEmail = b.requireEmail;
+    const portal = await updatePortal(req.params.id, data);
     res.json(portal);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

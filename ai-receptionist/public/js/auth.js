@@ -9,7 +9,7 @@
     const card = el("div", "auth-card");
     const brand = el("div", "auth-brand");
     brand.appendChild(el("div", "brand-mark", "R"));
-    brand.appendChild(el("div", "brand-name", "Receptionist"));
+    brand.appendChild(el("div", "brand-name", App.BRAND || "CRM"));
     card.appendChild(brand);
     card.appendChild(inner);
     wrap.appendChild(card);

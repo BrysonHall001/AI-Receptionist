@@ -15,6 +15,7 @@
     if (v === "fields") return renderFields();
     if (v === "reports") return App.reports.render(view());
     if (v === "automations") return App.automations.render(view());
+    if (v === "learn") return App.learn.render(view());
     if (v === "settings") return renderSettings();
     return renderDashboard();
   }
@@ -25,56 +26,88 @@
   // ---------------- Dashboard ----------------
   async function renderDashboard() {
     loading();
-    const calls = await App.portalApi("/api/calls");
+    const [stats, contacts, calls] = await Promise.all([
+      App.portalApi("/api/stats").catch(() => ({})),
+      App.portalApi("/api/contacts").catch(() => []),
+      App.portalApi("/api/calls").catch(() => []),
+    ]);
     const wrap = el("div", "fade-in");
 
-    // Top section: a full dashboard (same widgets/grid/buttons as Reports).
-    const dashHead = el("div", "section-head");
-    dashHead.appendChild(el("h2", null, "Overview"));
-    const reportsLink = el("a", "muted-link", "Open Reports →");
-    reportsLink.href = "#/reports";
-    dashHead.appendChild(reportsLink);
-    wrap.appendChild(dashHead);
-    const homeHost = el("div", "home-dashboard");
-    homeHost.style.maxHeight = "40vh";
-    homeHost.style.overflowY = "auto";
-    homeHost.style.overflowX = "hidden";
-    wrap.appendChild(homeHost);
+    const hi = el("div", "today-head");
+    hi.innerHTML = `<h1 class="today-title">Today</h1><p class="cell-muted">A quick overview of your CRM. Jump into a section from the left, or the links below.</p>`;
+    wrap.appendChild(hi);
 
-    const divider = el("div", "section-divider");
-    wrap.appendChild(divider);
+    // KPI row (reuses the .kpi widget styling from Reports)
+    const kpis = [
+      { label: "Contacts", value: stats.leads != null ? stats.leads : (contacts.length || 0), href: "#/contacts" },
+      { label: "Total calls", value: stats.totalCalls != null ? stats.totalCalls : (calls.length || 0), href: "#/calls" },
+      { label: "Completed calls", value: stats.completed != null ? stats.completed : 0, href: "#/calls" },
+      { label: "Calls today", value: stats.today != null ? stats.today : 0, href: "#/calls" },
+    ];
+    const kpiRow = el("div", "kpi-row");
+    kpis.forEach((k) => {
+      const card = el("a", "card kpi-card");
+      card.href = k.href;
+      const kp = el("div", "kpi");
+      kp.appendChild(el("div", "kpi-value", String(k.value)));
+      kp.appendChild(el("div", "kpi-label", k.label));
+      card.appendChild(kp);
+      kpiRow.appendChild(card);
+    });
+    wrap.appendChild(kpiRow);
 
-    const head = el("div", "section-head");
-    head.appendChild(el("h2", null, "Recent calls"));
-    const link = el("a", "muted-link", "View all →");
-    link.href = "#/calls";
-    head.appendChild(link);
-    wrap.appendChild(head);
+    const cols = el("div", "today-cols");
 
-    if (!calls.length) {
-      wrap.appendChild(emptyCalls());
+    // Recent contacts
+    const cContacts = el("div", "card today-card");
+    const ch = el("div", "section-head");
+    ch.appendChild(el("h2", null, "Recent contacts"));
+    const cl = el("a", "muted-link", "View all →"); cl.href = "#/contacts"; ch.appendChild(cl);
+    cContacts.appendChild(ch);
+    if (!contacts.length) {
+      cContacts.appendChild(el("p", "cell-muted", "No contacts yet. Contacts appear after calls, or import a list."));
     } else {
-      const card = el("div", "card");
-      const table = el("table");
-      table.innerHTML = `<thead><tr><th>Caller</th><th>Phone</th><th>Reason</th><th>Status</th><th>When</th></tr></thead>`;
-      const tb = el("tbody");
-      calls.slice(0, 8).forEach((c) => {
-        const tr = el("tr");
-        tr.innerHTML = `<td class="cell-strong">${esc(c.name || "Unknown caller")}</td>
-          <td class="cell-mono">${esc(c.phone || c.fromNumber)}</td>
-          <td class="cell-muted cell-truncate">${esc(c.intent || "—")}</td>
-          <td>${statusBadge(c.status)}</td>
-          <td class="cell-muted">${fmtDate(c.createdAt)}</td>`;
-        tr.onclick = () => openCall(c.id);
-        tb.appendChild(tr);
+      const list = el("div", "mini-list");
+      contacts.slice(0, 6).forEach((c) => {
+        const row = el("button", "mini-row");
+        row.innerHTML = `<div class="mini-main"><div class="cell-strong">${esc(c.name || "Unknown")}</div><div class="cell-muted">${esc(c.email || c.phone || "")}</div></div><div class="cell-muted mini-when">${fmtDate(c.createdAt)}</div>`;
+        row.onclick = () => App.go("#/contact/" + c.id);
+        list.appendChild(row);
       });
-      table.appendChild(tb);
-      card.appendChild(table);
-      wrap.appendChild(card);
+      cContacts.appendChild(list);
     }
+    cols.appendChild(cContacts);
+
+    // Recent calls
+    const cCalls = el("div", "card today-card");
+    const kh = el("div", "section-head");
+    kh.appendChild(el("h2", null, "Recent calls"));
+    const kl = el("a", "muted-link", "View all →"); kl.href = "#/calls"; kh.appendChild(kl);
+    cCalls.appendChild(kh);
+    if (!calls.length) {
+      cCalls.appendChild(el("p", "cell-muted", "No calls yet."));
+    } else {
+      const list = el("div", "mini-list");
+      calls.slice(0, 6).forEach((c) => {
+        const row = el("button", "mini-row");
+        row.innerHTML = `<div class="mini-main"><div class="cell-strong">${esc(c.name || "Unknown caller")}</div><div class="cell-muted cell-truncate">${esc(c.intent || c.phone || c.fromNumber || "")}</div></div><div class="mini-when">${statusBadge(c.status)}</div>`;
+        row.onclick = () => openCall(c.id);
+        list.appendChild(row);
+      });
+      cCalls.appendChild(list);
+    }
+    cols.appendChild(cCalls);
+
+    wrap.appendChild(cols);
+
+    const more = el("div", "today-foot");
+    const repLink = el("a", "btn btn-ghost btn-sm", "Open Reports & dashboards →");
+    repLink.href = "#/reports";
+    more.appendChild(repLink);
+    wrap.appendChild(more);
+
     view().innerHTML = "";
     view().appendChild(wrap);
-    App.reports.mountHome(homeHost);
   }
 
   // ---------------- Calls ----------------
@@ -146,10 +179,20 @@
     view().innerHTML = "";
     const container = el("div", "fade-in");
     const bar = el("div", "page-actions");
+    const dummyBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#129302;</span> Create Dummy contact`);
+    dummyBtn.onclick = async () => {
+      dummyBtn.disabled = true;
+      try { await App.portalApi("/api/contacts/dummy", { method: "POST", body: JSON.stringify({}) }); App.util.toast("Dummy contact created"); renderContacts(); }
+      catch (e) { App.util.toast(e.message, true); dummyBtn.disabled = false; }
+    };
+    const createBtn = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#43;</span> Create Contact`);
+    createBtn.onclick = () => openCreateContact();
     const importBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8681;</span> Import contacts`);
     importBtn.onclick = openImport;
     const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export contacts`);
     exportBtn.onclick = () => openExport(handle ? handle.getColumns() : columns, contacts);
+    bar.appendChild(dummyBtn);
+    bar.appendChild(createBtn);
     bar.appendChild(importBtn);
     bar.appendChild(exportBtn);
     container.appendChild(bar);
@@ -180,11 +223,14 @@
     const bulkMsg = el("div", "bulk-empty hidden", "Select a contact first.");
     bulkMenu.appendChild(bulkMsg);
     let msgTimer = null;
-    function needSelection() { bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
+    function needSelection(text) { bulkMsg.textContent = text || "Select a contact first."; bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
     function bulkItem(label, fn) { const b = el("button", "bulk-item", label); b.onclick = () => fn(); return b; }
     bulkMenu.appendChild(bulkItem("Email selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("email", selectedRows()); }));
     bulkMenu.appendChild(bulkItem("Text selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("sms", selectedRows()); }));
     bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openExport(handle.getColumns(), rows); }));
+    bulkMenu.appendChild(el("div", "pop-sep"));
+    bulkMenu.appendChild(bulkItem("Update a field…", () => { const ids = handle.getSelected(); if (!ids.length) return needSelection(); bulkMenu.classList.add("hidden"); openMassUpdate(ids, fields); }));
+    bulkMenu.appendChild(bulkItem("Merge contacts…", () => { const rows = selectedRows(); if (rows.length < 2) { needSelection("Select at least 2 contacts to merge."); return; } bulkMenu.classList.add("hidden"); openMerge(rows, fields); }));
     bulkMenu.appendChild(el("div", "pop-sep"));
     bulkMenu.appendChild(bulkItem("Delete selected", async () => {
       const ids = handle.getSelected(); if (!ids.length) return needSelection();
@@ -307,6 +353,193 @@
       }
       App.util.toast(`Sent ${ok}${fail ? `, ${fail} failed` : ""}`);
       close();
+    };
+  }
+
+  // ---------------- Field input builder (shared by create + mass update) ----------------
+  function fieldInput(f, value) {
+    const wrap = el("div", "form-row");
+    wrap.appendChild(el("label", "field-label", esc(f.label) + (f.required ? " *" : "")));
+    let getValue;
+    const opts = Array.isArray(f.options) ? f.options : [];
+    if (f.type === "select") {
+      const s = el("select", "input");
+      s.appendChild(el("option", null, "— none —"));
+      opts.forEach((o) => { const op = el("option", null, esc(o)); op.value = o; if (o === value) op.selected = true; s.appendChild(op); });
+      wrap.appendChild(s); getValue = () => s.value || null;
+    } else if (f.type === "multi_select") {
+      const box = el("div", "ms-box");
+      const cur = Array.isArray(value) ? value : [];
+      const boxes = opts.map((o) => { const lab = el("label", "ms-opt"); const cb = el("input"); cb.type = "checkbox"; cb.value = o; if (cur.includes(o)) cb.checked = true; lab.appendChild(cb); lab.appendChild(document.createTextNode(" " + o)); box.appendChild(lab); return cb; });
+      wrap.appendChild(box); getValue = () => boxes.filter((b) => b.checked).map((b) => b.value);
+    } else if (f.type === "boolean") {
+      const lab = el("label", "ms-opt"); const cb = el("input"); cb.type = "checkbox"; if (value === true) cb.checked = true; lab.appendChild(cb); lab.appendChild(document.createTextNode(" Yes")); wrap.appendChild(lab); getValue = () => cb.checked;
+    } else {
+      const inp = el("input", "input");
+      inp.type = f.type === "number" || f.type === "percent" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text";
+      if (value != null) inp.value = value;
+      wrap.appendChild(inp); getValue = () => (inp.value.trim() === "" ? null : (inp.type === "number" ? Number(inp.value) : inp.value.trim()));
+    }
+    return { wrap, get: getValue, key: f.key };
+  }
+
+  // ---------------- Add contact (manual) ----------------
+  async function openCreateContact() {
+    const [fields, settings] = await Promise.all([
+      App.portalApi("/api/fields").catch(() => []),
+      App.portalApi("/api/settings").catch(() => ({})),
+    ]);
+    const requireEmail = settings && settings.requireEmail !== false;
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Create contact</h2><button class="icon-btn" id="cc-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    inner.appendChild(body);
+
+    const SYS = { name: 1, phone: 1, email: 1, intent: 1 };
+    const sysOrder = ["name", "phone", "email", "intent"];
+    const byKey = {}; (fields || []).forEach((f) => (byKey[f.key] = f));
+    const inputs = [];
+    // System fields first, in a friendly order, with required flags applied.
+    sysOrder.forEach((k) => {
+      const f = byKey[k] || { key: k, label: k[0].toUpperCase() + k.slice(1), type: k === "intent" ? "textarea" : "text" };
+      const required = k === "email" ? requireEmail : false;
+      const inp = fieldInput({ ...f, required }, null);
+      body.appendChild(inp.wrap); inputs.push(inp);
+    });
+    // Custom (non-system) fields.
+    (fields || []).filter((f) => !SYS[f.key]).forEach((f) => { const inp = fieldInput(f, null); body.appendChild(inp.wrap); inputs.push(inp); });
+
+    const foot = el("div", "modal-foot");
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    const save = el("button", "btn btn-primary btn-sm", "Create contact");
+    foot.appendChild(cancel); foot.appendChild(save);
+    inner.appendChild(foot);
+    const overlay = modal(inner);
+    inner.querySelector("#cc-close").onclick = () => overlay.remove();
+    cancel.onclick = () => overlay.remove();
+    save.onclick = async () => {
+      const vals = {}; inputs.forEach((i) => (vals[i.key] = i.get()));
+      const payload = { name: vals.name, phone: vals.phone, email: vals.email, intent: vals.intent, customFields: {} };
+      Object.keys(vals).forEach((k) => { if (!SYS[k]) payload.customFields[k] = vals[k]; });
+      if (requireEmail && !payload.email) { toast("Email is required for this CRM", true); return; }
+      if (!payload.email && !payload.phone) { toast("Add at least an email or a phone number", true); return; }
+      save.disabled = true; save.textContent = "Creating…";
+      try { await App.portalApi("/api/contacts", { method: "POST", body: JSON.stringify(payload) }); toast("Contact created"); overlay.remove(); renderContacts(); }
+      catch (e) { toast(e.message, true); save.disabled = false; save.textContent = "Create contact"; }
+    };
+  }
+
+  // ---------------- Mass update one field ----------------
+  function openMassUpdate(ids, fields) {
+    // Updatable = name, intent, and custom fields. Phone/email excluded (unique).
+    const updatable = [{ key: "name", label: "Name", type: "text" }, { key: "intent", label: "Last reason", type: "textarea" }]
+      .concat((fields || []).filter((f) => !f.system).map((f) => ({ key: f.key, label: f.label, type: f.type, options: f.options })));
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Update a field</h2><button class="icon-btn" id="mu-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    body.appendChild(el("p", "cell-muted", `This will update ${ids.length} selected contact${ids.length > 1 ? "s" : ""}.`));
+    const pickRow = el("div", "form-row");
+    pickRow.appendChild(el("label", "field-label", "Field to change"));
+    const pick = el("select", "input");
+    updatable.forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; pick.appendChild(o); });
+    pickRow.appendChild(pick); body.appendChild(pickRow);
+    const valHost = el("div"); body.appendChild(valHost);
+    let current = null;
+    function renderVal() {
+      const f = updatable.find((x) => x.key === pick.value);
+      valHost.innerHTML = ""; current = fieldInput({ ...f, label: "New value" }, null); valHost.appendChild(current.wrap);
+    }
+    pick.onchange = renderVal; renderVal();
+    inner.appendChild(body);
+    const foot = el("div", "modal-foot");
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    const apply = el("button", "btn btn-primary btn-sm", "Apply to selected");
+    foot.appendChild(cancel); foot.appendChild(apply); inner.appendChild(foot);
+    const overlay = modal(inner);
+    inner.querySelector("#mu-close").onclick = () => overlay.remove();
+    cancel.onclick = () => overlay.remove();
+    apply.onclick = async () => {
+      const field = pick.value; const value = current.get();
+      if (!confirm(`Set "${field}" on ${ids.length} contact${ids.length > 1 ? "s" : ""}? This can't be undone in bulk.`)) return;
+      apply.disabled = true; apply.textContent = "Applying…";
+      try { const r = await App.portalApi("/api/contacts/bulk-update", { method: "POST", body: JSON.stringify({ ids, field, value }) }); toast(`Updated ${r.count} contact${r.count === 1 ? "" : "s"}`); overlay.remove(); renderContacts(); }
+      catch (e) { toast(e.message, true); apply.disabled = false; apply.textContent = "Apply to selected"; }
+    };
+  }
+
+  // ---------------- Merge contacts ----------------
+  function openMerge(rows, fields) {
+    let survivorId = rows[0].id;
+    const customDefs = (fields || []).filter((f) => !f.system);
+    const FIELD_DEFS = [{ key: "name", label: "Name" }, { key: "email", label: "Email" }, { key: "intent", label: "Last reason" }]
+      .concat(customDefs.map((f) => ({ key: f.key, label: f.label })));
+    const chosen = {}; // key -> value
+
+    function valOf(c, key) { return (key === "name" || key === "email" || key === "intent") ? c[key] : (c.customFields || {})[key]; }
+    function disp(v) { return Array.isArray(v) ? v.join(", ") : v == null || v === "" ? "—" : String(v); }
+
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Merge ${rows.length} contacts</h2><button class="icon-btn" id="mg-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    inner.appendChild(body);
+
+    const survWrap = el("div", "form-row");
+    survWrap.appendChild(el("label", "field-label", "Keep as the surviving contact"));
+    const survSel = el("select", "input");
+    rows.forEach((c) => { const o = el("option", null, esc((c.name || "Unknown") + " · " + (c.phone || ""))); o.value = c.id; survSel.appendChild(o); });
+    survWrap.appendChild(survSel); body.appendChild(survWrap);
+    body.appendChild(el("p", "cell-muted", "The surviving contact's phone number is always kept. For other fields, pick which value to keep."));
+
+    const grid = el("div", "merge-grid");
+    body.appendChild(grid);
+
+    function paintGrid() {
+      const survivor = rows.find((c) => c.id === survivorId);
+      grid.innerHTML = "";
+      // phone row (read-only, survivor wins)
+      const pr = el("div", "merge-field");
+      pr.innerHTML = `<div class="merge-key">Phone</div><div class="merge-vals"><span class="merge-kept">${esc(survivor.phone || "—")} (kept)</span></div>`;
+      grid.appendChild(pr);
+      FIELD_DEFS.forEach((fd) => {
+        const values = []; const seen = new Set();
+        rows.forEach((c) => { const v = valOf(c, fd.key); const d = disp(v); if (!seen.has(d)) { seen.add(d); values.push({ v, d }); } });
+        // default chosen = survivor's value
+        if (chosen[fd.key] === undefined) chosen[fd.key] = valOf(survivor, fd.key);
+        const row = el("div", "merge-field");
+        row.appendChild(el("div", "merge-key", esc(fd.label)));
+        const vals = el("div", "merge-vals");
+        values.forEach(({ v, d }) => {
+          const lab = el("label", "merge-opt");
+          const r = el("input"); r.type = "radio"; r.name = "mg-" + fd.key;
+          if (disp(chosen[fd.key]) === d) r.checked = true;
+          r.onchange = () => { chosen[fd.key] = v; };
+          lab.appendChild(r); lab.appendChild(document.createTextNode(" " + d));
+          vals.appendChild(lab);
+        });
+        row.appendChild(vals); grid.appendChild(row);
+      });
+    }
+    survSel.onchange = () => { survivorId = survSel.value; Object.keys(chosen).forEach((k) => delete chosen[k]); paintGrid(); };
+    paintGrid();
+
+    const warn = el("div", "merge-warn");
+    warn.innerHTML = `<strong>Before you merge:</strong> the other ${rows.length - 1} contact(s) will be merged into the one you keep. Their calls and activity history move to the surviving contact, and the merged-away contacts are moved to the <strong>Recycle Bin</strong> (restorable for 30 days). The surviving contact keeps its phone number.`;
+    body.appendChild(warn);
+
+    const foot = el("div", "modal-foot");
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    const go = el("button", "btn btn-primary btn-sm", "Merge contacts");
+    foot.appendChild(cancel); foot.appendChild(go); inner.appendChild(foot);
+    const overlay = modal(inner);
+    inner.querySelector("#mg-close").onclick = () => overlay.remove();
+    cancel.onclick = () => overlay.remove();
+    go.onclick = async () => {
+      const loserIds = rows.map((c) => c.id).filter((id) => id !== survivorId);
+      const fieldValues = {}; Object.keys(chosen).forEach((k) => { if (k !== "phone") fieldValues[k] = chosen[k]; });
+      if (!confirm(`Merge ${loserIds.length} contact(s) into the surviving one? This moves their history and sends them to the Recycle Bin.`)) return;
+      go.disabled = true; go.textContent = "Merging…";
+      try { await App.portalApi("/api/contacts/merge", { method: "POST", body: JSON.stringify({ survivorId, loserIds, fieldValues }) }); toast("Contacts merged"); overlay.remove(); renderContacts(); }
+      catch (e) { toast(e.message, true); go.disabled = false; go.textContent = "Merge contacts"; }
     };
   }
 
@@ -1105,11 +1338,13 @@
     return overlay;
   }
 
-  function openImport() {
+  async function openImport() {
+    const settings = await App.portalApi("/api/settings").catch(() => ({}));
+    const requireEmail = settings && settings.requireEmail !== false;
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Import contacts</h2><button class="icon-btn" id="imp-close">&times;</button></div>
       <div class="modal-body">
-        <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing.</p>
+        <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing.${requireEmail ? " This CRM requires a unique email on every contact, so the Email column must be mapped." : ""}</p>
         <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,text/csv" class="input" />
         <div id="imp-step2"></div>
       </div>`;
@@ -1122,24 +1357,25 @@
         if (!rows || rows.length < 2) { toast("That file has no data rows", true); return; }
         const headers = rows[0].map((h) => String(h).trim());
         const dataRows = rows.slice(1);
-        renderMapping(inner.querySelector("#imp-step2"), headers, dataRows, overlay);
+        renderMapping(inner.querySelector("#imp-step2"), headers, dataRows, overlay, requireEmail);
       });
     };
   }
 
-  function renderMapping(host, headers, dataRows, overlay) {
+  function renderMapping(host, headers, dataRows, overlay, requireEmail) {
     const guess = guessMap(headers);
-    const fields = [["name", "Name"], ["phone", "Phone (required)"], ["email", "Email"], ["intent", "Reason / notes"]];
+    const fields = [["name", "Name"], ["phone", "Phone"], ["email", requireEmail ? "Email (required)" : "Email"], ["intent", "Reason / notes"]];
     const optionsHtml = (sel) => `<option value="-1">— skip —</option>` + headers.map((h, i) => `<option value="${i}" ${i === sel ? "selected" : ""}>${esc(h)}</option>`).join("");
     host.innerHTML = `<div class="map-grid">${fields.map(([k, lbl]) => `
       <label class="field-label">${esc(lbl)}</label>
       <select class="input map-sel" data-field="${k}">${optionsHtml(guess[k])}</select>`).join("")}</div>
-      <p class="cell-muted" id="imp-count">${dataRows.length} rows detected.</p>
+      <p class="cell-muted" id="imp-count">${dataRows.length} rows detected.${requireEmail ? " Rows with no email, or a duplicate email, will be skipped." : " Rows need at least an email or a phone."}</p>
       <button class="btn btn-primary btn-block" id="imp-go">Import ${dataRows.length} contacts</button>`;
     host.querySelector("#imp-go").onclick = async () => {
       const map = {};
       App.util.$$(".map-sel", host).forEach((s) => { map[s.dataset.field] = parseInt(s.value, 10); });
-      if (map.phone < 0) { toast("You must map the Phone column", true); return; }
+      if (requireEmail && map.email < 0) { toast("This CRM requires email — map the Email column", true); return; }
+      if (!requireEmail && map.email < 0 && map.phone < 0) { toast("Map at least a Phone or Email column", true); return; }
       const mapped = dataRows.map((r) => ({
         name: map.name >= 0 ? r[map.name] : null,
         phone: map.phone >= 0 ? r[map.phone] : null,

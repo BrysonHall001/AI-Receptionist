@@ -182,19 +182,35 @@ export async function importContacts(
 ): Promise<{ imported: number; skipped: number }> {
   let imported = 0;
   let skipped = 0;
+  const requireEmail = await tenantRequiresEmail(tenantId);
+  const seenEmails = new Set<string>(); // dedupe within this file when email is required
   for (const row of rows) {
-    const phone = (row.phone ?? "").trim();
-    if (!phone) {
-      skipped++;
-      continue;
+    const phone = (row.phone ?? "").trim() || null;
+    const email = (row.email ?? "").trim() || null;
+    if (requireEmail) {
+      // Email-first CRM: rows without an email, or with a duplicate email, are skipped.
+      if (!email) { skipped++; continue; }
+      const key = email.toLowerCase();
+      if (seenEmails.has(key) || (await emailExists(tenantId, email))) { skipped++; continue; }
+      seenEmails.add(key);
     }
-    await createOrUpdateContact({
-      tenantId,
-      phone,
-      name: row.name?.trim() || null,
-      email: row.email?.trim() || null,
-      intent: row.intent?.trim() || null,
-    }, actor);
+    // "At least one of email or phone" — a row with neither is skipped.
+    if (!email && !phone) { skipped++; continue; }
+
+    if (phone) {
+      // Has a phone: upsert by phone (dedupes repeat phone numbers, as before).
+      await createOrUpdateContact({
+        tenantId,
+        phone,
+        name: row.name?.trim() || null,
+        email,
+        intent: row.intent?.trim() || null,
+      }, actor);
+    } else {
+      // Email-only: create a new contact with no phone.
+      const c = await prisma.contact.create({ data: { tenantId, phone: null, name: row.name?.trim() || null, email, intent: row.intent?.trim() || null } as any });
+      try { await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: c.id }, payload: { name: c.name, email: c.email } }); } catch { /* non-critical */ }
+    }
     imported++;
   }
   return { imported, skipped };
@@ -232,4 +248,198 @@ export async function purgeExpiredContacts(tenantId: string): Promise<number> {
     where: { tenantId, deletedAt: { not: null, lt: cutoff } } as any,
   });
   return r.count;
+}
+
+// ============================================================
+// Manual create, mass update, merge, dummy generator (per-portal scoped)
+// ============================================================
+
+async function tenantRequiresEmail(tenantId: string): Promise<boolean> {
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  return (t as any)?.requireEmail !== false; // default ON
+}
+
+/** Case-insensitive email existence check among active (non-deleted) contacts. */
+export async function emailExists(tenantId: string, email: string, exceptId?: string): Promise<boolean> {
+  const found = await prisma.contact.findFirst({
+    where: { tenantId, deletedAt: null, email: { equals: email, mode: "insensitive" }, ...(exceptId ? { NOT: { id: exceptId } } : {}) } as any,
+  });
+  return !!found;
+}
+
+/** Manually create a single contact. Phone is the DB identity (required+unique).
+ *  When the portal's requireEmail toggle is ON, email is required + unique. */
+export async function createContact(
+  tenantId: string,
+  data: { name?: string | null; phone?: string | null; email?: string | null; intent?: string | null; customFields?: Record<string, unknown> },
+  actor?: MutationActor,
+) {
+  const phone = (data.phone ?? "").trim() || null;
+  const email = (data.email ?? "").trim() || null;
+  const requireEmail = await tenantRequiresEmail(tenantId);
+  if (requireEmail && !email) throw new Error("This CRM requires an email on every contact");
+  if (!email && !phone) throw new Error("Add at least an email or a phone number");
+  if (email && requireEmail && (await emailExists(tenantId, email))) throw new Error("A contact with that email already exists");
+
+  // Honor required custom fields (FieldDef.required on non-system fields).
+  const defs = await prisma.fieldDef.findMany({ where: { tenantId } });
+  const custom = (data.customFields as Record<string, any>) || {};
+  for (const f of defs as any[]) {
+    if (f.required && !f.system) {
+      const v = custom[f.key];
+      if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) throw new Error(`${f.label} is required`);
+    }
+  }
+
+  let contact;
+  try {
+    contact = await prisma.contact.create({
+      data: { tenantId, phone, name: data.name?.trim() || null, email, intent: data.intent?.trim() || null, customFields: custom } as any,
+    });
+  } catch (e) {
+    if (String((e as Error).message).includes("Unique")) throw new Error("A contact with that phone already exists");
+    throw e;
+  }
+  try {
+    await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: contact.id }, payload: { name: contact.name, phone: contact.phone, email: contact.email } });
+    await logActivity({ tenantId, contactId: contact.id, type: "created", summary: "Contact created", actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
+  } catch { /* non-critical */ }
+  return contact;
+}
+
+/** Set one field to one value across many selected contacts. Unique identity
+ *  fields (phone, email) are not mass-updatable to avoid collisions. */
+export async function bulkUpdateField(tenantId: string, ids: string[], field: string, value: any, actor?: MutationActor): Promise<number> {
+  if (!Array.isArray(ids) || !ids.length || !field) return 0;
+  if (field === "phone" || field === "email") throw new Error("Phone and email can't be mass-updated (they must stay unique)");
+
+  if (field === "name" || field === "intent") {
+    const r = await prisma.contact.updateMany({ where: { id: { in: ids }, tenantId, deletedAt: null } as any, data: { [field]: value || null } });
+    return r.count;
+  }
+  // Custom field: confirm it exists, then merge into each contact's JSON.
+  const def = await prisma.fieldDef.findFirst({ where: { tenantId, key: field } });
+  if (!def) throw new Error("Unknown field");
+  const rows = await prisma.contact.findMany({ where: { id: { in: ids }, tenantId, deletedAt: null } as any });
+  let count = 0;
+  for (const c of rows as any[]) {
+    const cf = { ...((c.customFields as any) || {}) };
+    cf[field] = value;
+    await prisma.contact.update({ where: { id: c.id }, data: { customFields: cf } });
+    count++;
+  }
+  return count;
+}
+
+/** Merge loser contacts into a survivor: move their calls + activity to the
+ *  survivor, apply chosen field values, then soft-delete the losers (recycle bin). */
+export async function mergeContacts(
+  tenantId: string,
+  survivorId: string,
+  loserIds: string[],
+  fieldValues: Record<string, any>,
+  actor?: MutationActor,
+): Promise<any> {
+  loserIds = (loserIds || []).filter((id) => id && id !== survivorId);
+  if (!survivorId || !loserIds.length) throw new Error("Pick a surviving contact and at least one to merge in");
+  const all = await prisma.contact.findMany({ where: { id: { in: [survivorId, ...loserIds] }, tenantId, deletedAt: null } as any });
+  const survivor = all.find((c: any) => c.id === survivorId);
+  if (!survivor) throw new Error("Surviving contact not found");
+  const losers = all.filter((c: any) => loserIds.includes(c.id));
+  if (!losers.length) throw new Error("No valid contacts to merge in");
+
+  // 1) Move call + activity history onto the survivor (preserved).
+  await prisma.callSession.updateMany({ where: { contactId: { in: loserIds } }, data: { contactId: survivorId } });
+  await prisma.activityLog.updateMany({ where: { contactId: { in: loserIds } }, data: { contactId: survivorId } });
+
+  // 2) Soft-delete the losers -> recycle bin (frees their email for app-level uniqueness).
+  await prisma.contact.updateMany({ where: { id: { in: loserIds }, tenantId } as any, data: { deletedAt: new Date() } as any });
+
+  // 3) Apply chosen field values to the survivor (phone is never changed — the
+  //    survivor's phone is the identity key that wins).
+  const sys: any = {};
+  const cf = { ...((survivor.customFields as any) || {}) };
+  const SYS = ["name", "email", "intent"];
+  for (const [k, v] of Object.entries(fieldValues || {})) {
+    if (k === "phone") continue;
+    if (SYS.includes(k)) sys[k] = v || null;
+    else cf[k] = v;
+  }
+  if (sys.email) {
+    const requireEmail = await tenantRequiresEmail(tenantId);
+    if (requireEmail && (await emailExists(tenantId, String(sys.email), survivorId))) {
+      // Another active contact already owns this email — keep the survivor's existing email instead.
+      delete sys.email;
+    }
+  }
+  await prisma.contact.update({ where: { id: survivorId }, data: { ...sys, customFields: cf } });
+
+  try {
+    await logActivity({ tenantId, contactId: survivorId, type: "field_update", summary: `Merged ${losers.length} contact${losers.length > 1 ? "s" : ""} into this one`, detail: { merged: losers.map((l: any) => ({ id: l.id, name: l.name, phone: l.phone, email: l.email })) }, actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
+    await emitEvent({ tenantId, type: EVENT_TYPES.ContactUpdated, actor: actorOf(actor), subject: { type: "contact", id: survivorId }, payload: { merged: loserIds.length } });
+  } catch { /* non-critical */ }
+  return prisma.contact.findUnique({ where: { id: survivorId } });
+}
+
+// ---- Dummy contact generator (testing aid; ~80% unique values) ----
+const D_FIRST = ["Ava", "Liam", "Mia", "Noah", "Zoe", "Eli", "Nora", "Kai", "Ivy", "Leo", "Maya", "Owen", "Ruby", "Finn", "Lena", "Cole", "Sage", "Jude", "Tess", "Reed", "Vera", "Milo", "Cleo", "Hugo", "Iris", "Dean", "Wren", "Otis", "Faye", "Beau"];
+const D_LAST = ["Hart", "Vance", "Reyes", "Cole", "Nash", "Pike", "Frost", "Lowe", "Dunn", "Sayer", "Quinn", "Marsh", "Vega", "Wolfe", "Reed", "Bauer", "Cross", "Flynn", "Hale", "Knox", "Lane", "Mercer", "Page", "Rhodes", "Stone", "Tate", "Vaughn", "Webb", "York", "Ash"];
+const D_INTENT = ["Requested a quote", "Asked about pricing", "Booking inquiry", "Support question", "Wants a callback", "Interested in a demo", "Followup needed", "New lead from website", "Asked about availability", "Complaint resolved", "Renewal question", "Referral from a friend"];
+const D_DOMAINS = ["example.com", "mailbox.test", "inbox.dev", "demo.co", "sample.io", "testmail.net"];
+const D_WORDS = ["alpha", "north", "river", "stone", "maple", "harbor", "cedar", "summit", "delta", "vector", "orchard", "meadow", "quartz", "ember", "willow", "cobalt", "ridge", "haven"];
+function rnd<T>(a: T[]): T { return a[Math.floor(Math.random() * a.length)]; }
+function rndInt(min: number, max: number): number { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function rndToken(n = 4): string { return Math.random().toString(36).slice(2, 2 + n); }
+
+async function uniquePhone(tenantId: string): Promise<string> {
+  for (let i = 0; i < 30; i++) {
+    const phone = `+1${rndInt(200, 989)}${rndInt(200, 989)}${String(rndInt(0, 9999)).padStart(4, "0")}`;
+    if (!(await prisma.contact.findUnique({ where: { tenantId_phone: { tenantId, phone } } }))) return phone;
+  }
+  return `+1${Date.now()}`.slice(0, 14);
+}
+async function uniqueEmail(tenantId: string, first: string, last: string): Promise<string> {
+  for (let i = 0; i < 30; i++) {
+    const email = `${first}.${last}.${rndToken(4)}@${rnd(D_DOMAINS)}`.toLowerCase();
+    if (!(await emailExists(tenantId, email))) return email;
+  }
+  return `dummy.${Date.now()}@${rnd(D_DOMAINS)}`;
+}
+
+function randomValueForField(f: any): any {
+  const opts: string[] = Array.isArray(f.options) ? f.options : [];
+  switch (f.type) {
+    case "number":
+    case "percent": return rndInt(1, f.type === "percent" ? 100 : 5000);
+    case "date": { const d = new Date(Date.now() - rndInt(0, 365) * 86400000); return d.toISOString().slice(0, 10); }
+    case "select": return opts.length ? rnd(opts) : `${rnd(D_WORDS)}-${rndToken(3)}`;
+    case "multi_select": { if (!opts.length) return []; const n = rndInt(1, Math.min(3, opts.length)); const shuffled = [...opts].sort(() => Math.random() - 0.5); return shuffled.slice(0, n); }
+    case "boolean": return Math.random() > 0.5;
+    case "email": return `${rnd(D_WORDS)}.${rndToken(4)}@${rnd(D_DOMAINS)}`;
+    case "phone": return `+1${rndInt(200, 989)}${rndInt(200, 989)}${String(rndInt(0, 9999)).padStart(4, "0")}`;
+    default: return `${rnd(D_WORDS)} ${rnd(D_WORDS)} ${rndToken(3)}`;
+  }
+}
+
+/** Create a dummy contact with ALL fields populated and mostly-unique values. */
+export async function generateDummyContact(tenantId: string, actor?: MutationActor) {
+  const first = rnd(D_FIRST);
+  const last = rnd(D_LAST);
+  const name = `${first} ${last}`;
+  const phone = await uniquePhone(tenantId);
+  const email = await uniqueEmail(tenantId, first, last);
+  const intent = rnd(D_INTENT);
+
+  const defs = await prisma.fieldDef.findMany({ where: { tenantId } });
+  const custom: Record<string, any> = {};
+  for (const f of defs as any[]) {
+    if (f.system) continue; // system fields handled above
+    custom[f.key] = randomValueForField(f);
+  }
+  const contact = await prisma.contact.create({ data: { tenantId, name, phone, email, intent, customFields: custom } as any });
+  try {
+    await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: contact.id }, payload: { name, phone, email, dummy: true } });
+    await logActivity({ tenantId, contactId: contact.id, type: "created", summary: "Dummy contact created", actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
+  } catch { /* non-critical */ }
+  return contact;
 }
