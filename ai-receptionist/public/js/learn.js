@@ -7,7 +7,8 @@
 // each guide has a title and an ordered list of "blocks". Block types:
 //   { p: "paragraph text" }                  → a paragraph
 //   { steps: ["do this", "then this"] }       → a numbered list
-//   { shot: "what the screenshot shows" }     → a labeled screenshot placeholder
+//   { shot: "..." }                            → DEPRECATED: no longer rendered
+//                                                (real screenshots are a later pass)
 //   { tip: "a helpful note" }                 → a highlighted tip
 // To add a guide: copy an item, change the title/blocks. To add a category:
 // add a new { cat, items } entry. No other wiring needed.
@@ -266,18 +267,139 @@
       cat: "Automations",
       items: [
         {
-          id: "automations",
-          title: "Setting up an automation",
+          id: "automations-overview",
+          title: "Automations: the big picture",
           blocks: [
-            { p: "Automations run actions automatically when something happens. Each one is: a trigger (what happens) → conditions (optional filters) → actions (what to do)." },
+            { p: "An automation does something for you automatically. Every one has the same shape: a trigger (what happens) → conditions (optional filters that decide whether to continue) → actions (what to do)." },
+            { p: "Open it from 'Automations' in the left navigation. The page has four tabs:" },
             { steps: [
-              "Click 'Automations' in the left navigation (Workflows tab).",
-              "Create an automation: give it a name, choose a trigger, add any conditions, and add one or more actions (such as send email, send SMS, update a field, add/remove a tag, create a note, or assign an owner).",
-              "Turn it on with the enabled toggle.",
-              "Use 'Test' to dry-run it against a contact, and check the Execution log and Event log tabs to see what ran.",
+              "Workflows — the automations you've built, each with an on/off switch.",
+              "Execution log — what your automations have actually done, run by run.",
+              "Event log — a raw record of things that happened in your CRM (the triggers).",
+              "Scheduled — actions queued to run later (from delays or date-based triggers); you can cancel a pending one before it runs.",
             ] },
-            { shot: "Automations builder showing trigger, conditions, and actions" },
-            { tip: "(Admin) Automations are usually configured by a portal admin." },
+            { p: "To build one, click '+ New automation', give it a name, choose a trigger, add any conditions, then add one or more actions. Save it, then flip the switch to turn it on. Use 'Edit', 'Test', 'Logs', or 'Delete' on each card." },
+            { p: "On the Workflows tab there's also a toolbar to search by name and filter by status or trigger, and to sort the list — it only changes what you see, never what runs." },
+            { tip: "New automations are OFF until you turn them on, and 'Test' lets you dry-run one against a chosen contact to see each action's result before you rely on it." },
+          ],
+        },
+        {
+          id: "automations-triggers",
+          title: "Triggers: what can start an automation",
+          blocks: [
+            { p: "A trigger is the event that kicks an automation off. You pick exactly one per automation. The available triggers are:" },
+            { steps: [
+              "Contact created — a new contact is added (by hand, by import, or via an inbound webhook).",
+              "Contact updated — an existing contact is saved with changes.",
+              "Field changed — a specific field's value changes. You can scope it to one field (e.g. only when 'Status' changes) or run it on any field change.",
+              "Tag added / Tag removed — a value is added to or removed from a multi-select (tag) field.",
+              "Email sent / SMS sent — an email or text goes out (from the contact screen or from another automation).",
+              "Note added — a note is added to a contact's timeline.",
+              "Manual — run from a record — it never fires on its own; it only runs when you open a contact and click 'Run automation'.",
+              "On a date (relative to a date field) — runs a set number of days/weeks/months before or after a date field (for example, 30 days before a renewal date).",
+            ] },
+            { tip: "When an automation's own action changes a contact, that change does NOT set off other automations. This is deliberate — it prevents automations from looping or cascading into each other." },
+          ],
+        },
+        {
+          id: "automations-conditions",
+          title: "Conditions & filters: deciding when it runs",
+          blocks: [
+            { p: "Conditions are optional. With none, the automation runs every time its trigger fires. Add conditions and the automation only continues when they're met — they gate the whole automation (all of its actions), not individual actions." },
+            { p: "Conditions use the exact same rule builder as the Contacts filters, so they behave the way you're already used to. You can build rules on the standard fields (name, phone, email, intent), 'Time created', and any of your custom fields." },
+            { p: "The operators include: is, is not, contains, does not contain, is empty, is not empty, greater than, less than, is before / is after a date, is today, between two dates, and in the previous N days/weeks/months/years." },
+            { p: "Multiple rules combine with AND by default (all must be true). Switching a rule's joiner to OR starts a new group, so you can express 'this group OR that group' — written out, that's (A and B) or (C and D)." },
+            { tip: "If a condition refers to a field that doesn't exist in your portal yet, the automation can still be saved as a draft — it just won't match until you create or map that field." },
+          ],
+        },
+        {
+          id: "automations-actions",
+          title: "Actions: what an automation can do",
+          blocks: [
+            { p: "Actions run in order, top to bottom, when the trigger fires and the conditions pass. The current actions are:" },
+            { steps: [
+              "Send email — emails the contact; supports {{field}} placeholders (e.g. Hi {{name}}) and optional saved templates.",
+              "Send SMS — texts the contact.",
+              "Update contact field — sets a field to a value (placeholders supported).",
+              "Add tag / Remove tag — adds or removes a value on a multi-select (tag) field.",
+              "Create internal note — adds a note to the contact's timeline.",
+              "Assign owner — sets the contact's owner.",
+              "Wait / delay — pauses the flow; the actions listed after it run later (see Scheduling & delays).",
+              "Create a record — creates a new contact, following the same rules as adding one by hand.",
+              "Update a record — updates this contact, or the records found by a 'Find records' step.",
+              "Find records — finds contacts matching conditions so a later Update or Delete can act on them.",
+              "Delete a record — moves contact(s) to the Recycle Bin (a soft delete you can restore).",
+              "Compute value into field — calculates a value into a field (see Compute value into a field).",
+              "Send webhook — POSTs the contact's details to a URL you specify (see Webhooks).",
+            ] },
+            { tip: "Sending depends on your email/text provider being connected. Until then, Send email and Send SMS still save fine and simply don't transmit (in local/demo mode they're logged, not sent)." },
+          ],
+        },
+        {
+          id: "automations-compute",
+          title: "Compute value into a field",
+          blocks: [
+            { p: "The 'Compute value into field' action calculates a value and writes it into a destination field. It's a fixed, safe set of operations — there's no scripting involved." },
+            { steps: [
+              "Add to a date — take a date field and add an amount (years, months, or days), writing the result into a Date field.",
+              "Subtract from a date — the same, but going backwards.",
+              "Copy a value — copy one field's value into another field, with no math.",
+            ] },
+            { p: "Example: when a policy starts, set 'Renewal date' = 'Start date' + 1 year. Pair this with the 'On a date' trigger to act a set time before that renewal." },
+            { tip: "Date math must land in a Date field. If you point it at a non-date field, the step is flagged rather than writing something wrong." },
+          ],
+        },
+        {
+          id: "automations-scheduling",
+          title: "Scheduling & delays",
+          blocks: [
+            { p: "There are two ways an automation can act later instead of immediately." },
+            { p: "Delays — add a 'Wait / delay' step inside an automation. Actions above the wait run right away; actions below it are queued to run after the wait (you set an amount in minutes, hours, or days)." },
+            { p: "Date-based runs — use the 'On a date (relative to a date field)' trigger to run a set number of days/weeks/months before or after a date field." },
+            { p: "Anything waiting or scheduled appears on the 'Scheduled' tab, where you can cancel a pending job before it runs." },
+            { tip: "Scheduled and delayed work is evaluated by a daily sweep rather than to the exact second. A super-admin can run 'Process due jobs now' from the Scheduled tab to process anything that's due immediately; on a deployed server this runs automatically." },
+          ],
+        },
+        {
+          id: "automations-webhooks",
+          title: "Webhooks: inbound and outbound",
+          blocks: [
+            { p: "A webhook is just a way for two systems to talk over the web. The CRM supports both directions." },
+            { p: "Inbound (a lead arrives from an outside form or tool): an admin sets up an inbound webhook — a private link — under Settings. When another system sends a lead to that link, the CRM creates or updates a contact in your portal. Which portal it lands in is decided by the link itself, and every attempt (accepted or rejected) is recorded." },
+            { p: "Outbound (you push data out): the 'Send webhook' action POSTs a snapshot of the triggering contact to a URL you choose. You can add an optional secret header, and internal/private addresses are blocked for safety. A 'Send test' button lets you fire a sample first." },
+            { tip: "Outbound webhooks are a good way to notify another app (a chat channel, a spreadsheet service, an automation tool) the moment something happens to a contact." },
+          ],
+        },
+        {
+          id: "automations-templates",
+          title: "Start from a template",
+          blocks: [
+            { p: "If you'd rather not build from scratch, the template library gives you ready-made automations." },
+            { steps: [
+              "On Automations → Workflows, click the 'Start from a template' card above your list.",
+              "Browse the templates, grouped by what they do (Lead capture & routing, Follow-ups, Pipeline & status, Stay in touch).",
+              "Click one to see a plain-English preview — its trigger, conditions, actions, and which fields it expects.",
+              "Click 'Apply' to add it. It opens in the builder for you to review.",
+            ] },
+            { p: "Applying a template always creates an inactive DRAFT — nothing runs until you review it and turn it on yourself." },
+            { tip: "Some templates expect a custom field your portal may not have (like a status or a date field). If so, the template is clearly flagged so you can create or map that field before switching it on. Applying the same template twice makes a numbered copy rather than overwriting the first." },
+          ],
+        },
+        {
+          id: "automations-wizard",
+          title: "Build with a wizard",
+          blocks: [
+            { p: "The wizard walks you through building an automation by answering a few questions. It only ever offers triggers, fields, and actions that actually exist in your portal." },
+            { steps: [
+              "On Automations → Workflows, click the 'Build with a wizard' card.",
+              "Trigger — choose what starts it.",
+              "Filter (optional) — add conditions that must all be true.",
+              "Branch (optional) — choose whether different actions should run depending on a condition.",
+              "Actions — pick what should happen.",
+              "Review — read the plain-English summary, then create it.",
+            ] },
+            { p: "If you choose to branch, the wizard creates TWO linked drafts: one '(if)' automation for when your condition is true, and one '(otherwise)' automation for everything else. On the Workflows list they're shown together as a 'Branch pair'." },
+            { tip: "Because a branch is two automations, you must turn BOTH on for full coverage. If only one of a pair is on, the list shows a gentle warning that contacts on the other path will get nothing. As with templates, everything the wizard makes starts as an inactive draft." },
           ],
         },
       ],
@@ -343,13 +465,15 @@
   function renderBlock(b) {
     if (b.p) return el("p", "learn-p", esc(b.p));
     if (b.tip) { const d = el("div", "learn-tip"); d.innerHTML = `<strong>Tip:</strong> ${esc(b.tip)}`; return d; }
-    if (b.shot) return el("div", "learn-shot", `[Screenshot: ${esc(b.shot)}]`);
+    // Screenshot placeholders are intentionally not rendered (real images come
+    // later). Any leftover { shot } block is skipped so no empty frame appears.
+    if (b.shot) return null;
     if (b.steps) {
       const ol = el("ol", "learn-steps");
       b.steps.forEach((s) => ol.appendChild(el("li", null, esc(s))));
       return ol;
     }
-    return el("div");
+    return null;
   }
 
   function render(host) {
@@ -386,7 +510,7 @@
       const card = el("div", "card learn-article");
       card.appendChild(el("div", "learn-eyebrow", esc(cat)));
       card.appendChild(el("h2", "learn-article-title", esc(found.title)));
-      (found.blocks || []).forEach((b) => card.appendChild(renderBlock(b)));
+      (found.blocks || []).forEach((b) => { const node = renderBlock(b); if (node) card.appendChild(node); });
       content.innerHTML = "";
       content.appendChild(card);
       content.scrollTop = 0;
