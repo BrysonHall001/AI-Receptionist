@@ -79,6 +79,8 @@
 .tpl-soon { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-faint); }
 
 /* ----- Presets library ----- */
+.preset-cat-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin: 18px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.preset-cat-head:first-of-type { margin-top: 8px; }
 .preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(238px, 1fr)); gap: 12px; }
 .preset-card { display: flex; flex-direction: column; gap: 11px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); padding: 14px; cursor: pointer; transition: border-color .12s ease, box-shadow .12s ease; }
 .preset-card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
@@ -304,26 +306,43 @@
     const overlay = modal(inner, "modal-builder");
     inner.querySelector("#pl-close").onclick = () => overlay.remove();
     try {
-      const presets = await App.portalApi("/api/automations/presets");
-      showGallery(pbody, presets, overlay);
+      const data = await App.portalApi("/api/automations/presets");
+      showGallery(pbody, data, overlay);
     } catch (e) {
       pbody.innerHTML = `<div class="cell-muted" style="padding:24px">${esc(e.message)}</div>`;
     }
   }
 
-  function showGallery(pbody, presets, overlay) {
+  // Render the gallery grouped into the function-based categories returned by
+  // the API (order/labels come from the server's PRESET_CATEGORIES). Each card,
+  // its preview, and the apply path are unchanged.
+  function showGallery(pbody, data, overlay) {
     pbody.innerHTML = "";
     pbody.appendChild(hint("Pick a template to preview it in plain English, then apply it as an inactive draft you can review and switch on yourself."));
+    const categories = (data && data.categories) || [];
+    const presets = (data && data.presets) || [];
     if (!presets.length) {
       pbody.appendChild(el("div", "cell-muted", "No templates available."));
       return;
     }
-    const grid = el("div", "preset-grid");
-    presets.forEach((p) => grid.appendChild(presetCard(p, pbody, presets, overlay)));
-    pbody.appendChild(grid);
+    const renderSection = (label, items) => {
+      if (!items.length) return;
+      pbody.appendChild(el("div", "preset-cat-head", esc(label)));
+      const grid = el("div", "preset-grid");
+      items.forEach((p) => grid.appendChild(presetCard(p, pbody, data, overlay)));
+      pbody.appendChild(grid);
+    };
+    const known = new Set();
+    categories.forEach((cat) => {
+      known.add(cat.key);
+      renderSection(cat.label, presets.filter((p) => p.category === cat.key));
+    });
+    // Safety net: any template whose category isn't in the list still shows up.
+    const orphans = presets.filter((p) => !known.has(p.category));
+    renderSection("Other", orphans);
   }
 
-  function presetCard(p, pbody, presets, overlay) {
+  function presetCard(p, pbody, data, overlay) {
     const card = el("div", "preset-card");
     const head = el("div");
     head.innerHTML = `<div class="preset-name">${esc(p.name)}</div><div class="preset-desc">${esc(p.description)}</div>`;
@@ -334,12 +353,12 @@
     }
     const foot = el("div", "preset-card-foot");
     const prev = el("button", "btn btn-ghost btn-sm", "Preview");
-    prev.onclick = (e) => { e.stopPropagation(); showPreview(pbody, p, presets, overlay); };
+    prev.onclick = (e) => { e.stopPropagation(); showPreview(pbody, p, data, overlay); };
     const apply = el("button", "btn btn-primary btn-sm", "Apply");
     apply.onclick = (e) => { e.stopPropagation(); applyPreset(p, overlay); };
     foot.appendChild(prev); foot.appendChild(apply);
     card.appendChild(foot);
-    card.onclick = (e) => { if (e.target.closest("button")) return; showPreview(pbody, p, presets, overlay); };
+    card.onclick = (e) => { if (e.target.closest("button")) return; showPreview(pbody, p, data, overlay); };
     return card;
   }
 
@@ -357,10 +376,10 @@
   }
 
   // Full plain-English preview, rendered into the same modal body.
-  function showPreview(pbody, p, presets, overlay) {
+  function showPreview(pbody, p, data, overlay) {
     pbody.innerHTML = "";
     const back = el("button", "btn btn-ghost btn-sm", "← All templates");
-    back.onclick = () => showGallery(pbody, presets, overlay);
+    back.onclick = () => showGallery(pbody, data, overlay);
     pbody.appendChild(back);
 
     const head = el("div", "preset-pv-head");
@@ -398,7 +417,7 @@
 
     const bar = el("div", "modal-savebar");
     const cancel = el("button", "btn btn-ghost", "Back");
-    cancel.onclick = () => showGallery(pbody, presets, overlay);
+    cancel.onclick = () => showGallery(pbody, data, overlay);
     const apply = el("button", "btn btn-primary", "Apply as draft");
     apply.onclick = () => applyPreset(p, overlay);
     bar.appendChild(cancel); bar.appendChild(apply);

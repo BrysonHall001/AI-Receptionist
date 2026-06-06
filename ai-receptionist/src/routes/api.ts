@@ -21,7 +21,7 @@ import { loadFieldDefs, conditionFields } from "../automation/contactRow";
 import { validateWebhookUrl, sendWebhook, buildSamplePayload } from "../automation/webhook";
 import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteEndpoint, listCalls as listInboundCalls } from "../services/inboundService";
 import { ACTION_TYPES } from "../automation/actions";
-import { AUTOMATION_PRESETS, getPreset } from "../automation/presets";
+import { AUTOMATION_PRESETS, getPreset, PRESET_CATEGORIES } from "../automation/presets";
 import { analyzeFlowDefinition, applyFlowDefinition } from "../services/flowProvisioningService";
 import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
 import { emitEvent } from "../events/bus";
@@ -640,13 +640,16 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
 apiRouter.get("/automations/presets", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  const out = [];
+  const presets = [];
   for (const p of AUTOMATION_PRESETS) {
     const analysis = await analyzeFlowDefinition(tenantId, p.definition);
-    out.push({
+    presets.push({
       key: p.key,
       name: p.name,
       description: p.description,
+      category: p.category, // function-based grouping (shown in UI)
+      // NOTE: p.vertical is intentionally NOT included — it's an internal-only
+      // tag and must never reach the user-facing library.
       summary: p.summary,
       shape: p.shape,
       note: p.note ?? null,
@@ -654,7 +657,7 @@ apiRouter.get("/automations/presets", async (req: Request, res: Response) => {
       missing: analysis.missing,
     });
   }
-  res.json(out);
+  res.json({ categories: PRESET_CATEGORIES, presets });
 });
 
 // Apply one preset -> a NEW DRAFT (inactive) automation in the CURRENT portal,
