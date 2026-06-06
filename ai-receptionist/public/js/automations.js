@@ -147,6 +147,19 @@
 .wiz-note { font-size: 12.5px; color: var(--amber); background: var(--amber-soft); border-radius: var(--radius-sm); padding: 9px 12px; line-height: 1.5; }
 .wiz-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; }
 .wiz-foot .wiz-foot-right { display: flex; gap: 8px; margin-left: auto; }
+
+/* ----- Wizard branch pair linking (list) ----- */
+.pair-group { border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 10px 2px; margin-bottom: 12px; background: var(--accent-soft); }
+.pair-group.soft { border-color: var(--line-strong); border-style: dashed; background: var(--panel-2); }
+.pair-group-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 2px 4px 8px; }
+.pair-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); display: inline-flex; align-items: center; gap: 5px; }
+.pair-badge.soft { color: var(--ink-faint); }
+.pair-group-note { font-size: 12px; color: var(--ink-faint); }
+.pair-group .auto-card { margin-bottom: 8px; }
+.pair-pill { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; margin-left: 6px; }
+.pair-pill.soft { background: var(--gray-soft); color: var(--ink-faint); }
+.pair-warn { font-size: 12.5px; color: var(--ink); line-height: 1.5; background: var(--amber-soft); border: 1px solid var(--amber); border-radius: var(--radius-sm); padding: 9px 12px; margin: 0 0 12px; }
+.pair-orphan-note { font-size: 12px; color: var(--ink-faint); margin: 0 0 12px; }
 `;
     const style = el("style");
     style.id = "wf-builder-styles";
@@ -248,8 +261,86 @@
       return;
     }
     const list = el("div");
-    automations.forEach((a) => list.appendChild(workflowCard(a)));
+    // Visibly link wizard branch pairs. Robust pairs share a durable pairId
+    // (written at creation). A best-effort, display-only fallback links pre-pairId
+    // pairs by their "(if)"/"(otherwise)" names + shared trigger. All matching is
+    // within this one portal (the list itself is tenant-scoped).
+    const groups = computePairGroups(automations);
+    const rendered = new Set();
+    automations.forEach((a) => {
+      if (rendered.has(a.id)) return;
+      const pair = groups.pairOf.get(a.id);
+      if (pair && pair.length === 2) {
+        const [x, y] = pair;
+        rendered.add(x.id);
+        rendered.add(y.id);
+        list.appendChild(pairGroupEl(x, y, groups.kindOf.get(a.id)));
+      } else {
+        rendered.add(a.id);
+        // a.pairId present but no partner in the list => partner was deleted.
+        const orphan = !!a.pairId;
+        list.appendChild(workflowCard(a, orphan ? { orphan: true } : null));
+      }
+    });
     body.appendChild(list);
+  }
+
+  // Build pair groupings. Returns maps from an automation id to its [a,b] pair
+  // and to the pairing kind ('id' = durable pairId, 'name' = cosmetic fallback).
+  function computePairGroups(autos) {
+    const pairOf = new Map();
+    const kindOf = new Map();
+
+    // 1) Robust: exact shared pairId (only true 2-member groups are linked).
+    const byPair = new Map();
+    autos.forEach((a) => {
+      if (!a.pairId) return;
+      if (!byPair.has(a.pairId)) byPair.set(a.pairId, []);
+      byPair.get(a.pairId).push(a);
+    });
+    byPair.forEach((arr) => {
+      if (arr.length === 2) arr.forEach((a) => { pairOf.set(a.id, arr); kindOf.set(a.id, "id"); });
+    });
+
+    // 2) Fallback (cosmetic only): match "Base (if)" with "Base (otherwise)" on
+    //    the same trigger, for automations WITHOUT a pairId and not already
+    //    linked. Used solely for visual grouping — never drives the warning.
+    const ifs = {}, others = {};
+    autos.forEach((a) => {
+      if (a.pairId || pairOf.has(a.id)) return;
+      const m = /^(.*) \((if|otherwise)\)$/.exec(a.name || "");
+      if (!m) return;
+      const key = a.triggerType + "||" + m[1];
+      (m[2] === "if" ? ifs : others)[key] = a;
+    });
+    Object.keys(ifs).forEach((key) => {
+      if (others[key]) {
+        const arr = [ifs[key], others[key]];
+        arr.forEach((a) => { pairOf.set(a.id, arr); kindOf.set(a.id, "name"); });
+      }
+    });
+
+    return { pairOf, kindOf };
+  }
+
+  // Wrap two paired cards in a labelled group. For a durable ('id') pair, each
+  // card also gets a gentle half-enabled warning when its partner is off.
+  function pairGroupEl(x, y, kind) {
+    const wrap = el("div", "pair-group" + (kind === "name" ? " soft" : ""));
+    const head = el("div", "pair-group-head");
+    if (kind === "id") {
+      head.innerHTML = `<span class="pair-badge">${branchGlyph()} Branch pair</span><span class="pair-group-note">Two halves of one branch — turn on both for full coverage.</span>`;
+    } else {
+      head.innerHTML = `<span class="pair-badge soft">${branchGlyph()} Looks like a branch pair</span><span class="pair-group-note">Grouped by name; this guess isn't tracked.</span>`;
+    }
+    wrap.appendChild(head);
+    wrap.appendChild(workflowCard(x, { partner: y, kind }));
+    wrap.appendChild(workflowCard(y, { partner: x, kind }));
+    return wrap;
+  }
+
+  function branchGlyph() {
+    return `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="vertical-align:-1px"><path d="M3 1v3.5C3 6 4 6.5 5.2 6.5H9M3 11V7.5C3 6 4 5.5 5.2 5.5H9M9 4.5L11 6 9 7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   }
 
   // Two-up entry row. Only the template card is functional; the wizard slot is
@@ -480,6 +571,14 @@
     return `${fieldLabel(c.field)} ${opLabel(c.op)}${noValueOp(c.op) ? "" : " “" + (c.value || "") + "”"}`;
   }
   function negate(c) { return { field: c.field, op: NEGATE[c.op] || c.op, value: c.value }; }
+
+  // Opaque, unique grouping token for a wizard branch pair. crypto.randomUUID
+  // when available, with a harmless fallback. It is only ever used to match the
+  // two drafts within one portal — no security meaning.
+  function newPairId() {
+    try { if (window.crypto && crypto.randomUUID) return "pair_" + crypto.randomUUID(); } catch (e) {}
+    return "pair_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+  }
 
   function wizTriggerType(w) {
     if (w.baseTrigger === "FieldChanged") return w.triggerField ? "FieldChanged:" + w.triggerField : "FieldChanged";
@@ -774,8 +873,11 @@
         results.push(await apply({ name: baseName, triggerType: tt, conditions: filters, actions: w.actionsIf }));
       } else {
         const bc = { ...w.branchCond };
-        results.push(await apply({ name: baseName + " (if)", triggerType: tt, conditions: [...filters, bc], actions: w.actionsIf }));
-        results.push(await apply({ name: baseName + " (otherwise)", triggerType: tt, conditions: [...filters, negate(bc)], actions: w.actionsElse }));
+        // Shared token that durably links the two drafts on the list, so a
+        // half-enabled pair is obvious later. Survives renaming; same-portal only.
+        const pairId = newPairId();
+        results.push(await apply({ name: baseName + " (if)", triggerType: tt, conditions: [...filters, bc], actions: w.actionsIf, pairId }));
+        results.push(await apply({ name: baseName + " (otherwise)", triggerType: tt, conditions: [...filters, negate(bc)], actions: w.actionsElse, pairId }));
       }
       overlay.remove();
       const names = results.map((r) => r.automation.name);
@@ -787,12 +889,17 @@
     }
   }
 
-  function workflowCard(a) {
+  function workflowCard(a, pairInfo) {
     const card = el("div", "card auto-card");
     const top = el("div", "auto-card-head");
 
+    // Small "Branch pair" tag on the name line when this card is part of a pair.
+    let pairTag = "";
+    if (pairInfo && pairInfo.kind === "id") pairTag = ` <span class="pair-pill">Branch pair</span>`;
+    else if (pairInfo && pairInfo.kind === "name") pairTag = ` <span class="pair-pill soft">Possible pair</span>`;
+
     const left = el("div", "auto-card-main");
-    left.innerHTML = `<div class="auto-name">${esc(a.name)}</div>
+    left.innerHTML = `<div class="auto-name">${esc(a.name)}${pairTag}</div>
       <div class="auto-meta">When <strong>${esc(triggerLabel(a.triggerType))}</strong>
       · ${(a.conditions || []).filter(rc).length} condition(s)
       · ${(a.actions || []).length} action(s)</div>
@@ -808,12 +915,26 @@
         await App.portalApi(`/api/automations/${a.id}`, { method: "PATCH", body: JSON.stringify({ enabled: cb.checked }) });
         a.enabled = cb.checked;
         toast(cb.checked ? "Automation enabled" : "Automation disabled");
+        // If this card is part of a durable pair, re-render so the half-enabled
+        // warning appears/clears against the partner's current state.
+        if (pairInfo && pairInfo.kind === "id" && pairInfo.partner) render(host);
       } catch (e) { cb.checked = !cb.checked; toast(e.message, true); }
     };
     toggle.appendChild(cb);
     toggle.appendChild(el("span", "switch-track"));
     top.appendChild(toggle);
     card.appendChild(top);
+
+    // Half-enabled warning: durable pair only. Gentle, plain-English, and driven
+    // purely by the two enabled states — never by name-matching.
+    if (pairInfo && pairInfo.kind === "id" && pairInfo.partner && a.enabled && !pairInfo.partner.enabled) {
+      card.appendChild(el("div", "pair-warn",
+        `This is on, but its paired automation “${esc(pairInfo.partner.name)}” is turned off — contacts on that branch will get nothing. Turn both on for full coverage.`));
+    }
+    // Quiet note if the partner of a durable pair was deleted.
+    if (pairInfo && pairInfo.orphan) {
+      card.appendChild(el("div", "pair-orphan-note", "Its branch partner was deleted — this now runs on its own."));
+    }
 
     const actions = el("div", "auto-card-foot");
     const edit = el("button", "btn btn-ghost btn-sm", "Edit");

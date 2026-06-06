@@ -138,12 +138,15 @@ export async function applyFlowDefinition(
   tenantId: string,
   def: FlowDefinition,
   createdById?: string | null,
+  opts?: { pairId?: string },
 ): Promise<ApplyResult> {
   const requestedName = (def.name || "Untitled automation").trim() || "Untitled automation";
   const name = await uniqueAutomationName(tenantId, requestedName);
   const analysis = await analyzeFlowDefinition(tenantId, def);
 
   // enabled:false is the load-bearing guarantee here — see the file header.
+  // pairId (when present) links the two drafts of a branching wizard pair; it is
+  // metadata only and never affects execution.
   const automation = await createAutomation(
     tenantId,
     {
@@ -152,6 +155,7 @@ export async function applyFlowDefinition(
       conditions: (def.conditions ?? []) as any,
       actions: (def.actions ?? []) as any,
       enabled: false,
+      pairId: opts?.pairId,
     },
     createdById ?? null,
   );

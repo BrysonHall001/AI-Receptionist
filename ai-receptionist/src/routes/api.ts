@@ -706,8 +706,11 @@ apiRouter.post("/automations/apply-flow", async (req: Request, res: Response) =>
     conditions: Array.isArray(definition.conditions) ? definition.conditions : [],
     actions: Array.isArray(definition.actions) ? definition.actions : [],
   };
+  // Optional grouping token for a branching wizard pair. Ignored unless it's a
+  // non-empty string; never affects execution.
+  const pairId = typeof definition.pairId === "string" && definition.pairId ? definition.pairId : undefined;
   try {
-    const result = await applyFlowDefinition(tenantId, def, req.user!.id);
+    const result = await applyFlowDefinition(tenantId, def, req.user!.id, { pairId });
     res.json({
       automation: result.automation,
       expected: result.analysis.expected,

@@ -10,6 +10,7 @@ function serialize(a: any) {
     triggerType: a.triggerType,
     conditions: a.conditions ?? [],
     actions: a.actions ?? [],
+    pairId: a.pairId ?? null,
     createdAt: a.createdAt?.toISOString?.() ?? a.createdAt,
     updatedAt: a.updatedAt?.toISOString?.() ?? a.updatedAt,
   };
@@ -42,6 +43,7 @@ export interface AutomationInput {
   conditions?: unknown;
   actions?: unknown;
   enabled?: boolean;
+  pairId?: string | null;
 }
 
 export async function createAutomation(tenantId: string, input: AutomationInput, createdById?: string | null) {
@@ -54,6 +56,9 @@ export async function createAutomation(tenantId: string, input: AutomationInput,
       actions: (input.actions ?? []) as any,
       enabled: input.enabled ?? true,
       createdById: createdById ?? null,
+      // Only set when a caller (the branching wizard) supplies a pair token.
+      // Normal/single automations omit it entirely, leaving the column null.
+      ...(input.pairId ? { pairId: input.pairId } : {}),
     },
   });
   return serialize(a);

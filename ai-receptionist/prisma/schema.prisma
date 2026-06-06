@@ -264,12 +264,17 @@ model Automation {
   conditions  Json            @default("[]")
   actions     Json            @default("[]")
   createdById String?
+  // Optional grouping token shared by the two drafts a branching wizard creates
+  // (an "(if)" and an "(otherwise)"). Null for every normal/single automation.
+  // Used ONLY to visibly link a pair on the list; never affects execution.
+  pairId      String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   runs        AutomationRun[]
 
   @@index([tenantId])
   @@index([tenantId, triggerType, enabled])
+  @@index([tenantId, pairId])
 }
 
 // One row per automation execution attempt — the execution history.
