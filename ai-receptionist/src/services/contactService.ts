@@ -227,6 +227,19 @@ export async function softDeleteContacts(tenantId: string, ids: string[]): Promi
     where: { id: { in: ids }, tenantId, deletedAt: null },
     data: { deletedAt: new Date() } as any,
   });
+  // Orphan cleanup: the record<->contact relationship (RecordLink) has a
+  // polymorphic parent, so there is no DB foreign key to auto-clean. Soft-delete
+  // any links that point at these contacts so they don't linger. Guarded so a
+  // not-yet-migrated environment can never break contact deletion (there are no
+  // links until the records feature ships in 1b).
+  try {
+    await (prisma as any).recordLink.updateMany({
+      where: { tenantId, parentType: "contact", parentId: { in: ids }, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+  } catch (_e) {
+    // RecordLink model not available yet (pre-migration) — safe to ignore.
+  }
   return r.count;
 }
 

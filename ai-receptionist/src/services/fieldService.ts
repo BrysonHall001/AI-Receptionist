@@ -1,4 +1,5 @@
 import { prisma } from "../db/client";
+import { ensureContactRecordType } from "./recordTypeService";
 
 export const FIELD_TYPES = [
   "text", "textarea", "number", "percent", "date", "checkbox",
@@ -22,8 +23,9 @@ export async function ensureSystemFields(tenantId: string): Promise<void> {
   const have = new Set(existing.map((e: any) => e.key));
   const toCreate = SYSTEM_FIELDS.filter((f) => !have.has(f.key));
   if (!toCreate.length) return;
+  const recordTypeId = await ensureContactRecordType(tenantId);
   await prisma.fieldDef.createMany({
-    data: toCreate.map((f) => ({ tenantId, key: f.key, label: f.label, type: f.type, system: true, order: f.order })),
+    data: toCreate.map((f) => ({ tenantId, recordTypeId, scope: "record", key: f.key, label: f.label, type: f.type, system: true, order: f.order })) as any,
     skipDuplicates: true,
   });
 }
@@ -55,8 +57,10 @@ function slugify(label: string): string {
 async function uniqueKey(tenantId: string, base: string): Promise<string> {
   let key = base;
   let n = 1;
-  // Avoid collisions with existing keys (including system keys).
-  while (await prisma.fieldDef.findUnique({ where: { tenantId_key: { tenantId, key } } })) {
+  // Avoid collisions with existing keys (including system keys) within the
+  // portal. Checked by tenant+key (the old tenantId_key unique was replaced by
+  // tenantId+recordTypeId+key, so we no longer use findUnique on it here).
+  while (await prisma.fieldDef.findFirst({ where: { tenantId, key } })) {
     key = `${base}_${n++}`;
   }
   return key;
@@ -72,11 +76,14 @@ export async function createField(tenantId: string, input: {
   if (!input.label || !input.label.trim()) throw new Error("Label is required");
   if (!FIELD_TYPES.includes(input.type as FieldType)) throw new Error("Unknown field type");
   const key = await uniqueKey(tenantId, slugify(input.label));
+  const recordTypeId = await ensureContactRecordType(tenantId);
   const max = await prisma.fieldDef.aggregate({ where: { tenantId }, _max: { order: true } });
   const order = (max._max.order ?? -1) + 1;
   const created = await prisma.fieldDef.create({
     data: {
       tenantId,
+      recordTypeId,
+      scope: "record",
       key,
       label: input.label.trim(),
       type: input.type,
@@ -85,7 +92,7 @@ export async function createField(tenantId: string, input: {
       formula: input.type === "formula" ? input.formula ?? "" : null,
       order,
       system: false,
-    },
+    } as any,
   });
   return serialize(created);
 }

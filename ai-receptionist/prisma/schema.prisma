@@ -57,6 +57,9 @@ model Tenant {
   scheduledJobs  ScheduledJob[]
   inboundEndpoints InboundEndpoint[]
   inboundCalls     InboundCall[]
+  recordTypes      RecordType[]
+  records          Record[]
+  recordLinks      RecordLink[]
 }
 
 model User {
@@ -165,6 +168,13 @@ model FieldDef {
   id        String   @id @default(cuid())
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Which object type this field belongs to. Nullable for safety/back-compat;
+  // the backfill points every existing field at its portal's system "contact"
+  // record type, and field-creation sets it going forward.
+  recordTypeId String?
+  recordType   RecordType? @relation(fields: [recordTypeId], references: [id], onDelete: Cascade)
+  // Whether the field lives on the record itself or on a relationship (link).
+  scope     String   @default("record")
   key       String
   label     String
   type      String   @default("text")
@@ -176,8 +186,77 @@ model FieldDef {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([tenantId, recordTypeId, key])
+  @@index([tenantId])
+}
+
+// Registry of object types a portal can hold beyond Contact (Job, Policy,
+// Work-order, …). The system "contact" type is seeded per portal by the
+// backfill. Keys are stable/immutable; labels are freely editable.
+model RecordType {
+  id           String       @id @default(cuid())
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key          String       // stable internal identifier (e.g. "job"); never renamed
+  label        String       // editable display label (e.g. "Requisition")
+  labelPlural  String?      // editable plural label
+  system       Boolean      @default(false) // true for the seeded "contact" type
+  stages       Json         @default("[]")  // relationship stages: [{key,label,order}]
+  recordStages Json         @default("[]")  // optional record-level lifecycle stages
+  order        Int          @default(0)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  fieldDefs    FieldDef[]
+  records      Record[]
+
   @@unique([tenantId, key])
   @@index([tenantId])
+}
+
+// An instance of a RecordType (a Job, a Policy, a Work-order). Contacts are NOT
+// stored here — they keep their own table. Soft-deletes mirror Contact.
+model Record {
+  id           String       @id @default(cuid())
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recordTypeId String
+  recordType   RecordType   @relation(fields: [recordTypeId], references: [id], onDelete: Cascade)
+  title        String?
+  stageKey     String?      // OPTIONAL record-level lifecycle status
+  customFields Json         @default("{}")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+  links        RecordLink[]
+
+  @@index([tenantId, recordTypeId])
+  @@index([tenantId, recordTypeId, deletedAt])
+}
+
+// The many-to-many join between a "parent" and a Record — and the pipeline atom.
+// stageKey here is THE relationship stage (a contact can be at different stages
+// on different records at once). The parent is polymorphic (parentType/parentId)
+// so an Account/Property object can become a parent later with no redesign;
+// because it's polymorphic there is intentionally NO DB foreign key on the
+// parent (orphan cleanup is handled in code).
+model RecordLink {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recordId     String
+  record       Record     @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  parentType   String     // "contact" now; "account"/"property" later
+  parentId     String
+  role         String?    // optional: "primary", "candidate", "holder", …
+  stageKey     String?    // THE relationship stage
+  customFields Json       @default("{}") // per-relationship data
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  @@index([tenantId, recordId])
+  @@index([tenantId, recordId, stageKey])
+  @@index([tenantId, parentType, parentId])
 }
 
 model ActivityLog {
