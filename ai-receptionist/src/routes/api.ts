@@ -21,6 +21,8 @@ import { loadFieldDefs, conditionFields } from "../automation/contactRow";
 import { validateWebhookUrl, sendWebhook, buildSamplePayload } from "../automation/webhook";
 import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteEndpoint, listCalls as listInboundCalls } from "../services/inboundService";
 import { ACTION_TYPES } from "../automation/actions";
+import { AUTOMATION_PRESETS, getPreset } from "../automation/presets";
+import { analyzeFlowDefinition, applyFlowDefinition } from "../services/flowProvisioningService";
 import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
 import { emitEvent } from "../events/bus";
 import { prisma } from "../db/client";
@@ -626,6 +628,60 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
     templates: templates.map((t: any) => ({ id: t.id, name: t.name, kind: t.kind })),
     users: users.map((u: any) => ({ id: u.id, name: u.name || u.email })),
   });
+});
+
+// ---- Automation presets (built-in flow templates) -------------------------
+// These static paths are defined before any "/automations/:id" route so they
+// are never mistaken for an automation id.
+
+// List the built-in presets, each enriched with a per-portal field analysis so
+// the library can preview which custom fields a preset expects and flag any
+// that don't exist in this portal. Read-only: applies nothing.
+apiRouter.get("/automations/presets", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const out = [];
+  for (const p of AUTOMATION_PRESETS) {
+    const analysis = await analyzeFlowDefinition(tenantId, p.definition);
+    out.push({
+      key: p.key,
+      name: p.name,
+      description: p.description,
+      summary: p.summary,
+      shape: p.shape,
+      note: p.note ?? null,
+      expected: analysis.expected,
+      missing: analysis.missing,
+    });
+  }
+  res.json(out);
+});
+
+// Apply one preset -> a NEW DRAFT (inactive) automation in the CURRENT portal,
+// via the shared applyFlowDefinition() plumbing (the same the wizard will use).
+// Never activates anything; returns the created draft + missing-field flags so
+// the UI can open it in the builder and mark what needs attention.
+apiRouter.post("/automations/presets/apply", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { key } = (req.body ?? {}) as { key?: string };
+  const preset = getPreset(String(key || ""));
+  if (!preset) {
+    res.status(404).json({ error: "Unknown preset" });
+    return;
+  }
+  try {
+    const result = await applyFlowDefinition(tenantId, preset.definition, req.user!.id);
+    res.json({
+      automation: result.automation,
+      expected: result.analysis.expected,
+      missing: result.analysis.missing,
+      nameChanged: result.nameChanged,
+      requestedName: result.requestedName,
+    });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 // Enabled Manual-trigger flows for the current tenant (for the record's "Run

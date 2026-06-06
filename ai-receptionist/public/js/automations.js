@@ -61,6 +61,63 @@
 .status-dot.pending { background: var(--ink-faint); }
 .status-dot.done { background: var(--green); }
 .status-dot.canceled { background: var(--amber); }
+
+/* ----- "Start from a template" entry row (two-up) ----- */
+.tpl-entry-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.tpl-entry-card { display: flex; align-items: center; gap: 13px; padding: 15px 16px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); cursor: pointer; transition: border-color .12s ease, box-shadow .12s ease, transform .04s ease; }
+.tpl-entry-card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+.tpl-entry-card:active { transform: translateY(1px); }
+.tpl-entry-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tpl-entry-card.disabled { cursor: default; opacity: 0.72; background: var(--panel-2); border-style: dashed; }
+.tpl-entry-card.disabled:hover { border-color: var(--line-strong); box-shadow: none; }
+.tpl-entry-icon { flex: 0 0 auto; width: 38px; height: 38px; border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
+.tpl-entry-card.disabled .tpl-entry-icon { background: var(--gray-soft); color: var(--ink-faint); }
+.tpl-entry-main { min-width: 0; flex: 1; }
+.tpl-entry-title { font-size: 14px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tpl-entry-sub { font-size: 12.5px; color: var(--ink-faint); margin-top: 2px; }
+.tpl-entry-cta { flex: 0 0 auto; font-size: 12.5px; font-weight: 700; color: var(--accent); }
+.tpl-soon { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-faint); }
+
+/* ----- Presets library ----- */
+.preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(238px, 1fr)); gap: 12px; }
+.preset-card { display: flex; flex-direction: column; gap: 11px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); padding: 14px; cursor: pointer; transition: border-color .12s ease, box-shadow .12s ease; }
+.preset-card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+.preset-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+.preset-desc { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; line-height: 1.45; }
+.preset-shape { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.shape-chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.shape-chip.trigger { background: var(--accent-soft); color: var(--accent); }
+.shape-chip.action { background: var(--green-soft); color: var(--green); }
+.shape-arrow { display: inline-flex; color: var(--ink-faint); }
+.preset-missing { font-size: 11.5px; font-weight: 600; color: var(--amber); background: var(--amber-soft); border-radius: var(--radius-sm); padding: 5px 9px; }
+.preset-card-foot { display: flex; gap: 7px; margin-top: auto; }
+.preset-card-foot .btn { flex: 1; justify-content: center; }
+
+/* ----- Preset preview (inside the same library modal) ----- */
+.preset-pv-head { margin: 12px 0 14px; }
+.preset-pv-title { font-size: 17px; font-weight: 700; color: var(--ink); }
+.preset-pv-desc { font-size: 13px; color: var(--ink-soft); margin-top: 4px; line-height: 1.5; }
+.preset-pv-section { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-2); padding: 13px 14px; margin-top: 13px; }
+.pv-block { display: flex; gap: 12px; padding: 5px 0; }
+.pv-block + .pv-block { border-top: 1px solid var(--line); }
+.pv-k { flex: 0 0 54px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); padding-top: 2px; }
+.pv-v { font-size: 13px; color: var(--ink); min-width: 0; }
+.pv-v ul { margin: 0; padding-left: 18px; }
+.pv-v li { margin: 2px 0; }
+.field-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.field-flag { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.field-flag.ok { background: var(--green-soft); color: var(--green); }
+.field-flag.missing { background: var(--amber-soft); color: var(--amber); }
+.pv-warn { font-size: 12.5px; color: var(--amber); margin: 10px 0 0; line-height: 1.5; }
+
+/* ----- Editor warning banner (applied preset that needs a field) ----- */
+.wf-warnbar { font-size: 12.5px; color: var(--ink); line-height: 1.5; background: var(--amber-soft); border: 1px solid var(--amber); border-radius: var(--radius-sm); padding: 11px 13px; margin-bottom: 16px; }
+.wf-warnbar strong { color: var(--amber); }
+
+@media (max-width: 640px) {
+  .tpl-entry-row { grid-template-columns: 1fr; }
+  .preset-grid { grid-template-columns: 1fr; }
+}
 `;
     const style = el("style");
     style.id = "wf-builder-styles";
@@ -148,12 +205,187 @@
   // ---------------- Workflows list ----------------
   function renderWorkflows(body) {
     body.innerHTML = "";
+    // Entry-point row: a compact "Start from a template" card and a disabled
+    // "Build with a wizard" placeholder, side by side above the real list. The
+    // full template gallery is NOT rendered inline — it opens in a modal — so a
+    // user's actual automations stay at the top of the page on every visit.
+    body.appendChild(entryRow());
+
     if (!automations.length) {
-      body.innerHTML = `<div class="empty-state"><p>No automations yet.</p>
-        <p class="cell-muted">Create one to send a welcome email, tag leads, assign owners, and more.</p></div>`;
+      const empty = el("div", "empty-state");
+      empty.innerHTML = `<p>No automations yet.</p>
+        <p class="cell-muted">Start from a template above, or build one from scratch to send a welcome email, tag leads, assign owners, and more.</p>`;
+      body.appendChild(empty);
       return;
     }
-    automations.forEach((a) => body.appendChild(workflowCard(a)));
+    const list = el("div");
+    automations.forEach((a) => list.appendChild(workflowCard(a)));
+    body.appendChild(list);
+  }
+
+  // Two-up entry row. Only the template card is functional; the wizard slot is
+  // a clearly-disabled "coming soon" placeholder (no wizard is built here).
+  function entryRow() {
+    const row = el("div", "tpl-entry-row");
+
+    const tpl = el("div", "tpl-entry-card");
+    tpl.setAttribute("role", "button");
+    tpl.tabIndex = 0;
+    tpl.innerHTML = `<span class="tpl-entry-icon">${gridGlyph()}</span>
+      <span class="tpl-entry-main">
+        <span class="tpl-entry-title">Start from a template</span>
+        <span class="tpl-entry-sub">Browse ready-made automations and apply one as a draft.</span>
+      </span>
+      <span class="tpl-entry-cta">Browse →</span>`;
+    tpl.onclick = () => openPresetsLibrary();
+    tpl.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPresetsLibrary(); } };
+    row.appendChild(tpl);
+
+    const wiz = el("div", "tpl-entry-card disabled");
+    wiz.setAttribute("aria-disabled", "true");
+    wiz.innerHTML = `<span class="tpl-entry-icon">${sparkGlyph()}</span>
+      <span class="tpl-entry-main">
+        <span class="tpl-entry-title">Build with a wizard <span class="tpl-soon">Coming soon</span></span>
+        <span class="tpl-entry-sub">Answer a few questions and we'll assemble the flow for you.</span>
+      </span>`;
+    row.appendChild(wiz);
+
+    return row;
+  }
+
+  function gridGlyph() {
+    return `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="10" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="10" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  }
+  function sparkGlyph() {
+    return `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1.5l1.7 4.3 4.3 1.7-4.3 1.7L9 13.5 7.3 9.2 3 7.5l4.3-1.7L9 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+  }
+
+  // ---------------- Presets library (modal) ----------------
+  // A browsable gallery of built-in presets. Selecting one swaps the SAME modal
+  // body to a full plain-English preview before any apply happens. Apply lands
+  // a draft and opens it in the existing builder for review.
+  async function openPresetsLibrary() {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Automation templates</h2><button class="icon-btn" id="pl-close">&times;</button></div>`;
+    const pbody = el("div", "modal-body");
+    pbody.innerHTML = `<div class="cell-muted" style="padding:24px">Loading templates…</div>`;
+    inner.appendChild(pbody);
+    const overlay = modal(inner, "modal-builder");
+    inner.querySelector("#pl-close").onclick = () => overlay.remove();
+    try {
+      const presets = await App.portalApi("/api/automations/presets");
+      showGallery(pbody, presets, overlay);
+    } catch (e) {
+      pbody.innerHTML = `<div class="cell-muted" style="padding:24px">${esc(e.message)}</div>`;
+    }
+  }
+
+  function showGallery(pbody, presets, overlay) {
+    pbody.innerHTML = "";
+    pbody.appendChild(hint("Pick a template to preview it in plain English, then apply it as an inactive draft you can review and switch on yourself."));
+    if (!presets.length) {
+      pbody.appendChild(el("div", "cell-muted", "No templates available."));
+      return;
+    }
+    const grid = el("div", "preset-grid");
+    presets.forEach((p) => grid.appendChild(presetCard(p, pbody, presets, overlay)));
+    pbody.appendChild(grid);
+  }
+
+  function presetCard(p, pbody, presets, overlay) {
+    const card = el("div", "preset-card");
+    const head = el("div");
+    head.innerHTML = `<div class="preset-name">${esc(p.name)}</div><div class="preset-desc">${esc(p.description)}</div>`;
+    card.appendChild(head);
+    card.appendChild(shapeEl(p.shape));
+    if (p.missing && p.missing.length) {
+      card.appendChild(el("div", "preset-missing", "Expects a field: " + p.missing.map((m) => esc(m.label || m.key)).join(", ")));
+    }
+    const foot = el("div", "preset-card-foot");
+    const prev = el("button", "btn btn-ghost btn-sm", "Preview");
+    prev.onclick = (e) => { e.stopPropagation(); showPreview(pbody, p, presets, overlay); };
+    const apply = el("button", "btn btn-primary btn-sm", "Apply");
+    apply.onclick = (e) => { e.stopPropagation(); applyPreset(p, overlay); };
+    foot.appendChild(prev); foot.appendChild(apply);
+    card.appendChild(foot);
+    card.onclick = (e) => { if (e.target.closest("button")) return; showPreview(pbody, p, presets, overlay); };
+    return card;
+  }
+
+  // Visual cue of the trigger -> action shape (chips joined by arrows).
+  function shapeEl(shape) {
+    const wrap = el("div", "preset-shape");
+    wrap.appendChild(el("span", "shape-chip trigger", esc((shape && shape.trigger) || "Trigger")));
+    ((shape && shape.actions) || []).forEach((a) => {
+      const arrow = el("span", "shape-arrow");
+      arrow.innerHTML = `<svg width="16" height="10" viewBox="0 0 16 10" fill="none"><path d="M0 5h13M9 1l5 4-5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      wrap.appendChild(arrow);
+      wrap.appendChild(el("span", "shape-chip action", esc(a)));
+    });
+    return wrap;
+  }
+
+  // Full plain-English preview, rendered into the same modal body.
+  function showPreview(pbody, p, presets, overlay) {
+    pbody.innerHTML = "";
+    const back = el("button", "btn btn-ghost btn-sm", "← All templates");
+    back.onclick = () => showGallery(pbody, presets, overlay);
+    pbody.appendChild(back);
+
+    const head = el("div", "preset-pv-head");
+    head.innerHTML = `<div class="preset-pv-title">${esc(p.name)}</div><div class="preset-pv-desc">${esc(p.description)}</div>`;
+    pbody.appendChild(head);
+
+    pbody.appendChild(shapeEl(p.shape));
+
+    const sm = p.summary || {};
+    const conds = (sm.conditions || []).map((c) => `<li>${esc(c)}</li>`).join("") || "<li>Always runs</li>";
+    const acts = (sm.actions || []).map((a) => `<li>${esc(a)}</li>`).join("") || "<li>—</li>";
+    const sec = el("div", "preset-pv-section");
+    sec.innerHTML = `
+      <div class="pv-block"><div class="pv-k">When</div><div class="pv-v">${esc(sm.trigger || "")}</div></div>
+      <div class="pv-block"><div class="pv-k">If</div><div class="pv-v"><ul>${conds}</ul></div></div>
+      <div class="pv-block"><div class="pv-k">Then</div><div class="pv-v"><ul>${acts}</ul></div></div>`;
+    pbody.appendChild(sec);
+
+    // Which fields it expects, and whether they exist in this portal.
+    if (p.expected && p.expected.length) {
+      const fsec = el("div", "preset-pv-section");
+      const chips = p.expected
+        .map((f) => `<span class="field-flag ${f.present ? "ok" : "missing"}">${esc(f.label || f.key)}${f.present ? "" : " — missing"}</span>`)
+        .join("");
+      fsec.innerHTML = `<div class="pv-k">Fields it expects</div><div class="field-flags">${chips}</div>`;
+      if (p.missing && p.missing.length) {
+        const names = p.missing.map((m) => "“" + (m.label || m.key) + "”").join(", ");
+        const verb = p.missing.length > 1 ? "don't" : "doesn't";
+        fsec.appendChild(el("div", "pv-warn", `This template expects ${names}, which ${verb} exist in this portal yet. You can still apply it — it's saved as an inactive draft and clearly flagged so you can create or map the field under Fields before turning it on.`));
+      }
+      pbody.appendChild(fsec);
+    }
+
+    if (p.note) pbody.appendChild(hint(p.note));
+
+    const bar = el("div", "modal-savebar");
+    const cancel = el("button", "btn btn-ghost", "Back");
+    cancel.onclick = () => showGallery(pbody, presets, overlay);
+    const apply = el("button", "btn btn-primary", "Apply as draft");
+    apply.onclick = () => applyPreset(p, overlay);
+    bar.appendChild(cancel); bar.appendChild(apply);
+    pbody.appendChild(bar);
+  }
+
+  // Apply a preset -> draft, then open it in the builder for review. The draft
+  // is inactive; nothing runs until the user turns it on.
+  async function applyPreset(p, overlay) {
+    try {
+      const r = await App.portalApi("/api/automations/presets/apply", { method: "POST", body: JSON.stringify({ key: p.key }) });
+      overlay.remove();
+      toast(r.nameChanged ? `Added “${r.automation.name}” (a copy) as a draft` : "Draft automation added");
+      await render(host);
+      openEditor(r.automation, { missing: r.missing || [] });
+    } catch (e) {
+      toast(e.message, true);
+    }
   }
 
   function workflowCard(a) {
@@ -225,7 +457,7 @@
   // Layout: [Name] then a top-to-bottom flow — TRIGGER -> CONDITIONS (optional)
   // -> ACTIONS — connected by simple connector lines. Same data, same save
   // payload, same API as before; only the presentation changed.
-  function openEditor(existing) {
+  function openEditor(existing, opts) {
     const draft = existing
       ? { id: existing.id, name: existing.name, triggerType: existing.triggerType, conditions: (existing.conditions || []).map((r) => ({ ...r })), actions: (existing.actions || []).map((a) => ({ type: a.type, config: { ...(a.config || {}) } })) }
       : { name: "", triggerType: (meta.triggers[0] && meta.triggers[0].type) || "ContactCreated", conditions: [], actions: [] };
@@ -234,6 +466,19 @@
     inner.innerHTML = `<div class="modal-head"><h2>${existing ? "Edit automation" : "New automation"}</h2><button class="icon-btn" id="a-close">&times;</button></div>`;
     const bodyEl = el("div", "modal-body");
     inner.appendChild(bodyEl);
+
+    // If this draft was just applied from a template and references fields that
+    // don't exist in this portal, flag it right where the user reviews it. The
+    // draft stays inactive; this explains what to fix before turning it on.
+    const warnMissing = (opts && opts.missing) || [];
+    if (warnMissing.length) {
+      const names = warnMissing.map((m) => "“" + esc(m.label || m.key) + "”").join(", ");
+      const verb = warnMissing.length > 1 ? "don't" : "doesn't";
+      const them = warnMissing.length > 1 ? "them" : "it";
+      const wb = el("div", "wf-warnbar");
+      wb.innerHTML = `<strong>Needs attention before you turn it on.</strong> This draft uses ${names}, which ${verb} exist in this portal yet. Create or map ${them} under <em>Fields</em>, then switch this automation on. It stays an inactive draft until you do.`;
+      bodyEl.appendChild(wb);
+    }
 
     // --- Name ---
     const nameRow = el("div", "wf-name-row");
