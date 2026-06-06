@@ -160,6 +160,14 @@
 .pair-pill.soft { background: var(--gray-soft); color: var(--ink-faint); }
 .pair-warn { font-size: 12.5px; color: var(--ink); line-height: 1.5; background: var(--amber-soft); border: 1px solid var(--amber); border-radius: var(--radius-sm); padding: 9px 12px; margin: 0 0 12px; }
 .pair-orphan-note { font-size: 12px; color: var(--ink-faint); margin: 0 0 12px; }
+
+/* ----- Automations list toolbar (read-only view controls) ----- */
+.auto-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.auto-toolbar .input { margin-bottom: 0; width: auto; font-size: 13px; padding: 8px 11px; }
+.auto-toolbar .auto-search { flex: 1 1 200px; min-width: 140px; }
+.auto-toolbar select.input { cursor: pointer; }
+.auto-toolbar .btn { flex: 0 0 auto; }
+.auto-count { font-size: 12.5px; color: var(--ink-faint); margin-bottom: 12px; }
 `;
     const style = el("style");
     style.id = "wf-builder-styles";
@@ -245,12 +253,62 @@
   }
 
   // ---------------- Workflows list ----------------
+  // View-state for the read-only list toolbar (search / status / trigger / sort).
+  // Module-level so it survives the in-place re-renders (e.g. toggling a switch),
+  // and is reset only by the Clear control. It NEVER changes scoping or data —
+  // it only shows/hides and reorders the already-loaded, portal-scoped cards.
+  function defaultListView() { return { q: "", status: "all", trigger: "all", sort: "default" }; }
+  let listView = defaultListView();
+  function resetListView() { listView = defaultListView(); }
+
+  // Base trigger of an automation, collapsing the field-scoped / scheduled
+  // variants ("FieldChanged:status", "Scheduled:...:...") to their base so the
+  // trigger filter groups them as one ("Field changed", "On a date").
+  function triggerBase(tt) {
+    if (!tt) return tt || "";
+    if (tt.indexOf("FieldChanged:") === 0) return "FieldChanged";
+    if (tt.indexOf("Scheduled:") === 0) return "Scheduled";
+    return tt;
+  }
+  function triggerBaseLabel(base) {
+    const t = (meta.triggers || []).find((x) => x.type === base);
+    return t ? t.label : base;
+  }
+  // Distinct base triggers actually present in this portal's automations, ordered
+  // to match the builder's trigger list. Derived from data — never hardcoded.
+  function presentTriggers() {
+    const seen = new Set();
+    automations.forEach((a) => seen.add(triggerBase(a.triggerType)));
+    const order = (meta.triggers || []).map((t) => t.type);
+    return [...seen]
+      .sort((a, b) => (order.indexOf(a) < 0 ? 999 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 999 : order.indexOf(b)))
+      .map((b) => [b, triggerBaseLabel(b)]);
+  }
+
+  // Apply the toolbar's search/filter/sort to a COPY of the loaded list. Pure;
+  // never mutates `automations`. Default sort preserves the existing order.
+  function applyListView(autos) {
+    let out = autos.slice();
+    const q = (listView.q || "").trim().toLowerCase();
+    if (q) out = out.filter((a) => (a.name || "").toLowerCase().includes(q));
+    if (listView.status === "enabled") out = out.filter((a) => !!a.enabled);
+    else if (listView.status === "disabled") out = out.filter((a) => !a.enabled);
+    if (listView.trigger && listView.trigger !== "all") out = out.filter((a) => triggerBase(a.triggerType) === listView.trigger);
+    if (listView.sort === "name") out.sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }));
+    else if (listView.sort === "recent") out.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+    return out;
+  }
+
+  function makeSelect(options, value, onChange) {
+    const s = el("select", "input");
+    options.forEach(([v, l]) => { const o = el("option", null, esc(l)); o.value = v; if (v === value) o.selected = true; s.appendChild(o); });
+    s.onchange = () => onChange(s.value);
+    return s;
+  }
+
   function renderWorkflows(body) {
     body.innerHTML = "";
-    // Entry-point row: a compact "Start from a template" card and a disabled
-    // "Build with a wizard" placeholder, side by side above the real list. The
-    // full template gallery is NOT rendered inline — it opens in a modal — so a
-    // user's actual automations stay at the top of the page on every visit.
+    // Entry-point row: "Start from a template" + "Build with a wizard".
     body.appendChild(entryRow());
 
     if (!automations.length) {
@@ -260,29 +318,81 @@
       body.appendChild(empty);
       return;
     }
-    const list = el("div");
-    // Visibly link wizard branch pairs. Robust pairs share a durable pairId
-    // (written at creation). A best-effort, display-only fallback links pre-pairId
-    // pairs by their "(if)"/"(otherwise)" names + shared trigger. All matching is
-    // within this one portal (the list itself is tenant-scoped).
-    const groups = computePairGroups(automations);
+
+    // If a previously-chosen trigger filter is no longer present (its automations
+    // were deleted/edited), fall back to "All" so nothing silently hides.
+    if (listView.trigger !== "all" && !presentTriggers().some(([v]) => v === listView.trigger)) listView.trigger = "all";
+
+    // --- Toolbar (read-only view controls) ---
+    const bar = el("div", "auto-toolbar");
+    const search = el("input", "input auto-search");
+    search.type = "text";
+    search.placeholder = "Search by name…";
+    search.value = listView.q;
+    search.setAttribute("aria-label", "Search automations by name");
+    search.oninput = () => { listView.q = search.value; refreshList(); };
+    const statusSel = makeSelect([["all", "All statuses"], ["enabled", "Enabled"], ["disabled", "Disabled"]], listView.status, (v) => { listView.status = v; refreshList(); });
+    const triggerSel = makeSelect([["all", "All triggers"], ...presentTriggers()], listView.trigger, (v) => { listView.trigger = v; refreshList(); });
+    const sortSel = makeSelect([["default", "Sort: Default"], ["name", "Sort: Name (A–Z)"], ["recent", "Sort: Recently edited"]], listView.sort, (v) => { listView.sort = v; refreshList(); });
+    const clear = el("button", "btn btn-ghost btn-sm", "Clear");
+    clear.onclick = () => {
+      resetListView();
+      search.value = ""; statusSel.value = "all"; triggerSel.value = "all"; sortSel.value = "default";
+      refreshList();
+    };
+    [search, statusSel, triggerSel, sortSel, clear].forEach((c) => bar.appendChild(c));
+    body.appendChild(bar);
+
+    // Count line + the list region. Only these are rebuilt on filter changes, so
+    // the search box keeps focus while typing.
+    const countLine = el("div", "auto-count");
+    body.appendChild(countLine);
+    const listWrap = el("div");
+    body.appendChild(listWrap);
+
+    function refreshList() {
+      const visible = applyListView(automations);
+      countLine.textContent = `${visible.length} of ${automations.length} shown`;
+      listWrap.innerHTML = "";
+      if (!visible.length) {
+        const empty = el("div", "empty-state");
+        empty.innerHTML = `<p>No automations match.</p><p class="cell-muted">Try a different search, status, or trigger.</p>`;
+        const c = el("button", "btn btn-ghost btn-sm", "Clear filters");
+        c.onclick = () => {
+          resetListView();
+          search.value = ""; statusSel.value = "all"; triggerSel.value = "all"; sortSel.value = "default";
+          refreshList();
+        };
+        empty.appendChild(c);
+        listWrap.appendChild(empty);
+        return;
+      }
+      renderCards(listWrap, visible);
+    }
+    refreshList();
+  }
+
+  // Render the visible cards with branch-pair grouping. Pair grouping runs over
+  // the VISIBLE subset, so a filter that hides one half simply shows the other
+  // as a normal card. The "partner deleted" note is judged against the FULL
+  // loaded list, so a filtered-out (not deleted) partner is never mislabeled.
+  function renderCards(container, visible) {
+    const groups = computePairGroups(visible);
     const rendered = new Set();
-    automations.forEach((a) => {
+    visible.forEach((a) => {
       if (rendered.has(a.id)) return;
       const pair = groups.pairOf.get(a.id);
       if (pair && pair.length === 2) {
         const [x, y] = pair;
         rendered.add(x.id);
         rendered.add(y.id);
-        list.appendChild(pairGroupEl(x, y, groups.kindOf.get(a.id)));
+        container.appendChild(pairGroupEl(x, y, groups.kindOf.get(a.id)));
       } else {
         rendered.add(a.id);
-        // a.pairId present but no partner in the list => partner was deleted.
-        const orphan = !!a.pairId;
-        list.appendChild(workflowCard(a, orphan ? { orphan: true } : null));
+        const partnerDeleted = !!a.pairId && !automations.some((o) => o.id !== a.id && o.pairId === a.pairId);
+        container.appendChild(workflowCard(a, partnerDeleted ? { orphan: true } : null));
       }
     });
-    body.appendChild(list);
   }
 
   // Build pair groupings. Returns maps from an automation id to its [a,b] pair
