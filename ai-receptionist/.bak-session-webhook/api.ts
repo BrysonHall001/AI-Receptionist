@@ -18,8 +18,6 @@ import { listAutomations, getAutomation, createAutomation, updateAutomation, del
 import { testRunAutomation, runManualAutomation } from "../automation/engine";
 import { listScheduledJobs, cancelScheduledJob, processDueJobs } from "../automation/scheduler";
 import { loadFieldDefs, conditionFields } from "../automation/contactRow";
-import { validateWebhookUrl, sendWebhook, buildSamplePayload } from "../automation/webhook";
-import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteEndpoint, listCalls as listInboundCalls } from "../services/inboundService";
 import { ACTION_TYPES } from "../automation/actions";
 import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
 import { emitEvent } from "../events/bus";
@@ -662,72 +660,6 @@ apiRouter.post("/automations/jobs/:id/cancel", async (req: Request, res: Respons
   const ok = await cancelScheduledJob(req.params.id, tenantId);
   if (!ok) { res.status(400).json({ error: "Job not found or no longer pending" }); return; }
   res.json({ ok: true });
-});
-
-// Fire one sample webhook to a URL (the "Send test" button). Tenant-scoped:
-// uses this tenant's field shape for the sample payload, runs the same SSRF
-// check as the real action, and never echoes the secret header back.
-apiRouter.post("/automations/webhook-test", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res);
-  if (!tenantId) return;
-  const { url, headerName, headerValue } = (req.body ?? {}) as { url?: string; headerName?: string; headerValue?: string };
-  const check = await validateWebhookUrl(String(url || ""));
-  if (!check.ok) { res.json({ ok: false, blocked: true, reason: check.reason }); return; }
-  const fieldDefs = await loadFieldDefs(tenantId);
-  const payload = buildSamplePayload(tenantId, fieldDefs);
-  const r = await sendWebhook({ url: String(url), headerName, headerValue, payload });
-  if (r.outcome === "blocked") { res.json({ ok: false, blocked: true, reason: r.reason }); return; }
-  res.json({ ok: r.outcome === "sent" && !!r.ok, outcome: r.outcome, status: r.status ?? null, host: check.host, warnHttp: !!check.warnHttp });
-});
-
-// ---- Inbound webhook endpoints (admin only; tenant-scoped) ----------------
-function inboundAdminOnly(req: Request, res: Response): boolean {
-  if (req.user!.role === "CLIENT_USER") { res.status(403).json({ error: "Only admins can manage inbound webhooks" }); return false; }
-  return true;
-}
-
-apiRouter.get("/inbound", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  res.json(await listEndpoints(tenantId));
-});
-
-apiRouter.post("/inbound", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  try {
-    const { name, mapping } = (req.body ?? {}) as { name?: string; mapping?: Record<string, string> };
-    res.json(await createEndpoint(tenantId, { name, mapping, createdById: req.user!.id }));
-  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
-
-apiRouter.patch("/inbound/:id", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  try {
-    const { name, mapping, enabled } = (req.body ?? {}) as any;
-    res.json(await updateEndpoint(tenantId, req.params.id, { name, mapping, enabled }));
-  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
-
-apiRouter.post("/inbound/:id/regenerate", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  try { res.json(await regenerateToken(tenantId, req.params.id)); }
-  catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
-
-apiRouter.delete("/inbound/:id", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  try { res.json(await deleteEndpoint(tenantId, req.params.id)); }
-  catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
-
-apiRouter.get("/inbound/:id/calls", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  res.json(await listInboundCalls(tenantId, req.params.id, Number(req.query.limit) || 50));
 });
 
 apiRouter.get("/automations/runs", async (req: Request, res: Response) => {

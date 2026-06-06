@@ -5,9 +5,8 @@ import { sendRichEmail } from "../services/notificationService";
 import { sendSms } from "../services/smsService";
 import { updateContact, createContact, softDeleteContacts } from "../services/contactService";
 import { log as logActivity } from "../services/activityService";
-import { FieldMeta, renderTemplate, templateContext, buildColumns, valueOf, conditionFields } from "./contactRow";
+import { FieldMeta, renderTemplate, templateContext, buildColumns } from "./contactRow";
 import { evalRules } from "./conditions";
-import { validateWebhookUrl, sendWebhook, buildContactPayload } from "./webhook";
 
 const db = prisma as any;
 
@@ -34,9 +33,6 @@ export interface ActionContext {
   // "update_record"/"delete_record" actions can act on that set. Shared across
   // all actions of one run (the engine passes one ctx through the loop).
   workingSet?: string[];
-  // The trigger/event that started this run (best-effort), included in webhook
-  // payloads. Set by the engine; a generic label for queued/scheduled jobs.
-  triggerType?: string;
 }
 
 // Metadata for the builder UI. Adding an action = add an executor + an entry
@@ -49,13 +45,10 @@ export const ACTION_TYPES: { type: string; label: string }[] = [
   { type: "remove_tag", label: "Remove tag" },
   { type: "create_note", label: "Create internal note" },
   { type: "assign_owner", label: "Assign owner" },
-  { type: "wait", label: "Wait / delay (then run the actions below later)" },
   { type: "create_record", label: "Create a record" },
   { type: "update_record", label: "Update a record" },
   { type: "search_records", label: "Find records" },
   { type: "delete_record", label: "Delete a record (to recycle bin)" },
-  { type: "compute_field", label: "Compute value into field" },
-  { type: "send_webhook", label: "Send webhook (POST to a URL)" },
 ];
 
 // A single flow run may delete at most this many records WITHOUT the action
@@ -237,112 +230,7 @@ const EXECUTORS: Record<string, Executor> = {
     const n = await softDeleteContacts(ctx.tenantId, ids);
     return { type: "delete_record", status: "success", detail: `moved ${n} record(s) to the recycle bin` };
   },
-
-  // Compute a derived value from a FIXED menu of operations (no formulas/scripts)
-  // and write it to a destination field. Date math is the focus:
-  //   date_add / date_subtract : source date +/- amount (years|months|days)
-  //   copy                     : copy a value from one field to another
-  // Writes via updateContact, so tenant scoping + the normal write path apply.
-  async compute_field(cfg, ctx) {
-    const op = cfg.op;
-    const source = cfg.source;
-    const dest = cfg.dest;
-    if (!dest) return { type: "compute_field", status: "skipped", detail: "No destination field selected" };
-    if (op !== "copy" && !source) return { type: "compute_field", status: "skipped", detail: "No source field selected" };
-
-    const fields = conditionFields(ctx.fieldDefs);
-    const typeOf = (k: string) => fields.find((f) => f.key === k)?.type || "text";
-    const isDateOp = op === "date_add" || op === "date_subtract";
-    // Respect the destination field's type: date math must land in a date field.
-    if (isDateOp && typeOf(dest) !== "date") {
-      return { type: "compute_field", status: "failed", error: `Destination "${dest}" must be a Date field for date math` };
-    }
-
-    const useSearch = cfg.target === "search";
-    const ids = useSearch ? (ctx.workingSet || []) : [ctx.contactId];
-    if (useSearch && !ids.length) return { type: "compute_field", status: "skipped", detail: "No search results — add a Find records action first" };
-
-    let ok = 0, fail = 0, skip = 0, lastErr = "", lastVal = "";
-    for (const id of ids) {
-      try {
-        const c = await prisma.contact.findUnique({ where: { id } });
-        if (!c || c.tenantId !== ctx.tenantId) { fail++; continue; } // tenant guard
-        const srcRaw = source ? valueOf(c, source) : null;
-        let computed: any;
-        if (isDateOp) {
-          const amount = Number(cfg.amount);
-          if (!isFinite(amount)) { skip++; continue; }
-          const unit = cfg.unit === "months" || cfg.unit === "days" ? cfg.unit : "years";
-          const delta = op === "date_subtract" ? -amount : amount;
-          computed = addToDateString(srcRaw, delta, unit);
-          if (computed == null) { skip++; continue; } // source wasn't a valid date
-        } else if (op === "copy") {
-          computed = srcRaw == null ? "" : Array.isArray(srcRaw) ? srcRaw : String(srcRaw);
-        } else {
-          return { type: "compute_field", status: "failed", error: "Unknown operation" };
-        }
-        const patch: any = SYSTEM_KEYS.has(dest) ? { [dest]: computed } : { customFields: { [dest]: computed } };
-        await updateContact(id, ctx.tenantId, patch, automationActor(ctx));
-        ok++; lastVal = String(computed);
-      } catch (e) { fail++; lastErr = (e as Error).message; }
-    }
-    if (!ok && fail) return { type: "compute_field", status: "failed", error: lastErr || "Compute failed" };
-    if (!ok && skip) return { type: "compute_field", status: "skipped", detail: "Nothing computed (source empty or not a valid date)" };
-    return { type: "compute_field", status: "success", detail: useSearch ? `set ${dest} on ${ok} record(s)` : `${dest} = ${lastVal}` };
-  },
-
-  // "wait" is handled by the flow runner (engine.runOne splits the flow at the
-  // Wait step and queues what follows). This no-op exists only so a stray queued
-  // wait can never produce an "unknown action" failure.
-  async wait(_cfg, _ctx) {
-    return { type: "wait", status: "success", detail: "no-op (handled by the flow runner)" };
-  },
-
-  // Outbound webhook: POST a JSON snapshot of the triggering contact (+ flow
-  // metadata) to a configured URL. Tenant-scoped (only ctx.tenantId's contact),
-  // SSRF-checked, short timeout, and the optional secret header is NEVER logged.
-  async send_webhook(cfg, ctx) {
-    const url = String(cfg.url || "").trim();
-    if (!url) return { type: "send_webhook", status: "skipped", detail: "No URL configured" };
-
-    const check = await validateWebhookUrl(url);
-    if (!check.ok) return { type: "send_webhook", status: "failed", error: `Blocked URL: ${check.reason}` };
-
-    const contact = await freshContact(ctx); // tenant-checked
-    const payload = {
-      source: "ClarityCRM",
-      event: {
-        tenantId: ctx.tenantId,
-        automationId: ctx.actor.id,
-        automationName: ctx.actor.name,
-        trigger: ctx.triggerType || "unknown",
-        occurredAt: new Date().toISOString(),
-      },
-      contact: buildContactPayload(contact, ctx.fieldDefs),
-    };
-
-    const r = await sendWebhook({ url, headerName: cfg.headerName, headerValue: cfg.headerValue, payload });
-    if (r.outcome === "blocked") return { type: "send_webhook", status: "failed", error: `Blocked URL: ${r.reason}` };
-    if (r.outcome === "timeout") return { type: "send_webhook", status: "failed", error: "Timed out (no response in 5s)" };
-    if (r.outcome === "error") return { type: "send_webhook", status: "failed", error: `Request failed: ${r.error}` };
-    if (r.ok) return { type: "send_webhook", status: "success", detail: `POST ${check.host} → ${r.status}` };
-    return { type: "send_webhook", status: "failed", error: `POST ${check.host} → HTTP ${r.status}` };
-  },
 };
-
-// Add/subtract whole calendar units to a "YYYY-MM-DD" string, returning the same
-// format. All math is done in UTC so there is no timezone/DST drift. Returns null
-// if the input isn't a parseable date. (amount may be negative to subtract.)
-function addToDateString(dateStr: any, amount: number, unit: string): string | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr ?? "").trim());
-  if (!m) return null;
-  const dt = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  if (isNaN(dt.getTime())) return null;
-  if (unit === "years") dt.setUTCFullYear(dt.getUTCFullYear() + amount);
-  else if (unit === "months") dt.setUTCMonth(dt.getUTCMonth() + amount);
-  else dt.setUTCDate(dt.getUTCDate() + amount);
-  return dt.toISOString().slice(0, 10);
-}
 
 function automationActor(ctx: ActionContext) {
   return { id: ctx.actor.id, name: ctx.actor.name, type: "automation" as const };

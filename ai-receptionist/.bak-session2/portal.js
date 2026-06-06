@@ -1009,10 +1009,6 @@
     head.innerHTML = `<div class="contact-avatar">${esc((c.name || c.phone || "?").charAt(0).toUpperCase())}</div>
       <div><h1 class="contact-name">${esc(c.name || "Unknown")}</h1>
       <div class="contact-sub">${esc(c.phone || "")}${c.email ? " · " + esc(c.email) : ""}</div></div>`;
-    const runAuto = el("button", "btn btn-ghost btn-sm", "Run automation");
-    runAuto.style.marginLeft = "auto";
-    runAuto.onclick = () => openRunAutomation(id, c.name || c.phone || "this contact");
-    head.appendChild(runAuto);
     wrap.appendChild(head);
 
     const tabsBar = el("div", "tabs");
@@ -1223,15 +1219,6 @@
       setTimeout(() => fillUsers(users), 0);
     }
 
-    // Lead capture links (inbound webhooks) — admins only
-    if (canEditPortal) {
-      const ibCard = el("div", "card settings-card");
-      ibCard.innerHTML = `<h2 class="settings-h">Lead capture links</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:10px">Create a secure link you can give to a website form, Zapier, or another tool so new leads land directly in this portal.</p>
-        <div id="inbound-host"></div>`;
-      sections.appendChild(ibCard);
-    }
-
     // Account (everyone)
     const acct = el("div", "card settings-card");
     acct.innerHTML = `<h2 class="settings-h">Your account</h2>
@@ -1254,10 +1241,6 @@
     if (canEditPortal && App.theme) {
       const themeHost = App.util.$("#theme-host");
       if (themeHost) App.theme.mountSettings(themeHost);
-    }
-    if (canEditPortal && App.inbound) {
-      const inboundHost = App.util.$("#inbound-host");
-      if (inboundHost) App.inbound.render(inboundHost);
     }
 
     if (canEditPortal) {
@@ -1353,68 +1336,6 @@
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     document.body.appendChild(overlay);
     return overlay;
-  }
-
-  // Manual trigger: pick an enabled Manual flow and run it on this contact now.
-  // Conditions are still evaluated server-side; if they don't match, the flow is
-  // reported as skipped and no actions run.
-  async function openRunAutomation(contactId, contactName) {
-    let flows;
-    try { flows = await App.portalApi("/api/automations/manual"); }
-    catch (e) { App.util.toast(e.message, true); return; }
-    if (!flows || !flows.length) {
-      App.util.toast("No manual automations yet. Create one in Automations with the “Manual” trigger.", true);
-      return;
-    }
-    const inner = el("div");
-    inner.innerHTML = `<div class="modal-head"><h2>Run automation on ${esc(contactName)}</h2><button class="icon-btn" id="ra-close">&times;</button></div>`;
-    const body = el("div", "modal-body");
-    inner.appendChild(body);
-    const out = el("div");
-    out.style.marginTop = "10px";
-    flows.forEach((f) => {
-      const rowEl = el("div", "action-row");
-      rowEl.style.display = "flex";
-      rowEl.style.alignItems = "center";
-      rowEl.style.justifyContent = "space-between";
-      rowEl.style.gap = "10px";
-      const nm = el("div", null, `<strong>${esc(f.name)}</strong>`);
-      const run = el("button", "btn btn-primary btn-sm", "Run");
-      run.onclick = async () => {
-        run.disabled = true; run.textContent = "Running…";
-        out.innerHTML = `<div class="cell-muted">Running…</div>`;
-        try {
-          const res = await App.portalApi(`/api/automations/${f.id}/run`, { method: "POST", body: JSON.stringify({ contactId }) });
-          out.innerHTML = "";
-          out.appendChild(runResult(res));
-          App.util.toast(res && res.matched ? "Automation ran" : "Automation skipped (conditions not met)");
-        } catch (e) { out.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; }
-        finally { run.disabled = false; run.textContent = "Run"; }
-      };
-      rowEl.appendChild(nm); rowEl.appendChild(run);
-      body.appendChild(rowEl);
-    });
-    body.appendChild(out);
-    const overlay = modal(inner);
-    inner.querySelector("#ra-close").onclick = () => overlay.remove();
-  }
-
-  // Compact per-run result for the manual-run modal.
-  function runResult(r) {
-    if (!r) return el("div", "cell-muted", "No result returned.");
-    const box = el("div", "card");
-    box.style.marginTop = "8px";
-    const head = el("div", null, r.matched
-      ? `<strong>Ran.</strong> Conditions matched.`
-      : `<strong>Skipped.</strong> Conditions did not match, so no actions ran.`);
-    box.appendChild(head);
-    (r.results || []).forEach((x) => {
-      const line = el("div", "cell-muted");
-      line.style.marginTop = "4px";
-      line.textContent = `${x.type}: ${x.status}${x.detail ? " — " + x.detail : ""}${x.error ? " — " + x.error : ""}`;
-      box.appendChild(line);
-    });
-    return box;
   }
 
   async function openImport() {

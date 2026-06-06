@@ -15,6 +15,7 @@
     if (v === "fields") return renderFields();
     if (v === "reports") return App.reports.render(view());
     if (v === "automations") return App.automations.render(view());
+    if (v === "inbound") return App.inbound.render(view());
     if (v === "learn") return App.learn.render(view());
     if (v === "settings") return renderSettings();
     return renderDashboard();
@@ -1223,15 +1224,6 @@
       setTimeout(() => fillUsers(users), 0);
     }
 
-    // Lead capture links (inbound webhooks) — admins only
-    if (canEditPortal) {
-      const ibCard = el("div", "card settings-card");
-      ibCard.innerHTML = `<h2 class="settings-h">Lead capture links</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:10px">Create a secure link you can give to a website form, Zapier, or another tool so new leads land directly in this portal.</p>
-        <div id="inbound-host"></div>`;
-      sections.appendChild(ibCard);
-    }
-
     // Account (everyone)
     const acct = el("div", "card settings-card");
     acct.innerHTML = `<h2 class="settings-h">Your account</h2>
@@ -1254,10 +1246,6 @@
     if (canEditPortal && App.theme) {
       const themeHost = App.util.$("#theme-host");
       if (themeHost) App.theme.mountSettings(themeHost);
-    }
-    if (canEditPortal && App.inbound) {
-      const inboundHost = App.util.$("#inbound-host");
-      if (inboundHost) App.inbound.render(inboundHost);
     }
 
     if (canEditPortal) {

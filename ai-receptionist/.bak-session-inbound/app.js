@@ -145,9 +145,6 @@
       return App.portal.renderContact(id);
     }
 
-    // Old Inbound link now lives inside Settings.
-    if (path === "/inbound") return App.go("#/settings");
-
     // Portal section
     const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/settings": "settings" };
     if (portalViews[path]) {

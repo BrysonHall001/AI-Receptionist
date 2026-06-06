@@ -7,7 +7,6 @@ import { updateContact, createContact, softDeleteContacts } from "../services/co
 import { log as logActivity } from "../services/activityService";
 import { FieldMeta, renderTemplate, templateContext, buildColumns, valueOf, conditionFields } from "./contactRow";
 import { evalRules } from "./conditions";
-import { validateWebhookUrl, sendWebhook, buildContactPayload } from "./webhook";
 
 const db = prisma as any;
 
@@ -34,9 +33,6 @@ export interface ActionContext {
   // "update_record"/"delete_record" actions can act on that set. Shared across
   // all actions of one run (the engine passes one ctx through the loop).
   workingSet?: string[];
-  // The trigger/event that started this run (best-effort), included in webhook
-  // payloads. Set by the engine; a generic label for queued/scheduled jobs.
-  triggerType?: string;
 }
 
 // Metadata for the builder UI. Adding an action = add an executor + an entry
@@ -55,7 +51,6 @@ export const ACTION_TYPES: { type: string; label: string }[] = [
   { type: "search_records", label: "Find records" },
   { type: "delete_record", label: "Delete a record (to recycle bin)" },
   { type: "compute_field", label: "Compute value into field" },
-  { type: "send_webhook", label: "Send webhook (POST to a URL)" },
 ];
 
 // A single flow run may delete at most this many records WITHOUT the action
@@ -296,37 +291,6 @@ const EXECUTORS: Record<string, Executor> = {
   // wait can never produce an "unknown action" failure.
   async wait(_cfg, _ctx) {
     return { type: "wait", status: "success", detail: "no-op (handled by the flow runner)" };
-  },
-
-  // Outbound webhook: POST a JSON snapshot of the triggering contact (+ flow
-  // metadata) to a configured URL. Tenant-scoped (only ctx.tenantId's contact),
-  // SSRF-checked, short timeout, and the optional secret header is NEVER logged.
-  async send_webhook(cfg, ctx) {
-    const url = String(cfg.url || "").trim();
-    if (!url) return { type: "send_webhook", status: "skipped", detail: "No URL configured" };
-
-    const check = await validateWebhookUrl(url);
-    if (!check.ok) return { type: "send_webhook", status: "failed", error: `Blocked URL: ${check.reason}` };
-
-    const contact = await freshContact(ctx); // tenant-checked
-    const payload = {
-      source: "ClarityCRM",
-      event: {
-        tenantId: ctx.tenantId,
-        automationId: ctx.actor.id,
-        automationName: ctx.actor.name,
-        trigger: ctx.triggerType || "unknown",
-        occurredAt: new Date().toISOString(),
-      },
-      contact: buildContactPayload(contact, ctx.fieldDefs),
-    };
-
-    const r = await sendWebhook({ url, headerName: cfg.headerName, headerValue: cfg.headerValue, payload });
-    if (r.outcome === "blocked") return { type: "send_webhook", status: "failed", error: `Blocked URL: ${r.reason}` };
-    if (r.outcome === "timeout") return { type: "send_webhook", status: "failed", error: "Timed out (no response in 5s)" };
-    if (r.outcome === "error") return { type: "send_webhook", status: "failed", error: `Request failed: ${r.error}` };
-    if (r.ok) return { type: "send_webhook", status: "success", detail: `POST ${check.host} → ${r.status}` };
-    return { type: "send_webhook", status: "failed", error: `POST ${check.host} → HTTP ${r.status}` };
   },
 };
 

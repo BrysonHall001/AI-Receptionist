@@ -5,7 +5,6 @@ import { DomainEvent, EventActor } from "../events/types";
 import { evalRules, Rule } from "./conditions";
 import { buildColumns, loadFieldDefs } from "./contactRow";
 import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
-import { enqueueJob } from "./scheduler";
 
 const db = prisma as any;
 
@@ -81,53 +80,14 @@ async function runOne(
     fieldDefs,
     actor,
     portal: { phoneNumber: portal?.phoneNumber, notifyEmail: portal?.notifyEmail, name: portal?.name },
-    workingSet: [],
-    triggerType: event.type,
   };
 
   const results: ActionResult[] = [];
-  const actionList = (auto.actions as ActionConfig[]) || [];
-  const waitIdx = actionList.findIndex((a) => a.type === "wait");
-
-  if (waitIdx === -1) {
-    // No delay: run everything inline, exactly as before.
-    for (const action of actionList) {
-      results.push(await runAction(action, ctx));
-    }
-  } else {
-    // Run actions before the Wait now; queue the actions after it for later.
-    for (let i = 0; i < waitIdx; i++) {
-      results.push(await runAction(actionList[i], ctx));
-    }
-    const dueAt = delayDueAt(actionList[waitIdx].config || {});
-    const remaining = actionList.slice(waitIdx + 1).filter((a) => a.type !== "wait");
-    const contactName = contact.name || contact.phone || contact.email || contact.id;
-    for (const action of remaining) {
-      await enqueueJob({
-        tenantId: auto.tenantId,
-        automationId: auto.id,
-        automationName: auto.name,
-        contactId: contact.id,
-        contactName,
-        action,
-        dueAt,
-        kind: "delay",
-      });
-      results.push({ type: action.type, status: "skipped", detail: `scheduled for ${dueAt.toISOString()}` });
-    }
-    results.push({ type: "wait", status: "success", detail: `deferred ${remaining.length} action(s) until ${dueAt.toISOString()}` });
+  for (const action of (auto.actions as ActionConfig[]) || []) {
+    results.push(await runAction(action, ctx));
   }
-
   const status = results.some((r) => r.status === "failed") ? "failed" : "success";
   await writeRun(auto, { eventId, eventType: event.type, contactId: contact.id, status, matched: true, results });
-}
-
-// now + amount * (minutes|hours|days). Defaults to minutes.
-function delayDueAt(cfg: Record<string, any>): Date {
-  const amount = Number(cfg.amount) || 0;
-  const unit = cfg.unit;
-  const ms = unit === "hours" ? 3_600_000 : unit === "days" ? 86_400_000 : 60_000;
-  return new Date(Date.now() + amount * ms);
 }
 
 async function writeRun(

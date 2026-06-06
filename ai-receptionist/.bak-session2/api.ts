@@ -14,12 +14,9 @@ import { listExports, createExport, getExportCsv } from "../services/exportServi
 import { updatePortal, getPortal } from "../services/portalService";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getUserTheme, setUserTheme, getContactColumns, setContactColumns } from "../services/userService";
-import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
-import { testRunAutomation, runManualAutomation } from "../automation/engine";
-import { listScheduledJobs, cancelScheduledJob, processDueJobs } from "../automation/scheduler";
+import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents } from "../services/automationService";
+import { testRunAutomation } from "../automation/engine";
 import { loadFieldDefs, conditionFields } from "../automation/contactRow";
-import { validateWebhookUrl, sendWebhook, buildSamplePayload } from "../automation/webhook";
-import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteEndpoint, listCalls as listInboundCalls } from "../services/inboundService";
 import { ACTION_TYPES } from "../automation/actions";
 import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
 import { emitEvent } from "../events/bus";
@@ -628,108 +625,6 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
   });
 });
 
-// Enabled Manual-trigger flows for the current tenant (for the record's "Run
-// automation" button). Defined before any "/automations/:id" route so it is not
-// mistaken for an id.
-apiRouter.get("/automations/manual", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res);
-  if (!tenantId) return;
-  res.json(await listManualAutomations(tenantId));
-});
-
-// ---- Scheduled jobs (delays + date-relative schedules) ----
-// List this tenant's job queue (pending/done/failed/canceled).
-apiRouter.get("/automations/jobs", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res);
-  if (!tenantId) return;
-  res.json(await listScheduledJobs(tenantId));
-});
-
-// Manual processor (super-admin only). Runs the daily sweep + executes due jobs
-// for the current portal's tenant. This is the stand-in for the deployed host's
-// automatic heartbeat; the same processDueJobs() is what a cron will call later.
-apiRouter.post("/automations/jobs/process", async (req: Request, res: Response) => {
-  if (req.user!.role !== "SUPER_ADMIN") { res.status(403).json({ error: "Super-admin only" }); return; }
-  const tenantId = tenantOr400(req, res);
-  if (!tenantId) return;
-  res.json(await processDueJobs(tenantId));
-});
-
-// Cancel a pending job before it runs.
-apiRouter.post("/automations/jobs/:id/cancel", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res);
-  if (!tenantId) return;
-  const ok = await cancelScheduledJob(req.params.id, tenantId);
-  if (!ok) { res.status(400).json({ error: "Job not found or no longer pending" }); return; }
-  res.json({ ok: true });
-});
-
-// Fire one sample webhook to a URL (the "Send test" button). Tenant-scoped:
-// uses this tenant's field shape for the sample payload, runs the same SSRF
-// check as the real action, and never echoes the secret header back.
-apiRouter.post("/automations/webhook-test", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res);
-  if (!tenantId) return;
-  const { url, headerName, headerValue } = (req.body ?? {}) as { url?: string; headerName?: string; headerValue?: string };
-  const check = await validateWebhookUrl(String(url || ""));
-  if (!check.ok) { res.json({ ok: false, blocked: true, reason: check.reason }); return; }
-  const fieldDefs = await loadFieldDefs(tenantId);
-  const payload = buildSamplePayload(tenantId, fieldDefs);
-  const r = await sendWebhook({ url: String(url), headerName, headerValue, payload });
-  if (r.outcome === "blocked") { res.json({ ok: false, blocked: true, reason: r.reason }); return; }
-  res.json({ ok: r.outcome === "sent" && !!r.ok, outcome: r.outcome, status: r.status ?? null, host: check.host, warnHttp: !!check.warnHttp });
-});
-
-// ---- Inbound webhook endpoints (admin only; tenant-scoped) ----------------
-function inboundAdminOnly(req: Request, res: Response): boolean {
-  if (req.user!.role === "CLIENT_USER") { res.status(403).json({ error: "Only admins can manage inbound webhooks" }); return false; }
-  return true;
-}
-
-apiRouter.get("/inbound", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  res.json(await listEndpoints(tenantId));
-});
-
-apiRouter.post("/inbound", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  try {
-    const { name, mapping } = (req.body ?? {}) as { name?: string; mapping?: Record<string, string> };
-    res.json(await createEndpoint(tenantId, { name, mapping, createdById: req.user!.id }));
-  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
-
-apiRouter.patch("/inbound/:id", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  try {
-    const { name, mapping, enabled } = (req.body ?? {}) as any;
-    res.json(await updateEndpoint(tenantId, req.params.id, { name, mapping, enabled }));
-  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
-
-apiRouter.post("/inbound/:id/regenerate", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  try { res.json(await regenerateToken(tenantId, req.params.id)); }
-  catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
-
-apiRouter.delete("/inbound/:id", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  try { res.json(await deleteEndpoint(tenantId, req.params.id)); }
-  catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
-
-apiRouter.get("/inbound/:id/calls", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res); if (!tenantId) return;
-  if (!inboundAdminOnly(req, res)) return;
-  res.json(await listInboundCalls(tenantId, req.params.id, Number(req.query.limit) || 50));
-});
-
 apiRouter.get("/automations/runs", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
@@ -777,22 +672,6 @@ apiRouter.post("/automations/:id/test", async (req: Request, res: Response) => {
   if (!contactId) { res.status(400).json({ error: "A contactId is required" }); return; }
   try {
     const run = await testRunAutomation(req.params.id, contactId, tenantId);
-    res.json(run);
-  } catch (err) {
-    res.status(400).json({ error: (err as Error).message });
-  }
-});
-
-// Run a Manual-trigger flow on demand from a record. Tenant-scoped via
-// tenantOr400; the engine additionally verifies the flow + contact belong to it
-// and that the flow's trigger is "Manual" and enabled.
-apiRouter.post("/automations/:id/run", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res);
-  if (!tenantId) return;
-  const { contactId } = (req.body ?? {}) as { contactId?: string };
-  if (!contactId) { res.status(400).json({ error: "A contactId is required" }); return; }
-  try {
-    const run = await runManualAutomation(req.params.id, contactId, tenantId);
     res.json(run);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

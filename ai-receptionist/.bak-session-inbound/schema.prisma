@@ -55,8 +55,6 @@ model Tenant {
   automations    Automation[]
   automationRuns AutomationRun[]
   scheduledJobs  ScheduledJob[]
-  inboundEndpoints InboundEndpoint[]
-  inboundCalls     InboundCall[]
 }
 
 model User {
@@ -319,41 +317,4 @@ model ScheduledJob {
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, status, dueAt])
   @@index([tenantId, createdAt])
-}
-
-// An inbound webhook endpoint: a public URL (keyed by a secret token) that an
-// external system POSTs to in order to create/update a contact in THIS tenant.
-// The tenant is derived solely from the token — never from the request body.
-model InboundEndpoint {
-  id          String        @id @default(cuid())
-  tenantId    String
-  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name        String
-  token       String        @unique
-  mapping     Json          @default("{}") // { incomingJsonKey: crmFieldKey }
-  enabled     Boolean       @default(true)
-  createdById String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  calls       InboundCall[]
-
-  @@index([tenantId])
-}
-
-// One row per inbound POST attempt, so every call (accepted or rejected) is
-// visible and nothing fails silently. Scoped to the same tenant as its endpoint.
-model InboundCall {
-  id         String          @id @default(cuid())
-  tenantId   String
-  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  endpointId String
-  endpoint   InboundEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
-  status     String          // accepted | rejected
-  reason     String?
-  contactId  String?
-  sourceIp   String?
-  createdAt  DateTime        @default(now())
-
-  @@index([tenantId, createdAt])
-  @@index([endpointId, createdAt])
 }

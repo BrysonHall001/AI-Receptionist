@@ -82,7 +82,6 @@ async function runOne(
     actor,
     portal: { phoneNumber: portal?.phoneNumber, notifyEmail: portal?.notifyEmail, name: portal?.name },
     workingSet: [],
-    triggerType: event.type,
   };
 
   const results: ActionResult[] = [];

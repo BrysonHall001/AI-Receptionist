@@ -50,17 +50,6 @@
 .wf-action-cfg .input { margin-bottom: 8px; }
 .wf-action-cfg textarea.input { min-height: 70px; resize: vertical; }
 .wf-empty-actions { font-size: 12.5px; color: var(--ink-faint); padding: 4px 0 2px; }
-.subnav-caption { font-size: 12.5px; color: var(--ink-faint); margin: -10px 0 16px; }
-.wf-process-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-.wf-process-note { font-size: 12px; color: var(--ink-faint); }
-.job-item { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--panel); display: flex; align-items: center; gap: 10px; }
-.job-main { min-width: 0; flex: 1; }
-.job-desc { font-size: 13px; color: var(--ink); }
-.job-sub { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
-.job-err { font-size: 12px; color: var(--red); margin-top: 3px; }
-.status-dot.pending { background: var(--ink-faint); }
-.status-dot.done { background: var(--green); }
-.status-dot.canceled { background: var(--amber); }
 `;
     const style = el("style");
     style.id = "wf-builder-styles";
@@ -81,24 +70,12 @@
     host.appendChild(head);
 
     const nav = el("div", "subnav");
-    [["workflows", "Workflows"], ["runs", "Execution log"], ["events", "Event log"], ["scheduled", "Scheduled"]].forEach(([key, label]) => {
+    [["workflows", "Workflows"], ["runs", "Execution log"], ["events", "Event log"]].forEach(([key, label]) => {
       const b = el("button", "subnav-item" + (tab === key ? " active" : ""), label);
       b.onclick = () => { tab = key; render(host); };
       nav.appendChild(b);
     });
     host.appendChild(nav);
-
-    // Single caption line beneath the tab row; updates to match the active tab.
-    // On-screen text (not a hover tooltip), so it works on touch devices.
-    const captions = {
-      workflows: "The automations you've set up.",
-      runs: "What your automations have already done.",
-      events: "Raw record of things that happened in your CRM.",
-      scheduled: "Automations set to run later — you can cancel them before they do.",
-    };
-    const caption = el("div", "subnav-caption");
-    caption.textContent = captions[tab] || "";
-    host.appendChild(caption);
 
     const body = el("div", "automations-body");
     body.innerHTML = `<div class="cell-muted" style="padding:24px">Loading…</div>`;
@@ -114,8 +91,6 @@
         renderWorkflows(body);
       } else if (tab === "runs") {
         renderRuns(body);
-      } else if (tab === "scheduled") {
-        renderScheduled(body);
       } else {
         renderEvents(body);
       }
@@ -130,12 +105,6 @@
       const key = type.slice("FieldChanged:".length);
       const f = (meta.fields || []).find((x) => x.key === key);
       return "Field changed: " + (f ? f.label : key);
-    }
-    // "Scheduled:<field>:<amount>:<unit>:<dir>" date-relative trigger.
-    if (type && type.indexOf("Scheduled:") === 0) {
-      const p = type.slice("Scheduled:".length).split(":");
-      const f = (meta.fields || []).find((x) => x.key === p[0]);
-      return `${p[1] || "0"} ${p[2] || "days"} ${p[3] || "before"} ${f ? f.label : (p[0] || "a date field")}`;
     }
     const t = (meta.triggers || []).find((x) => x.type === type);
     return t ? t.label : type;
@@ -250,23 +219,13 @@
     bodyEl.appendChild(flow);
 
     // STEP 1: Trigger
-    // Field-scoped change -> "FieldChanged:<key>". Date-relative schedule ->
-    // "Scheduled:<field>:<amount>:<unit>:<dir>". Split the stored value so the
-    // right sub-controls show.
+    // A field-scoped change is stored as "FieldChanged:<key>". Split the stored
+    // value into a base trigger + an optional field so both controls show right.
     let baseTrigger = draft.triggerType || "ContactCreated";
     let triggerField = "";
-    const sched = { field: "", amount: "", unit: "days", dir: "before" };
-    if (baseTrigger.indexOf("FieldChanged:") === 0) {
-      triggerField = baseTrigger.slice("FieldChanged:".length); baseTrigger = "FieldChanged";
-    } else if (baseTrigger.indexOf("Scheduled:") === 0) {
-      const p = baseTrigger.slice("Scheduled:".length).split(":");
-      sched.field = p[0] || ""; sched.amount = p[1] || ""; sched.unit = p[2] || "days"; sched.dir = p[3] || "before";
-      baseTrigger = "Scheduled";
-    }
+    if (baseTrigger.indexOf("FieldChanged:") === 0) { triggerField = baseTrigger.slice("FieldChanged:".length); baseTrigger = "FieldChanged"; }
     function syncTrigger() {
-      if (baseTrigger === "FieldChanged" && triggerField) draft.triggerType = "FieldChanged:" + triggerField;
-      else if (baseTrigger === "Scheduled") draft.triggerType = `Scheduled:${sched.field}:${sched.amount || 0}:${sched.unit}:${sched.dir}`;
-      else draft.triggerType = baseTrigger;
+      draft.triggerType = (baseTrigger === "FieldChanged" && triggerField) ? "FieldChanged:" + triggerField : baseTrigger;
     }
     syncTrigger();
 
@@ -296,29 +255,6 @@
         note.textContent = "This flow does not fire on its own. It runs when you open a contact and click “Run automation.”";
         note.style.margin = "0";
         trigExtra.appendChild(note);
-      } else if (baseTrigger === "Scheduled") {
-        const dateFields = (meta.fields || []).filter((f) => f.type === "date");
-        if (!dateFields.length) {
-          trigExtra.appendChild(small("No Date fields exist yet. Create one under Fields first (e.g. “18th Birthday Date”)."));
-        }
-        const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px"; rowEl.style.flexWrap = "wrap";
-        const amt = el("input", "input"); amt.type = "number"; amt.style.cssText = "margin-bottom:0;flex:0 0 70px"; amt.placeholder = "6"; amt.value = sched.amount; amt.oninput = () => { sched.amount = amt.value; syncTrigger(); };
-        const unitSel = el("select", "input"); unitSel.style.marginBottom = "0";
-        [["days", "days"], ["weeks", "weeks"], ["months", "months"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (sched.unit === v) o.selected = true; unitSel.appendChild(o); });
-        unitSel.onchange = () => { sched.unit = unitSel.value; syncTrigger(); };
-        const dirSel = el("select", "input"); dirSel.style.marginBottom = "0";
-        [["before", "before"], ["after", "after"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (sched.dir === v) o.selected = true; dirSel.appendChild(o); });
-        dirSel.onchange = () => { sched.dir = dirSel.value; syncTrigger(); };
-        const fieldSel = el("select", "input"); fieldSel.style.marginBottom = "0";
-        const blank = el("option", null, "— date field —"); blank.value = ""; fieldSel.appendChild(blank);
-        dateFields.forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === sched.field) o.selected = true; fieldSel.appendChild(o); });
-        fieldSel.onchange = () => { sched.field = fieldSel.value; syncTrigger(); };
-        trigExtra.appendChild(small("Run this many, before/after, which date field:"));
-        rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(dirSel); rowEl.appendChild(fieldSel);
-        trigExtra.appendChild(rowEl);
-        const note2 = el("div", "wf-hint", ""); note2.style.margin = "6px 0 0";
-        note2.textContent = "Evaluated by the daily sweep / “Process due jobs now”, not instantly.";
-        trigExtra.appendChild(note2);
       }
     }
     trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; syncTrigger(); renderTrigExtra(); };
@@ -451,16 +387,6 @@
     } else if (act.type === "assign_owner") {
       const users = (meta.users || []).map((u) => ({ value: u.id, label: u.name }));
       cfg.appendChild(small("Owner")); cfg.appendChild(selectOf("userId", users));
-    } else if (act.type === "wait") {
-      cfg.appendChild(small("Wait this long, then run the actions listed below this step:"));
-      if (!c.unit) c.unit = "minutes";
-      const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px";
-      const amt = el("input", "input"); amt.type = "number"; amt.style.cssText = "margin-bottom:0;flex:0 0 90px"; amt.placeholder = "2"; amt.value = c.amount != null ? c.amount : ""; amt.oninput = () => { c.amount = amt.value; };
-      const unitSel = el("select", "input"); unitSel.style.marginBottom = "0";
-      [["minutes", "minutes"], ["hours", "hours"], ["days", "days"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (c.unit === v) o.selected = true; unitSel.appendChild(o); });
-      unitSel.onchange = () => { c.unit = unitSel.value; };
-      rowEl.appendChild(amt); rowEl.appendChild(unitSel); cfg.appendChild(rowEl);
-      cfg.appendChild(small("Actions above this step run immediately; everything below runs after the wait."));
     } else if (act.type === "create_record") {
       cfg.appendChild(small("New record's field values (must include at least an email or phone, per this CRM's rules; required fields apply):"));
       cfg.appendChild(valueRowsEditor(c));
@@ -525,37 +451,6 @@
         if (isDate && !destOptions.length) inner.appendChild(small("No Date fields exist yet. Create one under Fields first (e.g. “18th Birthday Date”)."));
       };
       renderCompute();
-    } else if (act.type === "send_webhook") {
-      cfg.appendChild(small("URL to POST to (must be https or http; internal/private addresses are blocked)"));
-      const urlInp = text("url", "https://webhook.site/your-unique-id");
-      cfg.appendChild(urlInp);
-      const warn = el("div", "wf-hint", ""); warn.style.margin = "0 0 8px"; warn.style.color = "var(--amber)";
-      const refreshWarn = () => { warn.textContent = /^http:\/\//i.test(c.url || "") ? "Heads up: http:// sends data unencrypted. https is recommended." : ""; };
-      refreshWarn(); urlInp.addEventListener("input", refreshWarn); cfg.appendChild(warn);
-      cfg.appendChild(small("Optional header name (e.g. Authorization)"));
-      cfg.appendChild(text("headerName", "Authorization"));
-      cfg.appendChild(small("Optional header value / secret (stored with the flow; sent as a header; never shown in logs)"));
-      const secret = text("headerValue", "Bearer …"); secret.type = "password"; cfg.appendChild(secret);
-      cfg.appendChild(small("What gets sent (shape):"));
-      const pre = el("pre"); pre.style.cssText = "background:var(--gray-soft);border-radius:var(--radius-sm);padding:8px;font-size:11px;overflow:auto;margin:0 0 8px";
-      pre.textContent = '{\n  "source": "ClarityCRM",\n  "event": { "tenantId", "automationName", "trigger", "occurredAt" },\n  "contact": { "id", "fields": { ...your fields... } }\n}';
-      cfg.appendChild(pre);
-      const testBar = el("div"); testBar.style.cssText = "display:flex;align-items:center;gap:10px";
-      const testBtn = el("button", "btn btn-ghost btn-sm", "Send test");
-      const testOut = el("span", "wf-hint"); testOut.style.margin = "0";
-      testBtn.onclick = async () => {
-        if (!c.url) { testOut.textContent = "Enter a URL first."; return; }
-        testBtn.disabled = true; testOut.textContent = "Sending test…";
-        try {
-          const r = await App.portalApi("/api/automations/webhook-test", { method: "POST", body: JSON.stringify({ url: c.url, headerName: c.headerName, headerValue: c.headerValue }) });
-          if (r.blocked) testOut.textContent = "Blocked: " + r.reason;
-          else if (r.ok) testOut.textContent = `Sent ✓ (HTTP ${r.status})`;
-          else if (r.outcome === "timeout") testOut.textContent = "Timed out (no response in 5s)";
-          else testOut.textContent = r.status ? `Sent, but got HTTP ${r.status}` : "Request failed";
-        } catch (e) { testOut.textContent = e.message; }
-        finally { testBtn.disabled = false; }
-      };
-      testBar.appendChild(testBtn); testBar.appendChild(testOut); cfg.appendChild(testBar);
     }
   }
 
@@ -678,62 +573,7 @@
     body.appendChild(list);
   }
 
-  // ---------------- Scheduled tab ----------------
-  async function renderScheduled(body) {
-    body.innerHTML = `<div class="cell-muted" style="padding:24px">Loading…</div>`;
-    let jobs;
-    try { jobs = await App.portalApi("/api/automations/jobs"); }
-    catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:24px">${esc(e.message)}</div>`; return; }
-    body.innerHTML = "";
-
-    // Super-admin-only manual processor (stand-in for the deployed host heartbeat).
-    const isSuper = App.state && App.state.me && App.state.me.role === "SUPER_ADMIN";
-    if (isSuper) {
-      const bar = el("div", "wf-process-bar");
-      const btn = el("button", "btn btn-primary btn-sm", "Process due jobs now");
-      btn.onclick = async () => {
-        btn.disabled = true; btn.textContent = "Processing…";
-        try {
-          const r = await App.portalApi("/api/automations/jobs/process", { method: "POST" });
-          toast(`Swept ${r.swept}, ran ${r.ran}, failed ${r.failed}`);
-          renderScheduled(body);
-        } catch (e) { toast(e.message, true); btn.disabled = false; btn.textContent = "Process due jobs now"; }
-      };
-      bar.appendChild(btn);
-      bar.appendChild(el("span", "wf-process-note", "Runs the daily sweep and any jobs now due. Respects mock mode (sends are logged, not transmitted)."));
-      body.appendChild(bar);
-    }
-
-    if (!jobs.length) { body.appendChild(el("div", "cell-muted", "No scheduled jobs yet.")); return; }
-    const list = el("div", "log-list");
-    jobs.forEach((j) => list.appendChild(jobRow(j, body)));
-    body.appendChild(list);
-  }
-
-  function jobRow(j, body) {
-    const row = el("div", "job-item");
-    const dot = el("span", "status-dot " + esc(j.status));
-    row.appendChild(dot);
-    const main = el("div", "job-main");
-    const when = j.status === "pending"
-      ? "scheduled for " + fmt(j.dueAt)
-      : (j.status === "done" ? "ran" : j.status === "canceled" ? "canceled" : "failed") + " · was due " + fmt(j.dueAt);
-    main.innerHTML = `<div class="job-desc">${esc(j.description || (j.automationName || "Job"))}</div>
-      <div class="job-sub">${esc(when)}${j.automationName ? " · " + esc(j.automationName) : ""}</div>
-      ${j.error ? `<div class="job-err">${esc(j.error)}</div>` : ""}`;
-    row.appendChild(main);
-    if (j.status === "pending") {
-      const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
-      cancel.onclick = async () => {
-        if (!confirm("Cancel this scheduled job?")) return;
-        try { await App.portalApi(`/api/automations/jobs/${j.id}/cancel`, { method: "POST" }); toast("Canceled"); renderScheduled(body); }
-        catch (e) { toast(e.message, true); }
-      };
-      row.appendChild(cancel);
-    }
-    return row;
-  }
-
+  // ---------------- helpers ----------------
   function label(t) { return el("label", "field-label", esc(t)); }
   function small(t) { const s = el("div", "cfg-label"); s.textContent = t; return s; }
   function hint(t) { const d = el("div", "wf-hint"); d.textContent = t; return d; }

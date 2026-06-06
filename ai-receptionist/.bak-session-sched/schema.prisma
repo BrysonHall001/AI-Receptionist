@@ -54,9 +54,6 @@ model Tenant {
   events         Event[]
   automations    Automation[]
   automationRuns AutomationRun[]
-  scheduledJobs  ScheduledJob[]
-  inboundEndpoints InboundEndpoint[]
-  inboundCalls     InboundCall[]
 }
 
 model User {
@@ -290,70 +287,4 @@ model AutomationRun {
 
   @@index([tenantId, createdAt])
   @@index([automationId])
-}
-
-// One row per piece of deferred automation work: a delayed action or a
-// date-relative scheduled action. The processor (manual button now, host cron
-// later) runs rows whose `dueAt` has passed. `action` is a single ActionConfig,
-// run via the SAME runAction() the instant engine uses. conditions are evaluated
-// before a row is enqueued. `dedupeKey` is unique per tenant so the daily sweep
-// can't queue the same occurrence twice (NULL for one-off delays).
-model ScheduledJob {
-  id             String   @id @default(cuid())
-  tenantId       String
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  automationId   String?
-  automationName String?
-  contactId      String?
-  contactName    String?
-  action         Json     @default("{}")
-  description    String   @default("")
-  kind           String   @default("delay") // delay | schedule
-  dueAt          DateTime
-  status         String   @default("pending") // pending | running | done | failed | canceled
-  error          String?
-  dedupeKey      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@unique([tenantId, dedupeKey])
-  @@index([tenantId, status, dueAt])
-  @@index([tenantId, createdAt])
-}
-
-// An inbound webhook endpoint: a public URL (keyed by a secret token) that an
-// external system POSTs to in order to create/update a contact in THIS tenant.
-// The tenant is derived solely from the token — never from the request body.
-model InboundEndpoint {
-  id          String        @id @default(cuid())
-  tenantId    String
-  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name        String
-  token       String        @unique
-  mapping     Json          @default("{}") // { incomingJsonKey: crmFieldKey }
-  enabled     Boolean       @default(true)
-  createdById String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  calls       InboundCall[]
-
-  @@index([tenantId])
-}
-
-// One row per inbound POST attempt, so every call (accepted or rejected) is
-// visible and nothing fails silently. Scoped to the same tenant as its endpoint.
-model InboundCall {
-  id         String          @id @default(cuid())
-  tenantId   String
-  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  endpointId String
-  endpoint   InboundEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
-  status     String          // accepted | rejected
-  reason     String?
-  contactId  String?
-  sourceIp   String?
-  createdAt  DateTime        @default(now())
-
-  @@index([tenantId, createdAt])
-  @@index([endpointId, createdAt])
 }

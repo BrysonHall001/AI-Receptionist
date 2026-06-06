@@ -4,7 +4,6 @@ import cookieParser from "cookie-parser";
 import { attachUser } from "./middleware/auth";
 import { twilioRouter } from "./routes/twilioWebhooks";
 import { internalRouter } from "./routes/internal";
-import { inboundRouter } from "./routes/inbound";
 import { authRouter } from "./routes/auth";
 import { adminRouter } from "./routes/admin";
 import { apiRouter } from "./routes/api";
@@ -50,7 +49,6 @@ export function createApp(): express.Express {
   // Telephony (unauthenticated by nature)
   app.use("/webhooks/twilio", twilioRouter);
   app.use("/internal", internalRouter);
-  app.use("/hooks/in", inboundRouter); // PUBLIC inbound webhook ingest (tenant from token)
 
   // Auth (login/forgot/reset are open; /me reads the session)
   app.use("/api/auth", authRouter);

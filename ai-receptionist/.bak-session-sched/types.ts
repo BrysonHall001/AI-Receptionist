@@ -58,8 +58,4 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string }[] = [
   // event dispatch never fires it automatically. It runs only when a user clicks
   // "Run automation" on a record (see runManualAutomation in automation/engine).
   { type: "Manual", label: "Manual — run from a record" },
-  // Date-relative schedule. Its parameters are encoded into triggerType as
-  // "Scheduled:<field>:<amount>:<unit>:<dir>" (no schema change). It does not
-  // fire on instant events; the daily sweep evaluates and queues it.
-  { type: "Scheduled", label: "On a date (relative to a date field)" },
 ];

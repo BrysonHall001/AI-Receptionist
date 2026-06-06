@@ -20,16 +20,6 @@ export async function listAutomations(tenantId: string) {
   return rows.map(serialize);
 }
 
-// Enabled Manual-trigger flows for a tenant — used to populate the "Run
-// automation" button on a record. Tenant-scoped like every other query here.
-export async function listManualAutomations(tenantId: string) {
-  const rows = await db.automation.findMany({
-    where: { tenantId, triggerType: "Manual", enabled: true },
-    orderBy: { createdAt: "desc" },
-  });
-  return rows.map(serialize);
-}
-
 export async function getAutomation(id: string, tenantId: string) {
   const a = await db.automation.findUnique({ where: { id } });
   if (!a || a.tenantId !== tenantId) return null;

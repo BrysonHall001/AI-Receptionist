@@ -525,37 +525,6 @@
         if (isDate && !destOptions.length) inner.appendChild(small("No Date fields exist yet. Create one under Fields first (e.g. “18th Birthday Date”)."));
       };
       renderCompute();
-    } else if (act.type === "send_webhook") {
-      cfg.appendChild(small("URL to POST to (must be https or http; internal/private addresses are blocked)"));
-      const urlInp = text("url", "https://webhook.site/your-unique-id");
-      cfg.appendChild(urlInp);
-      const warn = el("div", "wf-hint", ""); warn.style.margin = "0 0 8px"; warn.style.color = "var(--amber)";
-      const refreshWarn = () => { warn.textContent = /^http:\/\//i.test(c.url || "") ? "Heads up: http:// sends data unencrypted. https is recommended." : ""; };
-      refreshWarn(); urlInp.addEventListener("input", refreshWarn); cfg.appendChild(warn);
-      cfg.appendChild(small("Optional header name (e.g. Authorization)"));
-      cfg.appendChild(text("headerName", "Authorization"));
-      cfg.appendChild(small("Optional header value / secret (stored with the flow; sent as a header; never shown in logs)"));
-      const secret = text("headerValue", "Bearer …"); secret.type = "password"; cfg.appendChild(secret);
-      cfg.appendChild(small("What gets sent (shape):"));
-      const pre = el("pre"); pre.style.cssText = "background:var(--gray-soft);border-radius:var(--radius-sm);padding:8px;font-size:11px;overflow:auto;margin:0 0 8px";
-      pre.textContent = '{\n  "source": "ClarityCRM",\n  "event": { "tenantId", "automationName", "trigger", "occurredAt" },\n  "contact": { "id", "fields": { ...your fields... } }\n}';
-      cfg.appendChild(pre);
-      const testBar = el("div"); testBar.style.cssText = "display:flex;align-items:center;gap:10px";
-      const testBtn = el("button", "btn btn-ghost btn-sm", "Send test");
-      const testOut = el("span", "wf-hint"); testOut.style.margin = "0";
-      testBtn.onclick = async () => {
-        if (!c.url) { testOut.textContent = "Enter a URL first."; return; }
-        testBtn.disabled = true; testOut.textContent = "Sending test…";
-        try {
-          const r = await App.portalApi("/api/automations/webhook-test", { method: "POST", body: JSON.stringify({ url: c.url, headerName: c.headerName, headerValue: c.headerValue }) });
-          if (r.blocked) testOut.textContent = "Blocked: " + r.reason;
-          else if (r.ok) testOut.textContent = `Sent ✓ (HTTP ${r.status})`;
-          else if (r.outcome === "timeout") testOut.textContent = "Timed out (no response in 5s)";
-          else testOut.textContent = r.status ? `Sent, but got HTTP ${r.status}` : "Request failed";
-        } catch (e) { testOut.textContent = e.message; }
-        finally { testBtn.disabled = false; }
-      };
-      testBar.appendChild(testBtn); testBar.appendChild(testOut); cfg.appendChild(testBar);
     }
   }
 

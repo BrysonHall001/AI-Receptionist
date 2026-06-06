@@ -5,7 +5,6 @@ import { DomainEvent, EventActor } from "../events/types";
 import { evalRules, Rule } from "./conditions";
 import { buildColumns, loadFieldDefs } from "./contactRow";
 import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
-import { enqueueJob } from "./scheduler";
 
 const db = prisma as any;
 
@@ -33,16 +32,8 @@ export async function handleEvent(event: DomainEvent): Promise<void> {
   const contactId = event.subject?.id;
   if (!contactId) return; // contact-centric MVP
 
-  // Which trigger types should this event fire? Always the event's own type.
-  // For a field change, ALSO fire flows scoped to that specific field, stored as
-  // "FieldChanged:<fieldKey>" (no schema change — triggerType is just a string).
-  const triggerTypes: string[] = [event.type];
-  if (event.type === "FieldChanged" && event.payload && event.payload.field) {
-    triggerTypes.push("FieldChanged:" + event.payload.field);
-  }
-
   const automations: AutomationRow[] = await db.automation.findMany({
-    where: { tenantId: event.tenantId, triggerType: { in: triggerTypes }, enabled: true },
+    where: { tenantId: event.tenantId, triggerType: event.type, enabled: true },
   });
   if (!automations.length) return;
 
@@ -81,53 +72,14 @@ async function runOne(
     fieldDefs,
     actor,
     portal: { phoneNumber: portal?.phoneNumber, notifyEmail: portal?.notifyEmail, name: portal?.name },
-    workingSet: [],
-    triggerType: event.type,
   };
 
   const results: ActionResult[] = [];
-  const actionList = (auto.actions as ActionConfig[]) || [];
-  const waitIdx = actionList.findIndex((a) => a.type === "wait");
-
-  if (waitIdx === -1) {
-    // No delay: run everything inline, exactly as before.
-    for (const action of actionList) {
-      results.push(await runAction(action, ctx));
-    }
-  } else {
-    // Run actions before the Wait now; queue the actions after it for later.
-    for (let i = 0; i < waitIdx; i++) {
-      results.push(await runAction(actionList[i], ctx));
-    }
-    const dueAt = delayDueAt(actionList[waitIdx].config || {});
-    const remaining = actionList.slice(waitIdx + 1).filter((a) => a.type !== "wait");
-    const contactName = contact.name || contact.phone || contact.email || contact.id;
-    for (const action of remaining) {
-      await enqueueJob({
-        tenantId: auto.tenantId,
-        automationId: auto.id,
-        automationName: auto.name,
-        contactId: contact.id,
-        contactName,
-        action,
-        dueAt,
-        kind: "delay",
-      });
-      results.push({ type: action.type, status: "skipped", detail: `scheduled for ${dueAt.toISOString()}` });
-    }
-    results.push({ type: "wait", status: "success", detail: `deferred ${remaining.length} action(s) until ${dueAt.toISOString()}` });
+  for (const action of (auto.actions as ActionConfig[]) || []) {
+    results.push(await runAction(action, ctx));
   }
-
   const status = results.some((r) => r.status === "failed") ? "failed" : "success";
   await writeRun(auto, { eventId, eventType: event.type, contactId: contact.id, status, matched: true, results });
-}
-
-// now + amount * (minutes|hours|days). Defaults to minutes.
-function delayDueAt(cfg: Record<string, any>): Date {
-  const amount = Number(cfg.amount) || 0;
-  const unit = cfg.unit;
-  const ms = unit === "hours" ? 3_600_000 : unit === "days" ? 86_400_000 : 60_000;
-  return new Date(Date.now() + amount * ms);
 }
 
 async function writeRun(
@@ -173,38 +125,6 @@ export async function testRunAutomation(automationId: string, contactId: string,
     actor: { type: "user" },
     subject: { type: "contact", id: contactId },
     payload: { test: true },
-    occurredAt: new Date().toISOString(),
-  };
-  await runOne(auto, syntheticEvent, contact, fieldDefs, columns, portal, null);
-  const last = await db.automationRun.findFirst({ where: { automationId, tenantId }, orderBy: { createdAt: "desc" } });
-  return last;
-}
-
-/**
- * Run a Manual-trigger automation on demand (the "Run automation" button on a
- * record). Unlike Test, this is restricted to flows whose trigger is "Manual"
- * and that are enabled. Conditions are still evaluated, so a manual flow whose
- * conditions don't match will be logged as skipped and its actions won't run.
- * Tenant-scoped: both the automation and the contact must belong to tenantId.
- */
-export async function runManualAutomation(automationId: string, contactId: string, tenantId: string) {
-  const auto: AutomationRow | null = await db.automation.findUnique({ where: { id: automationId } });
-  if (!auto || auto.tenantId !== tenantId) throw new Error("Automation not found");
-  if (auto.triggerType !== "Manual") throw new Error("This automation is not a manual trigger");
-  if (!auto.enabled) throw new Error("This automation is turned off");
-  const contact = await prisma.contact.findUnique({ where: { id: contactId } });
-  if (!contact || contact.tenantId !== tenantId) throw new Error("Contact not found");
-
-  const fieldDefs = await loadFieldDefs(tenantId);
-  const columns = buildColumns(fieldDefs);
-  const portal = await prisma.tenant.findUnique({ where: { id: tenantId } });
-  const syntheticEvent: DomainEvent = {
-    id: "manual-" + Date.now(),
-    tenantId,
-    type: "Manual",
-    actor: { type: "user" },
-    subject: { type: "contact", id: contactId },
-    payload: { manual: true },
     occurredAt: new Date().toISOString(),
   };
   await runOne(auto, syntheticEvent, contact, fieldDefs, columns, portal, null);
