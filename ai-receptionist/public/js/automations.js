@@ -118,6 +118,33 @@
   .tpl-entry-row { grid-template-columns: 1fr; }
   .preset-grid { grid-template-columns: 1fr; }
 }
+
+/* ----- Branching wizard ----- */
+.wiz-steps { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.wiz-step-pill { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-faint); white-space: nowrap; }
+.wiz-step-pill.active { background: var(--accent-soft); color: var(--accent); }
+.wiz-step-pill.done { background: var(--green-soft); color: var(--green); }
+.wiz-q { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0 0 4px; }
+.wiz-sub { font-size: 12.5px; color: var(--ink-faint); margin: 0 0 14px; line-height: 1.5; }
+.wiz-cond-row { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+.wiz-cond-row .input { margin-bottom: 0; }
+.wiz-cond-row select.input, .wiz-cond-row input.input { flex: 1 1 110px; min-width: 0; }
+.wiz-choice { display: flex; gap: 10px; }
+.wiz-choice-card { flex: 1; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 16px 14px; cursor: pointer; text-align: center; font-weight: 700; font-size: 13.5px; color: var(--ink-soft); transition: border-color .12s ease, background .12s ease; }
+.wiz-choice-card:hover { border-color: var(--accent); }
+.wiz-choice-card.sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.wiz-choice-sub { display: block; font-size: 11.5px; font-weight: 500; color: var(--ink-faint); margin-top: 4px; }
+.wiz-choice-card.sel .wiz-choice-sub { color: var(--accent); }
+.wiz-path { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-2); padding: 13px; margin-bottom: 12px; }
+.wiz-path-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); margin-bottom: 9px; }
+.wiz-path-title .b { color: var(--accent); text-transform: none; letter-spacing: 0; }
+.wiz-action-list .wf-action { margin-bottom: 8px; }
+.wiz-review-block { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-2); padding: 12px 14px; margin-bottom: 12px; }
+.wiz-review-block ul { margin: 4px 0 0; padding-left: 18px; }
+.wiz-review-block li { margin: 2px 0; font-size: 13px; color: var(--ink); }
+.wiz-note { font-size: 12.5px; color: var(--amber); background: var(--amber-soft); border-radius: var(--radius-sm); padding: 9px 12px; line-height: 1.5; }
+.wiz-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; }
+.wiz-foot .wiz-foot-right { display: flex; gap: 8px; margin-left: auto; }
 `;
     const style = el("style");
     style.id = "wf-builder-styles";
@@ -241,13 +268,17 @@
     tpl.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPresetsLibrary(); } };
     row.appendChild(tpl);
 
-    const wiz = el("div", "tpl-entry-card disabled");
-    wiz.setAttribute("aria-disabled", "true");
+    const wiz = el("div", "tpl-entry-card");
+    wiz.setAttribute("role", "button");
+    wiz.tabIndex = 0;
     wiz.innerHTML = `<span class="tpl-entry-icon">${sparkGlyph()}</span>
       <span class="tpl-entry-main">
-        <span class="tpl-entry-title">Build with a wizard <span class="tpl-soon">Coming soon</span></span>
+        <span class="tpl-entry-title">Build with a wizard</span>
         <span class="tpl-entry-sub">Answer a few questions and we'll assemble the flow for you.</span>
-      </span>`;
+      </span>
+      <span class="tpl-entry-cta">Start →</span>`;
+    wiz.onclick = () => openWizard();
+    wiz.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openWizard(); } };
     row.appendChild(wiz);
 
     return row;
@@ -383,6 +414,355 @@
       toast(r.nameChanged ? `Added “${r.automation.name}” (a copy) as a draft` : "Draft automation added");
       await render(host);
       openEditor(r.automation, { missing: r.missing || [] });
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }
+
+  // ---------------- Branching wizard (modal) ----------------
+  // A finite, rules-based (NO AI) wizard: Trigger -> Filter -> Branch -> Actions
+  // -> Review. It only offers REAL triggers/fields/actions from /meta, assembles
+  // a flow definition (or two, for a branch), and hands them to the EXISTING
+  // apply step (/api/automations/apply-flow -> applyFlowDefinition). It never
+  // activates anything and never touches the engine.
+
+  const WIZ_STEPS = ["Trigger", "Filter", "Branch", "Actions", "Review"];
+  // Operators with EXACT complements, so a branch's "otherwise" path is provably
+  // the negation of its "if" path.
+  const NEGATE = { is: "is_not", is_not: "is", contains: "not_contains", not_contains: "contains", empty: "not_empty", not_empty: "empty" };
+
+  function opsForType(type) {
+    if (type === "date") return [["before", "is before"], ["after", "is after"], ["today", "is today"], ["empty", "is empty"], ["not_empty", "is not empty"]];
+    if (type === "number") return [["gt", "greater than"], ["lt", "less than"], ["is", "equals"], ["is_not", "does not equal"], ["empty", "is empty"], ["not_empty", "is not empty"]];
+    return [["is", "is"], ["is_not", "is not"], ["contains", "contains"], ["not_contains", "does not contain"], ["empty", "is empty"], ["not_empty", "is not empty"]];
+  }
+  // Branch pivot: only exactly-negatable ops (yes/no style), any field type.
+  function branchOps() {
+    return [["is", "is"], ["is_not", "is not"], ["contains", "contains"], ["not_contains", "does not contain"], ["empty", "is empty"], ["not_empty", "is not empty"]];
+  }
+  function fieldType(key) {
+    const f = (meta.fields || []).find((x) => x.key === key);
+    const t = f ? f.type : "text";
+    return t === "percent" ? "number" : (t === "date" || t === "number") ? t : "text";
+  }
+  function fieldLabel(key) {
+    const f = (meta.fields || []).find((x) => x.key === key);
+    return f ? f.label : key;
+  }
+  function opLabel(op) {
+    const all = [["is", "is"], ["is_not", "is not"], ["contains", "contains"], ["not_contains", "does not contain"], ["empty", "is empty"], ["not_empty", "is not empty"], ["before", "is before"], ["after", "is after"], ["today", "is today"], ["gt", "greater than"], ["lt", "less than"]];
+    const m = all.find(([v]) => v === op);
+    return m ? m[1] : op;
+  }
+  function noValueOp(op) { return op === "empty" || op === "not_empty" || op === "today"; }
+  function condComplete(c) { return !!(c && c.field && c.op && (noValueOp(c.op) || (c.value != null && c.value !== ""))); }
+  function condText(c) {
+    if (!c || !c.field) return "—";
+    return `${fieldLabel(c.field)} ${opLabel(c.op)}${noValueOp(c.op) ? "" : " “" + (c.value || "") + "”"}`;
+  }
+  function negate(c) { return { field: c.field, op: NEGATE[c.op] || c.op, value: c.value }; }
+
+  function wizTriggerType(w) {
+    if (w.baseTrigger === "FieldChanged") return w.triggerField ? "FieldChanged:" + w.triggerField : "FieldChanged";
+    if (w.baseTrigger === "Scheduled") return `Scheduled:${w.sched.field}:${w.sched.amount || 0}:${w.sched.unit}:${w.sched.dir}`;
+    return w.baseTrigger;
+  }
+  function suggestName(w) {
+    const base = "When " + triggerLabel(wizTriggerType(w));
+    return base.length > 60 ? "New automation" : base;
+  }
+
+  // One simple AND-condition row (field + operator + value). Used by the Filter
+  // step (full op set) and the Branch step (negatable op set).
+  function condRow(cond, opsFn, onRemove, onChange) {
+    const row = el("div", "wiz-cond-row");
+    const fsel = el("select", "input");
+    const blank = el("option", null, "— field —"); blank.value = ""; fsel.appendChild(blank);
+    (meta.fields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (cond.field === f.key) o.selected = true; fsel.appendChild(o); });
+    const osel = el("select", "input");
+    const valInp = el("input", "input"); valInp.placeholder = "value"; valInp.value = cond.value || "";
+    function rebuildOps() {
+      const list = opsFn(fieldType(cond.field));
+      osel.innerHTML = "";
+      list.forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (cond.op === v) o.selected = true; osel.appendChild(o); });
+      if (!list.some(([v]) => v === cond.op)) { cond.op = list[0][0]; osel.value = cond.op; }
+      toggleVal();
+    }
+    function toggleVal() { valInp.style.display = noValueOp(cond.op) ? "none" : ""; }
+    fsel.onchange = () => { cond.field = fsel.value; rebuildOps(); onChange && onChange(); };
+    osel.onchange = () => { cond.op = osel.value; toggleVal(); onChange && onChange(); };
+    valInp.oninput = () => { cond.value = valInp.value; onChange && onChange(); };
+    rebuildOps();
+    row.appendChild(fsel); row.appendChild(osel); row.appendChild(valInp);
+    if (onRemove) { const rm = el("button", "rule-remove", "&times;"); rm.onclick = onRemove; row.appendChild(rm); }
+    return row;
+  }
+
+  // Render an editable action list into a container, reusing the builder's
+  // actionRow/buildActionConfig so wizard-built actions are identical to
+  // hand-built ones (and only ever offer fields/actions that exist here).
+  function renderActionList(container, arr) {
+    container.innerHTML = "";
+    const list = el("div", "wiz-action-list");
+    const redraw = () => renderActionList(container, arr);
+    arr.forEach((act, i) => list.appendChild(actionRow(act, i, { actions: arr }, redraw)));
+    container.appendChild(list);
+    const add = el("button", "rail-add", "+ Add action");
+    add.onclick = () => { arr.push({ type: (meta.actions[0] && meta.actions[0].type) || "create_note", config: {} }); redraw(); };
+    container.appendChild(add);
+  }
+
+  function openWizard() {
+    const w = {
+      step: 1,
+      baseTrigger: (meta.triggers[0] && meta.triggers[0].type) || "ContactCreated",
+      triggerField: "",
+      sched: { field: "", amount: "", unit: "days", dir: "before" },
+      filters: [],
+      branch: false,
+      branchCond: { field: "", op: "is", value: "" },
+      actionsIf: [],
+      actionsElse: [],
+      name: "",
+      nameTouched: false,
+    };
+
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Build with a wizard</h2><button class="icon-btn" id="wz-close">&times;</button></div>`;
+    const pbody = el("div", "modal-body");
+    inner.appendChild(pbody);
+    const overlay = modal(inner, "modal-builder");
+    inner.querySelector("#wz-close").onclick = () => overlay.remove();
+    renderWizard(pbody, w, overlay);
+  }
+
+  function renderWizard(pbody, w, overlay) {
+    pbody.innerHTML = "";
+
+    // Progress indicator
+    const steps = el("div", "wiz-steps");
+    WIZ_STEPS.forEach((label, i) => {
+      const n = i + 1;
+      const cls = n === w.step ? " active" : n < w.step ? " done" : "";
+      steps.appendChild(el("span", "wiz-step-pill" + cls, `${n}. ${label}`));
+    });
+    pbody.appendChild(steps);
+
+    const stepBox = el("div");
+    pbody.appendChild(stepBox);
+    if (w.step === 1) stepTrigger(stepBox, w);
+    else if (w.step === 2) stepFilter(stepBox, w);
+    else if (w.step === 3) stepBranch(stepBox, w);
+    else if (w.step === 4) stepActions(stepBox, w);
+    else stepReview(stepBox, w, overlay);
+
+    // Footer (Back / Next / Create)
+    const foot = el("div", "wiz-foot");
+    const back = el("button", "btn btn-ghost", "← Back");
+    back.disabled = w.step === 1;
+    back.onclick = () => { w.step--; renderWizard(pbody, w, overlay); };
+    foot.appendChild(back);
+
+    const rightWrap = el("div", "wiz-foot-right");
+    const cancel = el("button", "btn btn-ghost", "Cancel");
+    cancel.onclick = () => overlay.remove();
+    rightWrap.appendChild(cancel);
+
+    if (w.step < 5) {
+      const next = el("button", "btn btn-primary", "Next →");
+      next.onclick = () => { if (validateStep(w)) { w.step++; renderWizard(pbody, w, overlay); } };
+      rightWrap.appendChild(next);
+    } else {
+      const create = el("button", "btn btn-primary", w.branch ? "Create 2 drafts" : "Create draft");
+      create.onclick = () => createWizardDrafts(w, overlay);
+      rightWrap.appendChild(create);
+    }
+    foot.appendChild(rightWrap);
+    pbody.appendChild(foot);
+  }
+
+  function validateStep(w) {
+    if (w.step === 1 && w.baseTrigger === "Scheduled" && !w.sched.field) { toast("Pick a date field for the schedule", true); return false; }
+    if (w.step === 3 && w.branch && !condComplete(w.branchCond)) { toast("Finish the branch condition first", true); return false; }
+    if (w.step === 4) {
+      if (!w.actionsIf.length) { toast(w.branch ? "Add at least one action to the “If” path" : "Add at least one action", true); return false; }
+      if (w.branch && !w.actionsElse.length) { toast("Add at least one action to the “Otherwise” path", true); return false; }
+    }
+    return true;
+  }
+
+  // --- Step 1: Trigger ---
+  function stepTrigger(box, w) {
+    box.appendChild(el("p", "wiz-q", "What should start this automation?"));
+    box.appendChild(el("p", "wiz-sub", "Pick the event that kicks things off. These are the same triggers the builder offers."));
+    const sel = el("select", "input");
+    (meta.triggers || []).forEach((t) => { const o = el("option", null, esc(t.label)); o.value = t.type; if (t.type === w.baseTrigger) o.selected = true; sel.appendChild(o); });
+    box.appendChild(sel);
+    const extra = el("div"); extra.style.marginTop = "10px"; box.appendChild(extra);
+    function renderExtra() {
+      extra.innerHTML = "";
+      if (w.baseTrigger === "FieldChanged") {
+        extra.appendChild(small("Which field? (choose “Any field” to run on every change)"));
+        const fs = el("select", "input");
+        const any = el("option", null, "Any field"); any.value = ""; fs.appendChild(any);
+        (meta.fields || []).filter((f) => f.key !== "createdAt").forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === w.triggerField) o.selected = true; fs.appendChild(o); });
+        fs.onchange = () => { w.triggerField = fs.value; };
+        extra.appendChild(fs);
+      } else if (w.baseTrigger === "Manual") {
+        extra.appendChild(small("Runs only when someone clicks “Run automation” on a contact."));
+      } else if (w.baseTrigger === "Scheduled") {
+        const dateFields = (meta.fields || []).filter((f) => f.type === "date");
+        if (!dateFields.length) extra.appendChild(small("No Date fields exist yet. Create one under Fields first (e.g. a renewal date)."));
+        extra.appendChild(small("Run this many, before/after, which date field:"));
+        const rowEl = el("div", "wiz-cond-row");
+        const amt = el("input", "input"); amt.type = "number"; amt.placeholder = "6"; amt.style.flex = "0 0 70px"; amt.value = w.sched.amount; amt.oninput = () => { w.sched.amount = amt.value; };
+        const unit = el("select", "input"); [["days", "days"], ["weeks", "weeks"], ["months", "months"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.sched.unit === v) o.selected = true; unit.appendChild(o); }); unit.onchange = () => { w.sched.unit = unit.value; };
+        const dir = el("select", "input"); [["before", "before"], ["after", "after"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.sched.dir === v) o.selected = true; dir.appendChild(o); }); dir.onchange = () => { w.sched.dir = dir.value; };
+        const fs = el("select", "input"); const b = el("option", null, "— date field —"); b.value = ""; fs.appendChild(b);
+        dateFields.forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === w.sched.field) o.selected = true; fs.appendChild(o); }); fs.onchange = () => { w.sched.field = fs.value; };
+        rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(dir); rowEl.appendChild(fs);
+        extra.appendChild(rowEl);
+        extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”, not instantly."));
+      }
+    }
+    sel.onchange = () => { w.baseTrigger = sel.value; if (w.baseTrigger !== "FieldChanged") w.triggerField = ""; renderExtra(); };
+    renderExtra();
+  }
+
+  // --- Step 2: Filter (optional) ---
+  function stepFilter(box, w) {
+    box.appendChild(el("p", "wiz-q", "Only run when…? (optional)"));
+    box.appendChild(el("p", "wiz-sub", "Add conditions that must ALL be true for the automation to run. Leave empty to run every time. You can skip this step."));
+    const list = el("div");
+    box.appendChild(list);
+    function redraw() {
+      list.innerHTML = "";
+      w.filters.forEach((c, i) => list.appendChild(condRow(c, opsForType, () => { w.filters.splice(i, 1); redraw(); })));
+      if (!w.filters.length) list.appendChild(hint("No conditions yet — it'll run on every matching trigger."));
+    }
+    redraw();
+    const add = el("button", "rail-add", "+ Add condition");
+    add.onclick = () => { w.filters.push({ field: "", op: "is", value: "" }); redraw(); };
+    box.appendChild(add);
+  }
+
+  // --- Step 3: Branch (optional) ---
+  function stepBranch(box, w) {
+    box.appendChild(el("p", "wiz-q", "Do you want different actions depending on a condition?"));
+    box.appendChild(el("p", "wiz-sub", "Choose “No” for one set of actions. Choose “Yes” to split into an “if this is true” path and an “otherwise” path."));
+    const choice = el("div", "wiz-choice");
+    const no = el("div", "wiz-choice-card" + (!w.branch ? " sel" : ""), `No, one set of actions<span class="wiz-choice-sub">Simplest — creates one draft</span>`);
+    const yes = el("div", "wiz-choice-card" + (w.branch ? " sel" : ""), `Yes, split into two paths<span class="wiz-choice-sub">Creates two drafts (if / otherwise)</span>`);
+    no.onclick = () => { w.branch = false; stepBranch((box.innerHTML = "", box), w); };
+    yes.onclick = () => { w.branch = true; stepBranch((box.innerHTML = "", box), w); };
+    choice.appendChild(no); choice.appendChild(yes);
+    box.appendChild(choice);
+
+    if (w.branch) {
+      const cWrap = el("div"); cWrap.style.marginTop = "14px";
+      cWrap.appendChild(small("Split on this condition (yes/no style):"));
+      cWrap.appendChild(condRow(w.branchCond, branchOps, null));
+      cWrap.appendChild(hint("The wizard will create one draft that runs when this is true, and a second draft (the exact opposite) for everything else."));
+      box.appendChild(cWrap);
+    }
+  }
+
+  // --- Step 4: Actions ---
+  function stepActions(box, w) {
+    box.appendChild(el("p", "wiz-q", "What should happen?"));
+    box.appendChild(el("p", "wiz-sub", "Pick one or more actions. These are the same actions the builder offers; only options that exist in this portal are shown."));
+    if (!w.branch) {
+      const c = el("div"); box.appendChild(c); renderActionList(c, w.actionsIf);
+    } else {
+      const ifPath = el("div", "wiz-path");
+      ifPath.appendChild(el("div", "wiz-path-title", `If <span class="b">${esc(condText(w.branchCond))}</span>`));
+      const c1 = el("div"); ifPath.appendChild(c1); renderActionList(c1, w.actionsIf);
+      box.appendChild(ifPath);
+      const elsePath = el("div", "wiz-path");
+      elsePath.appendChild(el("div", "wiz-path-title", "Otherwise"));
+      const c2 = el("div"); elsePath.appendChild(c2); renderActionList(c2, w.actionsElse);
+      box.appendChild(elsePath);
+    }
+  }
+
+  // --- Step 5: Review ---
+  function stepReview(box, w, overlay) {
+    box.appendChild(el("p", "wiz-q", "Review and create"));
+    box.appendChild(el("p", "wiz-sub", "Here's the automation you've assembled. Creating it saves an inactive DRAFT (or two, for a branch) you can review and switch on yourself — nothing runs automatically."));
+
+    const nameWrap = el("div"); nameWrap.style.marginBottom = "14px";
+    nameWrap.appendChild(label("Name"));
+    const nameInp = el("input", "input");
+    nameInp.value = w.name || (w.name = suggestName(w));
+    nameInp.oninput = () => { w.name = nameInp.value; w.nameTouched = true; };
+    nameWrap.appendChild(nameInp);
+    box.appendChild(nameWrap);
+
+    const filters = w.filters.filter(condComplete);
+    const trg = el("div", "wiz-review-block");
+    trg.innerHTML = `<div class="pv-k">When</div><div>${esc(triggerLabel(wizTriggerType(w)))}</div>`;
+    box.appendChild(trg);
+
+    const fblock = el("div", "wiz-review-block");
+    fblock.innerHTML = `<div class="pv-k">Only if</div>` + (filters.length ? `<ul>${filters.map((c) => `<li>${esc(condText(c))}</li>`).join("")}</ul>` : `<div class="cell-muted">Runs every time</div>`);
+    box.appendChild(fblock);
+
+    const actText = (arr) => arr.length ? `<ul>${arr.map((a) => `<li>${esc(actionSummary(a))}</li>`).join("")}</ul>` : `<div class="cell-muted">No actions</div>`;
+    if (!w.branch) {
+      const ab = el("div", "wiz-review-block");
+      ab.innerHTML = `<div class="pv-k">Then</div>${actText(w.actionsIf)}`;
+      box.appendChild(ab);
+    } else {
+      const ib = el("div", "wiz-review-block");
+      ib.innerHTML = `<div class="pv-k">If ${esc(condText(w.branchCond))}</div>${actText(w.actionsIf)}`;
+      box.appendChild(ib);
+      const eb = el("div", "wiz-review-block");
+      eb.innerHTML = `<div class="pv-k">Otherwise</div>${actText(w.actionsElse)}`;
+      box.appendChild(eb);
+      box.appendChild(el("div", "wiz-note", "This branch creates TWO draft automations — one for the “if” case and one for everything else — because each automation in the builder has a single condition set. Both are inactive until you turn them on."));
+    }
+  }
+
+  // Plain-English one-liner for an assembled action (best-effort; falls back to
+  // the action's label from /meta).
+  function actionSummary(a) {
+    const c = a.config || {};
+    if (a.type === "send_email") return "Send an email" + (c.subject ? ` (“${c.subject}”)` : "");
+    if (a.type === "send_sms") return "Send an SMS";
+    if (a.type === "update_field") return `Set ${fieldLabel(c.field) || "a field"}` + (c.value ? ` to “${c.value}”` : "");
+    if (a.type === "add_tag") return `Add tag “${c.value || ""}”` + (c.field ? ` on ${fieldLabel(c.field)}` : "");
+    if (a.type === "remove_tag") return `Remove tag “${c.value || ""}”`;
+    if (a.type === "create_note") return "Add an internal note";
+    if (a.type === "assign_owner") return "Assign an owner";
+    if (a.type === "wait") return `Wait ${c.amount || "?"} ${c.unit || "minutes"}, then continue`;
+    if (a.type === "create_record") return "Create a new record";
+    if (a.type === "update_record") return "Update record(s)";
+    if (a.type === "search_records") return "Find records";
+    if (a.type === "delete_record") return "Delete record(s) to recycle bin";
+    if (a.type === "compute_field") return "Compute a value into a field";
+    if (a.type === "send_webhook") return "Send a webhook";
+    return actionLabel(a.type);
+  }
+
+  async function createWizardDrafts(w, overlay) {
+    const tt = wizTriggerType(w);
+    const filters = w.filters.filter(condComplete);
+    const baseName = (w.name || suggestName(w)).trim() || "Wizard automation";
+    const apply = (definition) => App.portalApi("/api/automations/apply-flow", { method: "POST", body: JSON.stringify({ definition }) });
+    try {
+      const results = [];
+      if (!w.branch) {
+        results.push(await apply({ name: baseName, triggerType: tt, conditions: filters, actions: w.actionsIf }));
+      } else {
+        const bc = { ...w.branchCond };
+        results.push(await apply({ name: baseName + " (if)", triggerType: tt, conditions: [...filters, bc], actions: w.actionsIf }));
+        results.push(await apply({ name: baseName + " (otherwise)", triggerType: tt, conditions: [...filters, negate(bc)], actions: w.actionsElse }));
+      }
+      overlay.remove();
+      const names = results.map((r) => r.automation.name);
+      toast(results.length > 1 ? `Created 2 drafts: ${names.join("  +  ")}` : "Draft automation created");
+      await render(host);
+      openEditor(results[0].automation, { missing: results[0].missing || [] });
     } catch (e) {
       toast(e.message, true);
     }

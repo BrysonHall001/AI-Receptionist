@@ -684,6 +684,39 @@ apiRouter.post("/automations/presets/apply", async (req: Request, res: Response)
   }
 });
 
+// Apply an ASSEMBLED flow definition (from the branching wizard) -> a NEW DRAFT
+// (inactive) automation in the CURRENT portal. This is a thin pass-through to
+// the SAME applyFlowDefinition() the presets use — it does NOT reimplement the
+// apply step; it just lets the wizard hand over a definition it built from the
+// user's selections. Like everything else here, it never activates anything.
+apiRouter.post("/automations/apply-flow", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { definition } = (req.body ?? {}) as { definition?: any };
+  if (!definition || typeof definition !== "object" || typeof definition.triggerType !== "string" || !definition.triggerType) {
+    res.status(400).json({ error: "A flow definition with a triggerType is required" });
+    return;
+  }
+  const def = {
+    name: typeof definition.name === "string" ? definition.name : "Wizard automation",
+    triggerType: definition.triggerType,
+    conditions: Array.isArray(definition.conditions) ? definition.conditions : [],
+    actions: Array.isArray(definition.actions) ? definition.actions : [],
+  };
+  try {
+    const result = await applyFlowDefinition(tenantId, def, req.user!.id);
+    res.json({
+      automation: result.automation,
+      expected: result.analysis.expected,
+      missing: result.analysis.missing,
+      nameChanged: result.nameChanged,
+      requestedName: result.requestedName,
+    });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
 // Enabled Manual-trigger flows for the current tenant (for the record's "Run
 // automation" button). Defined before any "/automations/:id" route so it is not
 // mistaken for an id.
