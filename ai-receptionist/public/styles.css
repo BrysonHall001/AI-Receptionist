@@ -1088,3 +1088,16 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .fields-typebar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .fields-typebar-label { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
 .fields-typebar-select { width: auto; min-width: 160px; margin-bottom: 0; }
+
+/* Records: linked-parents (candidates) + linked-jobs UI */
+.link-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.link-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.link-name { flex: 1 1 auto; font-weight: 600; color: var(--ink); }
+.link-ptype { font-weight: 400; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
+.link-stage { width: auto; margin-bottom: 0; flex: 0 0 auto; }
+.link-add { position: relative; }
+.link-search { margin-bottom: 0; }
+.link-results { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); margin-top: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 240px; overflow: auto; }
+.link-result { display: block; width: 100%; text-align: left; padding: 9px 12px; background: none; border: none; color: var(--ink); cursor: pointer; font-size: 14px; }
+.link-result:hover { background: var(--accent-soft); }
+.linked-jobs-card { margin-top: 16px; }

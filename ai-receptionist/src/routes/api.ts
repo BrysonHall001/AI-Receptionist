@@ -5,6 +5,8 @@ import { runSimulatedCall } from "../services/simulationService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields } from "../services/fieldService";
 import { listRecordTypes } from "../services/recordTypeService";
+import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField } from "../services/recordService";
+import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
 import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
@@ -383,6 +385,98 @@ apiRouter.get("/record-types", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await listRecordTypes(tenantId));
+});
+
+// ---- Records (generic record-type instances, e.g. Jobs) ----
+apiRouter.get("/records", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const type = req.query.type ? String(req.query.type) : null;
+  res.json(await listRecords(tenantId, type));
+});
+
+apiRouter.post("/records", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const { type, title, stageKey, customFields } = (req.body ?? {}) as any;
+    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, customFields }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/records/bulk-delete", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ids = (req.body?.ids ?? []) as string[];
+  const count = await softDeleteRecords(tenantId, ids);
+  res.json({ count });
+});
+
+apiRouter.post("/records/bulk-update", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const { ids, field, value } = (req.body ?? {}) as any;
+    const count = await bulkUpdateRecordField(tenantId, ids ?? [], field, value);
+    res.json({ count });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.get("/records/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try { res.json(await getRecord(tenantId, req.params.id)); }
+  catch (err) { res.status(404).json({ error: (err as Error).message }); }
+});
+
+apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const { title, stageKey, customFields } = (req.body ?? {}) as any;
+    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, customFields }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// ---- Record links (relationships between a parent and a record) ----
+apiRouter.get("/records/:id/links", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try { res.json(await listLinksForRecord(tenantId, req.params.id)); }
+  catch (err) { res.status(404).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/records/:id/links", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const { parentType, parentId, contactId, role, stageKey } = (req.body ?? {}) as any;
+    const link = await createLink(tenantId, { recordId: req.params.id, parentType: parentType || "contact", parentId: parentId || contactId, role, stageKey });
+    res.json(link);
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.patch("/record-links/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const { stageKey, role } = (req.body ?? {}) as any;
+    res.json(await updateLink(tenantId, req.params.id, { stageKey, role }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.delete("/record-links/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try { await softDeleteLink(tenantId, req.params.id); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.get("/contacts/:id/links", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const type = req.query.type ? String(req.query.type) : null;
+  res.json(await listLinksForContact(tenantId, req.params.id, type));
 });
 
 apiRouter.get("/fields", async (req: Request, res: Response) => {

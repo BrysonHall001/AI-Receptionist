@@ -27,7 +27,7 @@
     location.hash = "#/login";
   }
 
-  const PORTAL_NAV = [["#/dashboard", "Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"]];
+  const PORTAL_NAV = [["#/dashboard", "Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts"], ["#/jobs", "Jobs"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"]];
   const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"]];
 
   function buildShell(section, activePath) {
@@ -82,7 +82,7 @@
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
     } else {
-      const titleMap = { "#/dashboard": "Dashboard", "#/calls": "Calls", "#/contacts": "Contacts", "#/fields": "Fields", "#/reports": "Reports", "#/automations": "Automations", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users" };
+      const titleMap = { "#/dashboard": "Dashboard", "#/calls": "Calls", "#/contacts": "Contacts", "#/jobs": "Jobs", "#/fields": "Fields", "#/reports": "Reports", "#/automations": "Automations", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users" };
       topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Dashboard"));
     }
     topbar.appendChild(topLeft);
@@ -145,11 +145,19 @@
       return App.portal.renderContact(id);
     }
 
+    // Record (e.g. Job) detail page
+    if (path.indexOf("/record/") === 0) {
+      const id = path.slice("/record/".length);
+      if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
+      buildShell("portal", "#/jobs");
+      return App.portal.renderRecord(id);
+    }
+
     // Old Inbound link now lives inside Settings.
     if (path === "/inbound") return App.go("#/settings");
 
     // Portal section
-    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/settings": "settings" };
+    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/settings": "settings" };
     if (portalViews[path]) {
       if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
       buildShell("portal", path === "/settings" ? "#/settings" : "#" + path);

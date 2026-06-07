@@ -11,6 +11,7 @@
     setView(v);
     if (v === "calls") return renderCalls();
     if (v === "contacts") return renderContacts();
+    if (v === "jobs") return renderRecordList("job");
     if (v === "recycle") return renderRecycleBin();
     if (v === "fields") return renderFields();
     if (v === "reports") return App.reports.render(view());
@@ -1060,6 +1061,33 @@
     });
     wrap.appendChild(tabsBar);
     wrap.appendChild(tabBody);
+
+    // ---- Linked Jobs section (records this contact is linked to) ----
+    const jobsCard = el("div", "card linked-jobs-card");
+    jobsCard.appendChild(el("div", "drawer-section-title", "Jobs"));
+    const jobsList = el("div", "link-list");
+    jobsCard.appendChild(jobsList);
+    wrap.appendChild(jobsCard);
+    (async function loadLinkedJobs() {
+      jobsList.innerHTML = `<div class="cell-muted">Loading…</div>`;
+      let links = [], types = [];
+      try { [links, types] = await Promise.all([App.portalApi(`/api/contacts/${id}/links?type=job`), App.portalApi("/api/record-types").catch(() => [])]); }
+      catch (e) { jobsList.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+      const jobType = (types || []).find((t) => t.key === "job");
+      const stageLabel = (k) => { const s = ((jobType && jobType.stages) || []).find((x) => x.key === k); return s ? s.label : (k || ""); };
+      jobsList.innerHTML = "";
+      if (!links.length) { jobsList.appendChild(el("div", "cell-muted", "Not linked to any jobs yet.")); return; }
+      links.forEach((lk) => {
+        const row = el("div", "link-row");
+        const title = lk.record ? (lk.record.title || "Untitled job") : "Job";
+        const nameEl = el("div", "link-name"); nameEl.textContent = title;
+        if (lk.record) { nameEl.style.cursor = "pointer"; nameEl.onclick = () => App.go("#/record/" + lk.record.id); }
+        row.appendChild(nameEl);
+        row.appendChild(el("span", "pill", lk.stageKey ? esc(stageLabel(lk.stageKey)) : "—"));
+        jobsList.appendChild(row);
+      });
+    })();
+
     view().innerHTML = "";
     view().appendChild(wrap);
 
@@ -1497,5 +1525,389 @@
     };
   }
 
-  App.portal = { render, refresh, simulate, renderContact, current: () => current };
+  // ================= Records (generic record types, e.g. Jobs) =================
+  // Reuses the existing table component, saved filters, manage-columns popup, and
+  // field editor. Column layout for record types is kept in the browser (no
+  // migration); contacts keep their server-synced layout untouched.
+  function recordLayoutKey(typeKey) { return "recordcols:" + (App.state.currentPortalId || "p") + ":" + typeKey; }
+  function loadRecordLayout(typeKey) { try { return JSON.parse(localStorage.getItem(recordLayoutKey(typeKey)) || "{}") || {}; } catch (e) { return {}; } }
+  function saveRecordLayout(typeKey, layout) { try { localStorage.setItem(recordLayoutKey(typeKey), JSON.stringify(layout || {})); } catch (e) {} }
+  function applyRecordLayout(all, layout) {
+    const byKey = {}; all.forEach((c) => (byKey[c.key] = c));
+    const has = layout && ((layout.order || []).length || (layout.hidden || []).length);
+    if (!has) return all.slice(); // default: show every column for record types
+    const hidden = new Set(layout.hidden || []);
+    const ordered = [];
+    (layout.order || []).forEach((k) => { if (byKey[k]) ordered.push(byKey[k]); });
+    all.forEach((c) => { if (ordered.indexOf(c) === -1) ordered.push(c); });
+    return ordered.filter((c) => !hidden.has(c.key));
+  }
+
+  function recordStageLabel(type, key) {
+    const s = ((type && type.recordStages) || []).find((x) => x.key === key);
+    return s ? s.label : (key || "");
+  }
+
+  function recordColumnDefs(fields, type) {
+    const cols = [];
+    cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => esc(r.title || "Untitled") });
+    if (((type && type.recordStages) || []).length) {
+      cols.push({ key: "stageKey", label: "Status", type: "text", get: (r) => r.stageKey, text: (r) => recordStageLabel(type, r.stageKey), render: (r) => r.stageKey ? `<span class="pill">${esc(recordStageLabel(type, r.stageKey))}</span>` : `<span class="cell-muted">—</span>` });
+    }
+    (fields || []).forEach((f) => {
+      const get = (r) => (r.customFields || {})[f.key];
+      const disp = (r) => { const v = get(r); return Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); };
+      cols.push({ key: f.key, label: f.label, type: (f.type === "number" ? "number" : f.type === "date" ? "date" : "text"), get, text: disp, render: (r) => esc(disp(r) || "—") });
+    });
+    cols.push({ key: "createdAt", label: "Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` });
+    return cols;
+  }
+
+  async function renderRecordList(typeKey) {
+    loading();
+    let records, fields, types;
+    try {
+      [records, fields, types] = await Promise.all([
+        App.portalApi("/api/records?type=" + encodeURIComponent(typeKey)),
+        App.portalApi("/api/fields?recordType=" + encodeURIComponent(typeKey)).catch(() => []),
+        App.portalApi("/api/record-types").catch(() => []),
+      ]);
+    } catch (e) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
+    const type = (types || []).find((t) => t.key === typeKey) || { key: typeKey, label: "Record", labelPlural: "Records", stages: [], recordStages: [] };
+    const titleEl = document.querySelector(".page-title"); if (titleEl) titleEl.textContent = type.labelPlural || type.label;
+
+    const allColumns = recordColumnDefs(fields, type);
+    let layout = loadRecordLayout(typeKey);
+    let columns = applyRecordLayout(allColumns, layout);
+
+    view().innerHTML = "";
+    const container = el("div", "fade-in");
+    const bar = el("div", "page-actions");
+    const createBtn = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#43;</span> Create ${esc(type.label)}`);
+    createBtn.onclick = () => openCreateRecord(typeKey, fields, type);
+    const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
+    exportBtn.onclick = () => openRecordExport(handle ? handle.getColumns() : columns, records, type.labelPlural || type.label);
+    bar.appendChild(createBtn);
+    bar.appendChild(exportBtn);
+    container.appendChild(bar);
+    const tableHost = el("div");
+    container.appendChild(tableHost);
+    view().appendChild(container);
+
+    const selCount = el("span", "bulk-count", "");
+    let handle;
+    handle = App.table.mount({
+      container: tableHost, columns, rows: records, selectable: true, rowId: (r) => r.id,
+      onRowClick: (r) => App.go("#/record/" + r.id),
+      onSelectionChange: (ids) => { selCount.textContent = ids.length ? `${ids.length} selected` : ""; },
+      defaultSort: "createdAt", defaultSortDir: "desc",
+      emptyHtml: `<div class="empty"><div class="empty-emoji">&#128188;</div><h3>No ${esc((type.labelPlural || "records").toLowerCase())} yet</h3><p>Create your first ${esc((type.label || "record").toLowerCase())} to get started.</p></div>`,
+    });
+    if (handle && handle.toolbarLeft) mountSavedFilters(handle, typeKey);
+
+    const bulkWrap = el("div", "bulk-wrap");
+    const bulkBtn = el("button", "btn btn-ghost btn-sm", "Bulk Actions &#9662;");
+    const bulkMenu = el("div", "bulk-menu hidden");
+    bulkWrap.appendChild(bulkBtn); bulkWrap.appendChild(bulkMenu); bulkWrap.appendChild(selCount);
+    handle.toolbarLeft.appendChild(bulkWrap);
+    function selectedRows() { const set = new Set(handle.getSelected()); return records.filter((r) => set.has(r.id)); }
+    const bulkMsg = el("div", "bulk-empty hidden", `Select a ${(type.label || "record").toLowerCase()} first.`);
+    bulkMenu.appendChild(bulkMsg);
+    let msgTimer = null;
+    function needSelection(text) { bulkMsg.textContent = text || `Select a ${(type.label || "record").toLowerCase()} first.`; bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
+    function bulkItem(label, fn) { const b = el("button", "bulk-item", label); b.onclick = () => fn(); return b; }
+    bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openRecordExport(handle.getColumns(), rows, type.labelPlural || type.label); }));
+    bulkMenu.appendChild(bulkItem("Update a field…", () => { const ids = handle.getSelected(); if (!ids.length) return needSelection(); bulkMenu.classList.add("hidden"); openRecordMassUpdate(ids, fields, type, typeKey); }));
+    bulkMenu.appendChild(el("div", "pop-sep"));
+    bulkMenu.appendChild(bulkItem("Delete selected", async () => {
+      const ids = handle.getSelected(); if (!ids.length) return needSelection();
+      bulkMenu.classList.add("hidden");
+      if (!confirm(`Move ${ids.length} ${(ids.length > 1 ? (type.labelPlural || "records") : (type.label || "record")).toLowerCase()} to the Recycle Bin?`)) return;
+      try { await App.portalApi("/api/records/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) }); toast("Deleted"); renderRecordList(typeKey); }
+      catch (e) { toast(e.message, true); }
+    }));
+    bulkBtn.onclick = (e) => { e.stopPropagation(); bulkMenu.classList.toggle("hidden"); if (!bulkMenu.classList.contains("hidden")) setTimeout(() => document.addEventListener("click", () => bulkMenu.classList.add("hidden"), { once: true }), 0); };
+    bulkMenu.addEventListener("click", (e) => e.stopPropagation());
+
+    const mc = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#9776;</span> Manage columns`);
+    mc.onclick = () => openManageColumns(allColumns, layout, (newLayout) => {
+      layout = newLayout; saveRecordLayout(typeKey, layout);
+      handle.setColumns(applyRecordLayout(allColumns, layout));
+    });
+    if (handle.toolbarRight) handle.toolbarRight.insertBefore(mc, handle.toolbarRight.firstChild);
+  }
+
+  function openCreateRecord(typeKey, fields, type) {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Create ${esc(type.label || "record")}</h2><button class="icon-btn" id="cr-close">&times;</button></div><div class="modal-body" id="cr-body"></div>`;
+    const overlay = modal(inner);
+    inner.querySelector("#cr-close").onclick = () => overlay.remove();
+    const body = inner.querySelector("#cr-body");
+
+    body.appendChild(el("label", "field-label", "Title *"));
+    const titleInp = el("input", "input"); titleInp.placeholder = `e.g. ${esc(type.label || "Record")} name`;
+    body.appendChild(titleInp);
+
+    const recStages = (type && type.recordStages) || [];
+    let stageSel = null;
+    if (recStages.length) {
+      body.appendChild(el("label", "field-label", "Status"));
+      stageSel = el("select", "input");
+      stageSel.appendChild(el("option", null, "— none —"));
+      recStages.forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; stageSel.appendChild(o); });
+      body.appendChild(stageSel);
+    }
+
+    const values = {};
+    const editorHost = el("div", "field-editor");
+    body.appendChild(editorHost);
+    App.fields.renderEditor(editorHost, fields || [], values, {});
+
+    const save = el("button", "btn btn-primary btn-block", "Create");
+    save.style.marginTop = "14px";
+    save.onclick = async () => {
+      const title = titleInp.value.trim();
+      if (!title) { toast("Title is required", true); titleInp.focus(); return; }
+      const custom = {};
+      (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
+      save.disabled = true; save.textContent = "Creating…";
+      try {
+        const rec = await App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ type: typeKey, title, stageKey: stageSel ? (stageSel.value || null) : null, customFields: custom }) });
+        toast(`${type.label || "Record"} created`);
+        overlay.remove();
+        App.go("#/record/" + rec.id);
+      } catch (e) { toast(e.message, true); save.disabled = false; save.textContent = "Create"; }
+    };
+    body.appendChild(save);
+  }
+
+  function openRecordMassUpdate(ids, fields, type, typeKey) {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Update a field</h2><button class="icon-btn" id="mu-close">&times;</button></div>
+      <div class="modal-body">
+        <p class="cell-muted">Set one field on ${ids.length} ${(ids.length > 1 ? (type.labelPlural || "records") : (type.label || "record")).toLowerCase()}.</p>
+        <label class="field-label">Field</label>
+        <select id="mu-field" class="input"></select>
+        <div id="mu-valwrap"></div>
+        <button id="mu-go" class="btn btn-primary btn-block" style="margin-top:14px">Apply</button>
+      </div>`;
+    const overlay = modal(inner);
+    inner.querySelector("#mu-close").onclick = () => overlay.remove();
+    const fieldSel = inner.querySelector("#mu-field");
+    const pickable = [{ key: "title", label: "Title", type: "text" }];
+    if (((type && type.recordStages) || []).length) pickable.push({ key: "stageKey", label: "Status", type: "stage", _stages: type.recordStages });
+    (fields || []).forEach((f) => { if (f.type !== "formula") pickable.push(f); });
+    pickable.forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; fieldSel.appendChild(o); });
+    const valWrap = inner.querySelector("#mu-valwrap");
+    let getVal = () => null;
+    function renderVal() {
+      valWrap.innerHTML = "";
+      const f = pickable.find((x) => x.key === fieldSel.value) || pickable[0];
+      valWrap.appendChild(el("label", "field-label", "New value"));
+      if (f.type === "stage") {
+        const s = el("select", "input"); s.appendChild(el("option", null, "— none —"));
+        (f._stages || []).forEach((st) => { const o = el("option", null, esc(st.label)); o.value = st.key; s.appendChild(o); });
+        valWrap.appendChild(s); getVal = () => s.value || null;
+      } else {
+        const fi = fieldInput(f, undefined);
+        valWrap.appendChild(fi.wrap); getVal = fi.get;
+      }
+    }
+    fieldSel.onchange = renderVal; renderVal();
+    inner.querySelector("#mu-go").onclick = async () => {
+      const field = fieldSel.value; const value = getVal();
+      try { const r = await App.portalApi("/api/records/bulk-update", { method: "POST", body: JSON.stringify({ ids, field, value }) }); toast(`Updated ${r.count}`); overlay.remove(); renderRecordList(typeKey); }
+      catch (e) { toast(e.message, true); }
+    };
+  }
+
+  function openRecordExport(columns, rows, typeLabel) {
+    const exportable = columns.filter((c) => c.key);
+    const exState = { rules: [], search: "" };
+    const selected = new Set(exportable.map((c) => c.key));
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Export ${esc(typeLabel || "records")}</h2><button class="icon-btn" id="ex-close">&times;</button></div>
+      <div class="modal-body">
+        <label class="field-label">Export name *</label>
+        <input id="ex-name" class="input" placeholder="e.g. Open roles" />
+        <label class="field-label">Who to export</label>
+        <div id="ex-rules"></div>
+        <label class="field-label" style="margin-top:14px">Fields to include</label>
+        <div id="ex-fields" class="ex-fields"></div>
+        <p class="cell-muted" id="ex-count"></p>
+        <label class="field-label">Format</label>
+        <select id="ex-format" class="input"><option value="csv">CSV (.csv)</option><option value="xlsx">Excel (.xlsx)</option></select>
+        <button id="ex-go" class="btn btn-primary btn-block">Export</button>
+      </div>`;
+    const overlay = modal(inner);
+    inner.querySelector("#ex-close").onclick = () => overlay.remove();
+    const rulesHost = inner.querySelector("#ex-rules");
+    rulesHost.appendChild(App.table.ruleEditor(exportable, rows, exState.rules, () => updateCount()));
+    const fieldsHost = inner.querySelector("#ex-fields");
+    exportable.forEach((c) => {
+      const lab = el("label", "ex-field");
+      lab.innerHTML = `<input type="checkbox" checked /> <span>${esc(c.label)}</span>`;
+      lab.querySelector("input").onchange = (e) => { if (e.target.checked) selected.add(c.key); else selected.delete(c.key); };
+      fieldsHost.appendChild(lab);
+    });
+    function matching() { return App.table.pipeline(rows, exportable, exState); }
+    function updateCount() { inner.querySelector("#ex-count").textContent = `${matching().length} of ${rows.length} match.`; }
+    updateCount();
+    inner.querySelector("#ex-go").onclick = () => {
+      const name = inner.querySelector("#ex-name").value.trim();
+      if (!name) { toast("Please give this export a name", true); return; }
+      const cols = exportable.filter((c) => selected.has(c.key));
+      if (!cols.length) { toast("Pick at least one field", true); return; }
+      const out = matching();
+      if (!out.length) { toast("Nothing matches", true); return; }
+      const header = cols.map((c) => csvCell(c.label)).join(",");
+      const lines = out.map((row) => cols.map((c) => csvCell(c.text ? c.text(row) : c.get(row))).join(","));
+      const csv = [header, ...lines].join("\n");
+      const fileBase = name.replace(/[^a-z0-9]+/gi, "-");
+      const format = inner.querySelector("#ex-format").value;
+      if (format === "xlsx" && typeof XLSX !== "undefined") {
+        const aoa = [cols.map((c) => c.label), ...out.map((row) => cols.map((c) => (c.text ? c.text(row) : c.get(row)) ?? ""))];
+        const ws = XLSX.utils.aoa_to_sheet(aoa); const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Records");
+        const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+        downloadBlob(`${fileBase}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      } else {
+        downloadCSV(`${fileBase}.csv`, csv);
+      }
+      toast(`Exported ${out.length}`);
+      overlay.remove();
+    };
+  }
+
+  // ---------------- Single record (e.g. Job) detail ----------------
+  async function renderRecord(id) {
+    loading();
+    let rec, types;
+    try { [rec, types] = await Promise.all([App.portalApi("/api/records/" + id), App.portalApi("/api/record-types").catch(() => [])]); }
+    catch (e) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
+    const type = (types || []).find((t) => t.id === rec.recordTypeId) || { key: "record", label: "Record", labelPlural: "Records", stages: [], recordStages: [] };
+    let fields = [];
+    try { fields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)); } catch (e) { fields = []; }
+
+    const wrap = el("div", "fade-in contact-page");
+    const back = el("a", "back-link", "← " + esc(type.labelPlural || "Records"));
+    back.href = "#/jobs";
+    wrap.appendChild(back);
+
+    const head = el("div", "contact-head");
+    head.innerHTML = `<div class="contact-avatar">${esc((rec.title || type.label || "?").charAt(0).toUpperCase())}</div>
+      <div><h1 class="contact-name">${esc(rec.title || "Untitled " + (type.label || "record"))}</h1>
+      <div class="contact-sub">${esc(type.label || "Record")}${rec.stageKey ? " · " + esc(recordStageLabel(type, rec.stageKey)) : ""}</div></div>`;
+    wrap.appendChild(head);
+
+    // ---- Details card (editable fields) ----
+    const card = el("div", "card");
+    card.appendChild(el("div", "drawer-section-title", "Details"));
+    card.appendChild(el("label", "field-label", "Title"));
+    const titleInp = el("input", "input"); titleInp.value = rec.title || "";
+    card.appendChild(titleInp);
+
+    const recStages = (type && type.recordStages) || [];
+    let stageSel = null;
+    if (recStages.length) {
+      card.appendChild(el("label", "field-label", "Status"));
+      stageSel = el("select", "input");
+      stageSel.appendChild(el("option", null, "— none —"));
+      recStages.forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === rec.stageKey) o.selected = true; stageSel.appendChild(o); });
+      card.appendChild(stageSel);
+    }
+
+    const values = { ...(rec.customFields || {}) };
+    const editorHost = el("div", "field-editor");
+    card.appendChild(editorHost);
+    App.fields.renderEditor(editorHost, fields || [], values, {});
+
+    const saveBar = el("div", "drawer-save-bar");
+    const save = el("button", "btn btn-primary btn-sm", "Save changes");
+    save.onclick = async () => {
+      const custom = {};
+      (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
+      save.disabled = true; save.textContent = "Saving…";
+      try {
+        await App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ title: titleInp.value, stageKey: stageSel ? (stageSel.value || null) : undefined, customFields: custom }) });
+        toast("Saved");
+        rec.title = titleInp.value.trim();
+        App.util.$(".contact-name", wrap).textContent = rec.title || ("Untitled " + (type.label || "record"));
+      } catch (e) { toast(e.message, true); }
+      finally { save.disabled = false; save.textContent = "Save changes"; }
+    };
+    saveBar.appendChild(save);
+    card.appendChild(saveBar);
+    wrap.appendChild(card);
+
+    // ---- Linked parents (e.g. candidates) card ----
+    const linkCard = el("div", "card");
+    linkCard.appendChild(el("div", "drawer-section-title", "Candidates"));
+    const linkList = el("div", "link-list");
+    linkCard.appendChild(linkList);
+    const addRow = el("div", "link-add");
+    linkCard.appendChild(addRow);
+    wrap.appendChild(linkCard);
+
+    view().innerHTML = "";
+    view().appendChild(wrap);
+
+    async function loadLinks() {
+      linkList.innerHTML = `<div class="cell-muted">Loading…</div>`;
+      let links;
+      try { links = await App.portalApi("/api/records/" + id + "/links"); }
+      catch (e) { linkList.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+      linkList.innerHTML = "";
+      if (!links.length) { linkList.appendChild(el("div", "cell-muted", "No candidates linked yet.")); }
+      links.forEach((lk) => {
+        const row = el("div", "link-row");
+        const who = lk.parent ? (lk.parent.name || lk.parent.email || lk.parent.phone || "Contact") : (lk.parentType + " " + lk.parentId);
+        const nameEl = el("div", "link-name");
+        nameEl.innerHTML = `${esc(who)} <span class="cell-muted link-ptype">${esc(lk.parentType)}</span>`;
+        if (lk.parentType === "contact" && lk.parent) { nameEl.style.cursor = "pointer"; nameEl.onclick = () => App.go("#/contact/" + lk.parent.id); }
+        row.appendChild(nameEl);
+        const stageSelL = el("select", "input link-stage");
+        stageSelL.appendChild(el("option", null, "— stage —"));
+        ((type && type.stages) || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) o.selected = true; stageSelL.appendChild(o); });
+        stageSelL.onchange = async () => { try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: stageSelL.value || null }) }); toast("Stage updated"); } catch (e) { toast(e.message, true); } };
+        row.appendChild(stageSelL);
+        const unlink = el("button", "link-danger", "Unlink");
+        unlink.onclick = async () => { if (!confirm(`Unlink ${who}?`)) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (e) { toast(e.message, true); } };
+        row.appendChild(unlink);
+        linkList.appendChild(row);
+      });
+    }
+
+    // Link-a-contact control: search existing contacts and link the chosen one.
+    const addInput = el("input", "input link-search"); addInput.placeholder = "Link a contact — type a name…";
+    addRow.appendChild(addInput);
+    const results = el("div", "link-results hidden");
+    addRow.appendChild(results);
+    let allContacts = null;
+    async function ensureContacts() { if (allContacts) return allContacts; try { allContacts = await App.portalApi("/api/contacts"); } catch (e) { allContacts = []; } return allContacts; }
+    addInput.oninput = App.util.debounce(async () => {
+      const q = addInput.value.trim().toLowerCase();
+      if (!q) { results.classList.add("hidden"); results.innerHTML = ""; return; }
+      const list = await ensureContacts();
+      const matches = list.filter((c) => ((c.name || "") + " " + (c.email || "") + " " + (c.phone || "")).toLowerCase().includes(q)).slice(0, 8);
+      results.innerHTML = "";
+      if (!matches.length) { results.appendChild(el("div", "cell-muted", "No matches")); }
+      matches.forEach((c) => {
+        const r = el("button", "link-result", esc(c.name || c.email || c.phone || "Contact"));
+        r.onclick = async () => {
+          try {
+            const firstStage = ((type && type.stages) || [])[0];
+            await App.portalApi("/api/records/" + id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: c.id, stageKey: firstStage ? firstStage.key : null }) });
+            toast("Linked"); addInput.value = ""; results.classList.add("hidden"); results.innerHTML = ""; loadLinks();
+          } catch (e) { toast(e.message, true); }
+        };
+        results.appendChild(r);
+      });
+      results.classList.remove("hidden");
+    }, 200);
+
+    loadLinks();
+  }
+
+  App.portal = { render, refresh, simulate, renderContact, renderRecord, current: () => current };
 })(typeof window !== "undefined" ? window : globalThis);
