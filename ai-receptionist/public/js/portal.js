@@ -804,8 +804,8 @@
   }
 
   // ---------------- Fields tab ----------------
-  async function renderFields() {
-    loading();
+  async function renderFields(refresh) {
+    if (!refresh) loading(); // on refresh we hold the current view until the rebuilt one is ready — no blink
     const types = await App.portalApi("/api/record-types");
     if (!App.state.fieldsType || !types.some((t) => t.key === App.state.fieldsType)) App.state.fieldsType = "contact";
     const selectedKey = App.state.fieldsType;
@@ -827,7 +827,7 @@
       if (t.key === selectedKey) o.selected = true;
       typeSel.appendChild(o);
     });
-    typeSel.onchange = () => { App.state.fieldsType = typeSel.value; renderFields(); };
+    typeSel.onchange = () => { App.state.fieldsType = typeSel.value; renderFields(true); };
     typeBar.appendChild(typeSel);
     wrap.appendChild(typeBar);
 
@@ -840,7 +840,7 @@
       addSec.onclick = async () => {
         const name = prompt("Name this section (e.g. Contact details, Pipeline):");
         if (!name || !name.trim()) return;
-        try { await App.portalApi("/api/field-sections", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Section added"); renderFields(); }
+        try { await App.portalApi("/api/field-sections", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Section added"); renderFields(true); }
         catch (e) { App.util.toast(e.message, true); }
       };
       bar.appendChild(addSec);
@@ -859,6 +859,7 @@
       const card = el("div", "card");
       card.appendChild(el("div", "cell-muted", "No fields yet for this type. Click “+ Add field” to create one."));
       wrap.appendChild(card);
+      if (canEdit && selectedType && selectedType.key !== "contact") wrap.appendChild(stagesCard());
       view().innerHTML = ""; view().appendChild(wrap); return;
     }
 
@@ -896,8 +897,8 @@
           await App.portalApi("/api/fields/" + fieldId + "/section", { method: "PATCH", body: JSON.stringify({ sectionId: targetSection || null }) });
           await App.portalApi("/api/fields/reorder", { method: "PATCH", body: JSON.stringify({ orderedIds, recordType: selectedKey }) });
           App.util.toast("Field moved");
-          renderFields();
-        } catch (err) { App.util.toast(err.message, true); renderFields(); }
+          renderFields(true);
+        } catch (err) { App.util.toast(err.message, true); renderFields(true); }
       });
       return list;
     }
@@ -906,7 +907,7 @@
       const ids = sorted.map((s) => s.id);
       const j = idx + dir; if (j < 0 || j >= ids.length) return;
       const tmp = ids[idx]; ids[idx] = ids[j]; ids[j] = tmp;
-      try { await App.portalApi("/api/field-sections/reorder", { method: "PATCH", body: JSON.stringify({ orderedIds: ids }) }); renderFields(); }
+      try { await App.portalApi("/api/field-sections/reorder", { method: "PATCH", body: JSON.stringify({ orderedIds: ids }) }); renderFields(true); }
       catch (e) { App.util.toast(e.message, true); }
     }
 
@@ -919,9 +920,9 @@
         const up = el("button", "btn btn-ghost btn-sm", "↑"); up.title = "Move section up"; up.disabled = idx === 0; up.onclick = () => moveSection(idx, -1);
         const down = el("button", "btn btn-ghost btn-sm", "↓"); down.title = "Move section down"; down.disabled = idx === sorted.length - 1; down.onclick = () => moveSection(idx, 1);
         const ren = el("button", "btn btn-ghost btn-sm", "Rename");
-        ren.onclick = async () => { const name = prompt("Rename section:", section.label); if (!name || !name.trim()) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "PATCH", body: JSON.stringify({ label: name.trim() }) }); App.util.toast("Renamed"); renderFields(); } catch (e) { App.util.toast(e.message, true); } };
+        ren.onclick = async () => { const name = prompt("Rename section:", section.label); if (!name || !name.trim()) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "PATCH", body: JSON.stringify({ label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
         const del = el("button", "link-danger", "Delete");
-        del.onclick = async () => { if (!confirm(`Delete section “${section.label}”? Its fields move to Ungrouped — no fields are deleted.`)) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "DELETE" }); App.util.toast("Section deleted"); renderFields(); } catch (e) { App.util.toast(e.message, true); } };
+        del.onclick = async () => { if (!confirm(`Delete section “${section.label}”? Its fields move to Ungrouped — no fields are deleted.`)) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "DELETE" }); App.util.toast("Section deleted"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
         tools.appendChild(up); tools.appendChild(down); tools.appendChild(ren); tools.appendChild(del);
         head.appendChild(tools);
       }
@@ -944,8 +945,67 @@
       return card;
     }
 
+    // Pipeline-stage management for this record type (e.g. Jobs). Reuses the
+    // object-type selector above. Labels are editable; keys stay stable so
+    // existing candidate links never detach. Shown for non-contact types only.
+    function stagesCard() {
+      const card = el("div", "fields-section-card");
+      const head = el("div", "fields-section-head");
+      head.appendChild(el("div", "fields-section-name", "Pipeline stages"));
+      const addBtn = el("button", "btn btn-ghost btn-sm", "+ Add stage");
+      addBtn.onclick = async () => {
+        const name = prompt("Name this stage (e.g. Phone screen):");
+        if (!name || !name.trim()) return;
+        try { await App.portalApi("/api/record-stages/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Stage added"); renderFields(true); }
+        catch (e) { App.util.toast(e.message, true); }
+      };
+      head.appendChild(addBtn);
+      card.appendChild(head);
+      const note = el("p", "muted");
+      note.style.cssText = "margin:2px 0 12px; font-size:13px;";
+      note.textContent = `Stages a candidate moves through on a ${typeWord}. Renaming changes the label only — candidates stay where they are. A stage that still has candidates in it can't be deleted until they're moved.`;
+      card.appendChild(note);
+      const stages = (((selectedType && selectedType.stages) || []).slice()).sort((a, b) => (a.order || 0) - (b.order || 0));
+      const list = el("div", "stage-list");
+      if (!stages.length) list.appendChild(el("div", "cell-muted", "No stages yet — click “+ Add stage”."));
+      stages.forEach((s, idx) => {
+        const row = el("div", "stage-row");
+        row.appendChild(el("div", "stage-name", esc(s.label)));
+        const tools = el("div", "fields-section-tools");
+        const up = el("button", "btn btn-ghost btn-sm", "↑"); up.title = "Move up"; up.disabled = idx === 0;
+        const down = el("button", "btn btn-ghost btn-sm", "↓"); down.title = "Move down"; down.disabled = idx === stages.length - 1;
+        const reorder = async (from, to) => {
+          const keys = stages.map((x) => x.key);
+          const m = keys.splice(from, 1)[0]; keys.splice(to, 0, m);
+          try { await App.portalApi("/api/record-stages/reorder", { method: "POST", body: JSON.stringify({ recordType: selectedKey, orderedKeys: keys }) }); renderFields(true); }
+          catch (e) { App.util.toast(e.message, true); }
+        };
+        up.onclick = () => reorder(idx, idx - 1);
+        down.onclick = () => reorder(idx, idx + 1);
+        const ren = el("button", "btn btn-ghost btn-sm", "Rename");
+        ren.onclick = async () => {
+          const name = prompt("Rename stage:", s.label);
+          if (!name || !name.trim()) return;
+          try { await App.portalApi("/api/record-stages/rename", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: s.key, label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); }
+          catch (e) { App.util.toast(e.message, true); }
+        };
+        const del = el("button", "link-danger", "Delete");
+        del.onclick = async () => {
+          if (!confirm(`Delete stage “${s.label}”?`)) return;
+          try { await App.portalApi("/api/record-stages/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: s.key }) }); App.util.toast("Stage deleted"); renderFields(true); }
+          catch (e) { App.util.toast(e.message, true); } // blocked-delete message surfaces here
+        };
+        tools.appendChild(up); tools.appendChild(down); tools.appendChild(ren); tools.appendChild(del);
+        row.appendChild(tools);
+        list.appendChild(row);
+      });
+      card.appendChild(list);
+      return card;
+    }
+
     sorted.forEach((s, i) => wrap.appendChild(sectionCard(s, bySection[s.id], i)));
     if (ungrouped.length || !sorted.length) wrap.appendChild(ungroupedCard(ungrouped));
+    if (canEdit && selectedType && selectedType.key !== "contact") wrap.appendChild(stagesCard());
 
     view().innerHTML = "";
     view().appendChild(wrap);
@@ -973,7 +1033,7 @@
         const ung = el("option", null, "Ungrouped"); ung.value = ""; moveSel.appendChild(ung);
         sections.forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.id; if (s.id === (currentSectionId || "")) o.selected = true; moveSel.appendChild(o); });
         moveSel.value = currentSectionId || "";
-        moveSel.onchange = async () => { try { await App.portalApi("/api/fields/" + f.id + "/section", { method: "PATCH", body: JSON.stringify({ sectionId: moveSel.value || null }) }); App.util.toast("Moved"); renderFields(); } catch (e) { App.util.toast(e.message, true); } };
+        moveSel.onchange = async () => { try { await App.portalApi("/api/fields/" + f.id + "/section", { method: "PATCH", body: JSON.stringify({ sectionId: moveSel.value || null }) }); App.util.toast("Moved"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
         right.appendChild(moveSel);
       }
       const edit = el("button", "btn btn-ghost btn-sm", "Edit");
@@ -981,7 +1041,7 @@
       right.appendChild(edit);
       if (!f.system) {
         const del = el("button", "link-danger", "Delete");
-        del.onclick = async () => { if (!confirm(`Delete field “${f.label}”? Existing values will be hidden.`)) return; try { await App.portalApi(`/api/fields/${f.id}`, { method: "DELETE" }); App.util.toast("Field deleted"); renderFields(); } catch (e) { App.util.toast(e.message, true); } };
+        del.onclick = async () => { if (!confirm(`Delete field “${f.label}”? Existing values will be hidden.`)) return; try { await App.portalApi(`/api/fields/${f.id}`, { method: "DELETE" }); App.util.toast("Field deleted"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
         right.appendChild(del);
       } else {
         right.appendChild(el("span", "field-locked", "🔒"));
@@ -991,7 +1051,7 @@
 
     if (canEdit) {
       row.addEventListener("dragstart", (e) => { fieldDropHandled = false; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", f.id); });
-      row.addEventListener("dragend", () => { row.classList.remove("dragging"); if (!fieldDropHandled) renderFields(); });
+      row.addEventListener("dragend", () => { row.classList.remove("dragging"); if (!fieldDropHandled) renderFields(true); });
     }
     return row;
   }
@@ -1056,7 +1116,7 @@
         else await App.portalApi("/api/fields", { method: "POST", body });
         App.util.toast(isEdit ? "Field saved" : "Field added");
         overlay.remove();
-        renderFields();
+        renderFields(true);
       } catch (e) { App.util.toast(e.message, true); }
     };
   }

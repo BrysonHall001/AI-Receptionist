@@ -89,3 +89,85 @@ export async function resolveRecordTypeId(tenantId: string, keyOrId?: string | n
   if (byKey) return byKey.id;
   return ensureContactRecordType(tenantId);
 }
+
+// ============================ Pipeline stage editing ============================
+// Manage a record type's `stages` list (the {key,label,order} pipeline that
+// candidate RecordLink.stageKey values reference). KEYS ARE STABLE: rename
+// changes the label only, reorder changes order only, add mints a new unique
+// key, and delete is BLOCKED while any candidate link still points at the key —
+// so existing candidates are never silently orphaned. No migration: this only
+// rewrites the JSON `stages` column that already exists on RecordType.
+
+function slugifyStage(label: string, existingKeys: string[]): string {
+  const base = String(label || "stage").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "stage";
+  let key = base, n = 2;
+  while (existingKeys.includes(key)) { key = base + "_" + n; n++; }
+  return key;
+}
+
+function normStages(stages: any): { key: string; label: string; order: number }[] {
+  return (Array.isArray(stages) ? stages : []).map((s: any, i: number) => ({ key: String(s.key), label: String(s.label ?? s.key), order: i }));
+}
+
+async function loadTypeRow(tenantId: string, recordType?: string | null) {
+  const id = await resolveRecordTypeId(tenantId, recordType ?? null);
+  const row = await db.recordType.findFirst({ where: { tenantId, id } });
+  if (!row) throw new Error("Record type not found");
+  return row;
+}
+
+export async function addStage(tenantId: string, recordType: string, label: string) {
+  const lbl = String(label || "").trim();
+  if (!lbl) throw new Error("Stage name is required");
+  const row = await loadTypeRow(tenantId, recordType);
+  const stages = normStages(row.stages);
+  const key = slugifyStage(lbl, stages.map((s) => s.key));
+  stages.push({ key, label: lbl, order: stages.length });
+  await db.recordType.update({ where: { id: row.id }, data: { stages } });
+  return serializeRecordType({ ...row, stages });
+}
+
+export async function renameStage(tenantId: string, recordType: string, key: string, label: string) {
+  const lbl = String(label || "").trim();
+  if (!lbl) throw new Error("Stage name is required");
+  const row = await loadTypeRow(tenantId, recordType);
+  const stages = normStages(row.stages);
+  const s = stages.find((x) => x.key === key);
+  if (!s) throw new Error("Stage not found");
+  s.label = lbl; // key unchanged — existing candidate links keep working
+  await db.recordType.update({ where: { id: row.id }, data: { stages } });
+  return serializeRecordType({ ...row, stages });
+}
+
+export async function reorderStages(tenantId: string, recordType: string, orderedKeys: string[]) {
+  const row = await loadTypeRow(tenantId, recordType);
+  const stages = normStages(row.stages);
+  const byKey: Record<string, any> = {};
+  stages.forEach((s) => (byKey[s.key] = s));
+  const next: any[] = [];
+  (orderedKeys || []).forEach((k) => { if (byKey[k]) { next.push(byKey[k]); delete byKey[k]; } });
+  stages.forEach((s) => { if (byKey[s.key]) next.push(s); }); // keep any not listed
+  next.forEach((s, i) => (s.order = i));
+  await db.recordType.update({ where: { id: row.id }, data: { stages: next } });
+  return serializeRecordType({ ...row, stages: next });
+}
+
+/** Active candidate links currently sitting in a given stage for this record type. */
+export async function countCandidatesInStage(tenantId: string, recordTypeId: string, stageKey: string): Promise<number> {
+  const recs = await db.record.findMany({ where: { tenantId, recordTypeId, deletedAt: null }, select: { id: true } });
+  const ids = recs.map((r: any) => r.id);
+  if (!ids.length) return 0;
+  return db.recordLink.count({ where: { tenantId, recordId: { in: ids }, stageKey, deletedAt: null } });
+}
+
+export async function deleteStage(tenantId: string, recordType: string, key: string) {
+  const row = await loadTypeRow(tenantId, recordType);
+  const stages = normStages(row.stages);
+  if (!stages.some((s) => s.key === key)) throw new Error("Stage not found");
+  const inUse = await countCandidatesInStage(tenantId, row.id, key);
+  if (inUse > 0) throw new Error(`${inUse} candidate${inUse === 1 ? " is" : "s are"} in this stage — move ${inUse === 1 ? "it" : "them"} to another stage first.`);
+  const next = stages.filter((s) => s.key !== key);
+  next.forEach((s, i) => (s.order = i));
+  await db.recordType.update({ where: { id: row.id }, data: { stages: next } });
+  return serializeRecordType({ ...row, stages: next });
+}

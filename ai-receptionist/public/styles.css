@@ -1119,7 +1119,8 @@ tbody tr.row-selected { background: var(--accent-soft); }
 
 /* Detail pages (contact + job): outer spacing + inner card padding so content
    doesn't hug the edges, plus tidier vertical rhythm. Applied to both pages. */
-.contact-page { max-width: 1120px; }
+/* Detail pages fill the full content width like every other page (Item 1 fix);
+   the breathing room comes from the content padding + the card padding below. */
 .contact-page > .card { padding: 18px 22px; }
 .contact-page > .card + .card { margin-top: 16px; }
 .contact-page .field-editor { margin: 2px 0 0; }
@@ -1133,3 +1134,9 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .link-list { gap: 0; margin-bottom: 10px; }
 .link-row { border: none; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 10px 0; }
 .link-row:last-child { border-bottom: none; }
+
+/* Pipeline-stage management rows on the Fields page (mirrors section rows). */
+.stage-list { display: flex; flex-direction: column; }
+.stage-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.stage-row:last-child { border-bottom: none; }
+.stage-name { font-weight: 600; }
