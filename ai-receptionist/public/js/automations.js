@@ -1114,10 +1114,10 @@
     if (a.type === "create_note") return "Add an internal note";
     if (a.type === "assign_owner") return "Assign an owner";
     if (a.type === "wait") return `Wait ${c.amount || "?"} ${c.unit || "minutes"}, then continue`;
-    if (a.type === "create_record") return "Create a new record";
-    if (a.type === "update_record") return "Update record(s)";
-    if (a.type === "search_records") return "Find records";
-    if (a.type === "delete_record") return "Delete record(s) to recycle bin";
+    if (a.type === "create_record") return "Create a new contact";
+    if (a.type === "update_record") return "Update contact(s)";
+    if (a.type === "search_records") return "Find contacts";
+    if (a.type === "delete_record") return "Delete contact(s) to recycle bin";
     if (a.type === "compute_field") return "Compute a value into a field";
     if (a.type === "send_webhook") return "Send a webhook";
     if (a.type === "act_on_linked") { const s = c.subAction || "note"; return s === "email" ? "Email each linked contact (mock)" : s === "sms" ? "Message each linked contact (mock)" : "Note each linked contact"; }
@@ -1737,25 +1737,25 @@
       rowEl.appendChild(amt); rowEl.appendChild(unitSel); cfg.appendChild(rowEl);
       cfg.appendChild(small("Actions above this step run immediately; everything below runs after the wait."));
     } else if (act.type === "create_record") {
-      cfg.appendChild(small("New record's field values (must include at least an email or phone, per this CRM's rules; required fields apply):"));
+      cfg.appendChild(small("New contact's field values (must include at least an email or phone, per this CRM's rules; required fields apply):"));
       cfg.appendChild(valueRowsEditor(c));
     } else if (act.type === "update_record") {
-      cfg.appendChild(small("Which records to update?"));
-      cfg.appendChild(targetSelect(c));
+      cfg.appendChild(small("Which contacts to update?"));
+      cfg.appendChild(targetSelect(c, "contact"));
       cfg.appendChild(small("Set these fields (supports {{field}}):"));
       cfg.appendChild(valueRowsEditor(c));
     } else if (act.type === "search_records") {
-      cfg.appendChild(small("Find contacts where… (leave empty to match all active contacts). A later Update/Delete action set to “Records found by a Find action” will act on these."));
+      cfg.appendChild(small("Find contacts where… (leave empty to match all active contacts). A later Update/Delete action set to “Contacts found by a Find action” will act on these."));
       if (!Array.isArray(c.conditions)) c.conditions = [];
       const w = el("div", "cond-wrap");
       w.appendChild(App.table.ruleEditor(buildColumns(), contacts, c.conditions, () => {}));
       cfg.appendChild(w);
     } else if (act.type === "delete_record") {
-      cfg.appendChild(small("Which records to delete? Deleted records go to the Recycle Bin and can be restored."));
-      cfg.appendChild(targetSelect(c));
+      cfg.appendChild(small("Which contacts to delete? Deleted contacts go to the Recycle Bin and can be restored."));
+      cfg.appendChild(targetSelect(c, "contact"));
       const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
-      const lbl = el("label", null, "Allow deleting more than 10 records in one run");
+      const lbl = el("label", null, "Allow deleting more than 10 contacts in one run");
       lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
       lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
@@ -1836,10 +1836,12 @@
 
   // Target chooser for update/delete record actions: the triggering record, or
   // the set produced by an earlier "Find records" action in the same flow.
-  function targetSelect(c) {
+  function targetSelect(c, noun) {
+    const n = noun || "record";
+    const plural = n.charAt(0).toUpperCase() + n.slice(1) + "s";
     if (!c.target) c.target = "trigger";
     const s = el("select", "input");
-    [["trigger", "This record (the trigger)"], ["search", "Records found by a Find action above"]].forEach(([v, l]) => {
+    [["trigger", `This ${n} (the trigger)`], ["search", `${plural} found by a Find action above`]].forEach(([v, l]) => {
       const o = el("option", null, l); o.value = v; if (c.target === v) o.selected = true; s.appendChild(o);
     });
     s.onchange = () => { c.target = s.value; };

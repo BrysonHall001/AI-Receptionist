@@ -68,10 +68,10 @@ export const ACTION_TYPES: { type: string; label: string; description: string }[
   { type: "create_note", label: "Create internal note", description: "Add an internal note." },
   { type: "assign_owner", label: "Assign owner", description: "Assign an owner." },
   { type: "wait", label: "Wait / delay (then run the actions below later)", description: "Pause, then continue with the actions below later." },
-  { type: "create_record", label: "Create a record", description: "Create a new record." },
-  { type: "update_record", label: "Update a record", description: "Change fields on a record." },
-  { type: "search_records", label: "Find records", description: "Find records for a later action to work on." },
-  { type: "delete_record", label: "Delete a record (to recycle bin)", description: "Move a record to the recycle bin." },
+  { type: "create_record", label: "Create contact", description: "Create a new contact." },
+  { type: "update_record", label: "Update contact", description: "Update contact field(s)." },
+  { type: "search_records", label: "Find contacts", description: "Find contacts matching conditions, for a later action to work on." },
+  { type: "delete_record", label: "Delete contact(s)", description: "Move matching contacts to the recycle bin." },
   { type: "compute_field", label: "Compute value into field", description: "Calculate a value and store it in a field." },
   { type: "send_webhook", label: "Send webhook (POST to a URL)", description: "Send a POST request to a web address." },
   // Record-subject only: fan out to the record's linked contacts (e.g. a job's
@@ -435,7 +435,7 @@ const EXECUTORS: Record<string, Executor> = {
     const useSearch = cfg.target === "search";
     const ids = useSearch ? (ctx.workingSet || []) : [ctx.contactId];
     if (!Array.isArray(cfg.values) || !cfg.values.length) return { type: "update_record", status: "skipped", detail: "No fields to set" };
-    if (useSearch && !ids.length) return { type: "update_record", status: "skipped", detail: "No search results — add a Find records action first" };
+    if (useSearch && !ids.length) return { type: "update_record", status: "skipped", detail: "No search results — add a Find contacts action first" };
     let ok = 0, fail = 0, lastErr = "";
     for (const id of ids) {
       try {
@@ -447,7 +447,7 @@ const EXECUTORS: Record<string, Executor> = {
       } catch (e) { fail++; lastErr = (e as Error).message; }
     }
     if (!ok && fail) return { type: "update_record", status: "failed", error: lastErr || "Update failed" };
-    return { type: "update_record", status: "success", detail: useSearch ? `updated ${ok} record(s)${fail ? `, ${fail} failed` : ""}` : "updated this record" };
+    return { type: "update_record", status: "success", detail: useSearch ? `updated ${ok} contact(s)${fail ? `, ${fail} failed` : ""}` : "updated this contact" };
   },
 
   async search_records(cfg, ctx) {
@@ -457,21 +457,21 @@ const EXECUTORS: Record<string, Executor> = {
     const rows = await prisma.contact.findMany({ where: { tenantId: ctx.tenantId, deletedAt: null } as any, take: 5000 });
     const matched = rows.filter((r: any) => evalRules(r, conditions as any, columns)).slice(0, MAX_SEARCH_RESULTS).map((r: any) => r.id);
     ctx.workingSet = matched;
-    return { type: "search_records", status: "success", detail: `found ${matched.length} record(s)` };
+    return { type: "search_records", status: "success", detail: `found ${matched.length} contact(s)` };
   },
 
   async delete_record(cfg, ctx) {
     const useSearch = cfg.target === "search";
     const ids = useSearch ? (ctx.workingSet || []) : [ctx.contactId];
-    if (!ids.length) return { type: "delete_record", status: "skipped", detail: useSearch ? "No search results — add a Find records action first" : "No record to delete" };
+    if (!ids.length) return { type: "delete_record", status: "skipped", detail: useSearch ? "No search results — add a Find contacts action first" : "No contact to delete" };
     if (ids.length > BULK_DELETE_THRESHOLD && !cfg.allowBulk) {
-      return { type: "delete_record", status: "failed", error: `Refusing to delete ${ids.length} records. Turn on "Allow bulk delete" in this action to permit more than ${BULK_DELETE_THRESHOLD}.` };
+      return { type: "delete_record", status: "failed", error: `Refusing to delete ${ids.length} contacts. Turn on "Allow bulk delete" in this action to permit more than ${BULK_DELETE_THRESHOLD}.` };
     }
     // softDeleteContacts == the recycle-bin path (sets deletedAt). Tenant-scoped.
     // Nothing is hard-deleted; restore from Recycle Bin works exactly as for a
     // user-initiated delete.
     const n = await softDeleteContacts(ctx.tenantId, ids);
-    return { type: "delete_record", status: "success", detail: `moved ${n} record(s) to the recycle bin` };
+    return { type: "delete_record", status: "success", detail: `moved ${n} contact(s) to the recycle bin` };
   },
 
   // Compute a derived value from a FIXED menu of operations (no formulas/scripts)
