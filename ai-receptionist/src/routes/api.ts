@@ -868,11 +868,23 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
   const tagFields = custom.filter((f) => f.type === "multi_select");
   const templates = await listTemplates(tenantId);
   const users = await prisma.user.findMany({ where: { tenantId }, select: { id: true, name: true, email: true } });
+  // Distinct relationship (pipeline) stages across this portal's record types,
+  // for the optional "Stage changed → to <stage>" picker. Gathered from each
+  // record type's own stages and each subtype's pipeline, deduped by stage key.
+  // Generic on purpose (no record-type/"job" wording) so portals can relabel.
+  const recordTypes = await listRecordTypes(tenantId);
+  const stageMap = new Map<string, string>();
+  for (const rt of recordTypes as any[]) {
+    for (const s of (rt.stages || [])) if (s && s.key) stageMap.set(String(s.key), String(s.label ?? s.key));
+    for (const st of (rt.subtypes || [])) for (const s of (st.stages || [])) if (s && s.key) stageMap.set(String(s.key), String(s.label ?? s.key));
+  }
+  const stages = Array.from(stageMap, ([key, label]) => ({ key, label }));
   res.json({
     triggers: TRIGGERABLE_EVENT_TYPES,
     actions: ACTION_TYPES,
     fields,
     tagFields,
+    stages,
     templates: templates.map((t: any) => ({ id: t.id, name: t.name, kind: t.kind })),
     users: users.map((u: any) => ({ id: u.id, name: u.name || u.email })),
   });

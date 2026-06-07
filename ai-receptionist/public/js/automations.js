@@ -238,6 +238,12 @@
       const f = (meta.fields || []).find((x) => x.key === key);
       return "Field changed: " + (f ? f.label : key);
     }
+    // "StageChanged:<stageKey>" fires only when the new stage matches.
+    if (type && type.indexOf("StageChanged:") === 0) {
+      const key = type.slice("StageChanged:".length);
+      const s = (meta.stages || []).find((x) => x.key === key);
+      return "Stage changed → to " + (s ? s.label : key);
+    }
     // "Scheduled:<field>:<amount>:<unit>:<dir>" date-relative trigger.
     if (type && type.indexOf("Scheduled:") === 0) {
       const p = type.slice("Scheduled:".length).split(":");
@@ -267,6 +273,7 @@
   function triggerBase(tt) {
     if (!tt) return tt || "";
     if (tt.indexOf("FieldChanged:") === 0) return "FieldChanged";
+    if (tt.indexOf("StageChanged:") === 0) return "StageChanged";
     if (tt.indexOf("Scheduled:") === 0) return "Scheduled";
     return tt;
   }
@@ -692,6 +699,7 @@
 
   function wizTriggerType(w) {
     if (w.baseTrigger === "FieldChanged") return w.triggerField ? "FieldChanged:" + w.triggerField : "FieldChanged";
+    if (w.baseTrigger === "StageChanged") return w.triggerStage ? "StageChanged:" + w.triggerStage : "StageChanged";
     if (w.baseTrigger === "Scheduled") return `Scheduled:${w.sched.field}:${w.sched.amount || 0}:${w.sched.unit}:${w.sched.dir}`;
     return w.baseTrigger;
   }
@@ -745,6 +753,7 @@
       step: 1,
       baseTrigger: (meta.triggers[0] && meta.triggers[0].type) || "ContactCreated",
       triggerField: "",
+      triggerStage: "",
       sched: { field: "", amount: "", unit: "days", dir: "before" },
       filters: [],
       branch: false,
@@ -836,6 +845,14 @@
         (meta.fields || []).filter((f) => f.key !== "createdAt").forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === w.triggerField) o.selected = true; fs.appendChild(o); });
         fs.onchange = () => { w.triggerField = fs.value; };
         extra.appendChild(fs);
+      } else if (w.baseTrigger === "StageChanged") {
+        extra.appendChild(small("Which stage? (choose “Any stage” to run on every stage change)"));
+        const ss = el("select", "input");
+        const any = el("option", null, "Any stage"); any.value = ""; ss.appendChild(any);
+        (meta.stages || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === w.triggerStage) o.selected = true; ss.appendChild(o); });
+        ss.onchange = () => { w.triggerStage = ss.value; };
+        extra.appendChild(ss);
+        extra.appendChild(small("Runs when a linked contact moves to a different stage on a record. The contact is the subject."));
       } else if (w.baseTrigger === "Manual") {
         extra.appendChild(small("Runs only when someone clicks “Run automation” on a contact."));
       } else if (w.baseTrigger === "Scheduled") {
@@ -853,7 +870,7 @@
         extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”, not instantly."));
       }
     }
-    sel.onchange = () => { w.baseTrigger = sel.value; if (w.baseTrigger !== "FieldChanged") w.triggerField = ""; renderExtra(); };
+    sel.onchange = () => { w.baseTrigger = sel.value; if (w.baseTrigger !== "FieldChanged") w.triggerField = ""; if (w.baseTrigger !== "StageChanged") w.triggerStage = ""; renderExtra(); };
     renderExtra();
   }
 
@@ -1130,9 +1147,12 @@
     // right sub-controls show.
     let baseTrigger = draft.triggerType || "ContactCreated";
     let triggerField = "";
+    let triggerStage = "";
     const sched = { field: "", amount: "", unit: "days", dir: "before" };
     if (baseTrigger.indexOf("FieldChanged:") === 0) {
       triggerField = baseTrigger.slice("FieldChanged:".length); baseTrigger = "FieldChanged";
+    } else if (baseTrigger.indexOf("StageChanged:") === 0) {
+      triggerStage = baseTrigger.slice("StageChanged:".length); baseTrigger = "StageChanged";
     } else if (baseTrigger.indexOf("Scheduled:") === 0) {
       const p = baseTrigger.slice("Scheduled:".length).split(":");
       sched.field = p[0] || ""; sched.amount = p[1] || ""; sched.unit = p[2] || "days"; sched.dir = p[3] || "before";
@@ -1140,6 +1160,7 @@
     }
     function syncTrigger() {
       if (baseTrigger === "FieldChanged" && triggerField) draft.triggerType = "FieldChanged:" + triggerField;
+      else if (baseTrigger === "StageChanged" && triggerStage) draft.triggerType = "StageChanged:" + triggerStage;
       else if (baseTrigger === "Scheduled") draft.triggerType = `Scheduled:${sched.field}:${sched.amount || 0}:${sched.unit}:${sched.dir}`;
       else draft.triggerType = baseTrigger;
     }
@@ -1166,6 +1187,21 @@
         });
         fieldSel.onchange = () => { triggerField = fieldSel.value; syncTrigger(); };
         trigExtra.appendChild(fieldSel);
+      } else if (baseTrigger === "StageChanged") {
+        trigExtra.appendChild(small("Which stage? (choose “Any stage” to run on every stage change)"));
+        const stageSel = el("select", "input");
+        const any = el("option", null, "Any stage"); any.value = ""; stageSel.appendChild(any);
+        (meta.stages || []).forEach((s) => {
+          const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === triggerStage) o.selected = true; stageSel.appendChild(o);
+        });
+        stageSel.onchange = () => { triggerStage = stageSel.value; syncTrigger(); };
+        trigExtra.appendChild(stageSel);
+        if (!(meta.stages || []).length) {
+          trigExtra.appendChild(small("No pipeline stages found yet. You can still choose “Any stage”."));
+        }
+        const note = el("div", "wf-hint", ""); note.style.margin = "6px 0 0";
+        note.textContent = "Runs when a linked contact moves to a different stage on a record. The contact is the subject.";
+        trigExtra.appendChild(note);
       } else if (baseTrigger === "Manual") {
         const note = el("div", "wf-hint", "");
         note.textContent = "This flow does not fire on its own. It runs when you open a contact and click “Run automation.”";
@@ -1196,7 +1232,7 @@
         trigExtra.appendChild(note2);
       }
     }
-    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; syncTrigger(); renderTrigExtra(); };
+    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; syncTrigger(); renderTrigExtra(); };
     renderTrigExtra();
     flow.appendChild(trigNode);
 

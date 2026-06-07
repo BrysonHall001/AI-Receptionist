@@ -37,6 +37,10 @@ export interface ActionContext {
   // The trigger/event that started this run (best-effort), included in webhook
   // payloads. Set by the engine; a generic label for queued/scheduled jobs.
   triggerType?: string;
+  // Extra {{token}} values beyond contact fields (e.g. {{new_stage}},
+  // {{record_title}} from a StageChanged event). Layered on top of the contact's
+  // field tokens by templateTokens(). Optional; empty when the event has none.
+  extraTokens?: Record<string, string>;
 }
 
 // Metadata for the builder UI. Adding an action = add an executor + an entry
@@ -82,11 +86,19 @@ function asArray(v: any): string[] {
 
 type Executor = (cfg: Record<string, any>, ctx: ActionContext) => Promise<ActionResult>;
 
+// Build the {{token}} map for templating: a contact's own field tokens, with
+// any event-supplied extras (e.g. {{new_stage}}, {{record_title}}) layered on
+// top. Centralized so every action templates the same way. With no extras this
+// is identical to the previous templateContext() behavior.
+function templateTokens(contact: any, ctx: ActionContext): Record<string, string> {
+  return { ...templateContext(contact, ctx.fieldDefs), ...(ctx.extraTokens || {}) };
+}
+
 const EXECUTORS: Record<string, Executor> = {
   async send_email(cfg, ctx) {
     const contact = await freshContact(ctx);
     if (!contact.email) return { type: "send_email", status: "skipped", detail: "Contact has no email" };
-    const tmpl = templateContext(contact, ctx.fieldDefs);
+    const tmpl = templateTokens(contact, ctx);
     let subject = cfg.subject || "";
     let html = cfg.html || cfg.body || "";
     if (cfg.templateId) {
@@ -107,7 +119,7 @@ const EXECUTORS: Record<string, Executor> = {
   async send_sms(cfg, ctx) {
     const contact = await freshContact(ctx);
     if (!contact.phone) return { type: "send_sms", status: "skipped", detail: "Contact has no phone" };
-    const tmpl = templateContext(contact, ctx.fieldDefs);
+    const tmpl = templateTokens(contact, ctx);
     let body = cfg.body || "";
     if (cfg.templateId) {
       const t = await db.emailTemplate.findUnique({ where: { id: cfg.templateId } });
@@ -125,7 +137,7 @@ const EXECUTORS: Record<string, Executor> = {
     const contact = await freshContact(ctx);
     const field = cfg.field;
     if (!field) return { type: "update_field", status: "skipped", detail: "No field selected" };
-    const tmpl = templateContext(contact, ctx.fieldDefs);
+    const tmpl = templateTokens(contact, ctx);
     const value = renderTemplate(String(cfg.value ?? ""), tmpl);
     const patch: any = {};
     if (SYSTEM_KEYS.has(field)) patch[field] = value;
@@ -158,7 +170,7 @@ const EXECUTORS: Record<string, Executor> = {
 
   async create_note(cfg, ctx) {
     const contact = await freshContact(ctx);
-    const tmpl = templateContext(contact, ctx.fieldDefs);
+    const tmpl = templateTokens(contact, ctx);
     const text = renderTemplate(String(cfg.text ?? ""), tmpl).trim();
     if (!text) return { type: "create_note", status: "skipped", detail: "Empty note" };
     await logActivity({ tenantId: ctx.tenantId, contactId: contact.id, type: "note", summary: text, detail: { via: "automation" }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
@@ -352,7 +364,7 @@ function automationActor(ctx: ActionContext) {
 // system keys to top-level and everything else to customFields. Values support
 // {{field}} templating against the provided contact.
 function valuesToContactData(values: any, ctx: ActionContext, contactForTemplating: any) {
-  const tmpl = templateContext(contactForTemplating || {}, ctx.fieldDefs);
+  const tmpl = templateTokens(contactForTemplating || {}, ctx);
   const data: any = {};
   const custom: Record<string, any> = {};
   let hasCustom = false;

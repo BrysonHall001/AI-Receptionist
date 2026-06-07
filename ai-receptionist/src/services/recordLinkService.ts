@@ -5,6 +5,7 @@
 
 import { prisma } from "../db/client";
 import { resolveRecordTypeId } from "./recordTypeService";
+import { emitEvent } from "../events/bus";
 
 const db = prisma as any;
 
@@ -75,10 +76,62 @@ export async function createLink(tenantId: string, input: { recordId: string; pa
 export async function updateLink(tenantId: string, id: string, input: { stageKey?: string | null; role?: string | null }) {
   const link = await db.recordLink.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!link) throw new Error("Link not found");
+  const prevStage = link.stageKey ?? null; // capture BEFORE the write
   const data: any = {};
   if (input.stageKey !== undefined) data.stageKey = input.stageKey ?? null;
   if (input.role !== undefined) data.role = input.role ?? null;
-  return db.recordLink.update({ where: { id }, data });
+  const updated = await db.recordLink.update({ where: { id }, data });
+
+  // ===================== STAGE-CHANGE EVENT (Stage 1) =====================
+  // Additive and self-contained: if you ever want to remove the "Stage changed"
+  // trigger, delete this whole block and the emitStageChanged() helper below;
+  // nothing else here depends on it. We fire ONLY when the stage genuinely
+  // changed, and ONLY for contact parents (the candidate) so the existing
+  // contact-subject automation engine can load the subject exactly as always.
+  // Best-effort: wrapped so a problem here can never break the stage save.
+  const newStage = updated.stageKey ?? null;
+  if (input.stageKey !== undefined && newStage !== prevStage && link.parentType === "contact") {
+    await emitStageChanged(tenantId, updated, prevStage, newStage).catch(() => { /* never block the stage write */ });
+  }
+  // =================== END STAGE-CHANGE EVENT (Stage 1) ===================
+
+  return updated;
+}
+
+// Emit a "StageChanged" domain event whose SUBJECT is the candidate contact.
+// Payload carries generic, relabel-safe metadata (no hardcoded "Job" wording)
+// for use by conditions/templating and for the event/run logs:
+//   old_stage, new_stage, record_id, record_title, record_type, link_id
+// Reads the parent record (the "job") only to enrich the payload; all reads are
+// tenant-scoped and best-effort.
+async function emitStageChanged(tenantId: string, link: any, oldStage: string | null, newStage: string | null) {
+  let recordTitle: string | null = null;
+  let recordTypeLabel: string | null = null;
+  try {
+    const rec = await db.record.findFirst({ where: { id: link.recordId, tenantId } });
+    if (rec) {
+      recordTitle = rec.title ?? null;
+      const rt = await db.recordType.findFirst({ where: { id: rec.recordTypeId, tenantId } });
+      recordTypeLabel = rt?.label ?? null;
+    }
+  } catch { /* enrichment is optional; emit with what we have */ }
+
+  await emitEvent({
+    tenantId,
+    type: "StageChanged",
+    // A stage move is a user action; actor "user" ensures the engine processes
+    // it (the engine ignores events whose actor is "automation").
+    actor: { type: "user" },
+    subject: { type: "contact", id: link.parentId },
+    payload: {
+      old_stage: oldStage,
+      new_stage: newStage,
+      record_id: link.recordId,
+      record_title: recordTitle,
+      record_type: recordTypeLabel,
+      link_id: link.id,
+    },
+  });
 }
 
 /** Unlink = soft-delete the relationship (never a hard delete). */

@@ -40,6 +40,12 @@ export async function handleEvent(event: DomainEvent): Promise<void> {
   if (event.type === "FieldChanged" && event.payload && event.payload.field) {
     triggerTypes.push("FieldChanged:" + event.payload.field);
   }
+  // Same convention for stage changes: a flow scoped to a specific destination
+  // stage is stored as "StageChanged:<stageKey>" and fires only when the NEW
+  // stage matches. Plain "StageChanged" fires on any stage change.
+  if (event.type === "StageChanged" && event.payload && event.payload.new_stage) {
+    triggerTypes.push("StageChanged:" + event.payload.new_stage);
+  }
 
   const automations: AutomationRow[] = await db.automation.findMany({
     where: { tenantId: event.tenantId, triggerType: { in: triggerTypes }, enabled: true },
@@ -75,6 +81,16 @@ async function runOne(
   }
 
   const actor: EventActor = { type: "automation", id: auto.id, name: auto.name };
+  // Generic, relabel-safe template tokens drawn from the event payload (today:
+  // StageChanged). For any other event these stay empty, so behavior is
+  // unchanged. Token names avoid hardcoding "job" — {{record_title}} is the
+  // parent record's title (the job), {{new_stage}}/{{old_stage}} the stages.
+  const p: any = event.payload || {};
+  const extraTokens: Record<string, string> = {};
+  if (p.new_stage != null) extraTokens.new_stage = String(p.new_stage);
+  if (p.old_stage != null) extraTokens.old_stage = String(p.old_stage);
+  if (p.record_title != null) extraTokens.record_title = String(p.record_title);
+  if (p.record_type != null) extraTokens.record_type = String(p.record_type);
   const ctx: ActionContext = {
     tenantId: auto.tenantId,
     contactId: contact.id,
@@ -83,6 +99,7 @@ async function runOne(
     portal: { phoneNumber: portal?.phoneNumber, notifyEmail: portal?.notifyEmail, name: portal?.name },
     workingSet: [],
     triggerType: event.type,
+    extraTokens,
   };
 
   const results: ActionResult[] = [];

@@ -39,6 +39,8 @@ export const EVENT_TYPES = {
   SMSSent: "SMSSent",
   NoteAdded: "NoteAdded",
   ActivityLogged: "ActivityLogged",
+  // A candidate's relationship stage on a record changed. Subject = the contact.
+  StageChanged: "StageChanged",
 } as const;
 
 export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
@@ -54,6 +56,11 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string }[] = [
   { type: EVENT_TYPES.EmailSent, label: "Email sent" },
   { type: EVENT_TYPES.SMSSent, label: "SMS sent" },
   { type: EVENT_TYPES.NoteAdded, label: "Note added" },
+  // Fires when a contact's relationship stage on a record changes. Like
+  // "FieldChanged:<fieldKey>", an OPTIONAL scoped variant "StageChanged:<stageKey>"
+  // fires only when the NEW stage matches; plain "StageChanged" fires on any
+  // stage change. Labels stay generic ("Stage", "Record") so portals can relabel.
+  { type: EVENT_TYPES.StageChanged, label: "Stage changed" },
   // Manual is a trigger-only entry: it is NOT an emitted event, so the engine's
   // event dispatch never fires it automatically. It runs only when a user clicks
   // "Run automation" on a record (see runManualAutomation in automation/engine).
