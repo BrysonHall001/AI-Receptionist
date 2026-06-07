@@ -315,7 +315,7 @@
   // "act_on_linked" never appears there. Mirrors the engine's allow-list.
   function allowedActions(triggerType) {
     const all = meta.actions || [];
-    if (isRecordTrigger(triggerType)) return all.filter((a) => a.type === "create_note" || a.type === "act_on_linked");
+    if (isRecordTrigger(triggerType)) return all.filter((a) => a.type === "create_note" || a.type === "act_on_linked" || a.type === "move_to_stage" || a.type === "set_record_field");
     return all.filter((a) => a.type !== "act_on_linked");
   }
   // Distinct base triggers actually present in this portal's automations, ordered
@@ -1546,6 +1546,34 @@
         }
       }
       rebuildLinked();
+    } else if (act.type === "move_to_stage") {
+      cfg.appendChild(small("Move the linked contacts to which stage?"));
+      cfg.appendChild(selectOf("stageKey", (meta.stages || []).map((s) => ({ value: s.key, label: s.label }))));
+      cfg.appendChild(small("Only move those currently in (optional):"));
+      cfg.appendChild(selectOf("fromStage", (meta.stages || []).map((s) => ({ value: s.key, label: s.label })), "Any stage"));
+      if (!(meta.stages || []).length) cfg.appendChild(small("No pipeline stages found yet."));
+      const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
+      const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
+      const lbl = el("label", null, "Allow moving more than 25 contacts in one run"); lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer"; lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
+      cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
+      cfg.appendChild(small("An automated move does not set off other automations (loop-safe), and is recorded in the contact's stage history."));
+    } else if (act.type === "set_record_field") {
+      cfg.appendChild(small("Which field on the record?"));
+      const fieldSel = selectOf("field", (meta.recordFields || []).map((f) => ({ value: f.key, label: f.label })));
+      cfg.appendChild(fieldSel);
+      const valueHost = el("div"); valueHost.style.marginTop = "8px"; cfg.appendChild(valueHost);
+      function renderRecVal() {
+        valueHost.innerHTML = "";
+        valueHost.appendChild(small("Set to:"));
+        if (c.field === "status" && (meta.recordStatuses || []).length) {
+          valueHost.appendChild(selectOf("value", (meta.recordStatuses || []).map((s) => ({ value: s.key, label: s.label }))));
+        } else {
+          valueHost.appendChild(text("value", "value (supports {{field}})"));
+        }
+      }
+      fieldSel.onchange = () => { c.field = fieldSel.value; c.value = ""; renderRecVal(); };
+      renderRecVal();
+      cfg.appendChild(small("An automated change does not set off other automations (loop-safe)."));
     } else if (act.type === "assign_owner") {
       const users = (meta.users || []).map((u) => ({ value: u.id, label: u.name }));
       cfg.appendChild(small("Owner")); cfg.appendChild(selectOf("userId", users));

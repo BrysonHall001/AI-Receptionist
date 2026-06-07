@@ -4,8 +4,9 @@ import { EVENT_TYPES, EventActor } from "../events/types";
 import { sendRichEmail } from "../services/notificationService";
 import { sendSms } from "../services/smsService";
 import { updateContact, createContact, softDeleteContacts } from "../services/contactService";
-import { addRecordNote } from "../services/recordService";
-import { listLinksForRecord } from "../services/recordLinkService";
+import { addRecordNote, updateRecord } from "../services/recordService";
+import { listLinksForRecord, updateLink } from "../services/recordLinkService";
+import { stagesForSubtype } from "../services/recordTypeService";
 import { log as logActivity } from "../services/activityService";
 import { FieldMeta, renderTemplate, templateContext, buildColumns, valueOf, conditionFields, loadFieldDefs } from "./contactRow";
 import { evalRules } from "./conditions";
@@ -76,6 +77,11 @@ export const ACTION_TYPES: { type: string; label: string }[] = [
   // Record-subject only: fan out to the record's linked contacts (e.g. a job's
   // candidates). Generic label — no "job"/"candidate" hardcoded.
   { type: "act_on_linked", label: "Act on linked contacts (note / mock email / SMS each)" },
+  // Record-subject only (Batch A step 2): change the stage of the record's
+  // linked contacts, and set a field on the record itself. Both write through
+  // the existing chokepoints with actor:"automation" (loop-safe). Generic labels.
+  { type: "move_to_stage", label: "Move linked contacts to a stage" },
+  { type: "set_record_field", label: "Set a field on the record" },
 ];
 
 // A single flow run may delete at most this many records WITHOUT the action
@@ -88,6 +94,11 @@ const BULK_DELETE_THRESHOLD = 10;
 // bulk send". This is the confirm-before-large-batch-send guard. Internal-note
 // fan-out is exempt (no outbound comms). Change this one number to retune.
 const BULK_SEND_THRESHOLD = 25;
+// A single "move linked contacts to a stage" run may change at most this many
+// candidates WITHOUT the action being explicitly set to "Allow bulk move". Like
+// the send gate, this stops a misconfigured rule from re-staging a whole
+// pipeline in one shot. Moving a small set proceeds; change this number to tune.
+const BULK_STAGE_THRESHOLD = 25;
 // Hard cap on how many records one "Find records" action will collect.
 const MAX_SEARCH_RESULTS = 500;
 
@@ -284,6 +295,110 @@ const EXECUTORS: Record<string, Executor> = {
       return { type: "act_on_linked", status: "failed", error: `${verb} ${ok}/${candidates.length}; ${fail} failed: ${errs.slice(0, 5).join("; ")}${more}` };
     }
     return { type: "act_on_linked", status: "success", detail: `${verb} ${ok} linked contact(s)` };
+  },
+
+  // Batch A step 2 — move the record's linked contacts to a target stage. Writes
+  // ONLY through updateLink() with actor:"automation" (+ the run's chainDepth),
+  // so each move inherits the single chokepoint: it writes StageHistory (3b),
+  // emits a StageChanged event, and that event is automation-stamped — which the
+  // engine's loop guard ignores, so this never cascades into other automations.
+  async move_to_stage(cfg, ctx) {
+    if (ctx.subjectType !== "record" || !ctx.recordId) {
+      return { type: "move_to_stage", status: "failed", error: "This action only runs on record-subject automations (e.g. a Record/Status-change trigger)." };
+    }
+    const target = String(cfg.stageKey || "").trim();
+    if (!target) return { type: "move_to_stage", status: "failed", error: "No target stage selected" };
+
+    const record = await db.record.findFirst({ where: { id: ctx.recordId, tenantId: ctx.tenantId, deletedAt: null } });
+    if (!record) return { type: "move_to_stage", status: "failed", error: "Record subject not found" };
+
+    // STAGE VALIDATION: the target must exist in THIS record's pipeline. Never
+    // write a bogus stage; a bad target is a clear FAILED, not a silent no-op.
+    let pipeline: any[] = [];
+    try { pipeline = await stagesForSubtype(ctx.tenantId, record.recordTypeId, record.subtypeKey); }
+    catch (e) { return { type: "move_to_stage", status: "failed", error: `Could not read pipeline: ${(e as Error).message}` }; }
+    if (!pipeline.some((s) => s && s.key === target)) {
+      return { type: "move_to_stage", status: "failed", error: `Target stage "${target}" is not in this record's pipeline` };
+    }
+
+    let links: any[] = [];
+    try { links = await listLinksForRecord(ctx.tenantId, ctx.recordId); }
+    catch (e) { return { type: "move_to_stage", status: "failed", error: `Could not load linked records: ${(e as Error).message}` }; }
+    let candidates = (links || []).filter((l: any) => l.parentType === "contact" && l.parent && l.parent.id);
+    const fromStage = cfg.fromStage ? String(cfg.fromStage) : null; // optional: only those currently here
+    if (fromStage) candidates = candidates.filter((l: any) => (l.stageKey ?? null) === fromStage);
+
+    // ANTI-SILENT-GREEN: nothing to act on is never a quiet success.
+    if (!candidates.length) {
+      return { type: "move_to_stage", status: "failed", error: fromStage ? `No linked contacts currently in "${fromStage}"` : "No linked contacts to move" };
+    }
+
+    const toMove = candidates.filter((l: any) => (l.stageKey ?? null) !== target);
+    const alreadyThere = candidates.length - toMove.length;
+
+    // NO-OP IS A REAL OUTCOME: everyone already in the target stage -> say so
+    // plainly (skipped), never imply we moved anyone.
+    if (!toMove.length) {
+      return { type: "move_to_stage", status: "skipped", detail: `All ${candidates.length} linked contact(s) already in "${target}"; no change` };
+    }
+
+    // FAN-OUT GATE: changing the stage of many records needs an explicit ack.
+    if (toMove.length > BULK_STAGE_THRESHOLD && !cfg.allowBulk) {
+      return { type: "move_to_stage", status: "failed", error: `Would move ${toMove.length} contacts; bulk move not allowed. Turn on "Allow bulk move" on this action to permit more than ${BULK_STAGE_THRESHOLD}.` };
+    }
+
+    let moved = 0, fail = 0;
+    const errs: string[] = [];
+    for (const lk of toMove) {
+      const who = lk.parent.name || lk.parent.email || lk.parent.phone || lk.id;
+      try {
+        // actor + chainDepth come from the engine -> loop-safe + history + event.
+        await updateLink(ctx.tenantId, lk.id, { stageKey: target }, ctx.actor, ctx.chainDepth ?? 0);
+        moved++;
+      } catch (e) { fail++; errs.push(`${who}: ${(e as Error).message}`); }
+    }
+    if (fail > 0) {
+      const more = errs.length > 5 ? ` …(+${errs.length - 5} more)` : "";
+      return { type: "move_to_stage", status: "failed", error: `moved ${moved}/${toMove.length}; ${fail} failed: ${errs.slice(0, 5).join("; ")}${more}` };
+    }
+    return { type: "move_to_stage", status: "success", detail: `moved ${moved} contact(s) to "${target}"${alreadyThere ? ` (${alreadyThere} already there)` : ""}` };
+  },
+
+  // Batch A step 2 — set a field on the record itself (e.g. Status). Writes ONLY
+  // through updateRecord() with actor:"automation" (+ chainDepth): emits a
+  // RecordUpdated event that the loop guard ignores (no cascade), and validates
+  // a Status target against the record type's allowed statuses.
+  async set_record_field(cfg, ctx) {
+    if (ctx.subjectType !== "record" || !ctx.recordId) {
+      return { type: "set_record_field", status: "failed", error: "This action only runs on record-subject automations." };
+    }
+    const field = String(cfg.field || "").trim();
+    if (!field) return { type: "set_record_field", status: "failed", error: "No field selected" };
+
+    const record = await db.record.findFirst({ where: { id: ctx.recordId, tenantId: ctx.tenantId, deletedAt: null } });
+    if (!record) return { type: "set_record_field", status: "failed", error: "Record subject not found" };
+
+    let input: any;
+    if (field === "status") {
+      const target = String(cfg.value ?? "").trim();
+      if (!target) return { type: "set_record_field", status: "failed", error: "No status value selected" };
+      // VALIDATION: status must be one of the record type's allowed statuses.
+      const rt = await db.recordType.findFirst({ where: { id: record.recordTypeId, tenantId: ctx.tenantId } });
+      const ok = ((rt?.recordStages as any[]) || []).some((s) => s && s.key === target);
+      if (!ok) return { type: "set_record_field", status: "failed", error: `"${target}" is not a valid status for this record type` };
+      if ((record.stageKey ?? null) === target) return { type: "set_record_field", status: "skipped", detail: `Status already "${target}"; no change` };
+      input = { stageKey: target };
+    } else if (field === "title") {
+      input = { title: String(cfg.value ?? "") };
+    } else {
+      input = { customFields: { [field]: cfg.value } };
+    }
+    try {
+      await updateRecord(ctx.tenantId, ctx.recordId, input, ctx.actor, ctx.chainDepth ?? 0);
+    } catch (e) {
+      return { type: "set_record_field", status: "failed", error: `Could not set ${field}: ${(e as Error).message}` };
+    }
+    return { type: "set_record_field", status: "success", detail: `set ${field}` };
   },
 
   async assign_owner(cfg, ctx) {
