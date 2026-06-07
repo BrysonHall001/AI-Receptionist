@@ -244,6 +244,20 @@
       const s = (meta.stages || []).find((x) => x.key === key);
       return "Stage changed → to " + (s ? s.label : key);
     }
+    // "RecordUpdated:<field>" or "RecordUpdated:<field>=<value>" — record/status scope.
+    if (type && type.indexOf("RecordUpdated:") === 0) {
+      const rest = type.slice("RecordUpdated:".length);
+      const eq = rest.indexOf("=");
+      const fkey = eq >= 0 ? rest.slice(0, eq) : rest;
+      const fval = eq >= 0 ? rest.slice(eq + 1) : "";
+      const f = (meta.recordFields || []).find((x) => x.key === fkey);
+      const flabel = f ? f.label : fkey;
+      if (fval) {
+        const s = (meta.recordStatuses || []).find((x) => x.key === fval);
+        return "Record updated: " + flabel + " → " + (s ? s.label : fval);
+      }
+      return "Record updated: " + flabel;
+    }
     // "Scheduled:<field>:<amount>:<unit>:<dir>" date-relative trigger.
     if (type && type.indexOf("Scheduled:") === 0) {
       const p = type.slice("Scheduled:".length).split(":");
@@ -274,6 +288,7 @@
     if (!tt) return tt || "";
     if (tt.indexOf("FieldChanged:") === 0) return "FieldChanged";
     if (tt.indexOf("StageChanged:") === 0) return "StageChanged";
+    if (tt.indexOf("RecordUpdated:") === 0) return "RecordUpdated";
     if (tt.indexOf("Scheduled:") === 0) return "Scheduled";
     return tt;
   }
@@ -700,6 +715,7 @@
   function wizTriggerType(w) {
     if (w.baseTrigger === "FieldChanged") return w.triggerField ? "FieldChanged:" + w.triggerField : "FieldChanged";
     if (w.baseTrigger === "StageChanged") return w.triggerStage ? "StageChanged:" + w.triggerStage : "StageChanged";
+    if (w.baseTrigger === "RecordUpdated") return w.recField ? (w.recValue ? "RecordUpdated:" + w.recField + "=" + w.recValue : "RecordUpdated:" + w.recField) : "RecordUpdated";
     if (w.baseTrigger === "Scheduled") return `Scheduled:${w.sched.field}:${w.sched.amount || 0}:${w.sched.unit}:${w.sched.dir}`;
     return w.baseTrigger;
   }
@@ -754,6 +770,8 @@
       baseTrigger: (meta.triggers[0] && meta.triggers[0].type) || "ContactCreated",
       triggerField: "",
       triggerStage: "",
+      recField: "",
+      recValue: "",
       sched: { field: "", amount: "", unit: "days", dir: "before" },
       filters: [],
       branch: false,
@@ -853,6 +871,31 @@
         ss.onchange = () => { w.triggerStage = ss.value; };
         extra.appendChild(ss);
         extra.appendChild(small("Runs when a linked contact moves to a different stage on a record. The contact is the subject."));
+      } else if (w.baseTrigger === "RecordUpdated") {
+        extra.appendChild(small("Which field changed? (choose “Any field” for any change)"));
+        const rfs = el("select", "input");
+        const anyF = el("option", null, "Any field"); anyF.value = ""; rfs.appendChild(anyF);
+        (meta.recordFields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === w.recField) o.selected = true; rfs.appendChild(o); });
+        extra.appendChild(rfs);
+        const vHost = el("div"); vHost.style.marginTop = "8px"; extra.appendChild(vHost);
+        function renderWRecValue() {
+          vHost.innerHTML = "";
+          if (!w.recField) return;
+          vHost.appendChild(small("Only when it changes to (optional):"));
+          if (w.recField === "status" && (meta.recordStatuses || []).length) {
+            const vs = el("select", "input");
+            const anyV = el("option", null, "Any value"); anyV.value = ""; vs.appendChild(anyV);
+            (meta.recordStatuses || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === w.recValue) o.selected = true; vs.appendChild(o); });
+            vs.onchange = () => { w.recValue = vs.value; };
+            vHost.appendChild(vs);
+          } else {
+            const vi = el("input", "input"); vi.placeholder = "any value"; vi.value = w.recValue; vi.oninput = () => { w.recValue = vi.value.trim(); };
+            vHost.appendChild(vi);
+          }
+        }
+        rfs.onchange = () => { w.recField = rfs.value; w.recValue = ""; renderWRecValue(); };
+        renderWRecValue();
+        extra.appendChild(small("Acts on the record. Only “Create internal note” works for records in this stage; email/SMS to a record is blocked."));
       } else if (w.baseTrigger === "Manual") {
         extra.appendChild(small("Runs only when someone clicks “Run automation” on a contact."));
       } else if (w.baseTrigger === "Scheduled") {
@@ -870,7 +913,7 @@
         extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”, not instantly."));
       }
     }
-    sel.onchange = () => { w.baseTrigger = sel.value; if (w.baseTrigger !== "FieldChanged") w.triggerField = ""; if (w.baseTrigger !== "StageChanged") w.triggerStage = ""; renderExtra(); };
+    sel.onchange = () => { w.baseTrigger = sel.value; if (w.baseTrigger !== "FieldChanged") w.triggerField = ""; if (w.baseTrigger !== "StageChanged") w.triggerStage = ""; if (w.baseTrigger !== "RecordUpdated") { w.recField = ""; w.recValue = ""; } renderExtra(); };
     renderExtra();
   }
 
@@ -1148,11 +1191,19 @@
     let baseTrigger = draft.triggerType || "ContactCreated";
     let triggerField = "";
     let triggerStage = "";
+    let recField = "";
+    let recValue = "";
     const sched = { field: "", amount: "", unit: "days", dir: "before" };
     if (baseTrigger.indexOf("FieldChanged:") === 0) {
       triggerField = baseTrigger.slice("FieldChanged:".length); baseTrigger = "FieldChanged";
     } else if (baseTrigger.indexOf("StageChanged:") === 0) {
       triggerStage = baseTrigger.slice("StageChanged:".length); baseTrigger = "StageChanged";
+    } else if (baseTrigger.indexOf("RecordUpdated:") === 0) {
+      const rest = baseTrigger.slice("RecordUpdated:".length);
+      const eq = rest.indexOf("=");
+      if (eq >= 0) { recField = rest.slice(0, eq); recValue = rest.slice(eq + 1); }
+      else { recField = rest; recValue = ""; }
+      baseTrigger = "RecordUpdated";
     } else if (baseTrigger.indexOf("Scheduled:") === 0) {
       const p = baseTrigger.slice("Scheduled:".length).split(":");
       sched.field = p[0] || ""; sched.amount = p[1] || ""; sched.unit = p[2] || "days"; sched.dir = p[3] || "before";
@@ -1161,6 +1212,7 @@
     function syncTrigger() {
       if (baseTrigger === "FieldChanged" && triggerField) draft.triggerType = "FieldChanged:" + triggerField;
       else if (baseTrigger === "StageChanged" && triggerStage) draft.triggerType = "StageChanged:" + triggerStage;
+      else if (baseTrigger === "RecordUpdated" && recField) draft.triggerType = recValue ? ("RecordUpdated:" + recField + "=" + recValue) : ("RecordUpdated:" + recField);
       else if (baseTrigger === "Scheduled") draft.triggerType = `Scheduled:${sched.field}:${sched.amount || 0}:${sched.unit}:${sched.dir}`;
       else draft.triggerType = baseTrigger;
     }
@@ -1202,6 +1254,33 @@
         const note = el("div", "wf-hint", ""); note.style.margin = "6px 0 0";
         note.textContent = "Runs when a linked contact moves to a different stage on a record. The contact is the subject.";
         trigExtra.appendChild(note);
+      } else if (baseTrigger === "RecordUpdated") {
+        trigExtra.appendChild(small("Which field changed? (choose “Any field” for any change)"));
+        const fieldSel = el("select", "input");
+        const anyF = el("option", null, "Any field"); anyF.value = ""; fieldSel.appendChild(anyF);
+        (meta.recordFields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === recField) o.selected = true; fieldSel.appendChild(o); });
+        trigExtra.appendChild(fieldSel);
+        const valueHost = el("div"); valueHost.style.marginTop = "8px"; trigExtra.appendChild(valueHost);
+        function renderRecValue() {
+          valueHost.innerHTML = "";
+          if (!recField) return; // "Any field" -> no value scoping
+          valueHost.appendChild(small("Only when it changes to (optional):"));
+          if (recField === "status" && (meta.recordStatuses || []).length) {
+            const vs = el("select", "input");
+            const anyV = el("option", null, "Any value"); anyV.value = ""; vs.appendChild(anyV);
+            (meta.recordStatuses || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === recValue) o.selected = true; vs.appendChild(o); });
+            vs.onchange = () => { recValue = vs.value; syncTrigger(); };
+            valueHost.appendChild(vs);
+          } else {
+            const vi = el("input", "input"); vi.placeholder = "any value"; vi.value = recValue; vi.oninput = () => { recValue = vi.value.trim(); syncTrigger(); };
+            valueHost.appendChild(vi);
+          }
+        }
+        fieldSel.onchange = () => { recField = fieldSel.value; recValue = ""; renderRecValue(); syncTrigger(); };
+        renderRecValue();
+        const rnote = el("div", "wf-hint", ""); rnote.style.margin = "6px 0 0";
+        rnote.textContent = "Acts on the record itself. Only “Create internal note” works for records in this stage — email/SMS to a record will be blocked, not sent.";
+        trigExtra.appendChild(rnote);
       } else if (baseTrigger === "Manual") {
         const note = el("div", "wf-hint", "");
         note.textContent = "This flow does not fire on its own. It runs when you open a contact and click “Run automation.”";
@@ -1232,7 +1311,7 @@
         trigExtra.appendChild(note2);
       }
     }
-    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; syncTrigger(); renderTrigExtra(); };
+    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } syncTrigger(); renderTrigExtra(); };
     renderTrigExtra();
     flow.appendChild(trigNode);
 

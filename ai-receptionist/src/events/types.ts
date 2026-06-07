@@ -41,6 +41,8 @@ export const EVENT_TYPES = {
   ActivityLogged: "ActivityLogged",
   // A candidate's relationship stage on a record changed. Subject = the contact.
   StageChanged: "StageChanged",
+  // A record's own field/status changed (e.g. a job's Status). Subject = record.
+  RecordUpdated: "RecordUpdated",
 } as const;
 
 export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
@@ -61,6 +63,11 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string }[] = [
   // fires only when the NEW stage matches; plain "StageChanged" fires on any
   // stage change. Labels stay generic ("Stage", "Record") so portals can relabel.
   { type: EVENT_TYPES.StageChanged, label: "Stage changed" },
+  // Fires when a record's own field/status changes (subject = the record). Like
+  // FieldChanged, optional scoped variants "RecordUpdated:<field>" and
+  // "RecordUpdated:<field>=<value>" narrow it to one field (e.g. Status) or one
+  // destination value. Generic labels ("Record") so portals can relabel.
+  { type: EVENT_TYPES.RecordUpdated, label: "Record updated / status changed" },
   // Manual is a trigger-only entry: it is NOT an emitted event, so the engine's
   // event dispatch never fires it automatically. It runs only when a user clicks
   // "Run automation" on a record (see runManualAutomation in automation/engine).

@@ -6,7 +6,7 @@ import { importContacts, updateContact, softDeleteContacts, restoreContacts, pur
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
 import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype } from "../services/recordTypeService";
-import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords } from "../services/recordService";
+import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
@@ -583,6 +583,19 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
+// ---- Record notes (Stage 2a) — internal notes on a record, shown on its page.
+// Stored in the record's customFields.__activity (no migration). Tenant-scoped.
+apiRouter.post("/records/:id/notes", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { text } = (req.body ?? {}) as { text?: string };
+  if (!text || !String(text).trim()) { res.status(400).json({ error: "Note text is required" }); return; }
+  try {
+    await addRecordNote(tenantId, req.params.id, String(text).trim(), { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    res.json(await getRecord(tenantId, req.params.id));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // ---- Record links (relationships between a parent and a record) ----
 apiRouter.get("/records/:id/links", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
@@ -879,12 +892,30 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
     for (const st of (rt.subtypes || [])) for (const s of (st.stages || [])) if (s && s.key) stageMap.set(String(s.key), String(s.label ?? s.key));
   }
   const stages = Array.from(stageMap, ([key, label]) => ({ key, label }));
+  // For the "Record updated / status changed" trigger: the fields a record
+  // automation can scope to (Status + Title + record custom fields), and the
+  // distinct Status values (record-level lifecycle stages) for value scoping.
+  // Generic; never references "job".
+  const recordTypeIds = (recordTypes as any[]).filter((rt) => rt.key !== "contact").map((rt) => rt.id);
+  const recFieldDefs = recordTypeIds.length
+    ? await prisma.fieldDef.findMany({ where: { tenantId, recordTypeId: { in: recordTypeIds } }, orderBy: { order: "asc" } })
+    : [];
+  const recFieldMap = new Map<string, string>();
+  recFieldMap.set("status", "Status");
+  recFieldMap.set("title", "Title");
+  for (const d of recFieldDefs as any[]) if (d.key && !d.key.startsWith("__")) recFieldMap.set(String(d.key), String(d.label ?? d.key));
+  const recordFields = Array.from(recFieldMap, ([key, label]) => ({ key, label }));
+  const statusMap = new Map<string, string>();
+  for (const rt of recordTypes as any[]) for (const s of (rt.recordStages || [])) if (s && s.key) statusMap.set(String(s.key), String(s.label ?? s.key));
+  const recordStatuses = Array.from(statusMap, ([key, label]) => ({ key, label }));
   res.json({
     triggers: TRIGGERABLE_EVENT_TYPES,
     actions: ACTION_TYPES,
     fields,
     tagFields,
     stages,
+    recordFields,
+    recordStatuses,
     templates: templates.map((t: any) => ({ id: t.id, name: t.name, kind: t.kind })),
     users: users.map((u: any) => ({ id: u.id, name: u.name || u.email })),
   });

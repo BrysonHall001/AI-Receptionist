@@ -30,6 +30,15 @@ export async function handleEvent(event: DomainEvent): Promise<void> {
   // later by replacing this with a depth/visited-set guard carried on the event.
   if (event.actor.type === "automation") return;
 
+  // Stage 2a: subject-aware dispatch. The contact path below is intentionally
+  // UNCHANGED. A non-contact subject (e.g. a record/job) is handled by a
+  // separate runner so existing contact automations behave exactly as before.
+  const subjectType = event.subject?.type || "contact";
+  if (subjectType !== "contact") {
+    await handleRecordEvent(event);
+    return;
+  }
+
   const contactId = event.subject?.id;
   if (!contactId) return; // contact-centric MVP
 
@@ -62,6 +71,119 @@ export async function handleEvent(event: DomainEvent): Promise<void> {
   for (const auto of automations) {
     await runOne(auto, event, contact, fieldDefs, columns, portal, event.id);
   }
+}
+
+// ===================== RECORD-SUBJECT PATH (Stage 2a) =====================
+// Parallel to handleEvent's contact path. The subject is a RECORD (e.g. a job),
+// loaded from the record table — never the contact loader. Only actions that
+// make sense on a record are allowed; anything else is logged as a clear FAILED
+// result (never a silent green no-op).
+const RECORD_SUBJECT_ACTIONS = new Set(["create_note"]);
+
+async function handleRecordEvent(event: DomainEvent): Promise<void> {
+  const recordId = event.subject?.id || null;
+
+  // Trigger matching mirrors the FieldChanged convention: base type, plus a
+  // per-changed-field variant, plus a field=value variant (e.g.
+  // "RecordUpdated:status" and "RecordUpdated:status=filled").
+  const triggerTypes: string[] = [event.type];
+  const changes: any[] = Array.isArray(event.payload?.changes) ? event.payload.changes : [];
+  for (const ch of changes) {
+    if (ch && ch.field) {
+      triggerTypes.push(event.type + ":" + ch.field);
+      const nv = ch.new;
+      if (nv != null && typeof nv !== "object" && String(nv) !== "") {
+        triggerTypes.push(event.type + ":" + ch.field + "=" + String(nv));
+      }
+    }
+  }
+
+  const automations: AutomationRow[] = await db.automation.findMany({
+    where: { tenantId: event.tenantId, triggerType: { in: triggerTypes }, enabled: true },
+  });
+  if (!automations.length) return;
+
+  const portal = await prisma.tenant.findUnique({ where: { id: event.tenantId } });
+
+  // Load the record subject from the RECORD table (tenant-scoped, active only).
+  const record = recordId
+    ? await db.record.findFirst({ where: { id: recordId, tenantId: event.tenantId, deletedAt: null } })
+    : null;
+
+  for (const auto of automations) {
+    if (!record) {
+      // ANTI-SILENT-GREEN #1: we matched an automation but the record subject is
+      // missing / deleted / from another portal. Log a clear FAILED run with a
+      // reason — never a green run that did nothing.
+      await writeRun(auto, {
+        eventId: event.id,
+        eventType: event.type,
+        contactId: null,
+        status: "failed",
+        matched: true,
+        results: [{ type: "(subject)", status: "failed", error: `Record subject ${recordId || "(none)"} could not be loaded (missing, deleted, or another portal).` }],
+        error: "Record subject could not be loaded",
+      });
+      continue;
+    }
+    await runRecordOne(auto, event, record, portal);
+  }
+}
+
+async function runRecordOne(auto: AutomationRow, event: DomainEvent, record: any, portal: any): Promise<void> {
+  // Relabel-safe template tokens from the payload. With multiple simultaneous
+  // changes, {{changed_field}}/{{new_value}}/{{old_value}} reflect the FIRST
+  // change (status changes are typically saved on their own).
+  const p: any = event.payload || {};
+  const firstChange = Array.isArray(p.changes) && p.changes.length ? p.changes[0] : null;
+  const extraTokens: Record<string, string> = {};
+  if (p.record_title != null) extraTokens.record_title = String(p.record_title);
+  if (p.record_type != null) extraTokens.record_type = String(p.record_type);
+  if (firstChange) {
+    if (firstChange.label != null) extraTokens.changed_field = String(firstChange.label);
+    if (firstChange.new != null) extraTokens.new_value = String(firstChange.new);
+    if (firstChange.old != null) extraTokens.old_value = String(firstChange.old);
+  }
+
+  // Stage 2a deliberately does NOT expose record fields to conditions (out of
+  // scope). We evaluate with an empty column set: an unknown field resolves to
+  // "pass" (same as the UI rule engine), so the per-field/value filtering is
+  // done by trigger scoping above, not by conditions.
+  const matched = evalRules(record, (auto.conditions as Rule[]) || [], []);
+  if (!matched) {
+    await writeRun(auto, { eventId: event.id, eventType: event.type, contactId: null, status: "skipped", matched: false, results: [] });
+    return;
+  }
+
+  const actor: EventActor = { type: "automation", id: auto.id, name: auto.name };
+  const ctx: ActionContext = {
+    tenantId: auto.tenantId,
+    contactId: "", // no contact subject; record actions use recordId/subjectType
+    fieldDefs: [],
+    actor,
+    portal: { phoneNumber: portal?.phoneNumber, notifyEmail: portal?.notifyEmail, name: portal?.name },
+    workingSet: [],
+    triggerType: event.type,
+    extraTokens,
+    subjectType: "record",
+    recordId: record.id,
+    recordTitle: record.title ?? null,
+  };
+
+  const results: ActionResult[] = [];
+  for (const action of (auto.actions as ActionConfig[]) || []) {
+    if (!RECORD_SUBJECT_ACTIONS.has(action.type)) {
+      // ANTI-SILENT-GREEN #2: an action that can't target a record (e.g. Send
+      // email/SMS — a record has no inbox) is BLOCKED with a clear reason, so it
+      // can never silently "send to nothing". (Delays/other actions land here
+      // too in this stage.)
+      results.push({ type: action.type, status: "failed", error: `Action "${action.type}" can't target a record in this stage. Only "Create internal note" is supported.` });
+      continue;
+    }
+    results.push(await runAction(action, ctx));
+  }
+  const status = results.some((r) => r.status === "failed") ? "failed" : "success";
+  await writeRun(auto, { eventId: event.id, eventType: event.type, contactId: null, status, matched: true, results });
 }
 
 async function runOne(

@@ -2245,6 +2245,44 @@
     linkCard.appendChild(addRow);
     wrap.appendChild(linkCard);
 
+    // ---- Activity card (Stage 2a): internal notes on this record. Notes live in
+    // the record's customFields.__activity; automations and the box below write here.
+    const actCard = el("div", "card");
+    actCard.appendChild(el("div", "drawer-section-title", "Activity"));
+    const actList = el("div");
+    actCard.appendChild(actList);
+    function renderActivity() {
+      const items = ((rec.customFields || {}).__activity) || [];
+      actList.innerHTML = "";
+      if (!items.length) { actList.appendChild(el("p", "cell-muted", "No activity yet.")); return; }
+      items.forEach((it) => {
+        const row = el("div"); row.style.cssText = "padding:8px 0; border-bottom:1px solid var(--border);";
+        const when = it.at ? new Date(it.at).toLocaleString() : "";
+        const who = it.actorName ? it.actorName : (it.actorType === "automation" ? "Automation" : "System");
+        const top = el("div"); top.textContent = it.text || "";
+        const sub = el("div", "cell-muted"); sub.style.fontSize = "12px"; sub.textContent = who + " · " + when;
+        row.appendChild(top); row.appendChild(sub);
+        actList.appendChild(row);
+      });
+    }
+    renderActivity();
+    const addNoteRow = el("div"); addNoteRow.style.cssText = "display:flex; gap:6px; margin-top:10px;";
+    const noteInp = el("input", "input"); noteInp.placeholder = "Add an internal note…"; noteInp.style.marginBottom = "0";
+    const noteBtn = el("button", "btn btn-sm", "Add note");
+    noteBtn.onclick = async () => {
+      const text = noteInp.value.trim(); if (!text) return;
+      noteBtn.disabled = true;
+      try {
+        const updated = await App.portalApi("/api/records/" + id + "/notes", { method: "POST", body: JSON.stringify({ text }) });
+        rec.customFields = (updated && updated.customFields) || rec.customFields;
+        noteInp.value = ""; renderActivity(); toast("Note added");
+      } catch (e) { toast(e.message, true); }
+      finally { noteBtn.disabled = false; }
+    };
+    addNoteRow.appendChild(noteInp); addNoteRow.appendChild(noteBtn);
+    actCard.appendChild(addNoteRow);
+    wrap.appendChild(actCard);
+
     let candView = "list";
     let links = [];
     let kanbanDropHandled = false;

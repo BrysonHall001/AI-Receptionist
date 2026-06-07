@@ -6,6 +6,7 @@
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype } from "./recordTypeService";
 import { randomValueForField } from "./contactService";
+import { emitEvent } from "../events/bus";
 
 const db = prisma as any;
 
@@ -66,7 +67,101 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   }
   if (input.customFields !== undefined) data.customFields = { ...(existing.customFields || {}), ...(input.customFields || {}) };
   const updated = await db.record.update({ where: { id }, data });
+
+  // ===================== RECORD-UPDATED EVENT (Stage 2a) =====================
+  // Additive and isolated: emit a record-subject event ONLY for fields that
+  // actually changed. Subject type is "record" (NOT "contact") so the engine
+  // routes it down the parallel record path and the contact path is untouched.
+  // Best-effort: wrapped so it can never break the save. To remove the feature,
+  // delete this block and emitRecordUpdated() below.
+  try {
+    const changes = diffRecordFields(existing, data, input);
+    if (changes.length) await emitRecordUpdated(tenantId, updated, existing.recordTypeId, changes);
+  } catch { /* never block the record save on event emission */ }
+  // =================== END RECORD-UPDATED EVENT (Stage 2a) ===================
+
   return serializeRecord(updated);
+}
+
+// Compare what was asked to change against the prior values and return the
+// fields that genuinely changed. "status" is the record-level lifecycle
+// (stageKey); "title"/"subtype" are top-level; everything else is a custom
+// field. Reserved internal keys (e.g. __activity for notes) are ignored so a
+// note write never looks like a field change.
+function diffRecordFields(existing: any, data: any, input: any): Array<{ field: string; label: string; old: any; new: any }> {
+  const out: Array<{ field: string; label: string; old: any; new: any }> = [];
+  const norm = (v: any) => (v == null ? null : v);
+  if (input.title !== undefined && norm(existing.title) !== norm(data.title)) {
+    out.push({ field: "title", label: "Title", old: existing.title ?? null, new: data.title ?? null });
+  }
+  if (input.stageKey !== undefined && norm(existing.stageKey) !== norm(data.stageKey)) {
+    out.push({ field: "status", label: "Status", old: existing.stageKey ?? null, new: data.stageKey ?? null });
+  }
+  if (input.subtypeKey !== undefined && norm(existing.subtypeKey) !== norm(data.subtypeKey)) {
+    out.push({ field: "subtype", label: "Type", old: existing.subtypeKey ?? null, new: data.subtypeKey ?? null });
+  }
+  if (input.customFields !== undefined) {
+    const before = existing.customFields || {};
+    const after = data.customFields || {};
+    for (const k of Object.keys(input.customFields || {})) {
+      if (k.startsWith("__")) continue; // reserved/internal (e.g. __activity notes)
+      if (JSON.stringify(before[k] ?? null) !== JSON.stringify(after[k] ?? null)) {
+        out.push({ field: k, label: k, old: before[k] ?? null, new: after[k] ?? null });
+      }
+    }
+  }
+  return out;
+}
+
+// Emit a "RecordUpdated" domain event whose SUBJECT is the record. Generic,
+// relabel-safe payload (no hardcoded "job"): record id/title/type, plus the
+// list of changed fields with old -> new values for use by trigger scoping,
+// conditions, templating, and the logs.
+async function emitRecordUpdated(tenantId: string, record: any, recordTypeId: string, changes: Array<{ field: string; label: string; old: any; new: any }>) {
+  let recordTypeLabel: string | null = null;
+  try {
+    const rt = await db.recordType.findFirst({ where: { id: recordTypeId, tenantId } });
+    recordTypeLabel = rt?.label ?? null;
+  } catch { /* label is optional */ }
+  await emitEvent({
+    tenantId,
+    type: "RecordUpdated",
+    actor: { type: "user" }, // user-driven today; no automation calls updateRecord
+    subject: { type: "record", id: record.id },
+    payload: {
+      record_id: record.id,
+      record_title: record.title ?? null,
+      record_type: recordTypeLabel,
+      changes,
+      changed_fields: changes.map((c) => c.field),
+    },
+  });
+}
+
+// Append an internal note to a record's activity, stored in the record's own
+// customFields JSON under the reserved "__activity" key. No migration: notes
+// live on the record. Does NOT emit a RecordUpdated event (a note isn't a field
+// change), so an automation that adds a note can never loop. Tenant-scoped.
+export async function addRecordNote(
+  tenantId: string,
+  recordId: string,
+  text: string,
+  actor?: { id?: string | null; name?: string | null; type?: string },
+): Promise<boolean> {
+  const rec = await db.record.findFirst({ where: { id: recordId, tenantId, deletedAt: null } });
+  if (!rec) throw new Error("Record not found");
+  const cf = { ...(rec.customFields || {}) };
+  const activity = Array.isArray(cf.__activity) ? cf.__activity.slice() : [];
+  activity.unshift({
+    at: new Date().toISOString(),
+    type: "note",
+    text: String(text),
+    actorType: actor?.type || "system",
+    actorName: actor?.name || null,
+  });
+  cf.__activity = activity.slice(0, 200); // cap to keep the JSON bounded
+  await db.record.update({ where: { id: recordId }, data: { customFields: cf } });
+  return true;
 }
 
 /** Soft-delete records (recycle-bin style) and soft-delete their links too. */

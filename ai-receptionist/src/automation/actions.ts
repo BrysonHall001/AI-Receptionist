@@ -4,6 +4,7 @@ import { EVENT_TYPES, EventActor } from "../events/types";
 import { sendRichEmail } from "../services/notificationService";
 import { sendSms } from "../services/smsService";
 import { updateContact, createContact, softDeleteContacts } from "../services/contactService";
+import { addRecordNote } from "../services/recordService";
 import { log as logActivity } from "../services/activityService";
 import { FieldMeta, renderTemplate, templateContext, buildColumns, valueOf, conditionFields } from "./contactRow";
 import { evalRules } from "./conditions";
@@ -41,6 +42,12 @@ export interface ActionContext {
   // {{record_title}} from a StageChanged event). Layered on top of the contact's
   // field tokens by templateTokens(). Optional; empty when the event has none.
   extraTokens?: Record<string, string>;
+  // Stage 2a: set when the automation's subject is a record (e.g. a job) rather
+  // than a contact. "create_note" then targets the record; contact-only actions
+  // are blocked upstream by the engine. Unset = the normal contact behavior.
+  subjectType?: "contact" | "record";
+  recordId?: string;
+  recordTitle?: string | null;
 }
 
 // Metadata for the builder UI. Adding an action = add an executor + an entry
@@ -169,6 +176,15 @@ const EXECUTORS: Record<string, Executor> = {
   },
 
   async create_note(cfg, ctx) {
+    // Record subject (Stage 2a): write the note to the record's activity, which
+    // shows on the job's detail page. Templating uses the record tokens only.
+    if (ctx.subjectType === "record") {
+      if (!ctx.recordId) return { type: "create_note", status: "failed", error: "No record subject to attach the note to" };
+      const text = renderTemplate(String(cfg.text ?? ""), ctx.extraTokens || {}).trim();
+      if (!text) return { type: "create_note", status: "skipped", detail: "Empty note" };
+      await addRecordNote(ctx.tenantId, ctx.recordId, text, { id: ctx.actor.id, name: ctx.actor.name, type: "automation" });
+      return { type: "create_note", status: "success", detail: "added note to record" };
+    }
     const contact = await freshContact(ctx);
     const tmpl = templateTokens(contact, ctx);
     const text = renderTemplate(String(cfg.text ?? ""), tmpl).trim();
