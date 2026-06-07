@@ -49,6 +49,7 @@
   function renderEditor(container, fields, values, opts) {
     opts = opts || {};
     const readOnly = !!opts.readOnly;
+    const allFields = opts.allFields || fields; // formulas may reference fields in other sections
     container.innerHTML = "";
     const formulaUpdaters = [];
 
@@ -56,6 +57,8 @@
 
     fields.forEach((def) => {
       const row = el("div", "form-row");
+      // Wide field types span both columns in a two-column grid layout.
+      if (def.type === "textarea" || def.type === "multi_select" || def.type === "image" || def.type === "formula") row.classList.add("form-row--wide");
       const lab = el("label", "form-label", esc(def.label) + (def.required ? ' <span class="req">*</span>' : ""));
       row.appendChild(lab);
 
@@ -64,7 +67,7 @@
 
       if (def.type === "formula") {
         node = el("div", "form-static");
-        const update = () => { node.textContent = computeFormula(def.formula, fields, values) || "—"; };
+        const update = () => { node.textContent = computeFormula(def.formula, allFields, values) || "—"; };
         update();
         formulaUpdaters.push(update);
       } else if (def.type === "textarea") {
@@ -131,5 +134,38 @@
     return refreshFormulas;
   }
 
-  App.fields = { TYPE_LABELS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, formatValue, computeFormula };
+  // Render fields grouped under their section headings (in section order), each
+  // group laid out in a responsive two-column grid. Reuses renderEditor per group.
+  // Backward compatible: fields with no section render under "Ungrouped" (or with
+  // no heading at all if the type has no sections defined), so nothing disappears.
+  function renderGroupedEditor(container, fields, values, sections, opts) {
+    opts = opts || {};
+    container.innerHTML = "";
+    const refreshers = [];
+    const combinedOnChange = () => { refreshers.forEach((fn) => fn && fn()); if (opts.onChange) opts.onChange(); };
+    const sortByOrder = (arr) => arr.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    const secs = (sections || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    const bySection = {};
+    secs.forEach((s) => (bySection[s.id] = []));
+    const ungrouped = [];
+    fields.forEach((f) => { if (f.sectionId && bySection[f.sectionId]) bySection[f.sectionId].push(f); else ungrouped.push(f); });
+
+    function renderGroup(title, groupFields) {
+      if (!groupFields.length) return;
+      const sec = el("div", "field-section");
+      if (title) sec.appendChild(el("div", "field-section-title", esc(title)));
+      const grid = el("div", "field-grid");
+      const refresh = renderEditor(grid, sortByOrder(groupFields), values, Object.assign({}, opts, { allFields: fields, onChange: combinedOnChange }));
+      refreshers.push(refresh);
+      sec.appendChild(grid);
+      container.appendChild(sec);
+    }
+
+    secs.forEach((s) => renderGroup(s.label, bySection[s.id]));
+    if (ungrouped.length) renderGroup(secs.length ? "Ungrouped" : null, ungrouped);
+    return combinedOnChange;
+  }
+
+  App.fields = { TYPE_LABELS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, renderGroupedEditor, formatValue, computeFormula };
 })(typeof window !== "undefined" ? window : globalThis);

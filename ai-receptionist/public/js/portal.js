@@ -809,12 +809,14 @@
     if (!App.state.fieldsType || !types.some((t) => t.key === App.state.fieldsType)) App.state.fieldsType = "contact";
     const selectedKey = App.state.fieldsType;
     const selectedType = types.find((t) => t.key === selectedKey) || types[0];
-    const fields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(selectedKey));
+    const [fields, sections] = await Promise.all([
+      App.portalApi("/api/fields?recordType=" + encodeURIComponent(selectedKey)),
+      App.portalApi("/api/field-sections?recordType=" + encodeURIComponent(selectedKey)).catch(() => []),
+    ]);
     const canEdit = App.state.me.role !== "CLIENT_USER";
     const wrap = el("div", "fade-in");
 
-    // Object-type selector ("Editing fields for: [Contacts | Jobs]"). Populated
-    // from the portal's record types; labels come from each type's display label.
+    // Object-type selector ("Editing fields for: [Contacts | Jobs]").
     const typeBar = el("div", "fields-typebar");
     typeBar.appendChild(el("span", "fields-typebar-label", "Editing fields for:"));
     const typeSel = el("select", "input fields-typebar-select");
@@ -833,6 +835,14 @@
       const add = el("button", "btn btn-primary btn-sm", "+ Add field");
       add.onclick = () => openFieldModal(null, selectedKey);
       bar.appendChild(add);
+      const addSec = el("button", "btn btn-ghost btn-sm", "+ Add section");
+      addSec.onclick = async () => {
+        const name = prompt("Name this section (e.g. Contact details, Pipeline):");
+        if (!name || !name.trim()) return;
+        try { await App.portalApi("/api/field-sections", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Section added"); renderFields(); }
+        catch (e) { App.util.toast(e.message, true); }
+      };
+      bar.appendChild(addSec);
     }
     wrap.appendChild(bar);
 
@@ -840,24 +850,73 @@
     const intro = el("p", "muted");
     intro.style.margin = "0 0 14px";
     intro.textContent = canEdit
-      ? `These fields appear on every ${typeWord} in this portal. Drag to reorder — that order is how they show on a ${typeWord}'s profile.`
+      ? `These fields appear on every ${typeWord} in this portal. Add sections to group them; drag fields to reorder within a section; use “Move to” to reassign a field. Order and grouping are how they show on a ${typeWord}'s profile — field keys and saved data never change.`
       : `These are the fields on every ${typeWord} in this portal. Ask an admin to change them.`;
     wrap.appendChild(intro);
 
-    const card = el("div", "card");
-    const list = el("div", "field-list");
     if (!fields.length) {
-      list.appendChild(el("div", "cell-muted", "No fields yet for this type. Click “+ Add field” to create one."));
+      const card = el("div", "card");
+      card.appendChild(el("div", "cell-muted", "No fields yet for this type. Click “+ Add field” to create one."));
+      wrap.appendChild(card);
+      view().innerHTML = ""; view().appendChild(wrap); return;
     }
-    fields.forEach((f) => list.appendChild(fieldRow(f, canEdit, fields, selectedKey)));
-    card.appendChild(list);
-    wrap.appendChild(card);
+
+    const sorted = sections.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    const bySection = {}; sorted.forEach((s) => (bySection[s.id] = []));
+    const ungrouped = [];
+    fields.forEach((f) => { if (f.sectionId && bySection[f.sectionId]) bySection[f.sectionId].push(f); else ungrouped.push(f); });
+    const sortByOrder = (arr) => arr.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    async function moveSection(idx, dir) {
+      const ids = sorted.map((s) => s.id);
+      const j = idx + dir; if (j < 0 || j >= ids.length) return;
+      const tmp = ids[idx]; ids[idx] = ids[j]; ids[j] = tmp;
+      try { await App.portalApi("/api/field-sections/reorder", { method: "PATCH", body: JSON.stringify({ orderedIds: ids }) }); renderFields(); }
+      catch (e) { App.util.toast(e.message, true); }
+    }
+
+    function sectionCard(section, groupFields, idx) {
+      const card = el("div", "fields-section-card");
+      const head = el("div", "fields-section-head");
+      head.appendChild(el("div", "fields-section-name", esc(section.label)));
+      if (canEdit) {
+        const tools = el("div", "fields-section-tools");
+        const up = el("button", "btn btn-ghost btn-sm", "↑"); up.title = "Move section up"; up.disabled = idx === 0; up.onclick = () => moveSection(idx, -1);
+        const down = el("button", "btn btn-ghost btn-sm", "↓"); down.title = "Move section down"; down.disabled = idx === sorted.length - 1; down.onclick = () => moveSection(idx, 1);
+        const ren = el("button", "btn btn-ghost btn-sm", "Rename");
+        ren.onclick = async () => { const name = prompt("Rename section:", section.label); if (!name || !name.trim()) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "PATCH", body: JSON.stringify({ label: name.trim() }) }); App.util.toast("Renamed"); renderFields(); } catch (e) { App.util.toast(e.message, true); } };
+        const del = el("button", "link-danger", "Delete");
+        del.onclick = async () => { if (!confirm(`Delete section “${section.label}”? Its fields move to Ungrouped — no fields are deleted.`)) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "DELETE" }); App.util.toast("Section deleted"); renderFields(); } catch (e) { App.util.toast(e.message, true); } };
+        tools.appendChild(up); tools.appendChild(down); tools.appendChild(ren); tools.appendChild(del);
+        head.appendChild(tools);
+      }
+      card.appendChild(head);
+      const list = el("div", "field-list");
+      if (!groupFields.length) list.appendChild(el("div", "cell-muted", "No fields here yet — use “Move to” on a field to add one."));
+      sortByOrder(groupFields).forEach((f) => list.appendChild(fieldRow(f, canEdit, fields, selectedKey, sorted, f.sectionId || "")));
+      card.appendChild(list);
+      return card;
+    }
+
+    function ungroupedCard(groupFields) {
+      const card = el("div", "fields-section-card");
+      const head = el("div", "fields-section-head");
+      head.appendChild(el("div", "fields-section-name", sorted.length ? "Ungrouped" : "All fields"));
+      card.appendChild(head);
+      const list = el("div", "field-list");
+      sortByOrder(groupFields).forEach((f) => list.appendChild(fieldRow(f, canEdit, fields, selectedKey, sorted, "")));
+      card.appendChild(list);
+      return card;
+    }
+
+    sorted.forEach((s, i) => wrap.appendChild(sectionCard(s, bySection[s.id], i)));
+    if (ungrouped.length || !sorted.length) wrap.appendChild(ungroupedCard(ungrouped));
 
     view().innerHTML = "";
     view().appendChild(wrap);
   }
 
-  function fieldRow(f, canEdit, allFields, recordTypeKey) {
+  function fieldRow(f, canEdit, allFields, recordTypeKey, sections, currentSectionId) {
     const row = el("div", "field-row");
     row.dataset.id = f.id;
     if (canEdit) row.draggable = true;
@@ -873,6 +932,15 @@
 
     const right = el("div", "field-row-actions");
     if (canEdit) {
+      if (sections && sections.length) {
+        const moveSel = el("select", "input field-move-sel");
+        moveSel.title = "Move to section";
+        const ung = el("option", null, "Ungrouped"); ung.value = ""; moveSel.appendChild(ung);
+        sections.forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.id; if (s.id === (currentSectionId || "")) o.selected = true; moveSel.appendChild(o); });
+        moveSel.value = currentSectionId || "";
+        moveSel.onchange = async () => { try { await App.portalApi("/api/fields/" + f.id + "/section", { method: "PATCH", body: JSON.stringify({ sectionId: moveSel.value || null }) }); App.util.toast("Moved"); renderFields(); } catch (e) { App.util.toast(e.message, true); } };
+        right.appendChild(moveSel);
+      }
       const edit = el("button", "btn btn-ghost btn-sm", "Edit");
       edit.onclick = () => openFieldModal(f, recordTypeKey);
       right.appendChild(edit);
@@ -1022,8 +1090,8 @@
   // ---------------- Contact profile page ----------------
   async function renderContact(id) {
     loading();
-    let c, fields;
-    try { [c, fields] = await Promise.all([App.portalApi(`/api/contacts/${id}`), App.portalApi("/api/fields")]); }
+    let c, fields, sections;
+    try { [c, fields, sections] = await Promise.all([App.portalApi(`/api/contacts/${id}`), App.portalApi("/api/fields"), App.portalApi("/api/field-sections?recordType=contact").catch(() => [])]); }
     catch (err) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(err.message)}</p></div>`; return; }
 
     const wrap = el("div", "fade-in contact-page");
@@ -1098,7 +1166,7 @@
       const card = el("div", "card");
       const editorHost = el("div", "field-editor");
       card.appendChild(editorHost);
-      App.fields.renderEditor(editorHost, fields, values, {});
+      App.fields.renderGroupedEditor(editorHost, fields, values, sections || [], {});
       const saveBar = el("div", "drawer-save-bar");
       const save = el("button", "btn btn-primary btn-sm", "Save changes");
       save.onclick = async () => {
@@ -1862,7 +1930,8 @@
     catch (e) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
     const type = (types || []).find((t) => t.id === rec.recordTypeId) || { key: "record", label: "Record", labelPlural: "Records", stages: [], recordStages: [] };
     let fields = [];
-    try { fields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)); } catch (e) { fields = []; }
+    let fieldSections = [];
+    try { [fields, fieldSections] = await Promise.all([App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)), App.portalApi("/api/field-sections?recordType=" + encodeURIComponent(type.key)).catch(() => [])]); } catch (e) { fields = []; }
 
     const wrap = el("div", "fade-in contact-page");
     const back = el("a", "back-link", "← " + esc(type.labelPlural || "Records"));
@@ -1895,7 +1964,7 @@
     const values = { ...(rec.customFields || {}) };
     const editorHost = el("div", "field-editor");
     card.appendChild(editorHost);
-    App.fields.renderEditor(editorHost, fields || [], values, {});
+    App.fields.renderGroupedEditor(editorHost, fields || [], values, fieldSections || [], {});
 
     const saveBar = el("div", "drawer-save-bar");
     const save = el("button", "btn btn-primary btn-sm", "Save changes");

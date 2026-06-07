@@ -51,6 +51,7 @@ function serialize(f: any) {
     order: f.order,
     system: f.system,
     recordTypeId: f.recordTypeId ?? null,
+    sectionId: f.sectionId ?? null,
   };
 }
 
@@ -139,4 +140,22 @@ export async function reorderFields(tenantId: string, orderedIds: string[], reco
       .filter((id) => valid.has(id))
       .map((id, idx) => prisma.fieldDef.update({ where: { id }, data: { order: idx } })),
   );
+}
+
+/** Assign a field to a section (or null to Ungrouped). DISPLAY-ONLY — does not
+ * touch the field's key, values, type, or order. Never affects automations/reports. */
+export async function setFieldSection(tenantId: string, fieldId: string, sectionId: string | null) {
+  const field = await prisma.fieldDef.findUnique({ where: { id: fieldId } });
+  if (!field || field.tenantId !== tenantId) throw new Error("Field not found");
+  let sid: string | null = sectionId || null;
+  if (sid) {
+    const section = await (prisma as any).fieldSection.findFirst({ where: { id: sid, tenantId } });
+    if (!section) throw new Error("Section not found");
+    // Keep it within the same record type as the field.
+    if (section.recordTypeId && field.recordTypeId && section.recordTypeId !== field.recordTypeId) {
+      throw new Error("Section belongs to a different object type");
+    }
+  }
+  const updated = await prisma.fieldDef.update({ where: { id: fieldId }, data: { sectionId: sid } as any });
+  return serialize(updated);
 }

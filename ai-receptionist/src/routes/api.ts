@@ -3,7 +3,8 @@ import { requireAuth, resolveTenantScope } from "../middleware/auth";
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
 import { runSimulatedCall } from "../services/simulationService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
-import { listFields, createField, updateField, deleteField, reorderFields } from "../services/fieldService";
+import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
+import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
 import { listRecordTypes } from "../services/recordTypeService";
 import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
@@ -385,6 +386,59 @@ apiRouter.get("/record-types", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await listRecordTypes(tenantId));
+});
+
+// ---- Field sections (display-only grouping of fields, per record type) ----
+apiRouter.get("/field-sections", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const recordType = req.query.recordType ? String(req.query.recordType) : null;
+  res.json(await listSections(tenantId, recordType));
+});
+
+apiRouter.post("/field-sections", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try {
+    const { recordType, label } = (req.body ?? {}) as any;
+    res.json(await createSection(tenantId, recordType ?? null, label));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.patch("/field-sections/reorder", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  await reorderSections(tenantId, (req.body?.orderedIds ?? []) as string[]);
+  res.json({ ok: true });
+});
+
+apiRouter.patch("/field-sections/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { res.json(await renameSection(tenantId, req.params.id, (req.body ?? {}).label)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.delete("/field-sections/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { await deleteSection(tenantId, req.params.id); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// Assign a field to a section (display-only).
+apiRouter.patch("/fields/:id/section", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try {
+    const sectionId = (req.body ?? {}).sectionId ?? null;
+    res.json(await setFieldSection(tenantId, req.params.id, sectionId ? String(sectionId) : null));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
 // ---- Records (generic record-type instances, e.g. Jobs) ----

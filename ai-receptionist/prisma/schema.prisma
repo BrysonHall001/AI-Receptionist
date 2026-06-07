@@ -182,12 +182,31 @@ model FieldDef {
   options   Json     @default("[]")
   formula   String?
   order     Int      @default(0)
+  // Display-only grouping: which section this field shows under on profiles.
+  // Nullable → unassigned fields render under a default "Ungrouped" heading.
+  // Never affects the field's key, stored values, or how it's referenced.
+  sectionId String?
   system    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([tenantId, recordTypeId, key])
   @@index([tenantId])
+}
+
+// Named, ordered groups for organizing fields on a profile, per record type.
+// Display metadata only — a field's section assignment never changes its key,
+// its stored values, or how automations/reports/filters reference it.
+model FieldSection {
+  id           String   @id @default(cuid())
+  tenantId     String
+  recordTypeId String?
+  label        String
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, recordTypeId])
 }
 
 // Registry of object types a portal can hold beyond Contact (Job, Policy,
