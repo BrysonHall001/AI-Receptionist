@@ -281,6 +281,24 @@
     const a = (meta.actions || []).find((x) => x.type === type);
     return a ? a.label : type;
   }
+  // Batch C1 Pass 2: the "When" line for the live preview AND the wizard review,
+  // so both read identically. For complete triggers this is exactly
+  // triggerLabel(); the one special case is a Scheduled trigger whose date field
+  // isn't chosen yet — triggerLabel() would otherwise read like a real value
+  // ("0 days before a date field"), so we show a clear blank slot instead.
+  function whenText(type) {
+    if (!type) return "";
+    if (type.indexOf("Scheduled:") === 0) {
+      const p = type.slice("Scheduled:".length).split(":");
+      if (!p[0]) return `${p[1] || "0"} ${p[2] || "days"} ${p[3] || "before"} — choose a date field`;
+    }
+    return triggerLabel(type);
+  }
+  function isWhenIncomplete(type) {
+    if (!type) return true;
+    if (type.indexOf("Scheduled:") === 0) return !type.slice("Scheduled:".length).split(":")[0];
+    return false;
+  }
 
   // ---------------- Workflows list ----------------
   // View-state for the read-only list toolbar (search / status / trigger / sort).
@@ -1061,7 +1079,7 @@
 
     const filters = w.filters.filter(condComplete);
     const trg = el("div", "wiz-review-block");
-    trg.innerHTML = `<div class="pv-k">When</div><div>${esc(triggerLabel(wizTriggerType(w)))}</div>`;
+    trg.innerHTML = `<div class="pv-k">When</div><div>${esc(whenText(wizTriggerType(w)))}</div>`;
     box.appendChild(trg);
 
     const fblock = el("div", "wiz-review-block");
@@ -1272,6 +1290,55 @@
     nameRow.appendChild(nameInp);
     bodyEl.appendChild(nameRow);
 
+    // --- Live plain-English preview (Batch C1 Pass 2) ---
+    // Reads the in-progress `draft` and assembles a "When / Only if / Then"
+    // readout using the SAME functions the wizard review uses (whenText,
+    // condText, actionSummary) plus the shared FlowPreview assembler, so the two
+    // can't drift. Re-rendered on every trigger/condition/action change.
+    const previewNode = el("div", "wf-preview");
+    previewNode.style.cssText = "margin:12px 0 4px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.55;";
+    bodyEl.appendChild(previewNode);
+    const PV_LAB = 'style="color:var(--ink-soft);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:7px;"';
+    const PV_MUTED = 'style="color:var(--ink-soft);"';
+    const PV_TODO = 'style="color:var(--amber);"';
+    function previewLine(lab, bodyHtml) {
+      const d = el("div"); d.style.marginTop = "4px";
+      d.innerHTML = `<span ${PV_LAB}>${lab}</span>${bodyHtml}`;
+      return d;
+    }
+    function renderPreview() {
+      const tt = draft.triggerType;
+      // Resolve condition labels against THIS trigger's field set (record vs
+      // contact), then restore — same approach the wizard uses.
+      const prevCT = _condTrigger; _condTrigger = tt;
+      const complete = (draft.conditions || []).filter(rc);
+      const condLines = complete.map(condText);
+      const incompleteConds = (draft.conditions || []).filter((c) => c && c.field && !rc(c)).length;
+      _condTrigger = prevCT;
+      const actLines = (draft.actions || []).map(actionSummary);
+      const FP = (typeof FlowPreview !== "undefined") ? FlowPreview : null;
+      previewNode.innerHTML = "";
+      if (!FP) { previewNode.style.display = "none"; return; }
+      previewNode.style.display = "";
+      const model = FP.flowModel({ when: whenText(tt), whenIncomplete: isWhenIncomplete(tt), conditions: condLines, incompleteConditions: incompleteConds, actions: actLines });
+      previewNode.appendChild(el("div", null, `<span ${PV_LAB}>Preview</span>`));
+      previewNode.lastChild.style.marginBottom = "6px";
+      if (model.placeholder) {
+        previewNode.appendChild(el("div", null, `<span ${PV_MUTED}>Pick a trigger to see a preview.</span>`));
+        return;
+      }
+      previewNode.appendChild(previewLine("When", esc(model.whenLine) + (model.triggerIncomplete ? ` <span ${PV_TODO}>(incomplete)</span>` : "")));
+      let condHtml = model.runsEveryTime
+        ? `<span ${PV_MUTED}>runs every time</span>`
+        : model.conditionLines.map(esc).join(` <span ${PV_MUTED}>and</span> `);
+      if (model.incompleteConditions > 0) condHtml += ` <span ${PV_TODO}>(${model.incompleteConditions} still being filled in)</span>`;
+      previewNode.appendChild(previewLine("Only if", condHtml));
+      const actHtml = model.noActions
+        ? `<span ${PV_TODO}>no actions yet — it won't do anything</span>`
+        : model.actionLines.map(esc).join(` <span ${PV_MUTED}>→</span> `);
+      previewNode.appendChild(previewLine("Then", actHtml));
+    }
+
     // --- The flow ---
     const flow = el("div", "wf-builder");
     bodyEl.appendChild(flow);
@@ -1328,6 +1395,8 @@
     trigNode.appendChild(trigDesc);
     // Sub-controls area (field picker for FieldChanged, hint for Manual)
     const trigExtra = el("div");
+    trigExtra.addEventListener("input", () => renderPreview());
+    trigExtra.addEventListener("change", () => renderPreview());
     trigExtra.style.marginTop = "10px";
     trigNode.appendChild(trigExtra);
     function renderTrigExtra() {
@@ -1432,7 +1501,7 @@
         trigExtra.appendChild(snote);
       }
     }
-    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } if (baseTrigger !== "Stalled") { stall.days = ""; stall.stageKey = ""; } syncTrigger(); renderTrigExtra(); renderConditions(); redrawActions(); };
+    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } if (baseTrigger !== "Stalled") { stall.days = ""; stall.stageKey = ""; } syncTrigger(); renderTrigExtra(); renderConditions(); redrawActions(); renderPreview(); };
     renderTrigExtra();
     flow.appendChild(trigNode);
 
@@ -1442,12 +1511,14 @@
     flow.appendChild(stepHead("conditions", "CONDITIONS", "Only continue if…", "optional"));
     flow.appendChild(hint("All conditions must match. Use OR to start a new group. Leave empty to always run."));
     const condNode = el("div", "wf-node");
+    condNode.addEventListener("input", () => renderPreview());
+    condNode.addEventListener("change", () => renderPreview());
     flow.appendChild(condNode);
     // Re-rendered when the trigger changes so the field picker reflects the
     // subject: record fields for a record trigger, contact fields otherwise.
     function renderConditions() {
       condNode.innerHTML = "";
-      condNode.appendChild(App.table.ruleEditor(buildColumns(draft.triggerType), [], draft.conditions, () => {}));
+      condNode.appendChild(App.table.ruleEditor(buildColumns(draft.triggerType), [], draft.conditions, () => renderPreview()));
     }
     renderConditions();
 
@@ -1457,6 +1528,8 @@
     flow.appendChild(stepHead("actions", "ACTIONS", "Then do this", null));
     flow.appendChild(hint("These run in order, top to bottom, when the trigger fires and the conditions match."));
     const actionsWrap = el("div", "wf-actions-list");
+    actionsWrap.addEventListener("input", () => renderPreview());
+    actionsWrap.addEventListener("change", () => renderPreview());
     flow.appendChild(actionsWrap);
 
     function redrawActions() {
@@ -1472,8 +1545,10 @@
       const add = el("button", "rail-add", "+ Add action");
       add.onclick = () => { const opts = allowedActions(draft.triggerType); draft.actions.push({ type: (opts[0] && opts[0].type) || "create_note", config: {} }); redrawActions(); };
       actionsWrap.appendChild(add);
+      renderPreview();
     }
     redrawActions();
+    renderPreview();
 
     // --- Save bar ---
     const bar = el("div", "modal-savebar");
