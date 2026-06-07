@@ -6,8 +6,20 @@
 import { prisma } from "../db/client";
 import { resolveRecordTypeId } from "./recordTypeService";
 import { emitEvent } from "../events/bus";
+import { logger } from "../utils/logger";
 
 const db = prisma as any;
+
+// Stage 3b: append ONE stage-move history row. Used by updateLink() (moves) and
+// createLink() (initial stage / re-stage on linking). source = 'move' to keep
+// these distinct from the 3a 'backfill' rows; existing rows are never altered.
+// Best-effort at the call sites: a logging failure is recorded but never blocks
+// the stage write.
+async function writeStageHistory(tenantId: string, recordLinkId: string, fromStage: string | null, toStage: string | null): Promise<void> {
+  await db.stageHistory.create({
+    data: { tenantId, recordLinkId, fromStage: fromStage ?? null, toStage: toStage ?? null, enteredAt: new Date(), source: "move" },
+  });
+}
 
 /** Links on a record (e.g. candidates on a Job), with parent display info. */
 export async function listLinksForRecord(tenantId: string, recordId: string) {
@@ -64,13 +76,33 @@ export async function createLink(tenantId: string, input: { recordId: string; pa
   }
   const existing = await db.recordLink.findFirst({ where: { tenantId, recordId: input.recordId, parentType, parentId: input.parentId, deletedAt: null } });
   if (existing) {
+    const prevStage = existing.stageKey ?? null; // capture BEFORE any update
     const data: any = {};
     if (input.stageKey !== undefined) data.stageKey = input.stageKey ?? null;
     if (input.role !== undefined) data.role = input.role ?? null;
-    if (Object.keys(data).length) return db.recordLink.update({ where: { id: existing.id }, data });
+    if (Object.keys(data).length) {
+      const updated = await db.recordLink.update({ where: { id: existing.id }, data });
+      // Stage 3b: re-linking with a different stage IS a stage change — log it.
+      const newStage = updated.stageKey ?? null;
+      if (input.stageKey !== undefined && newStage !== prevStage) {
+        try { await writeStageHistory(tenantId, updated.id, prevStage, newStage); }
+        catch (e) { logger.error(`stage history write failed (link ${updated.id}): ${(e as Error).message}`); }
+      }
+      return updated;
+    }
     return existing;
   }
-  return db.recordLink.create({ data: { tenantId, recordId: input.recordId, parentType, parentId: input.parentId, role: input.role ?? null, stageKey: input.stageKey ?? null, customFields: {} } });
+  const created = await db.recordLink.create({ data: { tenantId, recordId: input.recordId, parentType, parentId: input.parentId, role: input.role ?? null, stageKey: input.stageKey ?? null, customFields: {} } });
+  // Stage 3b: a brand-new link with an initial stage = the candidate entering
+  // their first stage. Log it (fromStage = null) so newly-linked candidates have
+  // a start point for time-in-stage — otherwise they'd be an unlogged hole until
+  // their first move.
+  const initialStage = created.stageKey ?? null;
+  if (initialStage !== null) {
+    try { await writeStageHistory(tenantId, created.id, null, initialStage); }
+    catch (e) { logger.error(`stage history write failed (link ${created.id}): ${(e as Error).message}`); }
+  }
+  return created;
 }
 
 export async function updateLink(tenantId: string, id: string, input: { stageKey?: string | null; role?: string | null }) {
@@ -81,6 +113,18 @@ export async function updateLink(tenantId: string, id: string, input: { stageKey
   if (input.stageKey !== undefined) data.stageKey = input.stageKey ?? null;
   if (input.role !== undefined) data.role = input.role ?? null;
   const updated = await db.recordLink.update({ where: { id }, data });
+
+  // ===================== STAGE HISTORY (Stage 3b) =====================
+  // Append one 'move' row when the stage ACTUALLY changes. This is a SEPARATE,
+  // independently try/caught step from the Stage 1 event emit below, so a failure
+  // in one can never swallow the other. Logs regardless of parent type (history
+  // is about the link itself, not the automation subject).
+  const stageChanged = input.stageKey !== undefined && (updated.stageKey ?? null) !== prevStage;
+  if (stageChanged) {
+    try { await writeStageHistory(tenantId, updated.id, prevStage, updated.stageKey ?? null); }
+    catch (e) { logger.error(`stage history write failed (link ${updated.id}): ${(e as Error).message}`); }
+  }
+  // =================== END STAGE HISTORY (Stage 3b) ===================
 
   // ===================== STAGE-CHANGE EVENT (Stage 1) =====================
   // Additive and self-contained: if you ever want to remove the "Stage changed"
