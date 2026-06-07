@@ -2229,28 +2229,52 @@
     card.appendChild(saveBar);
     wrap.appendChild(card);
 
-    // ---- Linked parents (e.g. candidates) card ----
+    // ---- Linked candidates card: List | Board (kanban) — two views of the SAME links ----
     const linkCard = el("div", "card");
-    linkCard.appendChild(el("div", "drawer-section-title", "Candidates"));
-    const linkList = el("div", "link-list");
-    linkCard.appendChild(linkList);
+    const candHead = el("div", "cand-head");
+    candHead.appendChild(el("div", "drawer-section-title", "Candidates"));
+    const candToggle = el("div", "seg-toggle");
+    const tabListBtn = el("button", "seg-btn seg-on", "List");
+    const tabBoardBtn = el("button", "seg-btn", "Board");
+    candToggle.appendChild(tabListBtn); candToggle.appendChild(tabBoardBtn);
+    candHead.appendChild(candToggle);
+    linkCard.appendChild(candHead);
+    const candBody = el("div");
+    linkCard.appendChild(candBody);
     const addRow = el("div", "link-add");
     linkCard.appendChild(addRow);
     wrap.appendChild(linkCard);
 
+    let candView = "list";
+    let links = [];
+    let kanbanDropHandled = false;
+    function setCandView(v) { candView = v; tabListBtn.classList.toggle("seg-on", v === "list"); tabBoardBtn.classList.toggle("seg-on", v === "board"); renderCandidates(); }
+    tabListBtn.onclick = () => setCandView("list");
+    tabBoardBtn.onclick = () => setCandView("board");
+
     view().innerHTML = "";
     view().appendChild(wrap);
 
+    function candWho(lk) { return lk.parent ? (lk.parent.name || lk.parent.email || lk.parent.phone || "Contact") : (lk.parentType + " " + lk.parentId); }
+    function candSub(lk) { if (!lk.parent) return ""; const nm = candWho(lk); const s = []; if (lk.parent.email && lk.parent.email !== nm) s.push(lk.parent.email); if (lk.parent.phone && lk.parent.phone !== nm) s.push(lk.parent.phone); return s.join(" · "); }
+
     async function loadLinks() {
-      linkList.innerHTML = `<div class="cell-muted">Loading…</div>`;
-      let links;
+      candBody.innerHTML = `<div class="cell-muted">Loading…</div>`;
       try { links = await App.portalApi("/api/records/" + id + "/links"); }
-      catch (e) { linkList.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
-      linkList.innerHTML = "";
-      if (!links.length) { linkList.appendChild(el("div", "cell-muted", "No candidates linked yet.")); }
+      catch (e) { candBody.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+      renderCandidates();
+    }
+    function renderCandidates() { if (candView === "board") renderCandBoard(); else renderCandList(); }
+
+    // List view — the original table-ish list; its dropdown writes the SAME
+    // RecordLink.stageKey and updates the in-memory link so the board matches.
+    function renderCandList() {
+      candBody.innerHTML = "";
+      const listEl = el("div", "link-list");
+      if (!links.length) listEl.appendChild(el("div", "cell-muted", "No candidates linked yet."));
       links.forEach((lk) => {
         const row = el("div", "link-row");
-        const who = lk.parent ? (lk.parent.name || lk.parent.email || lk.parent.phone || "Contact") : (lk.parentType + " " + lk.parentId);
+        const who = candWho(lk);
         const nameEl = el("div", "link-name");
         nameEl.innerHTML = `${esc(who)} <span class="cell-muted link-ptype">${esc(lk.parentType)}</span>`;
         if (lk.parentType === "contact" && lk.parent) { nameEl.style.cursor = "pointer"; nameEl.onclick = () => App.go("#/contact/" + lk.parent.id); }
@@ -2260,14 +2284,85 @@
         const stages = currentStages();
         let known = false;
         stages.forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) { o.selected = true; known = true; } stageSelL.appendChild(o); });
-        if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSelL.appendChild(o); } // never silently drop a candidate's stage
-        stageSelL.onchange = async () => { try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: stageSelL.value || null }) }); toast("Stage updated"); } catch (e) { toast(e.message, true); } };
+        if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSelL.appendChild(o); }
+        stageSelL.onchange = async () => { const v = stageSelL.value || null; try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: v }) }); lk.stageKey = v; toast("Stage updated"); } catch (e) { toast(e.message, true); } };
         row.appendChild(stageSelL);
         const unlink = el("button", "link-danger", "Unlink");
         unlink.onclick = async () => { if (!confirm(`Unlink ${who}?`)) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (e) { toast(e.message, true); } };
         row.appendChild(unlink);
-        linkList.appendChild(row);
+        listEl.appendChild(row);
       });
+      candBody.appendChild(listEl);
+    }
+
+    // A draggable candidate card for the board.
+    function candCard(lk) {
+      const card = el("div", "kanban-card");
+      card.draggable = true; card.dataset.linkId = lk.id;
+      const who = candWho(lk); const sub = candSub(lk);
+      const nameEl = el("div", "kanban-card-name", esc(who));
+      if (lk.parentType === "contact" && lk.parent) { nameEl.style.cursor = "pointer"; nameEl.onclick = (e) => { e.stopPropagation(); App.go("#/contact/" + lk.parent.id); }; }
+      card.appendChild(nameEl);
+      if (sub) card.appendChild(el("div", "kanban-card-sub", esc(sub)));
+      const x = el("button", "kanban-card-x", "×"); x.title = "Unlink";
+      x.onclick = async (e) => { e.stopPropagation(); if (!confirm(`Unlink ${who}?`)) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (err) { toast(err.message, true); } };
+      card.appendChild(x);
+      card.addEventListener("dragstart", () => { kanbanDropHandled = false; card.classList.add("dragging"); });
+      card.addEventListener("dragend", () => { card.classList.remove("dragging"); document.querySelectorAll(".kanban-col--over").forEach((c) => c.classList.remove("kanban-col--over")); if (!kanbanDropHandled) renderCandBoard(); });
+      return card;
+    }
+
+    // Board view — one column per stage in THIS JOB'S TYPE pipeline (read live),
+    // plus a "Needs review" lane for candidates whose stage isn't in the pipeline
+    // (or is unset). Dropping persists RecordLink.stageKey and updates in place.
+    function renderCandBoard() {
+      candBody.innerHTML = "";
+      if (!links.length) { candBody.appendChild(el("div", "cell-muted", "No candidates linked yet — link one below to start the board.")); return; }
+      const stages = currentStages();
+      const known = new Set(stages.map((s) => s.key));
+      const board = el("div", "kanban");
+      const lanes = [];
+      const colByStage = {};
+      function updateCounts() {
+        lanes.forEach((m) => {
+          const n = m.cards.querySelectorAll(".kanban-card").length;
+          m.count.textContent = String(n);
+          let ph = m.cards.querySelector(".kanban-empty");
+          if (n === 0) { if (!ph) m.cards.appendChild(el("div", "kanban-empty", "No candidates")); }
+          else if (ph) ph.remove();
+        });
+      }
+      function makeColumn(key, label, isReview) {
+        const col = el("div", "kanban-col" + (isReview ? " kanban-col--review" : ""));
+        col.dataset.stage = key == null ? "" : key;
+        const head = el("div", "kanban-col-head");
+        head.appendChild(el("span", "kanban-col-name", label));
+        head.appendChild(el("span", "kanban-dot", "·"));
+        const count = el("span", "kanban-count", "0"); head.appendChild(count);
+        col.appendChild(head);
+        const cards = el("div", "kanban-cards"); col.appendChild(cards);
+        col.addEventListener("dragover", (e) => { const d = document.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault(); col.classList.add("kanban-col--over"); const ph = cards.querySelector(".kanban-empty"); if (ph) ph.remove(); cards.appendChild(d); });
+        col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("kanban-col--over"); });
+        col.addEventListener("drop", async (e) => {
+          const d = document.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault();
+          col.classList.remove("kanban-col--over"); kanbanDropHandled = true;
+          const linkId = d.dataset.linkId; const lk = links.find((x) => x.id === linkId);
+          const newStage = isReview ? null : key;
+          cards.appendChild(d);
+          updateCounts();
+          try { await App.portalApi("/api/record-links/" + linkId, { method: "PATCH", body: JSON.stringify({ stageKey: newStage }) }); if (lk) lk.stageKey = newStage; }
+          catch (err) { toast(err.message, true); renderCandBoard(); }
+        });
+        const m = { col, cards, count }; lanes.push(m); return m;
+      }
+      const needsReview = links.filter((lk) => !lk.stageKey || !known.has(lk.stageKey));
+      let reviewLane = null;
+      if (needsReview.length) reviewLane = makeColumn(null, "Needs review", true);
+      stages.forEach((s) => { colByStage[s.key] = makeColumn(s.key, s.label, false); });
+      links.forEach((lk) => { const card = candCard(lk); if ((!lk.stageKey || !known.has(lk.stageKey)) && reviewLane) reviewLane.cards.appendChild(card); else if (colByStage[lk.stageKey]) colByStage[lk.stageKey].cards.appendChild(card); else if (reviewLane) reviewLane.cards.appendChild(card); });
+      lanes.forEach((m) => board.appendChild(m.col));
+      updateCounts();
+      candBody.appendChild(board);
     }
 
     // Link-a-contact control: search this portal's contacts (GET /api/contacts,
