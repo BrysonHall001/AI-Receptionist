@@ -4,7 +4,7 @@
 // the 1a migration. Records keep their own table; contacts are untouched.
 
 import { prisma } from "../db/client";
-import { resolveRecordTypeId } from "./recordTypeService";
+import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype } from "./recordTypeService";
 import { randomValueForField } from "./contactService";
 
 const db = prisma as any;
@@ -24,6 +24,7 @@ function serializeRecord(r: any) {
     recordTypeId: r.recordTypeId,
     title: r.title ?? "",
     stageKey: r.stageKey ?? null,
+    subtypeKey: r.subtypeKey ?? null,
     customFields: r.customFields ?? {},
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -43,20 +44,26 @@ export async function getRecord(tenantId: string, id: string) {
   return serializeRecord(r);
 }
 
-export async function createRecord(tenantId: string, recordType: string | null | undefined, input: { title?: string; stageKey?: string | null; customFields?: any }) {
+export async function createRecord(tenantId: string, recordType: string | null | undefined, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; customFields?: any }) {
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
+  // Type (subtype) is required for record types that define subtypes (e.g. Jobs).
+  const subtypeKey = await validateSubtypeForType(tenantId, recordTypeId, input.subtypeKey, { required: true });
   const created = await db.record.create({
-    data: { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, customFields: input.customFields ?? {} },
+    data: { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, customFields: input.customFields ?? {} },
   });
   return serializeRecord(created);
 }
 
-export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; customFields?: any }) {
+export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; customFields?: any }) {
   const existing = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Record not found");
   const data: any = {};
   if (input.title !== undefined) data.title = (input.title || "").trim() || null;
   if (input.stageKey !== undefined) data.stageKey = input.stageKey ?? null;
+  if (input.subtypeKey !== undefined) {
+    // If this type requires a subtype, a blank value is rejected (can\u0027t clear Type).
+    data.subtypeKey = await validateSubtypeForType(tenantId, existing.recordTypeId, input.subtypeKey, { required: true });
+  }
   if (input.customFields !== undefined) data.customFields = { ...(existing.customFields || {}), ...(input.customFields || {}) };
   const updated = await db.record.update({ where: { id }, data });
   return serializeRecord(updated);
@@ -75,7 +82,7 @@ export async function softDeleteRecords(tenantId: string, ids: string[]): Promis
 /** Set one field (title, stageKey, or a custom field) on many records. */
 export async function bulkUpdateRecordField(tenantId: string, ids: string[], field: string, value: any): Promise<number> {
   if (!Array.isArray(ids) || !ids.length || !field) return 0;
-  if (field === "title" || field === "stageKey") {
+  if (field === "title" || field === "stageKey" || field === "subtypeKey") {
     const r = await db.record.updateMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, data: { [field]: value ?? null } });
     return r.count;
   }
@@ -97,6 +104,7 @@ export async function generateDummyRecord(tenantId: string, recordType?: string 
   const fields = await db.fieldDef.findMany({ where: { tenantId, recordTypeId } });
   const rtRow = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
   const recStages: any[] = (rtRow && rtRow.recordStages) || [];
+  const subtypes: any[] = (rtRow && rtRow.subtypes) || [];
   const custom: Record<string, any> = {};
   for (const f of fields as any[]) {
     if (f.system) continue;
@@ -104,19 +112,25 @@ export async function generateDummyRecord(tenantId: string, recordType?: string 
   }
   const title = `${rndPick(D_RECORD_TITLES)} ${Math.random().toString(36).slice(2, 5)}`;
   const stageKey = recStages.length ? rndPick(recStages).key : null;
-  const created = await db.record.create({ data: { tenantId, recordTypeId, title, stageKey, customFields: custom } });
+  const subtypeKey = subtypes.length ? rndPick(subtypes).key : null;
+  const created = await db.record.create({ data: { tenantId, recordTypeId, title, stageKey, subtypeKey, customFields: custom } });
   return serializeRecord(created);
 }
 
 /** Bulk-create records from mapped import rows. Rows without a title are skipped. */
-export async function bulkCreateRecords(tenantId: string, recordType: string | null | undefined, rows: Array<{ title?: string; stageKey?: string | null; customFields?: any }>) {
+export async function bulkCreateRecords(tenantId: string, recordType: string | null | undefined, rows: Array<{ title?: string; stageKey?: string | null; subtypeKey?: string | null; customFields?: any }>) {
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
+  const rtRow = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
+  const subtypes: any[] = (rtRow && rtRow.subtypes) || [];
+  const defaultSubtype = subtypes.length ? subtypes[0].key : null;
   let imported = 0;
   let skipped = 0;
   for (const row of rows || []) {
     const title = (row.title || "").toString().trim();
     if (!title) { skipped++; continue; }
-    await db.record.create({ data: { tenantId, recordTypeId, title, stageKey: row.stageKey ?? null, customFields: row.customFields || {} } });
+    const wanted = (row.subtypeKey || "").toString().trim();
+    const subtypeKey = subtypes.length ? (subtypes.some((s) => s.key === wanted) ? wanted : defaultSubtype) : null;
+    await db.record.create({ data: { tenantId, recordTypeId, title, stageKey: row.stageKey ?? null, subtypeKey, customFields: row.customFields || {} } });
     imported++;
   }
   return { imported, skipped };

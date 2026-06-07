@@ -5,7 +5,7 @@ import { runSimulatedCall } from "../services/simulationService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
-import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage } from "../services/recordTypeService";
+import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype } from "../services/recordTypeService";
 import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listTimeline, log as logActivity } from "../services/activityService";
@@ -430,15 +430,50 @@ apiRouter.delete("/field-sections/:id", async (req: Request, res: Response) => {
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
-// ---- Pipeline stages per record type (the {key,label} list candidate links use) ----
-// Action-based POSTs. Keys are stable: rename = label only, reorder = order only,
-// delete is blocked while candidates occupy the stage. No migration (rewrites the
-// existing RecordType.stages JSON). Returns the updated, serialized record type.
+// ---- Job types (subtypes) + their pipelines, managed centrally per record type ----
+// Action-based POSTs, admin-gated. Keys are stable: rename = label only,
+// reorder = order only. Deleting a job type is blocked while jobs use it;
+// deleting a stage is blocked while candidates of that type occupy it. No
+// migration here — these rewrite the RecordType.subtypes JSON. Each returns the
+// updated, serialized record type.
+apiRouter.post("/record-subtypes/add", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { const { recordType, label } = (req.body ?? {}) as any; res.json(await addSubtype(tenantId, recordType, label)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/record-subtypes/rename", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { const { recordType, key, label } = (req.body ?? {}) as any; res.json(await renameSubtype(tenantId, recordType, key, label)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/record-subtypes/reorder", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { const { recordType, orderedKeys } = (req.body ?? {}) as any; res.json(await reorderSubtypes(tenantId, recordType, orderedKeys ?? [])); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/record-subtypes/delete", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { const { recordType, key } = (req.body ?? {}) as any; res.json(await deleteSubtype(tenantId, recordType, key)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// Stages live inside a job type's pipeline, so each call carries the subtypeKey.
 apiRouter.post("/record-stages/add", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   if (!fieldsAdminOnly(req, res)) return;
-  try { const { recordType, label } = (req.body ?? {}) as any; res.json(await addStage(tenantId, recordType, label)); }
+  try { const { recordType, subtypeKey, label } = (req.body ?? {}) as any; res.json(await addStage(tenantId, recordType, subtypeKey, label)); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -446,7 +481,7 @@ apiRouter.post("/record-stages/rename", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   if (!fieldsAdminOnly(req, res)) return;
-  try { const { recordType, key, label } = (req.body ?? {}) as any; res.json(await renameStage(tenantId, recordType, key, label)); }
+  try { const { recordType, subtypeKey, key, label } = (req.body ?? {}) as any; res.json(await renameStage(tenantId, recordType, subtypeKey, key, label)); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -454,7 +489,7 @@ apiRouter.post("/record-stages/reorder", async (req: Request, res: Response) => 
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   if (!fieldsAdminOnly(req, res)) return;
-  try { const { recordType, orderedKeys } = (req.body ?? {}) as any; res.json(await reorderStages(tenantId, recordType, orderedKeys ?? [])); }
+  try { const { recordType, subtypeKey, orderedKeys } = (req.body ?? {}) as any; res.json(await reorderStages(tenantId, recordType, subtypeKey, orderedKeys ?? [])); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -462,7 +497,7 @@ apiRouter.post("/record-stages/delete", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   if (!fieldsAdminOnly(req, res)) return;
-  try { const { recordType, key } = (req.body ?? {}) as any; res.json(await deleteStage(tenantId, recordType, key)); }
+  try { const { recordType, subtypeKey, key } = (req.body ?? {}) as any; res.json(await deleteStage(tenantId, recordType, subtypeKey, key)); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -489,8 +524,8 @@ apiRouter.post("/records", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { type, title, stageKey, customFields } = (req.body ?? {}) as any;
-    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, customFields }));
+    const { type, title, stageKey, subtypeKey, customFields } = (req.body ?? {}) as any;
+    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, customFields }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -543,8 +578,8 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { title, stageKey, customFields } = (req.body ?? {}) as any;
-    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, customFields }));
+    const { title, stageKey, subtypeKey, customFields } = (req.body ?? {}) as any;
+    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, customFields }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

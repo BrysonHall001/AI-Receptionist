@@ -859,7 +859,7 @@
       const card = el("div", "card");
       card.appendChild(el("div", "cell-muted", "No fields yet for this type. Click “+ Add field” to create one."));
       wrap.appendChild(card);
-      if (canEdit && selectedType && selectedType.key !== "contact") wrap.appendChild(stagesCard());
+      if (canEdit && selectedType && selectedType.key !== "contact") wrap.appendChild(subtypesCard());
       view().innerHTML = ""; view().appendChild(wrap); return;
     }
 
@@ -948,64 +948,108 @@
     // Pipeline-stage management for this record type (e.g. Jobs). Reuses the
     // object-type selector above. Labels are editable; keys stay stable so
     // existing candidate links never detach. Shown for non-contact types only.
-    function stagesCard() {
+    // Central management of this record type's job types and each one's pipeline.
+    // Two levels: job types (add/rename/reorder/delete, delete blocked while jobs
+    // use it), and the stages inside each type (delete blocked while candidates
+    // occupy it). All edits are label/order only — keys stay stable.
+    function subtypesCard() {
       const card = el("div", "fields-section-card");
       const head = el("div", "fields-section-head");
-      head.appendChild(el("div", "fields-section-name", "Pipeline stages"));
-      const addBtn = el("button", "btn btn-ghost btn-sm", "+ Add stage");
+      head.appendChild(el("div", "fields-section-name", "Job types & pipelines"));
+      const addBtn = el("button", "btn btn-ghost btn-sm", "+ Add job type");
       addBtn.onclick = async () => {
-        const name = prompt("Name this stage (e.g. Phone screen):");
+        const name = prompt("Name this job type (e.g. Technical, Field, Sales):");
         if (!name || !name.trim()) return;
-        try { await App.portalApi("/api/record-stages/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Stage added"); renderFields(true); }
+        try { await App.portalApi("/api/record-subtypes/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Job type added"); renderFields(true); }
         catch (e) { App.util.toast(e.message, true); }
       };
       head.appendChild(addBtn);
       card.appendChild(head);
       const note = el("p", "muted");
       note.style.cssText = "margin:2px 0 12px; font-size:13px;";
-      note.textContent = `Stages a candidate moves through on a ${typeWord}. Renaming changes the label only — candidates stay where they are. A stage that still has candidates in it can't be deleted until they're moved.`;
+      note.textContent = `Each job type has its own pipeline. A job's Type chooses which pipeline its candidates move through. Renaming changes labels only; a type with jobs (or a stage with candidates) can't be deleted until those are moved.`;
       card.appendChild(note);
-      const stages = (((selectedType && selectedType.stages) || []).slice()).sort((a, b) => (a.order || 0) - (b.order || 0));
-      const list = el("div", "stage-list");
-      if (!stages.length) list.appendChild(el("div", "cell-muted", "No stages yet — click “+ Add stage”."));
-      stages.forEach((s, idx) => {
-        const row = el("div", "stage-row");
-        row.appendChild(el("div", "stage-name", esc(s.label)));
-        const tools = el("div", "fields-section-tools");
-        const up = el("button", "btn btn-ghost btn-sm", "↑"); up.title = "Move up"; up.disabled = idx === 0;
-        const down = el("button", "btn btn-ghost btn-sm", "↓"); down.title = "Move down"; down.disabled = idx === stages.length - 1;
-        const reorder = async (from, to) => {
-          const keys = stages.map((x) => x.key);
-          const m = keys.splice(from, 1)[0]; keys.splice(to, 0, m);
-          try { await App.portalApi("/api/record-stages/reorder", { method: "POST", body: JSON.stringify({ recordType: selectedKey, orderedKeys: keys }) }); renderFields(true); }
+
+      const subtypes = (((selectedType && selectedType.subtypes) || []).slice()).sort((a, b) => (a.order || 0) - (b.order || 0));
+      if (!subtypes.length) card.appendChild(el("div", "cell-muted", "No job types yet — click “+ Add job type”."));
+
+      subtypes.forEach((st, sIdx) => {
+        const block = el("div", "subtype-block");
+        const bhead = el("div", "fields-section-head");
+        bhead.appendChild(el("div", "fields-section-name", esc(st.label)));
+        const btools = el("div", "fields-section-tools");
+        const sup = el("button", "btn btn-ghost btn-sm", "↑"); sup.title = "Move type up"; sup.disabled = sIdx === 0;
+        const sdown = el("button", "btn btn-ghost btn-sm", "↓"); sdown.title = "Move type down"; sdown.disabled = sIdx === subtypes.length - 1;
+        const reorderType = async (from, to) => {
+          const keys = subtypes.map((x) => x.key); const m = keys.splice(from, 1)[0]; keys.splice(to, 0, m);
+          try { await App.portalApi("/api/record-subtypes/reorder", { method: "POST", body: JSON.stringify({ recordType: selectedKey, orderedKeys: keys }) }); renderFields(true); }
           catch (e) { App.util.toast(e.message, true); }
         };
-        up.onclick = () => reorder(idx, idx - 1);
-        down.onclick = () => reorder(idx, idx + 1);
-        const ren = el("button", "btn btn-ghost btn-sm", "Rename");
-        ren.onclick = async () => {
-          const name = prompt("Rename stage:", s.label);
-          if (!name || !name.trim()) return;
-          try { await App.portalApi("/api/record-stages/rename", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: s.key, label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); }
+        sup.onclick = () => reorderType(sIdx, sIdx - 1);
+        sdown.onclick = () => reorderType(sIdx, sIdx + 1);
+        const sren = el("button", "btn btn-ghost btn-sm", "Rename");
+        sren.onclick = async () => {
+          const name = prompt("Rename job type:", st.label); if (!name || !name.trim()) return;
+          try { await App.portalApi("/api/record-subtypes/rename", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: st.key, label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); }
           catch (e) { App.util.toast(e.message, true); }
         };
-        const del = el("button", "link-danger", "Delete");
-        del.onclick = async () => {
-          if (!confirm(`Delete stage “${s.label}”?`)) return;
-          try { await App.portalApi("/api/record-stages/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: s.key }) }); App.util.toast("Stage deleted"); renderFields(true); }
-          catch (e) { App.util.toast(e.message, true); } // blocked-delete message surfaces here
+        const saddStage = el("button", "btn btn-ghost btn-sm", "+ Add stage");
+        saddStage.onclick = async () => {
+          const name = prompt(`Add a stage to “${st.label}”:`); if (!name || !name.trim()) return;
+          try { await App.portalApi("/api/record-stages/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, label: name.trim() }) }); App.util.toast("Stage added"); renderFields(true); }
+          catch (e) { App.util.toast(e.message, true); }
         };
-        tools.appendChild(up); tools.appendChild(down); tools.appendChild(ren); tools.appendChild(del);
-        row.appendChild(tools);
-        list.appendChild(row);
+        const sdel = el("button", "link-danger", "Delete type");
+        sdel.onclick = async () => {
+          if (!confirm(`Delete job type “${st.label}”? Its pipeline is removed too.`)) return;
+          try { await App.portalApi("/api/record-subtypes/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: st.key }) }); App.util.toast("Job type deleted"); renderFields(true); }
+          catch (e) { App.util.toast(e.message, true); } // blocked while jobs use it
+        };
+        btools.appendChild(saddStage); btools.appendChild(sup); btools.appendChild(sdown); btools.appendChild(sren); btools.appendChild(sdel);
+        bhead.appendChild(btools);
+        block.appendChild(bhead);
+
+        const stages = (st.stages || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+        const list = el("div", "stage-list");
+        if (!stages.length) list.appendChild(el("div", "cell-muted", "No stages yet — click “+ Add stage”."));
+        stages.forEach((s, idx) => {
+          const row = el("div", "stage-row");
+          row.appendChild(el("div", "stage-name", esc(s.label)));
+          const tools = el("div", "fields-section-tools");
+          const up = el("button", "btn btn-ghost btn-sm", "↑"); up.title = "Move up"; up.disabled = idx === 0;
+          const down = el("button", "btn btn-ghost btn-sm", "↓"); down.title = "Move down"; down.disabled = idx === stages.length - 1;
+          const reorder = async (from, to) => {
+            const keys = stages.map((x) => x.key); const m = keys.splice(from, 1)[0]; keys.splice(to, 0, m);
+            try { await App.portalApi("/api/record-stages/reorder", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, orderedKeys: keys }) }); renderFields(true); }
+            catch (e) { App.util.toast(e.message, true); }
+          };
+          up.onclick = () => reorder(idx, idx - 1);
+          down.onclick = () => reorder(idx, idx + 1);
+          const ren = el("button", "btn btn-ghost btn-sm", "Rename");
+          ren.onclick = async () => {
+            const name = prompt("Rename stage:", s.label); if (!name || !name.trim()) return;
+            try { await App.portalApi("/api/record-stages/rename", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, key: s.key, label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); }
+            catch (e) { App.util.toast(e.message, true); }
+          };
+          const del = el("button", "link-danger", "Delete");
+          del.onclick = async () => {
+            if (!confirm(`Delete stage “${s.label}”?`)) return;
+            try { await App.portalApi("/api/record-stages/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, key: s.key }) }); App.util.toast("Stage deleted"); renderFields(true); }
+            catch (e) { App.util.toast(e.message, true); } // blocked while candidates occupy it
+          };
+          tools.appendChild(up); tools.appendChild(down); tools.appendChild(ren); tools.appendChild(del);
+          row.appendChild(tools);
+          list.appendChild(row);
+        });
+        block.appendChild(list);
+        card.appendChild(block);
       });
-      card.appendChild(list);
       return card;
     }
 
     sorted.forEach((s, i) => wrap.appendChild(sectionCard(s, bySection[s.id], i)));
     if (ungrouped.length || !sorted.length) wrap.appendChild(ungroupedCard(ungrouped));
-    if (canEdit && selectedType && selectedType.key !== "contact") wrap.appendChild(stagesCard());
+    if (canEdit && selectedType && selectedType.key !== "contact") wrap.appendChild(subtypesCard());
 
     view().innerHTML = "";
     view().appendChild(wrap);
@@ -1241,6 +1285,8 @@
       return jobType;
     }
     const jobStatusLabel = (k) => { const s = ((jobType && jobType.recordStages) || []).find((x) => x.key === k); return s ? s.label : (k || ""); };
+    const jobSubtypeLabel = (k) => { const s = ((jobType && jobType.subtypes) || []).find((x) => x.key === k); return s ? s.label : (k || ""); };
+    const stagesForJob = (k) => { const st = ((jobType && jobType.subtypes) || []).find((x) => x.key === k); return st ? (st.stages || []) : ((jobType && jobType.stages) || []); };
 
     async function loadLinkedJobs() {
       jobsList.innerHTML = `<div class="cell-muted">Loading…</div>`;
@@ -1252,13 +1298,16 @@
       if (!links.length) { jobsList.appendChild(el("div", "cell-muted", "Not linked to any jobs yet.")); return; }
       links.forEach((lk) => {
         const row = el("div", "link-row");
+        const subKey = lk.record ? lk.record.subtypeKey : null;
         const title = lk.record ? (lk.record.title || "Untitled job") : "Job";
-        const nameEl = el("div", "link-name"); nameEl.textContent = title;
+        const nameEl = el("div", "link-name"); nameEl.innerHTML = `${esc(title)}${subKey ? ` <span class="cell-muted link-ptype">${esc(jobSubtypeLabel(subKey))}</span>` : ""}`;
         if (lk.record) { nameEl.style.cursor = "pointer"; nameEl.onclick = () => App.go("#/record/" + lk.record.id); }
         row.appendChild(nameEl);
         const stageSel = el("select", "input link-stage");
         stageSel.appendChild(el("option", null, "— stage —"));
-        ((jobType && jobType.stages) || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) o.selected = true; stageSel.appendChild(o); });
+        let known = false;
+        stagesForJob(subKey).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) { o.selected = true; known = true; } stageSel.appendChild(o); });
+        if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSel.appendChild(o); }
         stageSel.onchange = async () => { try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: stageSel.value || null }) }); toast("Stage updated"); } catch (e) { toast(e.message, true); } };
         row.appendChild(stageSel);
         const unlink = el("button", "link-danger", "Unlink");
@@ -1281,11 +1330,13 @@
     function jobMsg(t) { const d = el("div", "cell-muted", esc(t)); d.style.cssText = "padding:9px 12px;"; return d; }
     function jobButton(j) {
       const b = el("button", "link-result"); b.style.cssText = "line-height:1.35;";
-      const status = j.stageKey ? jobStatusLabel(j.stageKey) : "";
-      b.innerHTML = `<div style="font-weight:600;">${esc(j.title || "Untitled job")}</div>` + (status ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(status)}</div>` : "");
+      const bits = [];
+      if (j.subtypeKey) bits.push(jobSubtypeLabel(j.subtypeKey));
+      if (j.stageKey) bits.push(jobStatusLabel(j.stageKey));
+      b.innerHTML = `<div style="font-weight:600;">${esc(j.title || "Untitled job")}</div>` + (bits.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(bits.join(" · "))}</div>` : "");
       b.onclick = async () => {
         try {
-          const firstStage = ((jobType && jobType.stages) || [])[0];
+          const firstStage = (stagesForJob(j.subtypeKey))[0];
           await App.portalApi("/api/records/" + j.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: id, stageKey: firstStage ? firstStage.key : null }) });
           toast("Linked"); jobInput.value = ""; hideJobResults(); loadLinkedJobs();
         } catch (e) { toast(e.message, true); }
@@ -1767,9 +1818,17 @@
     return s ? s.label : (key || "");
   }
 
+  function subtypeLabel(type, key) {
+    const s = ((type && type.subtypes) || []).find((x) => x.key === key);
+    return s ? s.label : (key || "");
+  }
+
   function recordColumnDefs(fields, type) {
     const cols = [];
     cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => esc(r.title || "Untitled") });
+    if (((type && type.subtypes) || []).length) {
+      cols.push({ key: "subtypeKey", label: "Type", type: "text", get: (r) => r.subtypeKey, text: (r) => subtypeLabel(type, r.subtypeKey), render: (r) => r.subtypeKey ? `<span class="pill">${esc(subtypeLabel(type, r.subtypeKey))}</span>` : `<span class="cell-muted">—</span>` });
+    }
     if (((type && type.recordStages) || []).length) {
       cols.push({ key: "stageKey", label: "Status", type: "text", get: (r) => r.stageKey, text: (r) => recordStageLabel(type, r.stageKey), render: (r) => r.stageKey ? `<span class="pill">${esc(recordStageLabel(type, r.stageKey))}</span>` : `<span class="cell-muted">—</span>` });
     }
@@ -1877,6 +1936,17 @@
     const titleInp = el("input", "input"); titleInp.placeholder = `e.g. ${esc(type.label || "Record")} name`;
     body.appendChild(titleInp);
 
+    // Type (subtype) is required for record types that define job types.
+    const subtypes = (type && type.subtypes) || [];
+    let subtypeSel = null;
+    if (subtypes.length) {
+      body.appendChild(el("label", "field-label", "Type *"));
+      subtypeSel = el("select", "input");
+      subtypeSel.appendChild(el("option", null, "— select a type —"));
+      subtypes.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((st) => { const o = el("option", null, esc(st.label)); o.value = st.key; subtypeSel.appendChild(o); });
+      body.appendChild(subtypeSel);
+    }
+
     const recStages = (type && type.recordStages) || [];
     let stageSel = null;
     if (recStages.length) {
@@ -1897,11 +1967,12 @@
     save.onclick = async () => {
       const title = titleInp.value.trim();
       if (!title) { toast("Title is required", true); titleInp.focus(); return; }
+      if (subtypeSel && !subtypeSel.value) { toast("Type is required", true); subtypeSel.focus(); return; }
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Creating…";
       try {
-        const rec = await App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ type: typeKey, title, stageKey: stageSel ? (stageSel.value || null) : null, customFields: custom }) });
+        const rec = await App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, customFields: custom }) });
         toast(`${type.label || "Record"} created`);
         overlay.remove();
         App.go("#/record/" + rec.id);
@@ -1989,6 +2060,7 @@
     inner.querySelector("#mu-close").onclick = () => overlay.remove();
     const fieldSel = inner.querySelector("#mu-field");
     const pickable = [{ key: "title", label: "Title", type: "text" }];
+    if (((type && type.subtypes) || []).length) pickable.push({ key: "subtypeKey", label: "Type", type: "subtype", _subtypes: type.subtypes });
     if (((type && type.recordStages) || []).length) pickable.push({ key: "stageKey", label: "Status", type: "stage", _stages: type.recordStages });
     (fields || []).forEach((f) => { if (f.type !== "formula") pickable.push(f); });
     pickable.forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; fieldSel.appendChild(o); });
@@ -1998,7 +2070,14 @@
       valWrap.innerHTML = "";
       const f = pickable.find((x) => x.key === fieldSel.value) || pickable[0];
       valWrap.appendChild(el("label", "field-label", "New value"));
-      if (f.type === "stage") {
+      if (f.type === "subtype") {
+        const s = el("select", "input"); // Type is required, so no blank option
+        (f._subtypes || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((st) => { const o = el("option", null, esc(st.label)); o.value = st.key; s.appendChild(o); });
+        valWrap.appendChild(s); getVal = () => s.value || null;
+        const warn = el("p", "muted"); warn.style.cssText = "margin:8px 0 0; font-size:12.5px;";
+        warn.textContent = "Changing Type switches a job's pipeline. Candidates keep their current stage value, even if the new type's pipeline doesn't include it — re-stage them afterward.";
+        valWrap.appendChild(warn);
+      } else if (f.type === "stage") {
         const s = el("select", "input"); s.appendChild(el("option", null, "— none —"));
         (f._stages || []).forEach((st) => { const o = el("option", null, esc(st.label)); o.value = st.key; s.appendChild(o); });
         valWrap.appendChild(s); getVal = () => s.value || null;
@@ -2102,6 +2181,20 @@
     const titleInp = el("input", "input"); titleInp.value = rec.title || "";
     card.appendChild(titleInp);
 
+    // Type (required) — chooses which pipeline this job's candidates use.
+    const subtypes = (type && type.subtypes) || [];
+    let currentSubtypeKey = rec.subtypeKey || null;
+    let subtypeSel = null;
+    if (subtypes.length) {
+      card.appendChild(el("label", "field-label", "Type *"));
+      subtypeSel = el("select", "input");
+      subtypeSel.appendChild(el("option", null, "— select a type —"));
+      subtypes.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((st) => { const o = el("option", null, esc(st.label)); o.value = st.key; if (st.key === currentSubtypeKey) o.selected = true; subtypeSel.appendChild(o); });
+      subtypeSel.onchange = () => { currentSubtypeKey = subtypeSel.value || null; loadLinks(); }; // refresh candidate stage options for the new pipeline
+      card.appendChild(subtypeSel);
+    }
+    function currentStages() { const st = subtypes.find((s) => s.key === currentSubtypeKey); return st ? (st.stages || []) : ((type && type.stages) || []); }
+
     const recStages = (type && type.recordStages) || [];
     let stageSel = null;
     if (recStages.length) {
@@ -2120,11 +2213,12 @@
     const saveBar = el("div", "drawer-save-bar");
     const save = el("button", "btn btn-primary btn-sm", "Save changes");
     save.onclick = async () => {
+      if (subtypeSel && !subtypeSel.value) { toast("Type is required", true); subtypeSel.focus(); return; }
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Saving…";
       try {
-        await App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ title: titleInp.value, stageKey: stageSel ? (stageSel.value || null) : undefined, customFields: custom }) });
+        await App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, customFields: custom }) });
         toast("Saved");
         rec.title = titleInp.value.trim();
         App.util.$(".contact-name", wrap).textContent = rec.title || ("Untitled " + (type.label || "record"));
@@ -2163,7 +2257,10 @@
         row.appendChild(nameEl);
         const stageSelL = el("select", "input link-stage");
         stageSelL.appendChild(el("option", null, "— stage —"));
-        ((type && type.stages) || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) o.selected = true; stageSelL.appendChild(o); });
+        const stages = currentStages();
+        let known = false;
+        stages.forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) { o.selected = true; known = true; } stageSelL.appendChild(o); });
+        if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSelL.appendChild(o); } // never silently drop a candidate's stage
         stageSelL.onchange = async () => { try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: stageSelL.value || null }) }); toast("Stage updated"); } catch (e) { toast(e.message, true); } };
         row.appendChild(stageSelL);
         const unlink = el("button", "link-danger", "Unlink");
@@ -2211,7 +2308,7 @@
         (sub.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(sub.join(" · "))}</div>` : "");
       r.onclick = async () => {
         try {
-          const firstStage = ((type && type.stages) || [])[0];
+          const firstStage = (currentStages())[0];
           await App.portalApi("/api/records/" + id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: c.id, stageKey: firstStage ? firstStage.key : null }) });
           toast("Linked"); addInput.value = ""; hideResults(); loadLinks();
         } catch (e) { toast(e.message, true); }

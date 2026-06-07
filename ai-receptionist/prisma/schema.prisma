@@ -222,6 +222,7 @@ model RecordType {
   system       Boolean      @default(false) // true for the seeded "contact" type
   stages       Json         @default("[]")  // relationship stages: [{key,label,order}]
   recordStages Json         @default("[]")  // optional record-level lifecycle stages
+  subtypes     Json         @default("[]")  // job types + their pipelines: [{key,label,order,stages:[{key,label,order}]}]
   order        Int          @default(0)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -242,6 +243,7 @@ model Record {
   recordType   RecordType   @relation(fields: [recordTypeId], references: [id], onDelete: Cascade)
   title        String?
   stageKey     String?      // OPTIONAL record-level lifecycle status
+  subtypeKey   String?      // selected subtype (e.g. job type) — picks which pipeline this record uses
   customFields Json         @default("{}")
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

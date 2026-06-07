@@ -42,7 +42,7 @@ export async function listLinksForContact(tenantId: string, contactId: string, r
       id: l.id,
       stageKey: l.stageKey ?? null,
       role: l.role ?? null,
-      record: byId[l.recordId] ? { id: byId[l.recordId].id, title: byId[l.recordId].title, recordTypeId: byId[l.recordId].recordTypeId, stageKey: byId[l.recordId].stageKey } : null,
+      record: byId[l.recordId] ? { id: byId[l.recordId].id, title: byId[l.recordId].title, recordTypeId: byId[l.recordId].recordTypeId, stageKey: byId[l.recordId].stageKey, subtypeKey: byId[l.recordId].subtypeKey ?? null } : null,
     }))
     .filter((x: any) => x.record);
   if (recordType) {
