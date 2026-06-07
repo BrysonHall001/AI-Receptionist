@@ -419,7 +419,7 @@ async function uniqueEmail(tenantId: string, first: string, last: string): Promi
   return `dummy.${Date.now()}@${rnd(D_DOMAINS)}`;
 }
 
-function randomValueForField(f: any): any {
+export function randomValueForField(f: any): any {
   const opts: string[] = Array.isArray(f.options) ? f.options : [];
   switch (f.type) {
     case "number":

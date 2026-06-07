@@ -5,8 +5,18 @@
 
 import { prisma } from "../db/client";
 import { resolveRecordTypeId } from "./recordTypeService";
+import { randomValueForField } from "./contactService";
 
 const db = prisma as any;
+
+// Generic placeholder job titles for the dummy generator (original, non-branded).
+const D_RECORD_TITLES = [
+  "Account Manager", "Field Technician", "Sales Associate", "Operations Lead",
+  "Customer Success Rep", "Service Coordinator", "Project Manager", "Dispatch Specialist",
+  "Install Technician", "Estimator", "Office Administrator", "Route Driver",
+  "Warehouse Associate", "Scheduling Coordinator", "Territory Manager", "Support Specialist",
+];
+function rndPick<T>(a: T[]): T { return a[Math.floor(Math.random() * a.length)]; }
 
 function serializeRecord(r: any) {
   return {
@@ -79,4 +89,35 @@ export async function bulkUpdateRecordField(tenantId: string, ids: string[], fie
     n++;
   }
   return n;
+}
+
+/** Dummy record with ALL fields populated (testing aid) — mirrors generateDummyContact. */
+export async function generateDummyRecord(tenantId: string, recordType?: string | null) {
+  const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
+  const fields = await db.fieldDef.findMany({ where: { tenantId, recordTypeId } });
+  const rtRow = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
+  const recStages: any[] = (rtRow && rtRow.recordStages) || [];
+  const custom: Record<string, any> = {};
+  for (const f of fields as any[]) {
+    if (f.system) continue;
+    custom[f.key] = randomValueForField(f);
+  }
+  const title = `${rndPick(D_RECORD_TITLES)} ${Math.random().toString(36).slice(2, 5)}`;
+  const stageKey = recStages.length ? rndPick(recStages).key : null;
+  const created = await db.record.create({ data: { tenantId, recordTypeId, title, stageKey, customFields: custom } });
+  return serializeRecord(created);
+}
+
+/** Bulk-create records from mapped import rows. Rows without a title are skipped. */
+export async function bulkCreateRecords(tenantId: string, recordType: string | null | undefined, rows: Array<{ title?: string; stageKey?: string | null; customFields?: any }>) {
+  const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
+  let imported = 0;
+  let skipped = 0;
+  for (const row of rows || []) {
+    const title = (row.title || "").toString().trim();
+    if (!title) { skipped++; continue; }
+    await db.record.create({ data: { tenantId, recordTypeId, title, stageKey: row.stageKey ?? null, customFields: row.customFields || {} } });
+    imported++;
+  }
+  return { imported, skipped };
 }

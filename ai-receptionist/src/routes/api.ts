@@ -5,7 +5,7 @@ import { runSimulatedCall } from "../services/simulationService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields } from "../services/fieldService";
 import { listRecordTypes } from "../services/recordTypeService";
-import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField } from "../services/recordService";
+import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
@@ -419,6 +419,26 @@ apiRouter.post("/records/bulk-update", async (req: Request, res: Response) => {
     const { ids, field, value } = (req.body ?? {}) as any;
     const count = await bulkUpdateRecordField(tenantId, ids ?? [], field, value);
     res.json({ count });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/records/dummy", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const { type } = (req.body ?? {}) as any;
+    const rec = await generateDummyRecord(tenantId, type ?? null);
+    res.json({ ok: true, id: rec.id });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/records/import", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const { type, rows } = (req.body ?? {}) as any;
+    const result = await bulkCreateRecords(tenantId, type ?? null, rows ?? []);
+    res.json(result);
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

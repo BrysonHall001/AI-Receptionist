@@ -1583,11 +1583,21 @@
     view().innerHTML = "";
     const container = el("div", "fade-in");
     const bar = el("div", "page-actions");
+    const dummyBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#129302;</span> Create Dummy ${esc(type.label)}`);
+    dummyBtn.onclick = async () => {
+      dummyBtn.disabled = true;
+      try { await App.portalApi("/api/records/dummy", { method: "POST", body: JSON.stringify({ type: typeKey }) }); toast(`Dummy ${(type.label || "record").toLowerCase()} created`); renderRecordList(typeKey); }
+      catch (e) { toast(e.message, true); dummyBtn.disabled = false; }
+    };
     const createBtn = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#43;</span> Create ${esc(type.label)}`);
     createBtn.onclick = () => openCreateRecord(typeKey, fields, type);
+    const importBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8681;</span> Import ${esc(type.labelPlural || "records")}`);
+    importBtn.onclick = () => openRecordImport(typeKey, fields, type);
     const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
     exportBtn.onclick = () => openRecordExport(handle ? handle.getColumns() : columns, records, type.labelPlural || type.label);
+    bar.appendChild(dummyBtn);
     bar.appendChild(createBtn);
+    bar.appendChild(importBtn);
     bar.appendChild(exportBtn);
     container.appendChild(bar);
     const tableHost = el("div");
@@ -1679,6 +1689,71 @@
       } catch (e) { toast(e.message, true); save.disabled = false; save.textContent = "Create"; }
     };
     body.appendChild(save);
+  }
+
+  function openRecordImport(typeKey, fields, type) {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Import ${esc(type.labelPlural || "records")}</h2><button class="icon-btn" id="imp-close">&times;</button></div>
+      <div class="modal-body">
+        <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing. Each row needs a Title.</p>
+        <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,text/csv" class="input" />
+        <div id="imp-step2"></div>
+      </div>`;
+    const overlay = modal(inner);
+    inner.querySelector("#imp-close").onclick = () => overlay.remove();
+
+    // Mapping targets: the record's Title plus each non-formula field of this type.
+    const targets = [{ key: "__title__", label: "Title", required: true }].concat(
+      (fields || []).filter((f) => f.type !== "formula").map((f) => ({ key: f.key, label: f.label }))
+    );
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    function guessMapping(headers) {
+      const map = {};
+      targets.forEach((t) => {
+        const nt = norm(t.label), nk = norm(t.key);
+        let idx = headers.findIndex((h) => { const nh = norm(h); return nh === nt || nh === nk; });
+        if (idx < 0) idx = headers.findIndex((h) => { const nh = norm(h); return nt && (nh.includes(nt) || nt.includes(nh)); });
+        map[t.key] = idx;
+      });
+      return map;
+    }
+
+    inner.querySelector("#imp-file").onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      readFileRows(file, (rows) => {
+        if (!rows || rows.length < 2) { toast("That file has no data rows", true); return; }
+        const headers = rows[0].map((h) => String(h).trim());
+        const dataRows = rows.slice(1);
+        const guess = guessMapping(headers);
+        const host = inner.querySelector("#imp-step2");
+        const optionsHtml = (sel) => `<option value="-1">— skip —</option>` + headers.map((h, i) => `<option value="${i}" ${i === sel ? "selected" : ""}>${esc(h)}</option>`).join("");
+        host.innerHTML = `<div class="map-grid">${targets.map((t) => `
+          <label class="field-label">${esc(t.label)}${t.required ? " (required)" : ""}</label>
+          <select class="input map-sel" data-key="${esc(t.key)}">${optionsHtml(guess[t.key])}</select>`).join("")}</div>
+          <p class="cell-muted">${dataRows.length} rows detected. Rows with no Title will be skipped.</p>
+          <button class="btn btn-primary btn-block" id="imp-go">Import ${dataRows.length} ${esc((type.labelPlural || "records").toLowerCase())}</button>`;
+        host.querySelector("#imp-go").onclick = async () => {
+          const map = {};
+          App.util.$$(".map-sel", host).forEach((s) => { map[s.dataset.key] = parseInt(s.value, 10); });
+          if (map["__title__"] == null || map["__title__"] < 0) { toast("Map the Title column", true); return; }
+          const mappedRows = dataRows.map((r) => {
+            const title = r[map["__title__"]];
+            const customFields = {};
+            targets.forEach((t) => { if (t.key === "__title__") return; const idx = map[t.key]; if (idx != null && idx >= 0) { const v = r[idx]; if (v !== undefined && String(v).trim() !== "") customFields[t.key] = v; } });
+            return { title, customFields };
+          });
+          const btn = host.querySelector("#imp-go");
+          btn.disabled = true; btn.textContent = "Importing…";
+          try {
+            const res = await App.portalApi("/api/records/import", { method: "POST", body: JSON.stringify({ type: typeKey, rows: mappedRows }) });
+            toast(`Imported ${res.imported}${res.skipped ? `, skipped ${res.skipped}` : ""}`);
+            overlay.remove();
+            renderRecordList(typeKey);
+          } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Import"; }
+        };
+      });
+    };
   }
 
   function openRecordMassUpdate(ids, fields, type, typeKey) {
