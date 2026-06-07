@@ -1,6 +1,6 @@
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
-import { ActionConfig, ActionContext, runAction } from "./actions";
+import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
 import { loadFieldDefs, buildColumns, valueOf } from "./contactRow";
 import { evalRules } from "./conditions";
 
@@ -165,14 +165,143 @@ export async function runDailySweep(scope?: string): Promise<number> {
   return swept;
 }
 
+// ===========================================================================
+// STALE-CANDIDATE NUDGE (Stage 3c)
+// A "Stalled:<days>" or "Stalled:<days>:<stageKey>" trigger. NOT an instant
+// event — like Scheduled, it's evaluated by the sweep below (so the automation
+// engine needs no change). The subject is the stalled CANDIDATE CONTACT, so the
+// ordinary contact actions apply per candidate: create_note = (A) internal
+// nudge, send_email/send_sms = (B) mock message. Per-candidate tokens
+// {{name}} (contact), {{current_stage}}, {{days_in_stage}}, {{record_title}}.
+// ===========================================================================
+const STALL_SCAN_LIMIT = 5000;        // links scanned per automation (mirror existing sweep)
+const STALL_MATCH_LIMIT = 500;        // candidates acted on per automation per sweep
+const STALL_BULK_SEND_THRESHOLD = 25; // messaging fan-out gate (change this number to tune)
+
+export interface StalledTrigger { days: number; stageKey: string | null; }
+
+// "Stalled:7" -> {days:7, stageKey:null}; "Stalled:7:phone_screen" -> {days:7, stageKey:"phone_screen"}
+export function parseStalledTrigger(triggerType: string): StalledTrigger | null {
+  if (!triggerType || triggerType.indexOf("Stalled:") !== 0) return null;
+  const parts = triggerType.slice("Stalled:".length).split(":");
+  const days = Number(parts[0]);
+  if (!isFinite(days) || days < 0) return null; // a bare "Stalled" (no N) never matches — by design
+  return { days, stageKey: parts[1] ? parts[1] : null };
+}
+
+export interface StalledMatch { linkId: string; parentId: string; stageKey: string | null; recordId: string; enteredAt: Date; daysInStage: number; }
+
+// Find active, staged, contact-parent links whose CURRENT stage was entered
+// >= N days ago WITH NO MOVEMENT SINCE. The newest StageHistory row for a link
+// is when they entered their current stage; any later move adds a newer row and
+// resets the clock, so "newest enteredAt <= now - N days" == stalled. Strictly
+// tenant-scoped. Read-only: this writes nothing.
+export async function findStalledLinks(tenantId: string, days: number, stageKey?: string | null): Promise<StalledMatch[]> {
+  const cutoff = new Date(Date.now() - days * 86400000);
+  const where: any = { tenantId, deletedAt: null, parentType: "contact" };
+  where.stageKey = stageKey ? stageKey : { not: null };
+  const links = await db.recordLink.findMany({ where, take: STALL_SCAN_LIMIT });
+  if (!links.length) return [];
+  const linkIds = links.map((l: any) => l.id);
+  // Newest entry time per link in ONE grouped query (tenant-scoped).
+  const grouped = await db.stageHistory.groupBy({ by: ["recordLinkId"], where: { tenantId, recordLinkId: { in: linkIds } }, _max: { enteredAt: true } });
+  const newest = new Map<string, Date>();
+  for (const g of grouped) if (g._max?.enteredAt) newest.set(g.recordLinkId, g._max.enteredAt as Date);
+  const out: StalledMatch[] = [];
+  for (const l of links) {
+    const entered = newest.get(l.id);
+    if (!entered) continue;                 // no history -> cannot judge -> not matched (never a silent action)
+    if (new Date(entered) > cutoff) continue; // moved more recently than N days -> clock not elapsed
+    const daysInStage = Math.floor((Date.now() - new Date(entered).getTime()) / 86400000);
+    out.push({ linkId: l.id, parentId: l.parentId, stageKey: l.stageKey ?? null, recordId: l.recordId, enteredAt: new Date(entered), daysInStage });
+    if (out.length >= STALL_MATCH_LIMIT) break;
+  }
+  return out;
+}
+
+// Run every enabled "Stalled:" automation for a scope (one portal, or all).
+export async function runStalledSweep(scope?: string): Promise<{ automations: number; matched: number; acted: number; blocked: number }> {
+  const where: any = { enabled: true };
+  if (scope) where.tenantId = scope;
+  const autos = await db.automation.findMany({ where });
+  let automations = 0, matched = 0, acted = 0, blocked = 0;
+  for (const auto of autos) {
+    const parsed = parseStalledTrigger(auto.triggerType || "");
+    if (!parsed) continue;
+    automations++;
+    const r = await runStalledForAutomation(auto, parsed);
+    matched += r.matched; acted += r.acted; if (r.blocked) blocked++;
+  }
+  return { automations, matched, acted, blocked };
+}
+
+async function runStalledForAutomation(auto: any, parsed: StalledTrigger): Promise<{ matched: number; acted: number; blocked: boolean }> {
+  const tenantId = auto.tenantId;
+  const stalled = await findStalledLinks(tenantId, parsed.days, parsed.stageKey);
+  const actions: ActionConfig[] = (auto.actions as ActionConfig[]) || [];
+
+  // ANTI-SILENT-GREEN (zero matches): log a clear neutral run, never a fake green.
+  if (!stalled.length) {
+    await writeStalledRun(auto, "skipped", false, [{ type: "(stalled-sweep)", status: "skipped", detail: "No stalled candidates" }]);
+    return { matched: 0, acted: 0, blocked: false };
+  }
+
+  // SEND-GATE (B): a sweep can match many candidates, so messaging is fan-out.
+  // If matches exceed the threshold and not EVERY messaging action carries the
+  // explicit allowBulk ack, block messaging (recorded once as FAILED) — notes
+  // (A) still run. The gate counts intended recipients regardless of mock/real.
+  const messagingActions = actions.filter((a) => a.type === "send_email" || a.type === "send_sms");
+  const over = stalled.length > STALL_BULK_SEND_THRESHOLD;
+  const messagingBlocked = messagingActions.length > 0 && over && !messagingActions.every((a) => a.config && (a.config as any).allowBulk === true);
+
+  const portal = await db.tenant.findUnique({ where: { id: tenantId } });
+  const fieldDefs = await loadFieldDefs(tenantId);
+  const results: ActionResult[] = [];
+  if (messagingBlocked) {
+    results.push({ type: "send_message", status: "failed", error: `Would message ${stalled.length} stalled candidates; bulk send not allowed. Turn on "Allow bulk send" on the message action to permit more than ${STALL_BULK_SEND_THRESHOLD}.` });
+  }
+
+  let acted = 0, failed = 0, noteOk = 0, msgOk = 0;
+  for (const s of stalled) {
+    const contact = await db.contact.findUnique({ where: { id: s.parentId } });
+    if (!contact || contact.tenantId !== tenantId || contact.deletedAt) { failed++; continue; } // tenant + soft-delete guard
+    const extraTokens: Record<string, string> = { current_stage: s.stageKey ?? "", days_in_stage: String(s.daysInStage), record_title: "" };
+    try { const rec = await db.record.findFirst({ where: { id: s.recordId, tenantId } }); if (rec?.title) extraTokens.record_title = String(rec.title); } catch { /* title is best-effort */ }
+    const ctx: ActionContext = {
+      tenantId, contactId: contact.id, fieldDefs,
+      actor: { type: "automation", id: auto.id, name: auto.name },
+      portal: { phoneNumber: portal?.phoneNumber, notifyEmail: portal?.notifyEmail, name: portal?.name },
+      workingSet: [], triggerType: "Stalled", extraTokens,
+    };
+    for (const action of actions) {
+      const isMessaging = action.type === "send_email" || action.type === "send_sms";
+      if (isMessaging && messagingBlocked) continue; // blocked; recorded once above
+      const r = await runAction(action, ctx);
+      if (r.status === "failed") failed++;
+      else if (r.status === "success") { acted++; if (isMessaging) msgOk++; else noteOk++; }
+    }
+  }
+  results.push({ type: "(stalled-sweep)", status: "success", detail: `stalled: ${stalled.length} | actions applied: ${noteOk} | messages (mock): ${msgOk}${failed ? ` | ${failed} failed` : ""}${messagingBlocked ? " | messaging BLOCKED (bulk gate)" : ""}` });
+  const status = (messagingBlocked || failed > 0) ? "failed" : "success";
+  await writeStalledRun(auto, status, true, results);
+  return { matched: stalled.length, acted, blocked: messagingBlocked };
+}
+
+async function writeStalledRun(auto: any, status: string, matched: boolean, results: ActionResult[]): Promise<void> {
+  try {
+    await db.automationRun.create({ data: { tenantId: auto.tenantId, automationId: auto.id, eventType: "Stalled", contactId: null, status, matched, results: results as any } });
+  } catch (e) { logger.error(`[stalled] run-log write failed (${auto.id}): ${(e as Error).message}`); }
+}
+
 // ---------------------------------------------------------------------------
 // Process due jobs. Runs the sweep first, then executes every pending job whose
 // dueAt has passed. Each job is "claimed" (pending -> running) with a conditional
 // update so it can never be executed twice, even on repeated clicks.
 // scope = a tenantId (process one CRM) or undefined (all CRMs — for the host).
 // ---------------------------------------------------------------------------
-export async function processDueJobs(scope?: string): Promise<{ swept: number; ran: number; failed: number }> {
+export async function processDueJobs(scope?: string): Promise<{ swept: number; ran: number; failed: number; stalledMatched: number; stalledActed: number; stalledBlocked: number }> {
   const swept = await runDailySweep(scope);
+  const stalled = await runStalledSweep(scope); // Stage 3c: time-in-stage nudges
   const now = new Date();
   const where: any = { status: "pending", dueAt: { lte: now } };
   if (scope) where.tenantId = scope;
@@ -194,8 +323,8 @@ export async function processDueJobs(scope?: string): Promise<{ swept: number; r
       failed++;
     }
   }
-  logger.info(`[scheduler] processed jobs (scope=${scope || "all"}): swept ${swept}, ran ${ran}, failed ${failed}`);
-  return { swept, ran, failed };
+  logger.info(`[scheduler] processed (scope=${scope || "all"}): swept ${swept}, ran ${ran}, failed ${failed}; stalled[matched ${stalled.matched}, acted ${stalled.acted}, blocked ${stalled.blocked}]`);
+  return { swept, ran, failed, stalledMatched: stalled.matched, stalledActed: stalled.acted, stalledBlocked: stalled.blocked };
 }
 
 async function markFailed(id: string, error: string) {

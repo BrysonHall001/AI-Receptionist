@@ -76,4 +76,9 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string }[] = [
   // "Scheduled:<field>:<amount>:<unit>:<dir>" (no schema change). It does not
   // fire on instant events; the daily sweep evaluates and queues it.
   { type: "Scheduled", label: "On a date (relative to a date field)" },
+  // Time-in-stage: a candidate has sat in their CURRENT stage with no movement
+  // for N days. Encoded as "Stalled:<days>" or "Stalled:<days>:<stageKey>"
+  // (no schema change). Like Scheduled, it does not fire on instant events — the
+  // sweep evaluates it. Generic label (no "job"/"candidate").
+  { type: "Stalled", label: "Stalled in a stage for N days (no movement)" },
 ];

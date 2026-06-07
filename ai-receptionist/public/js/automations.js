@@ -264,6 +264,16 @@
       const f = (meta.fields || []).find((x) => x.key === p[0]);
       return `${p[1] || "0"} ${p[2] || "days"} ${p[3] || "before"} ${f ? f.label : (p[0] || "a date field")}`;
     }
+    // "Stalled:<days>" or "Stalled:<days>:<stageKey>" — time-in-stage trigger.
+    if (type && type.indexOf("Stalled:") === 0) {
+      const p = type.slice("Stalled:".length).split(":");
+      const n = p[0] || "?";
+      if (p[1]) {
+        const s = (meta.stages || []).find((x) => x.key === p[1]);
+        return `Stalled ${n}+ days in ${s ? s.label : p[1]}`;
+      }
+      return `Stalled ${n}+ days (any stage)`;
+    }
     const t = (meta.triggers || []).find((x) => x.type === type);
     return t ? t.label : type;
   }
@@ -290,6 +300,7 @@
     if (tt.indexOf("StageChanged:") === 0) return "StageChanged";
     if (tt.indexOf("RecordUpdated:") === 0) return "RecordUpdated";
     if (tt.indexOf("Scheduled:") === 0) return "Scheduled";
+    if (tt.indexOf("Stalled:") === 0) return "Stalled";
     return tt;
   }
   function triggerBaseLabel(base) {
@@ -728,6 +739,7 @@
     if (w.baseTrigger === "StageChanged") return w.triggerStage ? "StageChanged:" + w.triggerStage : "StageChanged";
     if (w.baseTrigger === "RecordUpdated") return w.recField ? (w.recValue ? "RecordUpdated:" + w.recField + "=" + w.recValue : "RecordUpdated:" + w.recField) : "RecordUpdated";
     if (w.baseTrigger === "Scheduled") return `Scheduled:${w.sched.field}:${w.sched.amount || 0}:${w.sched.unit}:${w.sched.dir}`;
+    if (w.baseTrigger === "Stalled") return "Stalled:" + (w.stall.days || 7) + (w.stall.stageKey ? ":" + w.stall.stageKey : "");
     return w.baseTrigger;
   }
   function suggestName(w) {
@@ -784,6 +796,7 @@
       recField: "",
       recValue: "",
       sched: { field: "", amount: "", unit: "days", dir: "before" },
+      stall: { days: "", stageKey: "" },
       filters: [],
       branch: false,
       branchCond: { field: "", op: "is", value: "" },
@@ -922,9 +935,19 @@
         rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(dir); rowEl.appendChild(fs);
         extra.appendChild(rowEl);
         extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”, not instantly."));
+      } else if (w.baseTrigger === "Stalled") {
+        extra.appendChild(small("Run when something has sat in its current stage, no movement, for at least this many days:"));
+        const rowEl = el("div", "wiz-cond-row");
+        const days = el("input", "input"); days.type = "number"; days.min = "1"; days.placeholder = "7"; days.style.flex = "0 0 80px"; days.value = w.stall.days || "7"; days.oninput = () => { w.stall.days = days.value; };
+        const stageSel = el("select", "input"); const any = el("option", null, "Any stage"); any.value = ""; stageSel.appendChild(any);
+        (meta.stages || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === w.stall.stageKey) o.selected = true; stageSel.appendChild(o); });
+        stageSel.onchange = () => { w.stall.stageKey = stageSel.value; };
+        rowEl.appendChild(days); rowEl.appendChild(stageSel);
+        extra.appendChild(rowEl);
+        extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”. The stalled contact is the subject — moving them resets the clock."));
       }
     }
-    sel.onchange = () => { w.baseTrigger = sel.value; if (w.baseTrigger !== "FieldChanged") w.triggerField = ""; if (w.baseTrigger !== "StageChanged") w.triggerStage = ""; if (w.baseTrigger !== "RecordUpdated") { w.recField = ""; w.recValue = ""; } renderExtra(); };
+    sel.onchange = () => { w.baseTrigger = sel.value; if (w.baseTrigger !== "FieldChanged") w.triggerField = ""; if (w.baseTrigger !== "StageChanged") w.triggerStage = ""; if (w.baseTrigger !== "RecordUpdated") { w.recField = ""; w.recValue = ""; } if (w.baseTrigger !== "Stalled") { w.stall.days = ""; w.stall.stageKey = ""; } renderExtra(); };
     renderExtra();
   }
 
@@ -1206,6 +1229,7 @@
     let recField = "";
     let recValue = "";
     const sched = { field: "", amount: "", unit: "days", dir: "before" };
+    const stall = { days: "", stageKey: "" };
     if (baseTrigger.indexOf("FieldChanged:") === 0) {
       triggerField = baseTrigger.slice("FieldChanged:".length); baseTrigger = "FieldChanged";
     } else if (baseTrigger.indexOf("StageChanged:") === 0) {
@@ -1220,12 +1244,17 @@
       const p = baseTrigger.slice("Scheduled:".length).split(":");
       sched.field = p[0] || ""; sched.amount = p[1] || ""; sched.unit = p[2] || "days"; sched.dir = p[3] || "before";
       baseTrigger = "Scheduled";
+    } else if (baseTrigger.indexOf("Stalled:") === 0) {
+      const p = baseTrigger.slice("Stalled:".length).split(":");
+      stall.days = p[0] || ""; stall.stageKey = p[1] || "";
+      baseTrigger = "Stalled";
     }
     function syncTrigger() {
       if (baseTrigger === "FieldChanged" && triggerField) draft.triggerType = "FieldChanged:" + triggerField;
       else if (baseTrigger === "StageChanged" && triggerStage) draft.triggerType = "StageChanged:" + triggerStage;
       else if (baseTrigger === "RecordUpdated" && recField) draft.triggerType = recValue ? ("RecordUpdated:" + recField + "=" + recValue) : ("RecordUpdated:" + recField);
       else if (baseTrigger === "Scheduled") draft.triggerType = `Scheduled:${sched.field}:${sched.amount || 0}:${sched.unit}:${sched.dir}`;
+      else if (baseTrigger === "Stalled") draft.triggerType = "Stalled:" + (stall.days || 7) + (stall.stageKey ? ":" + stall.stageKey : "");
       else draft.triggerType = baseTrigger;
     }
     syncTrigger();
@@ -1321,9 +1350,27 @@
         const note2 = el("div", "wf-hint", ""); note2.style.margin = "6px 0 0";
         note2.textContent = "Evaluated by the daily sweep / “Process due jobs now”, not instantly.";
         trigExtra.appendChild(note2);
+      } else if (baseTrigger === "Stalled") {
+        trigExtra.appendChild(small("Run when something has sat in its current stage, with no movement, for at least this many days:"));
+        const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px"; rowEl.style.flexWrap = "wrap"; rowEl.style.alignItems = "center";
+        const days = el("input", "input"); days.type = "number"; days.min = "1"; days.style.cssText = "margin-bottom:0;flex:0 0 80px"; days.placeholder = "7"; days.value = stall.days || "7";
+        days.oninput = () => { stall.days = days.value; syncTrigger(); };
+        const lbl = el("span", "wf-hint", "days"); lbl.style.margin = "0";
+        rowEl.appendChild(days); rowEl.appendChild(lbl);
+        trigExtra.appendChild(rowEl);
+        trigExtra.appendChild(small("In which stage? (choose “Any stage” to watch every stage)"));
+        const stageSel = el("select", "input"); stageSel.style.marginBottom = "0";
+        const any = el("option", null, "Any stage"); any.value = ""; stageSel.appendChild(any);
+        (meta.stages || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === stall.stageKey) o.selected = true; stageSel.appendChild(o); });
+        stageSel.onchange = () => { stall.stageKey = stageSel.value; syncTrigger(); };
+        trigExtra.appendChild(stageSel);
+        if (!(meta.stages || []).length) trigExtra.appendChild(small("No pipeline stages found yet. You can still choose “Any stage”."));
+        const snote = el("div", "wf-hint", ""); snote.style.margin = "6px 0 0";
+        snote.textContent = "Evaluated by the daily sweep / “Process due jobs now”, not instantly. The stalled contact is the subject — moving them resets the clock.";
+        trigExtra.appendChild(snote);
       }
     }
-    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } syncTrigger(); renderTrigExtra(); redrawActions(); };
+    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } if (baseTrigger !== "Stalled") { stall.days = ""; stall.stageKey = ""; } syncTrigger(); renderTrigExtra(); redrawActions(); };
     renderTrigExtra();
     flow.appendChild(trigNode);
 
@@ -1412,13 +1459,27 @@
     row.appendChild(head);
 
     const cfg = el("div", "wf-action-cfg");
-    buildActionConfig(act, cfg);
+    buildActionConfig(act, cfg, draft && draft.triggerType);
     row.appendChild(cfg);
     return row;
   }
 
-  function buildActionConfig(act, cfg) {
+  function buildActionConfig(act, cfg, triggerType) {
     const c = act.config || (act.config = {});
+    const isStalled = triggerType === "Stalled" || (typeof triggerType === "string" && triggerType.indexOf("Stalled:") === 0);
+    // Stage 3c: the stalled-stage sweep can match many candidates, so a direct
+    // email/SMS action becomes fan-out. Mirror 2b's gate: require an explicit ack
+    // to message more than the threshold. Only shown for the Stalled trigger.
+    const appendBulkGate = () => {
+      if (!isStalled) return;
+      const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
+      const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
+      const lbl = el("label", null, "Allow sending to more than 25 stalled contacts in one sweep");
+      lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
+      lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
+      cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
+      cfg.appendChild(small("Comms are mocked, so nothing actually sends yet — this gate is here for when real keys are added."));
+    };
     const text = (key, ph, big) => {
       const i = el(big ? "textarea" : "input", "input");
       if (ph) i.placeholder = ph;
@@ -1439,10 +1500,12 @@
       if (tpls.length) { cfg.appendChild(small("Template (optional — fills subject/body)")); cfg.appendChild(selectOf("templateId", tpls)); }
       cfg.appendChild(small("Subject")); cfg.appendChild(text("subject", "Welcome, {{name}}!"));
       cfg.appendChild(small("Body (HTML, supports {{field}})")); cfg.appendChild(text("html", "Hi {{name}}, thanks for reaching out.", true));
+      appendBulkGate();
     } else if (act.type === "send_sms") {
       const tpls = (meta.templates || []).filter((t) => t.kind === "sms").map((t) => ({ value: t.id, label: t.name }));
       if (tpls.length) { cfg.appendChild(small("Template (optional)")); cfg.appendChild(selectOf("templateId", tpls)); }
       cfg.appendChild(small("Message (supports {{field}})")); cfg.appendChild(text("body", "Hi {{name}}!", true));
+      appendBulkGate();
     } else if (act.type === "update_field") {
       const writable = (meta.fields || []).filter((f) => f.key !== "createdAt" && f.type !== "formula" && f.type !== "image").map((f) => ({ value: f.key, label: f.label }));
       cfg.appendChild(small("Field")); cfg.appendChild(selectOf("field", writable));
@@ -1730,7 +1793,7 @@
         btn.disabled = true; btn.textContent = "Processing…";
         try {
           const r = await App.portalApi("/api/automations/jobs/process", { method: "POST" });
-          toast(`Swept ${r.swept}, ran ${r.ran}, failed ${r.failed}`);
+          toast(`Swept ${r.swept}, ran ${r.ran}, failed ${r.failed}` + (r.stalledMatched != null ? ` · stalled: matched ${r.stalledMatched}, acted ${r.stalledActed}${r.stalledBlocked ? `, blocked ${r.stalledBlocked}` : ""}` : ""));
           renderScheduled(body);
         } catch (e) { toast(e.message, true); btn.disabled = false; btn.textContent = "Process due jobs now"; }
       };
