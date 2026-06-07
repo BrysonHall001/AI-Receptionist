@@ -1116,3 +1116,20 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .fields-section-name { font-weight: 700; font-size: 14px; }
 .fields-section-tools { display: flex; gap: 4px; margin-left: auto; }
 .field-move-sel { width: auto; min-width: 130px; margin-bottom: 0; font-size: 12px; padding: 4px 8px; }
+
+/* Detail pages (contact + job): outer spacing + inner card padding so content
+   doesn't hug the edges, plus tidier vertical rhythm. Applied to both pages. */
+.contact-page { max-width: 1120px; }
+.contact-page > .card { padding: 18px 22px; }
+.contact-page > .card + .card { margin-top: 16px; }
+.contact-page .field-editor { margin: 2px 0 0; }
+.contact-page .field-grid .form-row { margin: 0 0 12px; }
+.contact-page .field-section:last-child { margin-bottom: 0; }
+.contact-page .field-section:last-child .field-grid .form-row:last-child { margin-bottom: 0; }
+.contact-page .drawer-save-bar { margin: 14px 0 0; }
+
+/* Cleaner linked-item rows (candidates on a job; jobs on a contact) — simple
+   separators instead of boxed borders, consistent across both detail pages. */
+.link-list { gap: 0; margin-bottom: 10px; }
+.link-row { border: none; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 10px 0; }
+.link-row:last-child { border-bottom: none; }

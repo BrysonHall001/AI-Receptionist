@@ -3,6 +3,7 @@
   const { el, esc, fmtDate, statusBadge, roleLabel, toast } = App.util;
 
   let current = "dashboard";
+  let fieldDropHandled = false; // set true when a field is dropped on a section list
 
   function view() { return App.util.$("#view"); }
   function setView(v) { current = v; }
@@ -867,6 +868,40 @@
     fields.forEach((f) => { if (f.sectionId && bySection[f.sectionId]) bySection[f.sectionId].push(f); else ungrouped.push(f); });
     const sortByOrder = (arr) => arr.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
 
+    // Make a section's field list a drop target: a field dragged from any section
+    // (or Ungrouped) can be dropped here, which reassigns its section (display-only)
+    // and persists order within this section. Works for locked/system fields too.
+    function attachDropList(sectionId) {
+      const list = el("div", "field-list");
+      list.dataset.section = sectionId || "";
+      if (!canEdit) return list;
+      list.addEventListener("dragover", (e) => {
+        const dragging = document.querySelector(".field-row.dragging");
+        if (!dragging) return;
+        e.preventDefault();
+        const rows = Array.prototype.slice.call(list.querySelectorAll(".field-row:not(.dragging)"));
+        let ref = null;
+        for (let i = 0; i < rows.length; i++) { const rect = rows[i].getBoundingClientRect(); if (e.clientY < rect.top + rect.height / 2) { ref = rows[i]; break; } }
+        if (ref) list.insertBefore(dragging, ref); else list.appendChild(dragging);
+      });
+      list.addEventListener("drop", async (e) => {
+        const dragging = document.querySelector(".field-row.dragging");
+        if (!dragging) return;
+        e.preventDefault();
+        fieldDropHandled = true;
+        const fieldId = dragging.dataset.id;
+        const targetSection = list.dataset.section || "";
+        const orderedIds = Array.prototype.slice.call(list.querySelectorAll(".field-row")).map((r) => r.dataset.id);
+        try {
+          await App.portalApi("/api/fields/" + fieldId + "/section", { method: "PATCH", body: JSON.stringify({ sectionId: targetSection || null }) });
+          await App.portalApi("/api/fields/reorder", { method: "PATCH", body: JSON.stringify({ orderedIds, recordType: selectedKey }) });
+          App.util.toast("Field moved");
+          renderFields();
+        } catch (err) { App.util.toast(err.message, true); renderFields(); }
+      });
+      return list;
+    }
+
     async function moveSection(idx, dir) {
       const ids = sorted.map((s) => s.id);
       const j = idx + dir; if (j < 0 || j >= ids.length) return;
@@ -891,8 +926,8 @@
         head.appendChild(tools);
       }
       card.appendChild(head);
-      const list = el("div", "field-list");
-      if (!groupFields.length) list.appendChild(el("div", "cell-muted", "No fields here yet — use “Move to” on a field to add one."));
+      const list = attachDropList(section.id);
+      if (!groupFields.length) list.appendChild(el("div", "cell-muted", "No fields here yet — drag a field in, or use “Move to”."));
       sortByOrder(groupFields).forEach((f) => list.appendChild(fieldRow(f, canEdit, fields, selectedKey, sorted, f.sectionId || "")));
       card.appendChild(list);
       return card;
@@ -903,7 +938,7 @@
       const head = el("div", "fields-section-head");
       head.appendChild(el("div", "fields-section-name", sorted.length ? "Ungrouped" : "All fields"));
       card.appendChild(head);
-      const list = el("div", "field-list");
+      const list = attachDropList("");
       sortByOrder(groupFields).forEach((f) => list.appendChild(fieldRow(f, canEdit, fields, selectedKey, sorted, "")));
       card.appendChild(list);
       return card;
@@ -955,9 +990,8 @@
     row.appendChild(right);
 
     if (canEdit) {
-      row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", f.id); });
-      row.addEventListener("dragend", () => { row.classList.remove("dragging"); persistOrder(row.parentElement, recordTypeKey); });
-      row.addEventListener("dragover", (e) => { e.preventDefault(); const dragging = row.parentElement.querySelector(".dragging"); if (!dragging || dragging === row) return; const rect = row.getBoundingClientRect(); const after = e.clientY > rect.top + rect.height / 2; row.parentElement.insertBefore(dragging, after ? row.nextSibling : row); });
+      row.addEventListener("dragstart", (e) => { fieldDropHandled = false; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", f.id); });
+      row.addEventListener("dragend", () => { row.classList.remove("dragging"); if (!fieldDropHandled) renderFields(); });
     }
     return row;
   }
@@ -1130,19 +1164,30 @@
     wrap.appendChild(tabsBar);
     wrap.appendChild(tabBody);
 
-    // ---- Linked Jobs section (records this contact is linked to) ----
+    // ---- Linked Jobs section: list linked jobs, manage stage/unlink, and link a job ----
     const jobsCard = el("div", "card linked-jobs-card");
     jobsCard.appendChild(el("div", "drawer-section-title", "Jobs"));
     const jobsList = el("div", "link-list");
     jobsCard.appendChild(jobsList);
+    const jobAddRow = el("div", "link-add");
+    jobsCard.appendChild(jobAddRow);
     wrap.appendChild(jobsCard);
-    (async function loadLinkedJobs() {
+
+    let jobType = null;
+    async function ensureJobMeta() {
+      if (jobType) return jobType;
+      const types = await App.portalApi("/api/record-types").catch(() => []);
+      jobType = (types || []).find((t) => t.key === "job") || { stages: [], recordStages: [] };
+      return jobType;
+    }
+    const jobStatusLabel = (k) => { const s = ((jobType && jobType.recordStages) || []).find((x) => x.key === k); return s ? s.label : (k || ""); };
+
+    async function loadLinkedJobs() {
       jobsList.innerHTML = `<div class="cell-muted">Loading…</div>`;
-      let links = [], types = [];
-      try { [links, types] = await Promise.all([App.portalApi(`/api/contacts/${id}/links?type=job`), App.portalApi("/api/record-types").catch(() => [])]); }
+      await ensureJobMeta();
+      let links = [];
+      try { links = await App.portalApi(`/api/contacts/${id}/links?type=job`); }
       catch (e) { jobsList.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
-      const jobType = (types || []).find((t) => t.key === "job");
-      const stageLabel = (k) => { const s = ((jobType && jobType.stages) || []).find((x) => x.key === k); return s ? s.label : (k || ""); };
       jobsList.innerHTML = "";
       if (!links.length) { jobsList.appendChild(el("div", "cell-muted", "Not linked to any jobs yet.")); return; }
       links.forEach((lk) => {
@@ -1151,10 +1196,56 @@
         const nameEl = el("div", "link-name"); nameEl.textContent = title;
         if (lk.record) { nameEl.style.cursor = "pointer"; nameEl.onclick = () => App.go("#/record/" + lk.record.id); }
         row.appendChild(nameEl);
-        row.appendChild(el("span", "pill", lk.stageKey ? esc(stageLabel(lk.stageKey)) : "—"));
+        const stageSel = el("select", "input link-stage");
+        stageSel.appendChild(el("option", null, "— stage —"));
+        ((jobType && jobType.stages) || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) o.selected = true; stageSel.appendChild(o); });
+        stageSel.onchange = async () => { try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: stageSel.value || null }) }); toast("Stage updated"); } catch (e) { toast(e.message, true); } };
+        row.appendChild(stageSel);
+        const unlink = el("button", "link-danger", "Unlink");
+        unlink.onclick = async () => { if (!confirm(`Unlink “${title}”?`)) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedJobs(); } catch (e) { toast(e.message, true); } };
+        row.appendChild(unlink);
         jobsList.appendChild(row);
       });
-    })();
+    }
+
+    // Link-a-job search box (in-flow results; reuses the SAME RecordLink endpoint,
+    // initiated from the contact side: POST /api/records/:jobId/links with this contact).
+    const jobInput = el("input", "input link-search"); jobInput.placeholder = "Link a job — type a title…";
+    jobAddRow.appendChild(jobInput);
+    const jobResults = el("div"); jobResults.style.cssText = "margin-top:8px; display:none;";
+    jobAddRow.appendChild(jobResults);
+    let allJobs = null;
+    async function ensureJobs() { if (allJobs) return allJobs; try { const raw = await App.portalApi("/api/records?type=job"); allJobs = Array.isArray(raw) ? raw : []; } catch (e) { allJobs = []; } return allJobs; }
+    function showJobResults(nodes) { jobResults.innerHTML = ""; const box = el("div"); box.style.cssText = "border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; max-height:260px; overflow-y:auto; background:var(--panel);"; nodes.forEach((n) => box.appendChild(n)); jobResults.appendChild(box); jobResults.style.display = "block"; }
+    function hideJobResults() { jobResults.style.display = "none"; jobResults.innerHTML = ""; }
+    function jobMsg(t) { const d = el("div", "cell-muted", esc(t)); d.style.cssText = "padding:9px 12px;"; return d; }
+    function jobButton(j) {
+      const b = el("button", "link-result"); b.style.cssText = "line-height:1.35;";
+      const status = j.stageKey ? jobStatusLabel(j.stageKey) : "";
+      b.innerHTML = `<div style="font-weight:600;">${esc(j.title || "Untitled job")}</div>` + (status ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(status)}</div>` : "");
+      b.onclick = async () => {
+        try {
+          const firstStage = ((jobType && jobType.stages) || [])[0];
+          await App.portalApi("/api/records/" + j.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: id, stageKey: firstStage ? firstStage.key : null }) });
+          toast("Linked"); jobInput.value = ""; hideJobResults(); loadLinkedJobs();
+        } catch (e) { toast(e.message, true); }
+      };
+      return b;
+    }
+    async function runJobSearch() {
+      await ensureJobMeta();
+      const list = await ensureJobs();
+      if (!list.length) { showJobResults([jobMsg("No jobs yet — create one on the Jobs page first.")]); return; }
+      const q = jobInput.value.trim().toLowerCase();
+      const matches = !q ? list.slice(0, 8) : list.filter((j) => (j.title || "").toLowerCase().includes(q)).slice(0, 8);
+      if (!matches.length) { showJobResults([jobMsg(`No jobs match “${jobInput.value.trim()}”.`)]); return; }
+      showJobResults(matches.map(jobButton));
+    }
+    jobInput.oninput = App.util.debounce(runJobSearch, 200);
+    jobInput.onfocus = runJobSearch;
+    jobInput.onblur = () => setTimeout(hideJobResults, 200);
+
+    loadLinkedJobs();
 
     view().innerHTML = "";
     view().appendChild(wrap);
