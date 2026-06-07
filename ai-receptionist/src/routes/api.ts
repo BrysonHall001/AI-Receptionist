@@ -5,7 +5,7 @@ import { runSimulatedCall } from "../services/simulationService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
-import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype } from "../services/recordTypeService";
+import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels } from "../services/recordTypeService";
 import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listTimeline, log as logActivity } from "../services/activityService";
@@ -15,7 +15,7 @@ import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listExports, createExport, getExportCsv } from "../services/exportService";
-import { updatePortal, getPortal } from "../services/portalService";
+import { updatePortal, getPortal, setTenantLabels } from "../services/portalService";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getUserTheme, setUserTheme, getContactColumns, setContactColumns } from "../services/userService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
@@ -413,6 +413,38 @@ apiRouter.get("/labels", async (req: Request, res: Response) => {
   const portal = await getPortal(tenantId);
   res.json({ types, generic: (portal && (portal as any).labels) || {} });
 });
+
+// Save per-portal labels (the Labels editor). Portal-scoped + admin-only.
+//   body: { types: { <recordTypeKey>: {one, many} }, generic: { <word>: {one, many} } }
+// Record-type entries update that type's label/labelPlural; generic entries
+// merge into Tenant.labels. Stable KEYS are never changed. Validation (non-blank,
+// trimmed, both forms required) lives in the services and surfaces as a 400.
+apiRouter.patch("/labels", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) {
+    res.status(400).json({ error: "No portal in context" });
+    return;
+  }
+  if (req.user!.role === "CLIENT_USER") {
+    res.status(403).json({ error: "Not authorized to change labels" });
+    return;
+  }
+  const body = (req.body ?? {}) as any;
+  try {
+    const types = body.types && typeof body.types === "object" ? body.types : {};
+    for (const [key, v] of Object.entries(types) as [string, any][]) {
+      if (!v) continue;
+      await setRecordTypeLabels(tenantId, String(key), String(v.one ?? ""), String(v.many ?? ""));
+    }
+    if (body.generic && typeof body.generic === "object") {
+      await setTenantLabels(tenantId, body.generic);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
 
 // ---- Field sections (display-only grouping of fields, per record type) ----
 apiRouter.get("/field-sections", async (req: Request, res: Response) => {

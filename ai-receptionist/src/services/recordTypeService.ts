@@ -163,6 +163,20 @@ function findSubtype(subtypes: any[], subtypeKey: string) {
   return st;
 }
 
+// ---- Record TYPE display labels (singular + plural) -----------------------
+// Updates ONLY the editable label/labelPlural for a record type in this portal.
+// The stable `key` is never touched. Portal-scoped: only matches a type owned by
+// this tenant, so it can't affect another portal. Both forms are required.
+export async function setRecordTypeLabels(tenantId: string, key: string, label: string, labelPlural: string) {
+  const one = String(label || "").trim();
+  const many = String(labelPlural || "").trim();
+  if (!one || !many) throw new Error("Singular and plural names are both required");
+  const row = await db.recordType.findFirst({ where: { tenantId, key } });
+  if (!row) throw new Error(`Unknown record type "${key}"`);
+  await db.recordType.update({ where: { id: row.id }, data: { label: one, labelPlural: many } });
+  return serializeRecordType({ ...row, label: one, labelPlural: many });
+}
+
 // ---- Subtypes (job types) ----
 export async function addSubtype(tenantId: string, recordType: string, label: string) {
   const lbl = String(label || "").trim();

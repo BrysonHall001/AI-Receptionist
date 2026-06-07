@@ -1211,3 +1211,12 @@ tbody tr.row-selected { background: var(--accent-soft); }
   .settings-subnav-item { white-space: nowrap; }
   .settings-panel { width: 100%; }
 }
+
+/* Labels editor (settings → Labels) */
+.lbl-group { margin-bottom: 20px; }
+.lbl-group-title { font-weight: 700; font-size: 13.5px; color: var(--ink); margin-bottom: 8px; }
+.lbl-row { display: grid; grid-template-columns: 110px 1fr 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
+.lbl-row .input { margin-bottom: 0; }
+.lbl-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; margin-bottom: 2px; }
+.lbl-key { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 560px) { .lbl-row { grid-template-columns: 80px 1fr 1fr; gap: 6px; } }

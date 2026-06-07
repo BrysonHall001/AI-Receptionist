@@ -1628,14 +1628,81 @@
       };
     }
 
-    // RESERVED — placeholder only (Labels editor logic lands in a later step).
+    // Labels editor — rename this portal's core nouns (singular + plural).
+    // Record types write to label/labelPlural; generic words to Tenant.labels.
     async function secLabels(panel) {
       panel.innerHTML = `<h2 class="settings-h">Labels</h2>
-        <div class="settings-reserved">
-          <div class="settings-reserved-mark">&#127991;</div>
-          <h3>Rename what things are called in this portal</h3>
-          <p class="cell-muted">Soon you'll be able to rename your core words — like ${esc(App.label("contact", "many").toLowerCase())} and ${esc(App.label("job", "many").toLowerCase())} — right here. Coming soon.</p>
-        </div>`;
+        <p class="cell-muted" style="font-size:13px;margin-bottom:4px">Rename what things are called in this portal. Set the singular and plural for each.</p>
+        <p class="cell-muted" style="font-size:12.5px;margin-bottom:16px;font-style:italic">Changes apply across the app as more areas are updated to use your labels.</p>
+        <div id="lbl-body"><div class="cell-muted" style="padding:6px">Loading…</div></div>`;
+      const body = panel.querySelector("#lbl-body");
+      let types, labelsData;
+      try {
+        const r = await Promise.all([App.portalApi("/api/record-types"), App.portalApi("/api/labels")]);
+        types = r[0]; labelsData = r[1];
+      } catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:6px">Couldn’t load labels.</div>`; return; }
+
+      const generic = (labelsData && labelsData.generic) || {};
+      const GENERIC_WORDS = [
+        { key: "record", dflt: { one: "Record", many: "Records" } },
+        { key: "stage", dflt: { one: "Stage", many: "Stages" } },
+      ];
+
+      body.innerHTML = "";
+      const rows = []; // { key, scope:'type'|'generic', oneEl, manyEl }
+
+      function group(title, hint) {
+        const g = el("div", "lbl-group");
+        g.appendChild(el("div", "lbl-group-title", esc(title)));
+        if (hint) { const h = el("div", "cell-muted"); h.style.cssText = "font-size:12.5px;margin:-2px 0 8px"; h.textContent = hint; g.appendChild(h); }
+        const head = el("div", "lbl-row lbl-head");
+        head.appendChild(el("div", "lbl-key", "Key"));
+        head.appendChild(el("div", null, "Singular"));
+        head.appendChild(el("div", null, "Plural"));
+        g.appendChild(head);
+        return g;
+      }
+      function addRow(g, scope, key, one, many) {
+        const r = el("div", "lbl-row");
+        r.appendChild(el("div", "lbl-key", esc(key)));
+        const o = el("input", "input"); o.value = one || ""; o.placeholder = "Singular";
+        const m = el("input", "input"); m.value = many || ""; m.placeholder = "Plural";
+        r.appendChild(o); r.appendChild(m);
+        g.appendChild(r);
+        rows.push({ key: key, scope: scope, oneEl: o, manyEl: m });
+      }
+
+      const gTypes = group("Object names", "Your main record types.");
+      (types || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((t) => {
+        addRow(gTypes, "type", t.key, t.label || "", t.labelPlural || t.label || "");
+      });
+      body.appendChild(gTypes);
+
+      const gGen = group("Other words");
+      GENERIC_WORDS.forEach((w) => {
+        const cur = generic[w.key] || {};
+        addRow(gGen, "generic", w.key, cur.one || w.dflt.one, cur.many || w.dflt.many);
+      });
+      body.appendChild(gGen);
+
+      const saveBtn = el("button", "btn btn-primary btn-sm", "Save labels");
+      saveBtn.style.marginTop = "16px";
+      saveBtn.onclick = async () => {
+        const payload = { types: {}, generic: {} };
+        for (const row of rows) {
+          const one = row.oneEl.value.trim();
+          const many = row.manyEl.value.trim();
+          if (!one || !many) { toast(`Both singular and plural are required (check “${row.key}”)`, true); return; }
+          payload[row.scope === "type" ? "types" : "generic"][row.key] = { one: one, many: many };
+        }
+        try {
+          await App.portalApi("/api/labels", { method: "PATCH", body: JSON.stringify(payload) });
+          await App.loadLabels();
+          toast("Labels saved");
+          if (App._route) App._route(); // repaint nav + this section with the new words
+        } catch (err) { toast(err.message, true); }
+      };
+      body.appendChild(saveBtn);
     }
 
     // RESERVED — links out to the existing Fields route (not moved in this step).
