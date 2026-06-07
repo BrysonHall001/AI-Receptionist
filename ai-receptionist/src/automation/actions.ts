@@ -5,8 +5,9 @@ import { sendRichEmail } from "../services/notificationService";
 import { sendSms } from "../services/smsService";
 import { updateContact, createContact, softDeleteContacts } from "../services/contactService";
 import { addRecordNote } from "../services/recordService";
+import { listLinksForRecord } from "../services/recordLinkService";
 import { log as logActivity } from "../services/activityService";
-import { FieldMeta, renderTemplate, templateContext, buildColumns, valueOf, conditionFields } from "./contactRow";
+import { FieldMeta, renderTemplate, templateContext, buildColumns, valueOf, conditionFields, loadFieldDefs } from "./contactRow";
 import { evalRules } from "./conditions";
 import { validateWebhookUrl, sendWebhook, buildContactPayload } from "./webhook";
 
@@ -67,6 +68,9 @@ export const ACTION_TYPES: { type: string; label: string }[] = [
   { type: "delete_record", label: "Delete a record (to recycle bin)" },
   { type: "compute_field", label: "Compute value into field" },
   { type: "send_webhook", label: "Send webhook (POST to a URL)" },
+  // Record-subject only: fan out to the record's linked contacts (e.g. a job's
+  // candidates). Generic label — no "job"/"candidate" hardcoded.
+  { type: "act_on_linked", label: "Act on linked contacts (note / mock email / SMS each)" },
 ];
 
 // A single flow run may delete at most this many records WITHOUT the action
@@ -74,6 +78,11 @@ export const ACTION_TYPES: { type: string; label: string }[] = [
 // Find + Delete from silently emptying a CRM. Everything deleted is soft-deleted
 // (recycle bin) and can be restored regardless.
 const BULK_DELETE_THRESHOLD = 10;
+// A single "act on linked contacts" run may MESSAGE (mock email/SMS) at most
+// this many linked contacts WITHOUT the action being explicitly set to "Allow
+// bulk send". This is the confirm-before-large-batch-send guard. Internal-note
+// fan-out is exempt (no outbound comms). Change this one number to retune.
+const BULK_SEND_THRESHOLD = 25;
 // Hard cap on how many records one "Find records" action will collect.
 const MAX_SEARCH_RESULTS = 500;
 
@@ -191,6 +200,85 @@ const EXECUTORS: Record<string, Executor> = {
     if (!text) return { type: "create_note", status: "skipped", detail: "Empty note" };
     await logActivity({ tenantId: ctx.tenantId, contactId: contact.id, type: "note", summary: text, detail: { via: "automation" }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
     return { type: "create_note", status: "success" };
+  },
+
+  // ----- Act on linked contacts (Stage 2b) -----
+  // Record-subject only. Resolves the record's linked contacts (e.g. a job's
+  // candidates) via the EXISTING listLinksForRecord helper (tenant-scoped), then
+  // applies one sub-action to EACH: a note on the contact's own timeline, or a
+  // mock email / SMS. Per-candidate templating ({{name}}) plus the job tokens
+  // ({{record_title}}) are both available.
+  async act_on_linked(cfg, ctx) {
+    if (ctx.subjectType !== "record" || !ctx.recordId) {
+      return { type: "act_on_linked", status: "failed", error: "This action only runs on record-subject automations (e.g. a Record/Status-change trigger)." };
+    }
+    const sub = String(cfg.subAction || "note"); // "note" | "email" | "sms"
+
+    // Resolve linked contacts for this record (same portal; helper is tenant-scoped).
+    let links: any[] = [];
+    try { links = await listLinksForRecord(ctx.tenantId, ctx.recordId); }
+    catch (e) { return { type: "act_on_linked", status: "failed", error: `Could not load linked records: ${(e as Error).message}` }; }
+    const candidates = (links || []).filter((l: any) => l.parentType === "contact" && l.parent && l.parent.id);
+
+    // ANTI-SILENT-GREEN: zero linked contacts is never a quiet success.
+    if (!candidates.length) {
+      return { type: "act_on_linked", status: "failed", error: "No linked candidates to act on" };
+    }
+
+    const messaging = sub === "email" || sub === "sms";
+    // SEND-SAFETY GATE: messaging beyond the threshold requires explicit allow-bulk.
+    // Counts the resolved recipients regardless of mock vs real, so it stays
+    // correct once real provider keys are added.
+    if (messaging && candidates.length > BULK_SEND_THRESHOLD && !cfg.allowBulk) {
+      return { type: "act_on_linked", status: "failed", error: `Would message ${candidates.length} linked contacts; bulk send not allowed. Turn on "Allow bulk send" on this action to permit more than ${BULK_SEND_THRESHOLD}.` };
+    }
+
+    const contactFieldDefs = await loadFieldDefs(ctx.tenantId);
+    let ok = 0;
+    let fail = 0;
+    const errs: string[] = [];
+    for (const lk of candidates) {
+      const who = lk.parent.name || lk.parent.email || lk.parent.phone || lk.parent.id;
+      try {
+        const cand = await prisma.contact.findUnique({ where: { id: lk.parent.id } });
+        if (!cand || cand.tenantId !== ctx.tenantId) { fail++; errs.push(`${who}: not found`); continue; } // tenant guard
+        const tokens = { ...templateContext(cand, contactFieldDefs), ...(ctx.extraTokens || {}) };
+
+        if (sub === "note") {
+          const text = renderTemplate(String(cfg.text ?? ""), tokens).trim();
+          if (!text) { fail++; errs.push(`${who}: empty note`); continue; }
+          await logActivity({ tenantId: ctx.tenantId, contactId: cand.id, type: "note", summary: text, detail: { via: "automation", fromRecord: ctx.recordId }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
+          ok++;
+        } else if (sub === "email") {
+          if (!cand.email) { fail++; errs.push(`${who}: no email`); continue; }
+          const subject = renderTemplate(String(cfg.subject ?? ""), tokens);
+          const html = renderTemplate(String(cfg.html ?? cfg.body ?? ""), tokens);
+          await sendRichEmail({ to: cand.email, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name });
+          await logActivity({ tenantId: ctx.tenantId, contactId: cand.id, type: "email_sent", summary: `Email sent: ${subject}`, detail: { subject, to: cand.email, via: "automation" }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
+          await emitEvent({ tenantId: ctx.tenantId, type: EVENT_TYPES.EmailSent, actor: ctx.actor, subject: { type: "contact", id: cand.id }, payload: { subject, to: cand.email } });
+          ok++;
+        } else if (sub === "sms") {
+          if (!cand.phone) { fail++; errs.push(`${who}: no phone`); continue; }
+          const body = renderTemplate(String(cfg.body ?? ""), tokens);
+          if (!body.trim()) { fail++; errs.push(`${who}: empty message`); continue; }
+          await sendSms({ to: cand.phone, body, from: ctx.portal.phoneNumber });
+          await logActivity({ tenantId: ctx.tenantId, contactId: cand.id, type: "text_sent", summary: "Text message sent", detail: { to: cand.phone, body, via: "automation" }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
+          await emitEvent({ tenantId: ctx.tenantId, type: EVENT_TYPES.SMSSent, actor: ctx.actor, subject: { type: "contact", id: cand.id }, payload: { to: cand.phone } });
+          ok++;
+        } else {
+          fail++; errs.push(`${who}: unknown sub-action`);
+        }
+      } catch (e) { fail++; errs.push(`${who}: ${(e as Error).message}`); }
+    }
+
+    const verb = sub === "note" ? "noted" : sub === "email" ? "emailed (mock)" : "messaged (mock)";
+    // ANTI-SILENT-GREEN: any per-candidate failure makes the whole result FAILED,
+    // with succeeded/failed counts and reasons — never a blanket green.
+    if (fail > 0) {
+      const more = errs.length > 5 ? ` …(+${errs.length - 5} more)` : "";
+      return { type: "act_on_linked", status: "failed", error: `${verb} ${ok}/${candidates.length}; ${fail} failed: ${errs.slice(0, 5).join("; ")}${more}` };
+    }
+    return { type: "act_on_linked", status: "success", detail: `${verb} ${ok} linked contact(s)` };
   },
 
   async assign_owner(cfg, ctx) {

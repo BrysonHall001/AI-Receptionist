@@ -78,7 +78,7 @@ export async function handleEvent(event: DomainEvent): Promise<void> {
 // loaded from the record table — never the contact loader. Only actions that
 // make sense on a record are allowed; anything else is logged as a clear FAILED
 // result (never a silent green no-op).
-const RECORD_SUBJECT_ACTIONS = new Set(["create_note"]);
+const RECORD_SUBJECT_ACTIONS = new Set(["create_note", "act_on_linked"]);
 
 async function handleRecordEvent(event: DomainEvent): Promise<void> {
   const recordId = event.subject?.id || null;

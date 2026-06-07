@@ -296,6 +296,17 @@
     const t = (meta.triggers || []).find((x) => x.type === base);
     return t ? t.label : base;
   }
+  // A record-subject trigger acts on the record (e.g. a job), not a contact.
+  function isRecordTrigger(tt) { return tt === "RecordUpdated" || (tt && tt.indexOf("RecordUpdated:") === 0); }
+  // Which actions the builder offers for a given trigger. Record-subject
+  // automations support only record-safe actions ("Create internal note" on the
+  // record, "Act on linked contacts"); everything else is contact-only, and
+  // "act_on_linked" never appears there. Mirrors the engine's allow-list.
+  function allowedActions(triggerType) {
+    const all = meta.actions || [];
+    if (isRecordTrigger(triggerType)) return all.filter((a) => a.type === "create_note" || a.type === "act_on_linked");
+    return all.filter((a) => a.type !== "act_on_linked");
+  }
   // Distinct base triggers actually present in this portal's automations, ordered
   // to match the builder's trigger list. Derived from data — never hardcoded.
   function presentTriggers() {
@@ -753,14 +764,14 @@
   // Render an editable action list into a container, reusing the builder's
   // actionRow/buildActionConfig so wizard-built actions are identical to
   // hand-built ones (and only ever offer fields/actions that exist here).
-  function renderActionList(container, arr) {
+  function renderActionList(container, arr, triggerType) {
     container.innerHTML = "";
     const list = el("div", "wiz-action-list");
-    const redraw = () => renderActionList(container, arr);
-    arr.forEach((act, i) => list.appendChild(actionRow(act, i, { actions: arr }, redraw)));
+    const redraw = () => renderActionList(container, arr, triggerType);
+    arr.forEach((act, i) => list.appendChild(actionRow(act, i, { actions: arr, triggerType }, redraw)));
     container.appendChild(list);
     const add = el("button", "rail-add", "+ Add action");
-    add.onclick = () => { arr.push({ type: (meta.actions[0] && meta.actions[0].type) || "create_note", config: {} }); redraw(); };
+    add.onclick = () => { const opts = allowedActions(triggerType); arr.push({ type: (opts[0] && opts[0].type) || "create_note", config: {} }); redraw(); };
     container.appendChild(add);
   }
 
@@ -960,15 +971,15 @@
     box.appendChild(el("p", "wiz-q", "What should happen?"));
     box.appendChild(el("p", "wiz-sub", "Pick one or more actions. These are the same actions the builder offers; only options that exist in this portal are shown."));
     if (!w.branch) {
-      const c = el("div"); box.appendChild(c); renderActionList(c, w.actionsIf);
+      const c = el("div"); box.appendChild(c); renderActionList(c, w.actionsIf, wizTriggerType(w));
     } else {
       const ifPath = el("div", "wiz-path");
       ifPath.appendChild(el("div", "wiz-path-title", `If <span class="b">${esc(condText(w.branchCond))}</span>`));
-      const c1 = el("div"); ifPath.appendChild(c1); renderActionList(c1, w.actionsIf);
+      const c1 = el("div"); ifPath.appendChild(c1); renderActionList(c1, w.actionsIf, wizTriggerType(w));
       box.appendChild(ifPath);
       const elsePath = el("div", "wiz-path");
       elsePath.appendChild(el("div", "wiz-path-title", "Otherwise"));
-      const c2 = el("div"); elsePath.appendChild(c2); renderActionList(c2, w.actionsElse);
+      const c2 = el("div"); elsePath.appendChild(c2); renderActionList(c2, w.actionsElse, wizTriggerType(w));
       box.appendChild(elsePath);
     }
   }
@@ -1029,6 +1040,7 @@
     if (a.type === "delete_record") return "Delete record(s) to recycle bin";
     if (a.type === "compute_field") return "Compute a value into a field";
     if (a.type === "send_webhook") return "Send a webhook";
+    if (a.type === "act_on_linked") { const s = c.subAction || "note"; return s === "email" ? "Email each linked contact (mock)" : s === "sms" ? "Message each linked contact (mock)" : "Note each linked contact"; }
     return actionLabel(a.type);
   }
 
@@ -1311,7 +1323,7 @@
         trigExtra.appendChild(note2);
       }
     }
-    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } syncTrigger(); renderTrigExtra(); };
+    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } syncTrigger(); renderTrigExtra(); redrawActions(); };
     renderTrigExtra();
     flow.appendChild(trigNode);
 
@@ -1343,7 +1355,7 @@
       });
       actionsWrap.appendChild(connector());
       const add = el("button", "rail-add", "+ Add action");
-      add.onclick = () => { draft.actions.push({ type: meta.actions[0].type, config: {} }); redrawActions(); };
+      add.onclick = () => { const opts = allowedActions(draft.triggerType); draft.actions.push({ type: (opts[0] && opts[0].type) || "create_note", config: {} }); redrawActions(); };
       actionsWrap.appendChild(add);
     }
     redrawActions();
@@ -1387,7 +1399,11 @@
     const head = el("div", "wf-action-head");
     head.appendChild(el("span", "wf-action-num", String(idx + 1)));
     const sel = el("select", "input");
-    (meta.actions || []).forEach((a) => { const o = el("option", null, esc(a.label)); o.value = a.type; if (a.type === act.type) o.selected = true; sel.appendChild(o); });
+    const opts = allowedActions(draft && draft.triggerType).slice();
+    // Keep a previously-saved action visible even if it's not in the current
+    // allowed set (e.g. after switching trigger), so nothing is silently changed.
+    if (act.type && !opts.some((a) => a.type === act.type)) opts.unshift({ type: act.type, label: actionLabel(act.type) });
+    opts.forEach((a) => { const o = el("option", null, esc(a.label)); o.value = a.type; if (a.type === act.type) o.selected = true; sel.appendChild(o); });
     sel.onchange = () => { act.type = sel.value; act.config = {}; redraw(); };
     head.appendChild(sel);
     const rm = el("button", "rule-remove", "&times;");
@@ -1438,6 +1454,35 @@
       cfg.appendChild(small("Tag value")); cfg.appendChild(text("value", "VIP"));
     } else if (act.type === "create_note") {
       cfg.appendChild(small("Note (supports {{field}})")); cfg.appendChild(text("text", "Lead came in via automation", true));
+    } else if (act.type === "act_on_linked") {
+      if (!c.subAction) c.subAction = "note";
+      cfg.appendChild(small("Do this to each linked contact:"));
+      const subSel = el("select", "input");
+      [["note", "Add internal note (on each contact's timeline)"], ["email", "Send mock email to each"], ["sms", "Send mock SMS to each"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (c.subAction === v) o.selected = true; subSel.appendChild(o); });
+      subSel.onchange = () => { c.subAction = subSel.value; rebuildLinked(); };
+      cfg.appendChild(subSel);
+      const sub = el("div"); sub.style.marginTop = "8px"; cfg.appendChild(sub);
+      function rebuildLinked() {
+        sub.innerHTML = "";
+        if (c.subAction === "email") {
+          sub.appendChild(small("Subject (supports {{name}}, {{record_title}})")); sub.appendChild(text("subject", "Update on {{record_title}}"));
+          sub.appendChild(small("Body (HTML, supports {{field}})")); sub.appendChild(text("html", "Hi {{name}}, there's an update on {{record_title}}.", true));
+        } else if (c.subAction === "sms") {
+          sub.appendChild(small("Message (supports {{name}}, {{record_title}})")); sub.appendChild(text("body", "Hi {{name}} — update on {{record_title}}.", true));
+        } else {
+          sub.appendChild(small("Note (supports {{name}}, {{record_title}})")); sub.appendChild(text("text", "Update on {{record_title}} — please review.", true));
+        }
+        if (c.subAction === "email" || c.subAction === "sms") {
+          const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
+          const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
+          const lbl = el("label", null, "Allow sending to more than 25 linked contacts in one run");
+          lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
+          lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
+          cbWrap.appendChild(cb); cbWrap.appendChild(lbl); sub.appendChild(cbWrap);
+          sub.appendChild(small("Comms are mocked, so nothing actually sends yet — this gate is here for when real keys are added."));
+        }
+      }
+      rebuildLinked();
     } else if (act.type === "assign_owner") {
       const users = (meta.users || []).map((u) => ({ value: u.id, label: u.name }));
       cfg.appendChild(small("Owner")); cfg.appendChild(selectOf("userId", users));
