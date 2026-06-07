@@ -4,7 +4,7 @@
   // Product brand — change this one line to rename the app everywhere in-app.
   App.BRAND = "Clarity CRM";
 
-  App.state = { me: null, currentPortalId: null, currentPortalName: null };
+  App.state = { me: null, currentPortalId: null, currentPortalName: null, labels: { types: {}, generic: {} } };
 
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
@@ -100,4 +100,59 @@
   App.util = { $, $$, el, esc, fmtDate, statusBadge, roleLabel, toast, debounce };
   App.api = api;
   App.portalApi = portalApi;
+
+  // ===================== NAMING LAYER (Step 1: foundation) =====================
+  // Built-in English defaults — the FINAL fallback so nothing breaks before the
+  // cache loads or when a word has no override. Record-type words (contact/job)
+  // normally come from live data and override these.
+  const LABEL_DEFAULTS = {
+    contact: { one: "Contact", many: "Contacts" },
+    job: { one: "Job", many: "Jobs" },
+    record: { one: "Record", many: "Records" },
+    stage: { one: "Stage", many: "Stages" },
+    candidate: { one: "Candidate", many: "Candidates" },
+  };
+
+  // App.label(kind, form) -> the per-portal display word for this portal.
+  //   kind: a record-type key ("contact","job",…) or a generic word ("record","stage")
+  //   form: "one" (singular, default) or "many" (plural)
+  // Fallback chain (first hit wins):
+  //   1) live record-type label/labelPlural  (App.state.labels.types[kind])
+  //   2) per-portal generic override bag      (App.state.labels.generic[kind])
+  //   3) built-in English default            (LABEL_DEFAULTS[kind])
+  //   4) the kind string itself, capitalized  (last-ditch, never blank)
+  // NOTE: returns the word in its stored case; callers that need lowercase apply
+  // .toLowerCase() themselves (same as the existing record-page code does today).
+  App.label = function (kind, form) {
+    const k = String(kind || "").toLowerCase();
+    const f = form === "many" ? "many" : "one";
+    const labels = (App.state && App.state.labels) || { types: {}, generic: {} };
+    const t = labels.types && labels.types[k];
+    if (t && t[f]) return t[f];
+    const g = labels.generic && labels.generic[k];
+    if (g && g[f]) return g[f];
+    const d = LABEL_DEFAULTS[k];
+    if (d && d[f]) return d[f];
+    return k ? k.charAt(0).toUpperCase() + k.slice(1) : "";
+  };
+
+  // Load this portal's labels into the cache. Safe to call repeatedly; no-op on
+  // failure (keeps defaults). Nothing in the UI reads App.label() yet, so a late
+  // load has no visible effect — this just makes the cache available.
+  App.loadLabels = async function () {
+    try {
+      const data = await portalApi("/api/labels");
+      App.state.labels = { types: data.types || {}, generic: data.generic || {} };
+    } catch (e) { /* keep whatever we had; defaults still work */ }
+    return App.state.labels;
+  };
+
+  // Warm the cache once per portal context (re-loads if the portal changes).
+  // Called from the router; fire-and-forget, no visible effect yet.
+  App.ensureLabels = function () {
+    const key = App.state.currentPortalId || "self";
+    if (App.state._labelsFor === key) return;
+    App.state._labelsFor = key;
+    App.loadLabels();
+  };
 })(typeof window !== "undefined" ? window : globalThis);

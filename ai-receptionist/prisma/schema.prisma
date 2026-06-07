@@ -38,6 +38,12 @@ model Tenant {
   businessType String        @default("general business")
   notifyEmail  String
   theme        Json          @default("{}")
+  // Per-portal overrides for GENERIC display words that aren't a record type
+  // (e.g. "record", "stage"). Shape: {"record":{"one":"Item","many":"Items"}}.
+  // Additive + defaulted; empty means "use the built-in English defaults".
+  // Record-type nouns (Contact/Job/...) are NOT stored here — they live on
+  // RecordType.label/labelPlural already.
+  labels       Json          @default("{}")
   requireEmail Boolean       @default(true)
   status       TenantStatus  @default(ACTIVE)
   createdAt    DateTime      @default(now())

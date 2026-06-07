@@ -31,6 +31,7 @@ export async function getPortal(id: string) {
     phoneNumber: t.phoneNumber,
     notifyEmail: t.notifyEmail,
     greeting: t.greeting,
+    labels: (t as any).labels ?? {},
     status: t.status,
     requireEmail: (t as any).requireEmail !== false,
     createdAt: t.createdAt.toISOString(),

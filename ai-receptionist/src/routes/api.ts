@@ -388,6 +388,24 @@ apiRouter.get("/record-types", async (req: Request, res: Response) => {
   res.json(await listRecordTypes(tenantId));
 });
 
+// ---- Per-portal display labels (the naming layer) -------------------------
+// Single source the front-end's App.label() helper caches. Bundles:
+//   types:   { <recordTypeKey>: {one, many} }  — straight from RecordType
+//            label/labelPlural (so "contact"/"job" reflect live edits).
+//   generic: the Tenant.labels override bag for non-record-type words
+//            (e.g. "record","stage"); empty {} means use built-in defaults.
+// Read-only; changes nothing. Foundation for later relabeling.
+apiRouter.get("/labels", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const types: Record<string, { one: string; many: string }> = {};
+  for (const rt of (await listRecordTypes(tenantId)) as any[]) {
+    if (rt && rt.key) types[rt.key] = { one: rt.label, many: rt.labelPlural || rt.label };
+  }
+  const portal = await getPortal(tenantId);
+  res.json({ types, generic: (portal && (portal as any).labels) || {} });
+});
+
 // ---- Field sections (display-only grouping of fields, per record type) ----
 apiRouter.get("/field-sections", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);

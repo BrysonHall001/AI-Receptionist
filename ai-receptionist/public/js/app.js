@@ -117,6 +117,10 @@
     const { path, query } = parseHash();
     const me = App.state.me;
 
+    // Foundation (relabeling Step 1): keep the per-portal label cache warm.
+    // Nothing in the UI reads App.label() yet, so this has no visible effect.
+    if (me) App.ensureLabels();
+
     // Unauthenticated
     if (!me) {
       if (path === "/forgot") return App.auth.renderForgot();
