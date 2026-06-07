@@ -59,29 +59,29 @@ export interface ActionContext {
 
 // Metadata for the builder UI. Adding an action = add an executor + an entry
 // here; the engine never changes.
-export const ACTION_TYPES: { type: string; label: string }[] = [
-  { type: "send_email", label: "Send email" },
-  { type: "send_sms", label: "Send SMS" },
-  { type: "update_field", label: "Update contact field" },
-  { type: "add_tag", label: "Add tag" },
-  { type: "remove_tag", label: "Remove tag" },
-  { type: "create_note", label: "Create internal note" },
-  { type: "assign_owner", label: "Assign owner" },
-  { type: "wait", label: "Wait / delay (then run the actions below later)" },
-  { type: "create_record", label: "Create a record" },
-  { type: "update_record", label: "Update a record" },
-  { type: "search_records", label: "Find records" },
-  { type: "delete_record", label: "Delete a record (to recycle bin)" },
-  { type: "compute_field", label: "Compute value into field" },
-  { type: "send_webhook", label: "Send webhook (POST to a URL)" },
+export const ACTION_TYPES: { type: string; label: string; description: string }[] = [
+  { type: "send_email", label: "Send email", description: "Send an email." },
+  { type: "send_sms", label: "Send SMS", description: "Send a text message." },
+  { type: "update_field", label: "Update contact field", description: "Set a field to a value." },
+  { type: "add_tag", label: "Add tag", description: "Add a tag." },
+  { type: "remove_tag", label: "Remove tag", description: "Remove a tag." },
+  { type: "create_note", label: "Create internal note", description: "Add an internal note." },
+  { type: "assign_owner", label: "Assign owner", description: "Assign an owner." },
+  { type: "wait", label: "Wait / delay (then run the actions below later)", description: "Pause, then continue with the actions below later." },
+  { type: "create_record", label: "Create a record", description: "Create a new record." },
+  { type: "update_record", label: "Update a record", description: "Change fields on a record." },
+  { type: "search_records", label: "Find records", description: "Find records for a later action to work on." },
+  { type: "delete_record", label: "Delete a record (to recycle bin)", description: "Move a record to the recycle bin." },
+  { type: "compute_field", label: "Compute value into field", description: "Calculate a value and store it in a field." },
+  { type: "send_webhook", label: "Send webhook (POST to a URL)", description: "Send a POST request to a web address." },
   // Record-subject only: fan out to the record's linked contacts (e.g. a job's
   // candidates). Generic label — no "job"/"candidate" hardcoded.
-  { type: "act_on_linked", label: "Act on linked contacts (note / mock email / SMS each)" },
+  { type: "act_on_linked", label: "Act on linked contacts (note / mock email / SMS each)", description: "Run a note or message on each linked contact." },
   // Record-subject only (Batch A step 2): change the stage of the record's
   // linked contacts, and set a field on the record itself. Both write through
   // the existing chokepoints with actor:"automation" (loop-safe). Generic labels.
-  { type: "move_to_stage", label: "Move linked contacts to a stage" },
-  { type: "set_record_field", label: "Set a field on the record" },
+  { type: "move_to_stage", label: "Move linked contacts to a stage", description: "Move the linked contacts to a chosen stage." },
+  { type: "set_record_field", label: "Set a field on the record", description: "Set a field on the record itself." },
 ];
 
 // A single flow run may delete at most this many records WITHOUT the action

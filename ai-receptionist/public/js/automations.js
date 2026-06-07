@@ -307,6 +307,31 @@
     const t = (meta.triggers || []).find((x) => x.type === base);
     return t ? t.label : base;
   }
+
+  // Batch C1: present the trigger list under a few neutral group headings
+  // (display-only). The registry array is NOT reordered (its order still drives
+  // the list-page filter chips); we just bucket by each entry's `group` at
+  // render time. Within a group, options keep their registry order.
+  const TRIGGER_GROUP_ORDER = ["When something changes", "Messaging & tags", "Time-based", "Manual"];
+  function fillTriggerSelect(sel, selectedType) {
+    sel.innerHTML = "";
+    const trigs = meta.triggers || [];
+    const seen = [];
+    trigs.forEach((t) => { const g = t.group || "Other"; if (seen.indexOf(g) === -1) seen.push(g); });
+    // Known groups first (in our chosen order), then any unexpected group last
+    // so a newly-added trigger never disappears from the dropdown.
+    const ordered = TRIGGER_GROUP_ORDER.filter((g) => seen.indexOf(g) !== -1).concat(seen.filter((g) => TRIGGER_GROUP_ORDER.indexOf(g) === -1));
+    ordered.forEach((g) => {
+      const og = el("optgroup"); og.label = g;
+      trigs.filter((t) => (t.group || "Other") === g).forEach((t) => {
+        const o = el("option", null, esc(t.label)); o.value = t.type; if (t.type === selectedType) o.selected = true; og.appendChild(o);
+      });
+      sel.appendChild(og);
+    });
+  }
+  // One-line help text for the base trigger / action (from the registry via /meta).
+  function triggerDescription(type) { const t = (meta.triggers || []).find((x) => x.type === triggerBase(type)); return (t && t.description) || ""; }
+  function actionDescription(type) { const a = (meta.actions || []).find((x) => x.type === type); return (a && a.description) || ""; }
   // A record-subject trigger acts on the record (e.g. a job), not a contact.
   function isRecordTrigger(tt) { return tt === "RecordUpdated" || (tt && tt.indexOf("RecordUpdated:") === 0); }
   // The condition field list depends on the subject: a record trigger offers the
@@ -885,10 +910,14 @@
     box.appendChild(el("p", "wiz-q", "What should start this automation?"));
     box.appendChild(el("p", "wiz-sub", "Pick the event that kicks things off. These are the same triggers the builder offers."));
     const sel = el("select", "input");
-    (meta.triggers || []).forEach((t) => { const o = el("option", null, esc(t.label)); o.value = t.type; if (t.type === w.baseTrigger) o.selected = true; sel.appendChild(o); });
+    fillTriggerSelect(sel, w.baseTrigger);
     box.appendChild(sel);
+    const desc = el("div", "wf-help-desc");
+    desc.style.cssText = "margin-top:6px;font-size:12.5px;color:var(--ink-soft);";
+    box.appendChild(desc);
     const extra = el("div"); extra.style.marginTop = "10px"; box.appendChild(extra);
     function renderExtra() {
+      desc.textContent = triggerDescription(w.baseTrigger);
       extra.innerHTML = "";
       if (w.baseTrigger === "FieldChanged") {
         extra.appendChild(small("Which field? (choose “Any field” to run on every change)"));
@@ -1291,13 +1320,18 @@
     flow.appendChild(hint("Choose the event that starts this workflow."));
     const trigNode = el("div", "wf-node trigger-node");
     const trig = el("select", "input");
-    (meta.triggers || []).forEach((t) => { const o = el("option", null, esc(t.label)); o.value = t.type; if (t.type === baseTrigger) o.selected = true; trig.appendChild(o); });
+    fillTriggerSelect(trig, baseTrigger);
     trigNode.appendChild(trig);
+    // One-line description of the chosen trigger (display-only; theme tokens only).
+    const trigDesc = el("div", "wf-help-desc");
+    trigDesc.style.cssText = "margin-top:6px;font-size:12.5px;color:var(--ink-soft);";
+    trigNode.appendChild(trigDesc);
     // Sub-controls area (field picker for FieldChanged, hint for Manual)
     const trigExtra = el("div");
     trigExtra.style.marginTop = "10px";
     trigNode.appendChild(trigExtra);
     function renderTrigExtra() {
+      trigDesc.textContent = triggerDescription(baseTrigger);
       trigExtra.innerHTML = "";
       if (baseTrigger === "FieldChanged") {
         trigExtra.appendChild(small("Which field? (choose “Any field” to run on every change)"));
@@ -1491,6 +1525,12 @@
     rm.onclick = () => { draft.actions.splice(idx, 1); redraw(); };
     head.appendChild(rm);
     row.appendChild(head);
+    // One-line description of the chosen action (display-only; rebuilt on change
+    // because changing the select calls redraw()). Theme tokens only.
+    const adesc = el("div", "wf-help-desc");
+    adesc.style.cssText = "margin:2px 0 8px 30px;font-size:12.5px;color:var(--ink-soft);";
+    adesc.textContent = actionDescription(act.type);
+    if (adesc.textContent) row.appendChild(adesc);
 
     const cfg = el("div", "wf-action-cfg");
     buildActionConfig(act, cfg, draft && draft.triggerType);

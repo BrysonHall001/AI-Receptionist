@@ -55,36 +55,36 @@ export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
 
 // Triggers exposed in the automation builder UI. A subset of event types that
 // make sense as workflow entry points.
-export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string }[] = [
-  { type: EVENT_TYPES.ContactCreated, label: "Contact created" },
-  { type: EVENT_TYPES.ContactUpdated, label: "Contact updated" },
-  { type: EVENT_TYPES.FieldChanged, label: "Field changed" },
-  { type: EVENT_TYPES.TagAdded, label: "Tag added" },
-  { type: EVENT_TYPES.TagRemoved, label: "Tag removed" },
-  { type: EVENT_TYPES.EmailSent, label: "Email sent" },
-  { type: EVENT_TYPES.SMSSent, label: "SMS sent" },
-  { type: EVENT_TYPES.NoteAdded, label: "Note added" },
+export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: string; description: string }[] = [
+  { type: EVENT_TYPES.ContactCreated, label: "Contact created", group: "When something changes", description: "Runs once when a new contact is first added." },
+  { type: EVENT_TYPES.ContactUpdated, label: "Contact updated", group: "When something changes", description: "Runs when any detail on a contact is edited." },
+  { type: EVENT_TYPES.FieldChanged, label: "Field changed", group: "When something changes", description: "Runs when one specific field's value changes." },
+  { type: EVENT_TYPES.TagAdded, label: "Tag added", group: "Messaging & tags", description: "Runs when a tag is added." },
+  { type: EVENT_TYPES.TagRemoved, label: "Tag removed", group: "Messaging & tags", description: "Runs when a tag is removed." },
+  { type: EVENT_TYPES.EmailSent, label: "Email sent", group: "Messaging & tags", description: "Runs after an email is sent." },
+  { type: EVENT_TYPES.SMSSent, label: "SMS sent", group: "Messaging & tags", description: "Runs after a text message is sent." },
+  { type: EVENT_TYPES.NoteAdded, label: "Note added", group: "Messaging & tags", description: "Runs when an internal note is added." },
   // Fires when a contact's relationship stage on a record changes. Like
   // "FieldChanged:<fieldKey>", an OPTIONAL scoped variant "StageChanged:<stageKey>"
   // fires only when the NEW stage matches; plain "StageChanged" fires on any
   // stage change. Labels stay generic ("Stage", "Record") so portals can relabel.
-  { type: EVENT_TYPES.StageChanged, label: "Stage changed" },
+  { type: EVENT_TYPES.StageChanged, label: "Stage changed", group: "When something changes", description: "Runs when an item moves to a different pipeline stage." },
   // Fires when a record's own field/status changes (subject = the record). Like
   // FieldChanged, optional scoped variants "RecordUpdated:<field>" and
   // "RecordUpdated:<field>=<value>" narrow it to one field (e.g. Status) or one
   // destination value. Generic labels ("Record") so portals can relabel.
-  { type: EVENT_TYPES.RecordUpdated, label: "Record updated / status changed" },
+  { type: EVENT_TYPES.RecordUpdated, label: "Record updated / status changed", group: "When something changes", description: "Runs when a record's own field or status changes." },
   // Manual is a trigger-only entry: it is NOT an emitted event, so the engine's
   // event dispatch never fires it automatically. It runs only when a user clicks
   // "Run automation" on a record (see runManualAutomation in automation/engine).
-  { type: "Manual", label: "Manual — run from a record" },
+  { type: "Manual", label: "Manual — run from a record", group: "Manual", description: "Runs only when you click Run on a record — never automatically." },
   // Date-relative schedule. Its parameters are encoded into triggerType as
   // "Scheduled:<field>:<amount>:<unit>:<dir>" (no schema change). It does not
   // fire on instant events; the daily sweep evaluates and queues it.
-  { type: "Scheduled", label: "On a date (relative to a date field)" },
+  { type: "Scheduled", label: "On a date (relative to a date field)", group: "Time-based", description: "Runs on a date worked out from a date field (e.g. 3 days before)." },
   // Time-in-stage: a candidate has sat in their CURRENT stage with no movement
   // for N days. Encoded as "Stalled:<days>" or "Stalled:<days>:<stageKey>"
   // (no schema change). Like Scheduled, it does not fire on instant events — the
   // sweep evaluates it. Generic label (no "job"/"candidate").
-  { type: "Stalled", label: "Stalled in a stage for N days (no movement)" },
+  { type: "Stalled", label: "Stalled in a stage for N days (no movement)", group: "Time-based", description: "Runs when an item sits in the same stage with no movement for N days." },
 ];
