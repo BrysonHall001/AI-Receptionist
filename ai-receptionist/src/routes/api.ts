@@ -396,8 +396,16 @@ apiRouter.get("/record-types", async (req: Request, res: Response) => {
 //            (e.g. "record","stage"); empty {} means use built-in defaults.
 // Read-only; changes nothing. Foundation for later relabeling.
 apiRouter.get("/labels", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res);
-  if (!tenantId) return;
+  // Portal-scoped: a portal only ever gets its OWN labels (resolveTenantScope
+  // ties to the signed-in user's tenant, or the selected portal for a super-
+  // admin). If there's no portal in context (e.g. a super-admin who hasn't
+  // picked one), return empty labels with 200 so the helper just uses English
+  // defaults — never a 400/console error.
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) {
+    res.json({ types: {}, generic: {} });
+    return;
+  }
   const types: Record<string, { one: string; many: string }> = {};
   for (const rt of (await listRecordTypes(tenantId)) as any[]) {
     if (rt && rt.key) types[rt.key] = { one: rt.label, many: rt.labelPlural || rt.label };

@@ -148,11 +148,13 @@
   };
 
   // Warm the cache once per portal context (re-loads if the portal changes).
-  // Called from the router; fire-and-forget, no visible effect yet.
+  // After the first successful load, repaint the current view once so the nav /
+  // page title reflect this portal's labels even on first entry. The per-portal
+  // guard prevents any loop (the repainted route() call early-returns here).
   App.ensureLabels = function () {
     const key = App.state.currentPortalId || "self";
     if (App.state._labelsFor === key) return;
     App.state._labelsFor = key;
-    App.loadLabels();
+    App.loadLabels().then(function () { if (App._route) App._route(); });
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -27,7 +27,11 @@
     location.hash = "#/login";
   }
 
-  const PORTAL_NAV = [["#/dashboard", "Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts"], ["#/jobs", "Jobs"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"]];
+  // The 3rd element (when present) is a label "kind": the nav text is resolved
+  // at render time via App.label(kind,"many") so renaming the contact/job record
+  // type (or a Tenant.labels override) updates the nav. Other items are app
+  // FEATURE names, not object nouns, so they stay literal.
+  const PORTAL_NAV = [["#/dashboard", "Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"]];
   const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"]];
 
   function buildShell(section, activePath) {
@@ -49,8 +53,9 @@
 
     const nav = el("nav", "sidebar-nav");
     const items = section === "admin" ? ADMIN_NAV : PORTAL_NAV;
-    items.forEach(([href, label]) => {
-      const a = el("a", "nav-item" + (href === activePath ? " active" : ""), esc(label));
+    items.forEach(([href, label, kind]) => {
+      const text = kind ? App.label(kind, "many") : label;
+      const a = el("a", "nav-item" + (href === activePath ? " active" : ""), esc(text));
       a.href = href;
       nav.appendChild(a);
     });
@@ -82,7 +87,7 @@
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
     } else {
-      const titleMap = { "#/dashboard": "Dashboard", "#/calls": "Calls", "#/contacts": "Contacts", "#/jobs": "Jobs", "#/fields": "Fields", "#/reports": "Reports", "#/automations": "Automations", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users" };
+      const titleMap = { "#/dashboard": "Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/fields": "Fields", "#/reports": "Reports", "#/automations": "Automations", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users" };
       topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Dashboard"));
     }
     topbar.appendChild(topLeft);
@@ -117,9 +122,11 @@
     const { path, query } = parseHash();
     const me = App.state.me;
 
-    // Foundation (relabeling Step 1): keep the per-portal label cache warm.
-    // Nothing in the UI reads App.label() yet, so this has no visible effect.
-    if (me) App.ensureLabels();
+    // Foundation (relabeling): keep the per-portal label cache warm — but only
+    // when there's a portal in context. A SUPER_ADMIN who hasn't picked a portal
+    // has no tenant to scope to, so requesting labels then is meaningless (and
+    // was causing a 400 on /api/labels).
+    if (me && (me.role !== "SUPER_ADMIN" || App.state.currentPortalId)) App.ensureLabels();
 
     // Unauthenticated
     if (!me) {
