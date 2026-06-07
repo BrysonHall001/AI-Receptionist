@@ -2222,6 +2222,10 @@
         toast("Saved");
         rec.title = titleInp.value.trim();
         App.util.$(".contact-name", wrap).textContent = rec.title || ("Untitled " + (type.label || "record"));
+        // A status/field save may have fired an automation that moves candidates
+        // server-side; refresh the board shortly after so it reflects the change
+        // without navigating away. (Async automations run just after the save.)
+        scheduleCandRefresh();
       } catch (e) { toast(e.message, true); }
       finally { save.disabled = false; save.textContent = "Save changes"; }
     };
@@ -2303,6 +2307,20 @@
       renderCandidates();
     }
     function renderCandidates() { if (candView === "board") renderCandBoard(); else renderCandList(); }
+
+    // Part 2 (Batch A step 3): reflect server-side stage changes (e.g. the
+    // automation "move" action) without the user navigating away and back.
+    // Lightweight: refetch the links and re-render in place — no polling loop,
+    // no realtime machinery. Skips while a drag is in progress and stops itself
+    // once this record view is gone.
+    async function refreshCandidatesQuietly() {
+      if (!document.body.contains(wrap)) { document.removeEventListener("visibilitychange", onCandVisible); return; }
+      if (document.querySelector(".kanban-card.dragging")) return; // don't fight an active drag
+      try { const fresh = await App.portalApi("/api/records/" + id + "/links"); links = fresh; renderCandidates(); } catch (e) { /* leave current view on error */ }
+    }
+    function scheduleCandRefresh() { setTimeout(refreshCandidatesQuietly, 1200); setTimeout(refreshCandidatesQuietly, 3000); }
+    function onCandVisible() { if (document.visibilityState === "visible") refreshCandidatesQuietly(); }
+    document.addEventListener("visibilitychange", onCandVisible);
 
     // List view — the original table-ish list; its dropdown writes the SAME
     // RecordLink.stageKey and updates the in-memory link so the board matches.

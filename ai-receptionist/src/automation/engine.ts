@@ -2,8 +2,9 @@ import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { subscribe } from "../events/bus";
 import { DomainEvent, EventActor } from "../events/types";
-import { evalRules, Rule } from "./conditions";
+import { evalRules, ruleComplete, Rule } from "./conditions";
 import { buildColumns, loadFieldDefs } from "./contactRow";
+import { loadRecordFieldDefs, buildRecordColumns } from "./recordRow";
 import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
 import { enqueueJob } from "./scheduler";
 
@@ -161,13 +162,25 @@ async function runRecordOne(auto: AutomationRow, event: DomainEvent, record: any
     if (firstChange.old != null) extraTokens.old_value = String(firstChange.old);
   }
 
-  // Stage 2a deliberately does NOT expose record fields to conditions (out of
-  // scope). We evaluate with an empty column set: an unknown field resolves to
-  // "pass" (same as the UI rule engine), so the per-field/value filtering is
-  // done by trigger scoping above, not by conditions.
-  const matched = evalRules(record, (auto.conditions as Rule[]) || [], []);
+  // Stage 3 (Batch A): conditions now evaluate against the RECORD's own fields
+  // (Status, Title, Type, record custom fields) — loaded ONLY for this record's
+  // type, so contact fields never leak in. UNKNOWN-FIELD SAFETY: if a condition
+  // references a field this record doesn't have, we FAIL CLOSED (do not fire) —
+  // never a silent pass that could run an automation on a condition it can't
+  // actually evaluate. The contact path (runOne) is untouched and still uses the
+  // contact loader.
+  const recCustom = await loadRecordFieldDefs(auto.tenantId, record.recordTypeId);
+  const recCols = buildRecordColumns(recCustom);
+  const activeRules = ((auto.conditions as Rule[]) || []).filter(ruleComplete);
+  const knownKeys = new Set(recCols.map((c) => c.key));
+  const unknownField = activeRules.some((r) => !knownKeys.has(r.field));
+  const matched = !unknownField && evalRules(record, (auto.conditions as Rule[]) || [], recCols);
   if (!matched) {
-    await writeRun(auto, { eventId: event.id, eventType: event.type, contactId: null, status: "skipped", matched: false, results: [] });
+    await writeRun(auto, {
+      eventId: event.id, eventType: event.type, contactId: null,
+      status: "skipped", matched: false,
+      results: unknownField ? [{ type: "(conditions)", status: "skipped", detail: "A condition references a field this record doesn't have — not run (safe default)." }] : [],
+    });
     return;
   }
 

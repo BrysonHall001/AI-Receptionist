@@ -309,6 +309,13 @@
   }
   // A record-subject trigger acts on the record (e.g. a job), not a contact.
   function isRecordTrigger(tt) { return tt === "RecordUpdated" || (tt && tt.indexOf("RecordUpdated:") === 0); }
+  // The condition field list depends on the subject: a record trigger offers the
+  // record's own fields; otherwise contact fields. _condTrigger is set to the
+  // active trigger right before the wizard / list condition rows render, so
+  // fieldType/fieldLabel/condRow show the right fields. (The editor passes the
+  // trigger explicitly via buildColumns(); this covers the wizard + previews.)
+  let _condTrigger = null;
+  function condFieldList() { return isRecordTrigger(_condTrigger) ? (meta.recordConditionFields || []) : (meta.fields || []); }
   // Which actions the builder offers for a given trigger. Record-subject
   // automations support only record-safe actions ("Create internal note" on the
   // record, "Act on linked contacts"); everything else is contact-only, and
@@ -705,12 +712,12 @@
     return [["is", "is"], ["is_not", "is not"], ["contains", "contains"], ["not_contains", "does not contain"], ["empty", "is empty"], ["not_empty", "is not empty"]];
   }
   function fieldType(key) {
-    const f = (meta.fields || []).find((x) => x.key === key);
+    const f = condFieldList().find((x) => x.key === key);
     const t = f ? f.type : "text";
     return t === "percent" ? "number" : (t === "date" || t === "number") ? t : "text";
   }
   function fieldLabel(key) {
-    const f = (meta.fields || []).find((x) => x.key === key);
+    const f = condFieldList().find((x) => x.key === key);
     return f ? f.label : key;
   }
   function opLabel(op) {
@@ -753,7 +760,7 @@
     const row = el("div", "wiz-cond-row");
     const fsel = el("select", "input");
     const blank = el("option", null, "— field —"); blank.value = ""; fsel.appendChild(blank);
-    (meta.fields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (cond.field === f.key) o.selected = true; fsel.appendChild(o); });
+    condFieldList().forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (cond.field === f.key) o.selected = true; fsel.appendChild(o); });
     const osel = el("select", "input");
     const valInp = el("input", "input"); valInp.placeholder = "value"; valInp.value = cond.value || "";
     function rebuildOps() {
@@ -817,6 +824,9 @@
 
   function renderWizard(pbody, w, overlay) {
     pbody.innerHTML = "";
+    // Conditions in this wizard pass should reflect the chosen subject (record
+    // trigger -> record fields; otherwise contact fields).
+    _condTrigger = wizTriggerType(w);
 
     // Progress indicator
     const steps = el("div", "wiz-steps");
@@ -1162,7 +1172,18 @@
   function rc(rule) { return App.table.ruleComplete(rule); }
 
   // ---------------- Condition columns (for ruleEditor) ----------------
-  function buildColumns() {
+  // For a record-subject trigger, the condition picker/evaluator uses the
+  // record's OWN fields (Status, Title, Type, record custom fields); otherwise
+  // the contact fields, exactly as before. The two never mix.
+  function buildColumns(triggerType) {
+    if (isRecordTrigger(triggerType)) {
+      return (meta.recordConditionFields || []).map((f) => ({
+        key: f.key, label: f.label,
+        type: f.type === "percent" ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
+        get: (row) => recordValueOf(row, f.key),
+        text: (row) => scalar(recordValueOf(row, f.key)),
+      }));
+    }
     return (meta.fields || []).map((f) => ({
       key: f.key,
       label: f.label,
@@ -1174,6 +1195,13 @@
   function valueOf(row, key) {
     if (key === "createdAt") return row.createdAt;
     if (["name", "phone", "email", "intent"].includes(key)) return row[key];
+    return (row.customFields || {})[key];
+  }
+  function recordValueOf(row, key) {
+    if (key === "status") return row.stageKey;
+    if (key === "title") return row.title;
+    if (key === "subtypeKey") return row.subtypeKey;
+    if (key === "createdAt") return row.createdAt;
     return (row.customFields || {})[key];
   }
   function scalar(v) { return v == null ? "" : Array.isArray(v) ? v.join(", ") : String(v); }
@@ -1370,7 +1398,7 @@
         trigExtra.appendChild(snote);
       }
     }
-    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } if (baseTrigger !== "Stalled") { stall.days = ""; stall.stageKey = ""; } syncTrigger(); renderTrigExtra(); redrawActions(); };
+    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } if (baseTrigger !== "Stalled") { stall.days = ""; stall.stageKey = ""; } syncTrigger(); renderTrigExtra(); renderConditions(); redrawActions(); };
     renderTrigExtra();
     flow.appendChild(trigNode);
 
@@ -1380,8 +1408,14 @@
     flow.appendChild(stepHead("conditions", "CONDITIONS", "Only continue if…", "optional"));
     flow.appendChild(hint("All conditions must match. Use OR to start a new group. Leave empty to always run."));
     const condNode = el("div", "wf-node");
-    condNode.appendChild(App.table.ruleEditor(buildColumns(), contacts, draft.conditions, () => {}));
     flow.appendChild(condNode);
+    // Re-rendered when the trigger changes so the field picker reflects the
+    // subject: record fields for a record trigger, contact fields otherwise.
+    function renderConditions() {
+      condNode.innerHTML = "";
+      condNode.appendChild(App.table.ruleEditor(buildColumns(draft.triggerType), [], draft.conditions, () => {}));
+    }
+    renderConditions();
 
     flow.appendChild(connector());
 

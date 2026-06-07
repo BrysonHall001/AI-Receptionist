@@ -908,6 +908,16 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
   const statusMap = new Map<string, string>();
   for (const rt of recordTypes as any[]) for (const s of (rt.recordStages || [])) if (s && s.key) statusMap.set(String(s.key), String(s.label ?? s.key));
   const recordStatuses = Array.from(statusMap, ([key, label]) => ({ key, label }));
+  // Record CONDITION fields (with types) so the builder can offer a record
+  // automation's OWN fields in the condition picker ("...only if Status = Open").
+  // System fields are text; createdAt is a date; custom fields use their type.
+  const recCondMap = new Map<string, { label: string; type: string }>();
+  recCondMap.set("status", { label: "Status", type: "text" });
+  recCondMap.set("title", { label: "Title", type: "text" });
+  recCondMap.set("subtypeKey", { label: "Type", type: "text" });
+  recCondMap.set("createdAt", { label: "Time created", type: "date" });
+  for (const d of recFieldDefs as any[]) if (d.key && !String(d.key).startsWith("__")) recCondMap.set(String(d.key), { label: String(d.label ?? d.key), type: String(d.type || "text") });
+  const recordConditionFields = Array.from(recCondMap, ([key, v]) => ({ key, label: v.label, type: v.type }));
   res.json({
     triggers: TRIGGERABLE_EVENT_TYPES,
     actions: ACTION_TYPES,
@@ -915,6 +925,7 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
     tagFields,
     stages,
     recordFields,
+    recordConditionFields,
     recordStatuses,
     templates: templates.map((t: any) => ({ id: t.id, name: t.name, kind: t.kind })),
     users: users.map((u: any) => ({ id: u.id, name: u.name || u.email })),
