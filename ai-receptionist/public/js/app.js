@@ -165,7 +165,16 @@
     }
 
     // Old Inbound link now lives inside Settings.
-    if (path === "/inbound") return App.go("#/settings");
+    if (path === "/inbound") return App.go("#/settings/leadcapture");
+
+    // Settings (with optional sub-section, e.g. #/settings/appearance) — the
+    // sub-section drives the in-view sub-shell; refresh/back keep their place.
+    if (path === "/settings" || path.indexOf("/settings/") === 0) {
+      if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
+      buildShell("portal", "#/settings");
+      const sub = path === "/settings" ? "" : path.slice("/settings/".length);
+      return App.portal.render("settings", sub);
+    }
 
     // Portal section
     const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/settings": "settings" };

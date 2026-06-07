@@ -8,7 +8,7 @@
   function view() { return App.util.$("#view"); }
   function setView(v) { current = v; }
 
-  async function render(v) {
+  async function render(v, sub) {
     setView(v);
     if (v === "calls") return renderCalls();
     if (v === "contacts") return renderContacts();
@@ -18,7 +18,7 @@
     if (v === "reports") return App.reports.render(view());
     if (v === "automations") return App.automations.render(view());
     if (v === "learn") return App.learn.render(view());
-    if (v === "settings") return renderSettings();
+    if (v === "settings") return renderSettings(sub);
     return renderDashboard();
   }
   function refresh() { return render(current); }
@@ -1500,17 +1500,51 @@
   }
 
   // ---------------- Settings ----------------
-  async function renderSettings() {
-    loading();
+  async function renderSettings(sub) {
     const me = App.state.me;
     const canEditPortal = me.role !== "CLIENT_USER";
-    const sections = el("div", "fade-in settings-page");
 
-    // Portal settings
-    if (canEditPortal) {
+    // Section registry. `admin` = needs portal-edit rights (CLIENT_USER sees only
+    // "Your account"). Each builder relocates the EXISTING content + wiring
+    // unchanged; "labels" and "fields" are reserved placeholders for later steps.
+    const SECTIONS = [
+      { key: "general", label: "General", admin: true, build: secGeneral },
+      { key: "appearance", label: "Appearance", admin: true, build: secAppearance },
+      { key: "team", label: "Team", admin: true, build: secTeam },
+      { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
+      { key: "account", label: "Your account", admin: false, build: secAccount },
+      { key: "labels", label: "Labels", admin: true, build: secLabels },
+      { key: "fields", label: "Fields", admin: true, build: secFields },
+    ].filter((s) => canEditPortal || !s.admin);
+
+    const active = SECTIONS.some((s) => s.key === sub) ? sub : SECTIONS[0].key;
+
+    // Two-pane shell: sub-sidebar (left) + content panel (right). The global app
+    // nav is untouched; this layout lives entirely inside the settings view.
+    const shell = el("div", "fade-in settings-shell");
+    const subnav = el("aside", "settings-subnav");
+    subnav.appendChild(el("div", "settings-subnav-title", "Settings"));
+    SECTIONS.forEach((s) => {
+      const a = el("a", "settings-subnav-item" + (s.key === active ? " active" : ""), esc(s.label));
+      a.href = "#/settings/" + s.key; // hash drives selection -> refresh/back work
+      subnav.appendChild(a);
+    });
+    const panel = el("div", "settings-panel");
+    panel.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    shell.appendChild(subnav);
+    shell.appendChild(panel);
+
+    view().innerHTML = "";
+    view().appendChild(shell);
+
+    const def = SECTIONS.find((s) => s.key === active);
+    try { await def.build(panel); }
+    catch (e) { panel.innerHTML = `<div class="cell-muted" style="padding:8px">Couldn’t load this section.</div>`; }
+
+    // ---- Section builders (existing content + behavior, relocated verbatim) ----
+    async function secGeneral(panel) {
       const portal = await App.portalApi("/api/settings");
-      const card = el("div", "card settings-card");
-      card.innerHTML = `<h2 class="settings-h">Portal settings</h2>
+      panel.innerHTML = `<h2 class="settings-h">General</h2>
         <div class="settings-grid">
           <label class="field-label">Business name</label><input id="set-name" class="input" value="${esc(portal.name)}" />
           <label class="field-label">Business type</label><input id="set-type" class="input" value="${esc(portal.businessType)}" />
@@ -1519,71 +1553,6 @@
           <label class="field-label">Greeting</label><textarea id="set-greet" class="input" rows="2">${esc(portal.greeting)}</textarea>
         </div>
         <button id="set-save" class="btn btn-primary btn-sm">Save changes</button>`;
-      sections.appendChild(card);
-
-      // Appearance / theme (per-portal)
-      const themeCard = el("div", "card settings-card");
-      themeCard.innerHTML = `<h2 class="settings-h">Appearance</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:6px">Pick a theme for this portal, or design your own. Applies to everyone in this portal.</p>
-        <div id="theme-host"></div>`;
-      sections.appendChild(themeCard);
-    }
-
-    // User management (admins only)
-    if (canEditPortal) {
-      const users = await App.portalApi("/api/users");
-      const card = el("div", "card settings-card");
-      card.innerHTML = `<h2 class="settings-h">Team members</h2>
-        <table class="mini-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody id="users-tbody"></tbody></table>
-        <div class="add-user">
-          <input id="nu-name" class="input" placeholder="Name" />
-          <input id="nu-email" class="input" placeholder="email@company.com" />
-          <input id="nu-pass" class="input" type="text" placeholder="Temp password (8+)" />
-          <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option></select>
-          <button id="nu-add" class="btn btn-primary btn-sm">Add user</button>
-        </div>`;
-      sections.appendChild(card);
-      setTimeout(() => fillUsers(users), 0);
-    }
-
-    // Lead capture links (inbound webhooks) — admins only
-    if (canEditPortal) {
-      const ibCard = el("div", "card settings-card");
-      ibCard.innerHTML = `<h2 class="settings-h">Lead capture links</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:10px">Create a secure link you can give to a website form, Zapier, or another tool so new leads land directly in this portal.</p>
-        <div id="inbound-host"></div>`;
-      sections.appendChild(ibCard);
-    }
-
-    // Account (everyone)
-    const acct = el("div", "card settings-card");
-    acct.innerHTML = `<h2 class="settings-h">Your account</h2>
-      <div class="field-grid">
-        ${field("Name", me.name || "—")}
-        ${field("Email", me.email)}
-        ${field("Role", roleLabel(me.role))}
-      </div>
-      <label class="field-label">Change password</label>
-      <div class="add-user"><input id="acct-pass" class="input" type="password" placeholder="New password (8+)" />
-        <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>
-      <label class="field-label" style="margin-top:8px">Email signature</label>
-      <div id="sig-host"></div>
-      <button id="sig-save" class="btn btn-ghost btn-sm" style="margin-top:10px">Save signature</button>`;
-    sections.appendChild(acct);
-
-    view().innerHTML = "";
-    view().appendChild(sections);
-
-    if (canEditPortal && App.theme) {
-      const themeHost = App.util.$("#theme-host");
-      if (themeHost) App.theme.mountSettings(themeHost);
-    }
-    if (canEditPortal && App.inbound) {
-      const inboundHost = App.util.$("#inbound-host");
-      if (inboundHost) App.inbound.render(inboundHost);
-    }
-
-    if (canEditPortal) {
       App.util.$("#set-save").onclick = async () => {
         try {
           await App.portalApi("/api/settings", { method: "PATCH", body: JSON.stringify({
@@ -1593,30 +1562,88 @@
           toast("Settings saved");
         } catch (err) { toast(err.message, true); }
       };
+    }
+
+    async function secAppearance(panel) {
+      panel.innerHTML = `<h2 class="settings-h">Appearance</h2>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:6px">Pick a theme for this portal, or design your own. Applies to everyone in this portal.</p>
+        <div id="theme-host"></div>`;
+      if (App.theme) { const h = App.util.$("#theme-host"); if (h) App.theme.mountSettings(h); }
+    }
+
+    async function secTeam(panel) {
+      const users = await App.portalApi("/api/users");
+      panel.innerHTML = `<h2 class="settings-h">Team members</h2>
+        <table class="mini-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody id="users-tbody"></tbody></table>
+        <div class="add-user">
+          <input id="nu-name" class="input" placeholder="Name" />
+          <input id="nu-email" class="input" placeholder="email@company.com" />
+          <input id="nu-pass" class="input" type="text" placeholder="Temp password (8+)" />
+          <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option></select>
+          <button id="nu-add" class="btn btn-primary btn-sm">Add user</button>
+        </div>`;
+      fillUsers(users);
       App.util.$("#nu-add").onclick = async () => {
         try {
           await App.portalApi("/api/users", { method: "POST", body: JSON.stringify({
             name: App.util.$("#nu-name").value, email: App.util.$("#nu-email").value,
             password: App.util.$("#nu-pass").value, role: App.util.$("#nu-role").value }) });
           toast("User added");
-          renderSettings();
+          secTeam(panel); // refresh the list in place (same as before)
         } catch (err) { toast(err.message, true); }
       };
     }
-    App.util.$("#acct-save").onclick = async () => {
-      const pass = App.util.$("#acct-pass").value;
-      if (!pass || pass.length < 8) { toast("Password must be at least 8 characters", true); return; }
-      try { await App.portalApi("/api/account/password", { method: "POST", body: JSON.stringify({ password: pass }) }); toast("Password updated"); App.util.$("#acct-pass").value = ""; }
-      catch (err) { toast(err.message, true); }
-    };
 
-    // Signature editor (same composer as emails)
-    const sigApi = App.compose.mount(App.util.$("#sig-host"), { kind: "richtext" });
-    App.portalApi("/api/account/signature").then((r) => { sigApi.setBody((r && r.signature) || ""); }).catch(() => {});
-    App.util.$("#sig-save").onclick = async () => {
-      try { await App.portalApi("/api/account/signature", { method: "PATCH", body: JSON.stringify({ signature: sigApi.getHTML() }) }); toast("Signature saved"); }
-      catch (err) { toast(err.message, true); }
-    };
+    async function secLeadCapture(panel) {
+      panel.innerHTML = `<h2 class="settings-h">Lead capture links</h2>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:10px">Create a secure link you can give to a website form, Zapier, or another tool so new leads land directly in this portal.</p>
+        <div id="inbound-host"></div>`;
+      if (App.inbound) { const h = App.util.$("#inbound-host"); if (h) App.inbound.render(h); }
+    }
+
+    async function secAccount(panel) {
+      panel.innerHTML = `<h2 class="settings-h">Your account</h2>
+        <div class="field-grid">
+          ${field("Name", me.name || "—")}
+          ${field("Email", me.email)}
+          ${field("Role", roleLabel(me.role))}
+        </div>
+        <label class="field-label">Change password</label>
+        <div class="add-user"><input id="acct-pass" class="input" type="password" placeholder="New password (8+)" />
+          <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>
+        <label class="field-label" style="margin-top:8px">Email signature</label>
+        <div id="sig-host"></div>
+        <button id="sig-save" class="btn btn-ghost btn-sm" style="margin-top:10px">Save signature</button>`;
+      App.util.$("#acct-save").onclick = async () => {
+        const pass = App.util.$("#acct-pass").value;
+        if (!pass || pass.length < 8) { toast("Password must be at least 8 characters", true); return; }
+        try { await App.portalApi("/api/account/password", { method: "POST", body: JSON.stringify({ password: pass }) }); toast("Password updated"); App.util.$("#acct-pass").value = ""; }
+        catch (err) { toast(err.message, true); }
+      };
+      const sigApi = App.compose.mount(App.util.$("#sig-host"), { kind: "richtext" });
+      App.portalApi("/api/account/signature").then((r) => { sigApi.setBody((r && r.signature) || ""); }).catch(() => {});
+      App.util.$("#sig-save").onclick = async () => {
+        try { await App.portalApi("/api/account/signature", { method: "PATCH", body: JSON.stringify({ signature: sigApi.getHTML() }) }); toast("Signature saved"); }
+        catch (err) { toast(err.message, true); }
+      };
+    }
+
+    // RESERVED — placeholder only (Labels editor logic lands in a later step).
+    async function secLabels(panel) {
+      panel.innerHTML = `<h2 class="settings-h">Labels</h2>
+        <div class="settings-reserved">
+          <div class="settings-reserved-mark">&#127991;</div>
+          <h3>Rename what things are called in this portal</h3>
+          <p class="cell-muted">Soon you'll be able to rename your core words — like ${esc(App.label("contact", "many").toLowerCase())} and ${esc(App.label("job", "many").toLowerCase())} — right here. Coming soon.</p>
+        </div>`;
+    }
+
+    // RESERVED — links out to the existing Fields route (not moved in this step).
+    async function secFields(panel) {
+      panel.innerHTML = `<h2 class="settings-h">Fields</h2>
+        <p class="cell-muted" style="font-size:13.5px;margin-bottom:14px">Add and organize the fields and pipelines for your ${esc(App.label("contact", "many").toLowerCase())} and ${esc(App.label("job", "many").toLowerCase())}. Field settings open on their own page for now.</p>
+        <a class="btn btn-primary btn-sm" href="#/fields">Open field settings &rarr;</a>`;
+    }
   }
 
   function fillUsers(users) {
