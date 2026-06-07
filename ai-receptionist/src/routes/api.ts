@@ -918,6 +918,17 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
   recCondMap.set("createdAt", { label: "Time created", type: "date" });
   for (const d of recFieldDefs as any[]) if (d.key && !String(d.key).startsWith("__")) recCondMap.set(String(d.key), { label: String(d.label ?? d.key), type: String(d.type || "text") });
   const recordConditionFields = Array.from(recCondMap, ([key, v]) => ({ key, label: v.label, type: v.type }));
+  // Record TYPES (key + label + their statuses/subtypes) so the new record-acting
+  // actions' config UIs can offer real pickers. Excludes the internal "contact"
+  // type. Additive/display-only; no new data.
+  const recordTypeOptions = (recordTypes as any[])
+    .filter((rt) => rt.key !== "contact")
+    .map((rt) => ({
+      key: rt.key,
+      label: rt.label || rt.key,
+      statuses: ((rt.recordStages as any[]) || []).filter((s) => s && s.key).map((s) => ({ key: s.key, label: s.label ?? s.key })),
+      subtypes: ((rt.subtypes as any[]) || []).filter((s) => s && s.key).map((s) => ({ key: s.key, label: s.label ?? s.key })),
+    }));
   res.json({
     triggers: TRIGGERABLE_EVENT_TYPES,
     actions: ACTION_TYPES,
@@ -927,6 +938,7 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
     recordFields,
     recordConditionFields,
     recordStatuses,
+    recordTypes: recordTypeOptions,
     templates: templates.map((t: any) => ({ id: t.id, name: t.name, kind: t.kind })),
     users: users.map((u: any) => ({ id: u.id, name: u.name || u.email })),
   });

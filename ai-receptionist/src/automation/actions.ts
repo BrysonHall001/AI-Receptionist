@@ -4,11 +4,12 @@ import { EVENT_TYPES, EventActor } from "../events/types";
 import { sendRichEmail } from "../services/notificationService";
 import { sendSms } from "../services/smsService";
 import { updateContact, createContact, softDeleteContacts } from "../services/contactService";
-import { addRecordNote, updateRecord } from "../services/recordService";
+import { addRecordNote, updateRecord, createRecord, listRecords, softDeleteRecords } from "../services/recordService";
 import { listLinksForRecord, updateLink } from "../services/recordLinkService";
 import { stagesForSubtype } from "../services/recordTypeService";
 import { log as logActivity } from "../services/activityService";
 import { FieldMeta, renderTemplate, templateContext, buildColumns, valueOf, conditionFields, loadFieldDefs } from "./contactRow";
+import { loadRecordFieldDefs, buildRecordColumns } from "./recordRow";
 import { evalRules } from "./conditions";
 import { validateWebhookUrl, sendWebhook, buildContactPayload } from "./webhook";
 
@@ -37,6 +38,10 @@ export interface ActionContext {
   // "update_record"/"delete_record" actions can act on that set. Shared across
   // all actions of one run (the engine passes one ctx through the loop).
   workingSet?: string[];
+  // Like workingSet, but for the RECORD Find/Delete pair (Option 3 Pass 2):
+  // find_record_items stores matched Record ids here; delete_record_items reads
+  // them. Kept separate from the contact workingSet so the two never mix.
+  recordWorkingSet?: string[];
   // The trigger/event that started this run (best-effort), included in webhook
   // payloads. Set by the engine; a generic label for queued/scheduled jobs.
   triggerType?: string;
@@ -82,6 +87,13 @@ export const ACTION_TYPES: { type: string; label: string; description: string }[
   // the existing chokepoints with actor:"automation" (loop-safe). Generic labels.
   { type: "move_to_stage", label: "Move linked contacts to a stage", description: "Move the linked contacts to a chosen stage." },
   { type: "set_record_field", label: "Set a field on the record", description: "Set a field on the record itself." },
+  // Option 3 Pass 2: honest record-acting actions (NEW keys). These truly operate
+  // on the Record system and are gated to record-subject automations. Neutral
+  // labels ("record") — no "Job"/"Candidate" baked in.
+  { type: "create_record_item", label: "Create record", description: "Create a new record of a chosen type." },
+  { type: "update_record_item", label: "Update record", description: "Update field(s) on this record." },
+  { type: "find_record_items", label: "Find records", description: "Find records matching conditions, for a later action to work on." },
+  { type: "delete_record_items", label: "Delete record(s)", description: "Move matching records to the recycle bin." },
 ];
 
 // A single flow run may delete at most this many records WITHOUT the action
@@ -399,6 +411,108 @@ const EXECUTORS: Record<string, Executor> = {
       return { type: "set_record_field", status: "failed", error: `Could not set ${field}: ${(e as Error).message}` };
     }
     return { type: "set_record_field", status: "success", detail: `set ${field}` };
+  },
+
+  // ===================== Option 3 Pass 2: honest record actions =============
+  // All gated to record-subject automations via RECORD_SUBJECT_ACTIONS (engine).
+  // Writes go through the real, tenant-scoped record services. updateRecord is
+  // called with ctx.actor (="automation") + ctx.chainDepth, so the Batch A loop
+  // guard + depth ceiling cover them exactly like move_to_stage/set_record_field.
+  // createRecord/softDeleteRecords emit NO event, so they can't cascade either.
+
+  async create_record_item(cfg, ctx) {
+    if (ctx.subjectType !== "record" || !ctx.recordId) {
+      return { type: "create_record_item", status: "failed", error: "This action only runs on record-subject automations." };
+    }
+    const typeKey = String(cfg.recordType || "").trim();
+    if (!typeKey) return { type: "create_record_item", status: "failed", error: "No record type selected" };
+    const tmpl: Record<string, string> = { ...(ctx.extraTokens || {}), record_title: ctx.recordTitle || "" };
+    const title = renderTemplate(String(cfg.title ?? ""), tmpl);
+    const custom: Record<string, any> = {};
+    for (const item of Array.isArray(cfg.values) ? cfg.values : []) {
+      if (item && item.field) custom[String(item.field)] = renderTemplate(String(item.value ?? ""), tmpl);
+    }
+    try {
+      const created = await createRecord(ctx.tenantId, typeKey, {
+        title,
+        stageKey: cfg.stageKey ? String(cfg.stageKey) : null,
+        subtypeKey: cfg.subtypeKey ? String(cfg.subtypeKey) : null,
+        customFields: custom,
+      });
+      return { type: "create_record_item", status: "success", detail: `created record “${created.title || created.id}”` };
+    } catch (e) {
+      return { type: "create_record_item", status: "failed", error: `Could not create record: ${(e as Error).message}` };
+    }
+  },
+
+  async update_record_item(cfg, ctx) {
+    if (ctx.subjectType !== "record" || !ctx.recordId) {
+      return { type: "update_record_item", status: "failed", error: "This action only runs on record-subject automations." };
+    }
+    const values = (Array.isArray(cfg.values) ? cfg.values : []).filter((v: any) => v && v.field);
+    if (!values.length) return { type: "update_record_item", status: "failed", error: "No fields to set" };
+    const record = await db.record.findFirst({ where: { id: ctx.recordId, tenantId: ctx.tenantId, deletedAt: null } });
+    if (!record) return { type: "update_record_item", status: "failed", error: "Record subject not found" };
+    const tmpl: Record<string, string> = { ...(ctx.extraTokens || {}), record_title: ctx.recordTitle || "" };
+    const input: any = {};
+    const custom: Record<string, any> = {};
+    let rt: any = null;
+    for (const item of values) {
+      const field = String(item.field).trim();
+      const value = renderTemplate(String(item.value ?? ""), tmpl);
+      if (field === "status") {
+        if (!rt) rt = await db.recordType.findFirst({ where: { id: record.recordTypeId, tenantId: ctx.tenantId } });
+        const ok = ((rt?.recordStages as any[]) || []).some((s) => s && s.key === value);
+        if (!ok) return { type: "update_record_item", status: "failed", error: `"${value}" is not a valid status for this record type` };
+        input.stageKey = value;
+      } else if (field === "title") {
+        input.title = value;
+      } else {
+        custom[field] = value;
+      }
+    }
+    if (Object.keys(custom).length) input.customFields = custom;
+    try {
+      // actor + chainDepth -> loop-safe (automation-stamped event is ignored by
+      // the engine) and depth-bounded, exactly like set_record_field.
+      await updateRecord(ctx.tenantId, ctx.recordId, input, ctx.actor, ctx.chainDepth ?? 0);
+    } catch (e) {
+      return { type: "update_record_item", status: "failed", error: `Could not update record: ${(e as Error).message}` };
+    }
+    return { type: "update_record_item", status: "success", detail: `updated ${values.length} field(s) on this record` };
+  },
+
+  async find_record_items(cfg, ctx) {
+    if (ctx.subjectType !== "record" || !ctx.recordId) {
+      return { type: "find_record_items", status: "failed", error: "This action only runs on record-subject automations." };
+    }
+    const typeKey = String(cfg.recordType || "").trim();
+    if (!typeKey) return { type: "find_record_items", status: "failed", error: "No record type selected" };
+    const rt = await db.recordType.findFirst({ where: { tenantId: ctx.tenantId, key: typeKey } });
+    if (!rt) return { type: "find_record_items", status: "failed", error: `Unknown record type "${typeKey}"` };
+    let rows: any[] = [];
+    try { rows = await listRecords(ctx.tenantId, typeKey); }
+    catch (e) { return { type: "find_record_items", status: "failed", error: `Could not list records: ${(e as Error).message}` }; }
+    const columns = buildRecordColumns(await loadRecordFieldDefs(ctx.tenantId, rt.id));
+    const conditions = Array.isArray(cfg.conditions) ? cfg.conditions : [];
+    const matched = rows.filter((r: any) => evalRules(r, conditions as any, columns)).slice(0, MAX_SEARCH_RESULTS).map((r: any) => r.id);
+    ctx.recordWorkingSet = matched;
+    return { type: "find_record_items", status: "success", detail: `found ${matched.length} record(s)` };
+  },
+
+  async delete_record_items(cfg, ctx) {
+    if (ctx.subjectType !== "record" || !ctx.recordId) {
+      return { type: "delete_record_items", status: "failed", error: "This action only runs on record-subject automations." };
+    }
+    const ids = ctx.recordWorkingSet || [];
+    if (!ids.length) return { type: "delete_record_items", status: "failed", error: "No records found — add a Find records action first" };
+    if (ids.length > BULK_DELETE_THRESHOLD && !cfg.allowBulk) {
+      return { type: "delete_record_items", status: "failed", error: `Refusing to delete ${ids.length} records. Turn on "Allow bulk delete" in this action to permit more than ${BULK_DELETE_THRESHOLD}.` };
+    }
+    let n = 0;
+    try { n = await softDeleteRecords(ctx.tenantId, ids); }
+    catch (e) { return { type: "delete_record_items", status: "failed", error: `Could not delete records: ${(e as Error).message}` }; }
+    return { type: "delete_record_items", status: "success", detail: `moved ${n} record(s) to the recycle bin` };
   },
 
   async assign_owner(cfg, ctx) {

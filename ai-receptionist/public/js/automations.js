@@ -365,8 +365,10 @@
   // "act_on_linked" never appears there. Mirrors the engine's allow-list.
   function allowedActions(triggerType) {
     const all = meta.actions || [];
-    if (isRecordTrigger(triggerType)) return all.filter((a) => a.type === "create_note" || a.type === "act_on_linked" || a.type === "move_to_stage" || a.type === "set_record_field");
-    return all.filter((a) => a.type !== "act_on_linked");
+    // New honest record-acting actions (Option 3 Pass 2) — record subjects only.
+    const recordOnly = ["create_record_item", "update_record_item", "find_record_items", "delete_record_items"];
+    if (isRecordTrigger(triggerType)) return all.filter((a) => a.type === "create_note" || a.type === "act_on_linked" || a.type === "move_to_stage" || a.type === "set_record_field" || recordOnly.indexOf(a.type) !== -1);
+    return all.filter((a) => a.type !== "act_on_linked" && recordOnly.indexOf(a.type) === -1);
   }
   // Distinct base triggers actually present in this portal's automations, ordered
   // to match the builder's trigger list. Derived from data — never hardcoded.
@@ -1118,6 +1120,10 @@
     if (a.type === "update_record") return "Update contact(s)";
     if (a.type === "search_records") return "Find contacts";
     if (a.type === "delete_record") return "Delete contact(s) to recycle bin";
+    if (a.type === "create_record_item") return "Create a new record" + (c.recordType ? ` (${c.recordType})` : "");
+    if (a.type === "update_record_item") return "Update field(s) on this record";
+    if (a.type === "find_record_items") return "Find records" + (c.recordType ? ` (${c.recordType})` : "");
+    if (a.type === "delete_record_items") return "Delete the found record(s) to recycle bin";
     if (a.type === "compute_field") return "Compute a value into a field";
     if (a.type === "send_webhook") return "Send a webhook";
     if (a.type === "act_on_linked") { const s = c.subAction || "note"; return s === "email" ? "Email each linked contact (mock)" : s === "sms" ? "Message each linked contact (mock)" : "Note each linked contact"; }
@@ -1643,6 +1649,30 @@
       s.onchange = () => { c[key] = s.value; };
       return s;
     };
+    // Field/value rows for RECORD actions: settable record fields (Status, Title,
+    // record custom fields) from meta.recordConditionFields. Stored as c.values.
+    const recordValueRows = (cc) => {
+      if (!Array.isArray(cc.values)) cc.values = [];
+      const opts = (meta.recordConditionFields || []).filter((f) => f.key !== "createdAt" && f.key !== "subtypeKey").map((f) => ({ value: f.key, label: f.label }));
+      const list = el("div");
+      function redraw() {
+        list.innerHTML = "";
+        cc.values.forEach((row, i) => {
+          const r = el("div"); r.style.display = "flex"; r.style.gap = "6px"; r.style.marginBottom = "6px";
+          const fs = el("select", "input"); fs.style.flex = "0 0 42%"; fs.style.marginBottom = "0";
+          const b = el("option", null, "— field —"); b.value = ""; fs.appendChild(b);
+          opts.forEach((o) => { const op = el("option", null, esc(o.label)); op.value = o.value; if (row.field === o.value) op.selected = true; fs.appendChild(op); });
+          fs.onchange = () => { row.field = fs.value; };
+          const vi = el("input", "input"); vi.style.marginBottom = "0"; vi.placeholder = "value (supports {{field}})"; vi.value = row.value || ""; vi.oninput = () => { row.value = vi.value; };
+          const rm = el("button", "rule-remove", "&times;"); rm.onclick = () => { cc.values.splice(i, 1); redraw(); };
+          r.appendChild(fs); r.appendChild(vi); r.appendChild(rm); list.appendChild(r);
+        });
+        const add = el("button", "rail-add", "+ Add field"); add.onclick = () => { cc.values.push({ field: "", value: "" }); redraw(); };
+        list.appendChild(add);
+      }
+      redraw();
+      return list;
+    };
 
     if (act.type === "send_email") {
       const tpls = (meta.templates || []).filter((t) => t.kind === "email").map((t) => ({ value: t.id, label: t.name }));
@@ -1756,6 +1786,46 @@
       const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
       const lbl = el("label", null, "Allow deleting more than 10 contacts in one run");
+      lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
+      lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
+      cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
+    } else if (act.type === "create_record_item") {
+      cfg.appendChild(small("Record type to create:"));
+      const typeSel = el("select", "input");
+      const tb = el("option", null, "— choose —"); tb.value = ""; typeSel.appendChild(tb);
+      (meta.recordTypes || []).forEach((t) => { const o = el("option", null, esc(t.label)); o.value = t.key; if (c.recordType === t.key) o.selected = true; typeSel.appendChild(o); });
+      cfg.appendChild(typeSel);
+      cfg.appendChild(small("Title (supports {{field}}):"));
+      cfg.appendChild(text("title", "New record title"));
+      const depHost = el("div"); depHost.style.marginTop = "8px"; cfg.appendChild(depHost);
+      function renderCreateDeps() {
+        depHost.innerHTML = "";
+        const t = (meta.recordTypes || []).find((x) => x.key === c.recordType);
+        if (!t) { depHost.appendChild(small("Choose a record type to set its Type/Status and fields.")); return; }
+        if ((t.subtypes || []).length) { depHost.appendChild(small("Type / subtype (required for this record type):")); depHost.appendChild(selectOf("subtypeKey", t.subtypes.map((s) => ({ value: s.key, label: s.label })))); }
+        if ((t.statuses || []).length) { depHost.appendChild(small("Initial status (optional):")); depHost.appendChild(selectOf("stageKey", t.statuses.map((s) => ({ value: s.key, label: s.label })), "— none —")); }
+        depHost.appendChild(small("Other field values (optional):"));
+        depHost.appendChild(recordValueRows(c));
+      }
+      typeSel.onchange = () => { c.recordType = typeSel.value; c.subtypeKey = ""; c.stageKey = ""; renderCreateDeps(); };
+      renderCreateDeps();
+    } else if (act.type === "update_record_item") {
+      cfg.appendChild(small("Set these fields on this record (the trigger record), supports {{field}}:"));
+      cfg.appendChild(recordValueRows(c));
+      cfg.appendChild(small("An automated change does not set off other automations (loop-safe)."));
+    } else if (act.type === "find_record_items") {
+      cfg.appendChild(small("Find records of this type:"));
+      cfg.appendChild(selectOf("recordType", (meta.recordTypes || []).map((t) => ({ value: t.key, label: t.label }))));
+      cfg.appendChild(small("…matching these conditions (leave empty to match all of that type). A later Delete records action will act on the matches:"));
+      if (!Array.isArray(c.conditions)) c.conditions = [];
+      const w = el("div", "cond-wrap");
+      w.appendChild(App.table.ruleEditor(buildColumns(triggerType), [], c.conditions, () => {}));
+      cfg.appendChild(w);
+    } else if (act.type === "delete_record_items") {
+      cfg.appendChild(small("Deletes the records found by a Find records action above. Deleted records go to the Recycle Bin and can be restored."));
+      const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
+      const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
+      const lbl = el("label", null, "Allow deleting more than 10 records in one run");
       lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
       lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
