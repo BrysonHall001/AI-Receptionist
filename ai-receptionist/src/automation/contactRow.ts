@@ -24,9 +24,13 @@ function scalar(v: any): string {
   return String(v);
 }
 
-/** Custom field definitions for a tenant. */
+/** Custom field definitions for a tenant — CONTACT type only (automations stay
+ * Contact-only). Filtered to the portal's "contact" record type so fields
+ * defined on other record types (e.g. Jobs) never leak into contact automations. */
 export async function loadFieldDefs(tenantId: string): Promise<FieldMeta[]> {
-  const defs = await prisma.fieldDef.findMany({ where: { tenantId }, orderBy: { order: "asc" } });
+  const contactType = await (prisma as any).recordType.findFirst({ where: { tenantId, key: "contact" } });
+  const where: any = contactType ? { tenantId, recordTypeId: contactType.id } : { tenantId };
+  const defs = await prisma.fieldDef.findMany({ where, orderBy: { order: "asc" } });
   return defs.map((d: any) => ({ key: d.key, label: d.label, type: d.type }));
 }
 

@@ -4,6 +4,7 @@ import { getStats, listCalls, getCall, listContacts, getContact, listDeletedCont
 import { runSimulatedCall } from "../services/simulationService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields } from "../services/fieldService";
+import { listRecordTypes } from "../services/recordTypeService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
 import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
@@ -378,10 +379,17 @@ function fieldsAdminOnly(req: Request, res: Response): boolean {
   return true;
 }
 
+apiRouter.get("/record-types", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listRecordTypes(tenantId));
+});
+
 apiRouter.get("/fields", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  res.json(await listFields(tenantId));
+  const recordType = req.query.recordType ? String(req.query.recordType) : null;
+  res.json(await listFields(tenantId, recordType));
 });
 
 apiRouter.post("/fields", async (req: Request, res: Response) => {
@@ -389,8 +397,8 @@ apiRouter.post("/fields", async (req: Request, res: Response) => {
   if (!tenantId) return;
   if (!fieldsAdminOnly(req, res)) return;
   try {
-    const { label, type, required, options, formula } = (req.body ?? {}) as any;
-    res.json(await createField(tenantId, { label, type, required, options, formula }));
+    const { label, type, required, options, formula, recordType } = (req.body ?? {}) as any;
+    res.json(await createField(tenantId, { label, type, required, options, formula }, recordType ?? null));
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
@@ -401,7 +409,8 @@ apiRouter.patch("/fields/reorder", async (req: Request, res: Response) => {
   if (!tenantId) return;
   if (!fieldsAdminOnly(req, res)) return;
   const ids = (req.body?.orderedIds ?? []) as string[];
-  await reorderFields(tenantId, ids);
+  const recordType = req.body?.recordType ? String(req.body.recordType) : null;
+  await reorderFields(tenantId, ids, recordType);
   res.json({ ok: true });
 });
 

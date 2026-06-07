@@ -804,28 +804,51 @@
   // ---------------- Fields tab ----------------
   async function renderFields() {
     loading();
-    const fields = await App.portalApi("/api/fields");
+    const types = await App.portalApi("/api/record-types");
+    if (!App.state.fieldsType || !types.some((t) => t.key === App.state.fieldsType)) App.state.fieldsType = "contact";
+    const selectedKey = App.state.fieldsType;
+    const selectedType = types.find((t) => t.key === selectedKey) || types[0];
+    const fields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(selectedKey));
     const canEdit = App.state.me.role !== "CLIENT_USER";
     const wrap = el("div", "fade-in");
+
+    // Object-type selector ("Editing fields for: [Contacts | Jobs]"). Populated
+    // from the portal's record types; labels come from each type's display label.
+    const typeBar = el("div", "fields-typebar");
+    typeBar.appendChild(el("span", "fields-typebar-label", "Editing fields for:"));
+    const typeSel = el("select", "input fields-typebar-select");
+    types.forEach((t) => {
+      const o = el("option", null, esc(t.labelPlural || t.label));
+      o.value = t.key;
+      if (t.key === selectedKey) o.selected = true;
+      typeSel.appendChild(o);
+    });
+    typeSel.onchange = () => { App.state.fieldsType = typeSel.value; renderFields(); };
+    typeBar.appendChild(typeSel);
+    wrap.appendChild(typeBar);
 
     const bar = el("div", "page-actions");
     if (canEdit) {
       const add = el("button", "btn btn-primary btn-sm", "+ Add field");
-      add.onclick = () => openFieldModal(null);
+      add.onclick = () => openFieldModal(null, selectedKey);
       bar.appendChild(add);
     }
     wrap.appendChild(bar);
 
+    const typeWord = (selectedType && (selectedType.label || "").toLowerCase()) || "record";
     const intro = el("p", "muted");
     intro.style.margin = "0 0 14px";
     intro.textContent = canEdit
-      ? "These fields appear on every contact in this portal. Drag to reorder — that order is how they show on a contact's profile."
-      : "These are the fields on every contact in this portal. Ask an admin to change them.";
+      ? `These fields appear on every ${typeWord} in this portal. Drag to reorder — that order is how they show on a ${typeWord}'s profile.`
+      : `These are the fields on every ${typeWord} in this portal. Ask an admin to change them.`;
     wrap.appendChild(intro);
 
     const card = el("div", "card");
     const list = el("div", "field-list");
-    fields.forEach((f) => list.appendChild(fieldRow(f, canEdit, fields)));
+    if (!fields.length) {
+      list.appendChild(el("div", "cell-muted", "No fields yet for this type. Click “+ Add field” to create one."));
+    }
+    fields.forEach((f) => list.appendChild(fieldRow(f, canEdit, fields, selectedKey)));
     card.appendChild(list);
     wrap.appendChild(card);
 
@@ -833,7 +856,7 @@
     view().appendChild(wrap);
   }
 
-  function fieldRow(f, canEdit, allFields) {
+  function fieldRow(f, canEdit, allFields, recordTypeKey) {
     const row = el("div", "field-row");
     row.dataset.id = f.id;
     if (canEdit) row.draggable = true;
@@ -850,7 +873,7 @@
     const right = el("div", "field-row-actions");
     if (canEdit) {
       const edit = el("button", "btn btn-ghost btn-sm", "Edit");
-      edit.onclick = () => openFieldModal(f);
+      edit.onclick = () => openFieldModal(f, recordTypeKey);
       right.appendChild(edit);
       if (!f.system) {
         const del = el("button", "link-danger", "Delete");
@@ -864,19 +887,19 @@
 
     if (canEdit) {
       row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", f.id); });
-      row.addEventListener("dragend", () => { row.classList.remove("dragging"); persistOrder(row.parentElement); });
+      row.addEventListener("dragend", () => { row.classList.remove("dragging"); persistOrder(row.parentElement, recordTypeKey); });
       row.addEventListener("dragover", (e) => { e.preventDefault(); const dragging = row.parentElement.querySelector(".dragging"); if (!dragging || dragging === row) return; const rect = row.getBoundingClientRect(); const after = e.clientY > rect.top + rect.height / 2; row.parentElement.insertBefore(dragging, after ? row.nextSibling : row); });
     }
     return row;
   }
 
-  async function persistOrder(list) {
+  async function persistOrder(list, recordTypeKey) {
     const ids = App.util.$$(".field-row", list).map((r) => r.dataset.id);
-    try { await App.portalApi("/api/fields/reorder", { method: "PATCH", body: JSON.stringify({ orderedIds: ids }) }); }
+    try { await App.portalApi("/api/fields/reorder", { method: "PATCH", body: JSON.stringify({ orderedIds: ids, recordType: recordTypeKey || "contact" }) }); }
     catch (e) { App.util.toast("Couldn't save order: " + e.message, true); }
   }
 
-  function openFieldModal(existing) {
+  function openFieldModal(existing, recordTypeKey) {
     const isEdit = !!existing;
     const isSystem = existing && existing.system;
     const inner = el("div");
@@ -922,7 +945,9 @@
         ? inner.querySelector("#fm-options").value.split("\n").map((s) => s.trim()).filter(Boolean) : [];
       const formula = type === "formula" ? inner.querySelector("#fm-formula").value : null;
       const required = inner.querySelector("#fm-required").checked;
-      const body = JSON.stringify({ label, type, options, formula, required });
+      const payload = { label, type, options, formula, required };
+      if (!isEdit) payload.recordType = recordTypeKey || "contact";
+      const body = JSON.stringify(payload);
       try {
         if (isEdit) await App.portalApi(`/api/fields/${existing.id}`, { method: "PATCH", body });
         else await App.portalApi("/api/fields", { method: "POST", body });
