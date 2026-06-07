@@ -815,7 +815,7 @@
       App.portalApi("/api/field-sections?recordType=" + encodeURIComponent(selectedKey)).catch(() => []),
     ]);
     const canEdit = App.state.me.role !== "CLIENT_USER";
-    const wrap = el("div", "fade-in");
+    const wrap = el("div", refresh ? "" : "fade-in"); // don't replay the fade-in animation on in-place refreshes
 
     // Object-type selector ("Editing fields for: [Contacts | Jobs]").
     const typeBar = el("div", "fields-typebar");
