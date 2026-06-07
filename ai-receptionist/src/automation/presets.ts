@@ -457,6 +457,133 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
     },
     note: "Expects a date field 'birthday'. If missing, it's flagged so you can create or map it first. Email won't send until Resend is connected. Runs on the scheduled-jobs sweep.",
   },
+
+  // ===================== Batch C2: templates using the newer powers =========
+  // Agnostic on purpose — "item", "stage", "linked contacts", "owner" — so the
+  // future relabeling layer turns them into industry language with no rewrites.
+  // Each applies as an INACTIVE DRAFT (applyFlowDefinition forces enabled:false);
+  // where a stage/value/field must be chosen, the definition leaves it BLANK and
+  // the summary shows the blank (no fabricated value), consistent with the
+  // builder's incomplete-state handling.
+  {
+    key: "stalled_item_nudge",
+    name: "Stalled item nudge",
+    description: "When an item sits in the same stage too long with no movement, drop an internal reminder.",
+    category: "pipeline",
+    vertical: "general",
+    summary: {
+      trigger: "An item has sat in its current stage for 7+ days with no movement (you can change the number)",
+      conditions: ["Runs for every stalled item"],
+      actions: ["Add an internal reminder note (no message is sent)"],
+    },
+    shape: { trigger: "Stalled 7+ days", actions: ["Add note"] },
+    definition: {
+      name: "Stalled item nudge",
+      triggerType: "Stalled:7",
+      conditions: [],
+      actions: [
+        { type: "create_note", config: { text: "{{record_title}} has been in “{{current_stage}}” for {{days_in_stage}} days with no movement — please check on it." } },
+      ],
+    },
+    note: "No message is sent and there is no bulk gate — it only writes an internal note. Runs on the scheduled-jobs sweep (a super-admin triggers it now; a host cron later). Edit the number of days on review.",
+  },
+  {
+    key: "stage_entry_welcome",
+    name: "Stage-entry welcome",
+    description: "When an item enters a stage you choose, send its linked contact a (mock) welcome message.",
+    category: "stay_in_touch",
+    vertical: "general",
+    summary: {
+      trigger: "An item moves to a stage you choose — pick the stage on review",
+      conditions: ["Runs whenever it enters that stage"],
+      actions: ["Send the linked contact a (mock) welcome message"],
+    },
+    shape: { trigger: "Enters a stage", actions: ["Send message"] },
+    definition: {
+      name: "Stage-entry welcome",
+      // Plain "StageChanged" = any stage; narrow it to the specific stage on
+      // review (the builder shows a stage picker). Left un-narrowed on purpose.
+      triggerType: "StageChanged",
+      conditions: [],
+      actions: [
+        { type: "send_email", config: { subject: "Welcome, {{name}}!", html: "<p>Hi {{name}},</p><p>Great to have you at this step — we'll be in touch with next steps shortly.</p>" } },
+      ],
+    },
+    note: "On review, pick the stage this should fire on. The message is a mock until your email service (Resend) is connected; until then it sits as a harmless draft.",
+  },
+  {
+    key: "status_change_handoff",
+    name: "Status-change handoff",
+    description: "When a record's status changes to a value you choose, leave an internal hand-off note for the owner.",
+    category: "pipeline",
+    vertical: "general",
+    summary: {
+      trigger: "A record's Status changes to a value you choose — pick the value on review",
+      conditions: ["Runs on that status change"],
+      actions: ["Add an internal hand-off note for the owner"],
+    },
+    shape: { trigger: "Status changes", actions: ["Notify owner"] },
+    definition: {
+      name: "Status-change handoff",
+      // Scoped to the Status field; leave the exact value blank so the user
+      // picks the specific status on review (builder shows a value picker).
+      triggerType: "RecordUpdated:status",
+      conditions: [],
+      actions: [
+        { type: "create_note", config: { text: "{{record_title}} changed status — handing off. Owner, please pick this up and confirm next steps." } },
+      ],
+    },
+    note: "On review, choose which status value this fires on. The note is internal only — nothing is sent outside.",
+  },
+  {
+    key: "closeout_on_completion",
+    name: "Close-out on completion",
+    description: "When a record reaches a finished/closed status you choose, move its linked contacts to a stage you choose.",
+    category: "pipeline",
+    vertical: "general",
+    summary: {
+      trigger: "A record's Status changes to a finished/closed value you choose — pick it on review",
+      conditions: ["Runs on that status change"],
+      actions: ["Move the linked contacts to a stage you choose — pick it on review"],
+    },
+    shape: { trigger: "Status → closed", actions: ["Move linked contacts"] },
+    definition: {
+      name: "Close-out on completion",
+      triggerType: "RecordUpdated:status",
+      conditions: [],
+      actions: [
+        // stageKey left blank — chosen on review. allowBulk left off, so the
+        // existing bulk-move gate (>25 needs the explicit ack) stays in force.
+        { type: "move_to_stage", config: { stageKey: "" } },
+      ],
+    },
+    note: "On review, pick the finished status and the destination stage. The move respects the bulk-move safety gate: moving more than 25 linked contacts at once needs the “allow moving more than 25” box ticked. Automated moves are loop-safe and recorded in stage history.",
+  },
+  {
+    key: "conditional_routing",
+    name: "Conditional routing",
+    description: "When a record is updated, run an action only if one of the record's own fields matches a value you set.",
+    category: "pipeline",
+    vertical: "general",
+    summary: {
+      trigger: "A record is updated / its status changes",
+      conditions: ["Only if a record field you choose matches a value you set — pick the field and value on review"],
+      actions: ["Then run the action you choose"],
+    },
+    shape: { trigger: "Record updated", actions: ["Conditional action"] },
+    definition: {
+      name: "Conditional routing",
+      triggerType: "RecordUpdated",
+      // A blank condition row: on review the field picker offers the record's
+      // OWN fields (Status, Type, custom fields) — Batch A Step 3. Until filled,
+      // it's treated as no condition (runs every time), so nothing fires wrongly.
+      conditions: [{ field: "", op: "is", value: "" }],
+      actions: [
+        { type: "create_note", config: { text: "Routing {{record_title}} based on its fields." } },
+      ],
+    },
+    note: "This template demonstrates conditions on a record's OWN fields. On review, choose the field, the value, and the action you want — then turn it on.",
+  },
 ];
 
 export function getPreset(key: string): FlowPreset | undefined {
