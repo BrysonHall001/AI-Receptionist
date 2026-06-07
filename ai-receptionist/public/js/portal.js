@@ -1953,30 +1953,33 @@
       });
     }
 
-    // Link-a-contact control — TEMPORARY DIAGNOSTIC BUILD (v4).
-    // Surfaces, on screen, exactly what happens at runtime so we can find the
-    // real failure. Remove once linking is confirmed working.
-    const addInput = el("input", "input link-search"); addInput.placeholder = "Link a contact — type a name… (diag v4)";
+    // Link-a-contact control: search this portal's contacts (GET /api/contacts,
+    // portal-scoped) and link the chosen one. Results render IN-FLOW (not an
+    // absolutely-positioned dropdown) because the enclosing .card has
+    // overflow:hidden, which clipped the old absolute dropdown so it never showed.
+    const addInput = el("input", "input link-search"); addInput.placeholder = "Link a contact — type a name…";
     addRow.appendChild(addInput);
-
-    // Unmissable version badge: if you do NOT see this on the Candidates card,
-    // your browser is running an OLD portal.js (the fix didn't load).
-    const stamp = el("div", null, "🔧 candidate-link diagnostics v4 loaded");
-    stamp.style.cssText = "font-size:12px;color:#fff;background:#b45309;padding:4px 8px;border-radius:6px;display:inline-block;margin:8px 0;";
-    addRow.appendChild(stamp);
-
-    // Always-visible readout (plain inline text — not a dropdown, so CSS can't hide it).
-    const diagBox = el("pre");
-    diagBox.style.cssText = "white-space:pre-wrap;font-size:11px;line-height:1.5;background:#0b1020;color:#9fe3ff;padding:10px;border-radius:6px;max-height:220px;overflow:auto;margin:6px 0;border:1px solid #334;";
-    diagBox.textContent = "(diagnostics will appear here when you click into the box and type)\n";
-    addRow.appendChild(diagBox);
-    function diag(msg) { const t = new Date().toLocaleTimeString(); diagBox.textContent += `[${t}] ${msg}\n`; try { console.log("[link-diag]", msg); } catch (e) {} diagBox.scrollTop = diagBox.scrollHeight; }
-    diag("link box wired ✔  role=" + (App.state.me && App.state.me.role) + "  currentPortalId=" + (App.state.currentPortalId || "(none)"));
-
-    const results = el("div", "link-results hidden");
+    const results = el("div");
+    results.style.cssText = "margin-top:8px; display:none;";
     addRow.appendChild(results);
-    function showResults(nodes) { results.innerHTML = ""; nodes.forEach((n) => results.appendChild(n)); results.classList.remove("hidden"); }
-    function hideResults() { results.classList.add("hidden"); results.innerHTML = ""; }
+
+    let allContacts = null;
+    async function ensureContacts() {
+      if (allContacts) return allContacts;
+      try { const raw = await App.portalApi("/api/contacts"); allContacts = Array.isArray(raw) ? raw : []; }
+      catch (e) { allContacts = []; }
+      return allContacts;
+    }
+    function showResults(nodes) {
+      results.innerHTML = "";
+      const box = el("div");
+      box.style.cssText = "border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; max-height:260px; overflow-y:auto; background:var(--panel);";
+      nodes.forEach((n) => box.appendChild(n));
+      results.appendChild(box);
+      results.style.display = "block";
+    }
+    function hideResults() { results.style.display = "none"; results.innerHTML = ""; }
+    function msgNode(text) { const d = el("div", "cell-muted", esc(text)); d.style.cssText = "padding:9px 12px;"; return d; }
     function resultButton(c) {
       const r = el("button", "link-result", esc(c.name || c.email || c.phone || "Contact"));
       r.onclick = async () => {
@@ -1984,47 +1987,21 @@
           const firstStage = ((type && type.stages) || [])[0];
           await App.portalApi("/api/records/" + id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: c.id, stageKey: firstStage ? firstStage.key : null }) });
           toast("Linked"); addInput.value = ""; hideResults(); loadLinks();
-        } catch (e) { diag("LINK ERROR: " + (e && e.message ? e.message : String(e))); toast(e.message, true); }
+        } catch (e) { toast(e.message, true); }
       };
       return r;
     }
-    // Build the same URL App.portalApi would (super-admin appends ?tenantId).
-    function builtUrl(path) {
-      let url = path;
-      const me = App.state.me;
-      if (me && me.role === "SUPER_ADMIN" && App.state.currentPortalId) url += (url.indexOf("?") >= 0 ? "&" : "?") + "tenantId=" + encodeURIComponent(App.state.currentPortalId);
-      return url;
-    }
-    async function runSearch(trigger) {
-      diag(`${trigger} fired — query="${addInput.value}"`);
-      const url = builtUrl("/api/contacts");
-      let list = [];
-      try {
-        const res = await fetch(url, { credentials: "same-origin", headers: { "Content-Type": "application/json" } });
-        diag(`GET ${url}  →  HTTP ${res.status}`);
-        let data = null;
-        try { data = await res.json(); } catch (e) { diag("⚠ response body was not JSON"); }
-        if (Array.isArray(data)) { list = data; }
-        else if (data && Array.isArray(data.contacts)) { list = data.contacts; diag("note: response is an OBJECT with a .contacts array"); }
-        else if (data && data.error) { diag("⚠ server error message: " + data.error); }
-        else { diag("⚠ unexpected response shape: " + (data == null ? "null" : typeof data)); }
-        diag(`contacts in response: ${list.length}`);
-        if (list.length) diag("first few: " + list.slice(0, 5).map((c) => c.name || c.email || c.id).join(", "));
-      } catch (e) {
-        diag("✖ FETCH THREW: " + (e && e.message ? e.message : String(e)));
-        showResults([el("div", "cell-muted", "(see diagnostics box)")]);
-        return;
-      }
+    async function runSearch() {
+      const list = await ensureContacts();
+      if (!list.length) { showResults([msgNode("This portal has no contacts yet — add one on the Contacts page first.")]); return; }
       const q = addInput.value.trim().toLowerCase();
       const matches = !q ? list.slice(0, 8) : list.filter((c) => ((c.name || "") + " " + (c.email || "") + " " + (c.phone || "")).toLowerCase().includes(q)).slice(0, 8);
-      diag(`matches for "${addInput.value.trim()}": ${matches.length}`);
-      if (!list.length) { showResults([el("div", "cell-muted", "Portal returned 0 contacts (see diagnostics).")]); return; }
-      if (!matches.length) { showResults([el("div", "cell-muted", `No contacts match “${esc(addInput.value.trim())}”.`)]); return; }
+      if (!matches.length) { showResults([msgNode(`No contacts match “${addInput.value.trim()}”.`)]); return; }
       showResults(matches.map(resultButton));
     }
-    addInput.oninput = App.util.debounce(() => runSearch("input"), 200);
-    addInput.onfocus = () => runSearch("focus");
-    addInput.onblur = () => setTimeout(hideResults, 200); // let a result click register first (diagnostics box stays)
+    addInput.oninput = App.util.debounce(runSearch, 200);
+    addInput.onfocus = runSearch;
+    addInput.onblur = () => setTimeout(hideResults, 200); // let a result click register first
 
     loadLinks();
   }
