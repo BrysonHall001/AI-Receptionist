@@ -1953,33 +1953,45 @@
       });
     }
 
-    // Link-a-contact control: search existing contacts and link the chosen one.
+    // Link-a-contact control: search this portal's contacts as you type (reuses
+    // GET /api/contacts, portal-scoped) and link the chosen one. Shows suggestions
+    // on focus and a clear message when the portal has no contacts vs. no matches.
     const addInput = el("input", "input link-search"); addInput.placeholder = "Link a contact — type a name…";
     addRow.appendChild(addInput);
     const results = el("div", "link-results hidden");
     addRow.appendChild(results);
     let allContacts = null;
-    async function ensureContacts() { if (allContacts) return allContacts; try { allContacts = await App.portalApi("/api/contacts"); } catch (e) { allContacts = []; } return allContacts; }
-    addInput.oninput = App.util.debounce(async () => {
+    async function ensureContacts() {
+      if (allContacts) return allContacts;
+      try { const raw = await App.portalApi("/api/contacts"); allContacts = Array.isArray(raw) ? raw : []; }
+      catch (e) { allContacts = []; }
+      return allContacts;
+    }
+    function showResults(nodes) { results.innerHTML = ""; nodes.forEach((n) => results.appendChild(n)); results.classList.remove("hidden"); }
+    function hideResults() { results.classList.add("hidden"); results.innerHTML = ""; }
+    function resultButton(c) {
+      const r = el("button", "link-result", esc(c.name || c.email || c.phone || "Contact"));
+      r.onclick = async () => {
+        try {
+          const firstStage = ((type && type.stages) || [])[0];
+          await App.portalApi("/api/records/" + id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: c.id, stageKey: firstStage ? firstStage.key : null }) });
+          toast("Linked"); addInput.value = ""; hideResults(); loadLinks();
+        } catch (e) { toast(e.message, true); }
+      };
+      return r;
+    }
+    async function runSearch() {
       const q = addInput.value.trim().toLowerCase();
-      if (!q) { results.classList.add("hidden"); results.innerHTML = ""; return; }
       const list = await ensureContacts();
+      if (!list.length) { showResults([el("div", "cell-muted", "This portal has no contacts yet — add one on the Contacts page first.")]); return; }
+      if (!q) { showResults(list.slice(0, 8).map(resultButton)); return; }
       const matches = list.filter((c) => ((c.name || "") + " " + (c.email || "") + " " + (c.phone || "")).toLowerCase().includes(q)).slice(0, 8);
-      results.innerHTML = "";
-      if (!matches.length) { results.appendChild(el("div", "cell-muted", "No matches")); }
-      matches.forEach((c) => {
-        const r = el("button", "link-result", esc(c.name || c.email || c.phone || "Contact"));
-        r.onclick = async () => {
-          try {
-            const firstStage = ((type && type.stages) || [])[0];
-            await App.portalApi("/api/records/" + id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: c.id, stageKey: firstStage ? firstStage.key : null }) });
-            toast("Linked"); addInput.value = ""; results.classList.add("hidden"); results.innerHTML = ""; loadLinks();
-          } catch (e) { toast(e.message, true); }
-        };
-        results.appendChild(r);
-      });
-      results.classList.remove("hidden");
-    }, 200);
+      if (!matches.length) { showResults([el("div", "cell-muted", `No contacts match “${esc(addInput.value.trim())}”.`)]); return; }
+      showResults(matches.map(resultButton));
+    }
+    addInput.oninput = App.util.debounce(runSearch, 200);
+    addInput.onfocus = runSearch;
+    addInput.onblur = () => setTimeout(hideResults, 180); // allow a click on a result to register first
 
     loadLinks();
   }
