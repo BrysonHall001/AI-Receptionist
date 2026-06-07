@@ -1981,7 +1981,14 @@
     function hideResults() { results.style.display = "none"; results.innerHTML = ""; }
     function msgNode(text) { const d = el("div", "cell-muted", esc(text)); d.style.cssText = "padding:9px 12px;"; return d; }
     function resultButton(c) {
-      const r = el("button", "link-result", esc(c.name || c.email || c.phone || "Contact"));
+      const r = el("button", "link-result");
+      r.style.cssText = "line-height:1.35;";
+      const name = c.name || c.email || c.phone || "Contact";
+      const sub = [];
+      if (c.email && c.email !== name) sub.push(c.email);
+      if (c.phone && c.phone !== name) sub.push(c.phone);
+      r.innerHTML = `<div style="font-weight:600;">${esc(name)}</div>` +
+        (sub.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(sub.join(" · "))}</div>` : "");
       r.onclick = async () => {
         try {
           const firstStage = ((type && type.stages) || [])[0];
