@@ -6,6 +6,7 @@
 import { prisma } from "../db/client";
 import { resolveRecordTypeId } from "./recordTypeService";
 import { emitEvent } from "../events/bus";
+import { EventActor } from "../events/types";
 import { logger } from "../utils/logger";
 
 const db = prisma as any;
@@ -105,7 +106,7 @@ export async function createLink(tenantId: string, input: { recordId: string; pa
   return created;
 }
 
-export async function updateLink(tenantId: string, id: string, input: { stageKey?: string | null; role?: string | null }) {
+export async function updateLink(tenantId: string, id: string, input: { stageKey?: string | null; role?: string | null }, actor: EventActor = { type: "user" }, chainDepth = 0) {
   const link = await db.recordLink.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!link) throw new Error("Link not found");
   const prevStage = link.stageKey ?? null; // capture BEFORE the write
@@ -135,7 +136,7 @@ export async function updateLink(tenantId: string, id: string, input: { stageKey
   // Best-effort: wrapped so a problem here can never break the stage save.
   const newStage = updated.stageKey ?? null;
   if (input.stageKey !== undefined && newStage !== prevStage && link.parentType === "contact") {
-    await emitStageChanged(tenantId, updated, prevStage, newStage).catch(() => { /* never block the stage write */ });
+    await emitStageChanged(tenantId, updated, prevStage, newStage, actor, chainDepth).catch(() => { /* never block the stage write */ });
   }
   // =================== END STAGE-CHANGE EVENT (Stage 1) ===================
 
@@ -148,7 +149,7 @@ export async function updateLink(tenantId: string, id: string, input: { stageKey
 //   old_stage, new_stage, record_id, record_title, record_type, link_id
 // Reads the parent record (the "job") only to enrich the payload; all reads are
 // tenant-scoped and best-effort.
-async function emitStageChanged(tenantId: string, link: any, oldStage: string | null, newStage: string | null) {
+async function emitStageChanged(tenantId: string, link: any, oldStage: string | null, newStage: string | null, actor: EventActor = { type: "user" }, chainDepth = 0) {
   let recordTitle: string | null = null;
   let recordTypeLabel: string | null = null;
   try {
@@ -163,9 +164,12 @@ async function emitStageChanged(tenantId: string, link: any, oldStage: string | 
   await emitEvent({
     tenantId,
     type: "StageChanged",
-    // A stage move is a user action; actor "user" ensures the engine processes
-    // it (the engine ignores events whose actor is "automation").
-    actor: { type: "user" },
+    // Actor passed through from the caller. A human move stays "user" (default),
+    // so the engine still processes it; an automation-driven move arrives as
+    // "automation", which the engine's loop guard ignores. chainDepth bounds
+    // any future cascade.
+    actor,
+    chainDepth,
     subject: { type: "contact", id: link.parentId },
     payload: {
       old_stage: oldStage,

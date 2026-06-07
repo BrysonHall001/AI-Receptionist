@@ -9,6 +9,14 @@ import { enqueueJob } from "./scheduler";
 
 const db = prisma as any;
 
+// Loop-safety backstop (Batch A step 1). A cascade of automation-caused events
+// may go at most this many hops deep before the engine refuses to continue.
+// This is a SECOND net, independent of the actor guard: even if some future
+// event isn't correctly stamped "automation", an unbounded cascade still can't
+// form. Change this one number to retune. Exported so the self-test references
+// the real value (no drift).
+export const MAX_CHAIN_DEPTH = 5;
+
 interface AutomationRow {
   id: string;
   tenantId: string;
@@ -61,6 +69,10 @@ export async function handleEvent(event: DomainEvent): Promise<void> {
   });
   if (!automations.length) return;
 
+  // DEPTH BACKSTOP: refuse (visibly) once a cascade is too deep. Never silent.
+  const depth = event.chainDepth ?? 0;
+  if (depth > MAX_CHAIN_DEPTH) { await refuseForDepth(automations, event, depth); return; }
+
   const contact = await prisma.contact.findUnique({ where: { id: contactId } });
   if (!contact || contact.tenantId !== event.tenantId) return;
 
@@ -102,6 +114,10 @@ async function handleRecordEvent(event: DomainEvent): Promise<void> {
     where: { tenantId: event.tenantId, triggerType: { in: triggerTypes }, enabled: true },
   });
   if (!automations.length) return;
+
+  // DEPTH BACKSTOP (record path): same ceiling as the contact path.
+  const depth = event.chainDepth ?? 0;
+  if (depth > MAX_CHAIN_DEPTH) { await refuseForDepth(automations, event, depth); return; }
 
   const portal = await prisma.tenant.findUnique({ where: { id: event.tenantId } });
 
@@ -168,6 +184,7 @@ async function runRecordOne(auto: AutomationRow, event: DomainEvent, record: any
     subjectType: "record",
     recordId: record.id,
     recordTitle: record.title ?? null,
+    chainDepth: (event.chainDepth ?? 0) + 1, // loop-safety: writes from this run go one hop deeper
   };
 
   const results: ActionResult[] = [];
@@ -222,6 +239,9 @@ async function runOne(
     workingSet: [],
     triggerType: event.type,
     extraTokens,
+    // Loop-safety: a write caused by THIS run should stamp its event one hop
+    // deeper. No current action uses this; the stage-writing action (Step 2) will.
+    chainDepth: (event.chainDepth ?? 0) + 1,
   };
 
   const results: ActionResult[] = [];
@@ -267,6 +287,25 @@ function delayDueAt(cfg: Record<string, any>): Date {
   const unit = cfg.unit;
   const ms = unit === "hours" ? 3_600_000 : unit === "days" ? 86_400_000 : 60_000;
   return new Date(Date.now() + amount * ms);
+}
+
+// Visibly refuse a too-deep cascade: log a clear line AND write a FAILED run for
+// each automation that would have fired, so the stop shows up in the Execution
+// log (never a silent halt, never a crash).
+async function refuseForDepth(automations: AutomationRow[], event: DomainEvent, depth: number): Promise<void> {
+  logger.warn(`[engine] automation chain depth limit reached (depth ${depth} > ${MAX_CHAIN_DEPTH}); refusing event ${event.type} for tenant ${event.tenantId}`);
+  const contactId = event.subject?.type === "contact" ? (event.subject?.id ?? null) : null;
+  for (const auto of automations) {
+    await writeRun(auto, {
+      eventId: event.id,
+      eventType: event.type,
+      contactId,
+      status: "failed",
+      matched: true,
+      results: [{ type: "(loop-guard)", status: "failed", error: `Automation chain depth limit reached (depth ${depth} > ${MAX_CHAIN_DEPTH}). Refused to run to prevent a runaway loop.` }],
+      error: "chain depth limit reached",
+    });
+  }
 }
 
 async function writeRun(

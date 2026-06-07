@@ -7,6 +7,7 @@ import { prisma } from "../db/client";
 import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype } from "./recordTypeService";
 import { randomValueForField } from "./contactService";
 import { emitEvent } from "../events/bus";
+import { EventActor } from "../events/types";
 
 const db = prisma as any;
 
@@ -55,7 +56,7 @@ export async function createRecord(tenantId: string, recordType: string | null |
   return serializeRecord(created);
 }
 
-export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; customFields?: any }) {
+export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; customFields?: any }, actor: EventActor = { type: "user" }, chainDepth = 0) {
   const existing = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Record not found");
   const data: any = {};
@@ -76,7 +77,7 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   // delete this block and emitRecordUpdated() below.
   try {
     const changes = diffRecordFields(existing, data, input);
-    if (changes.length) await emitRecordUpdated(tenantId, updated, existing.recordTypeId, changes);
+    if (changes.length) await emitRecordUpdated(tenantId, updated, existing.recordTypeId, changes, actor, chainDepth);
   } catch { /* never block the record save on event emission */ }
   // =================== END RECORD-UPDATED EVENT (Stage 2a) ===================
 
@@ -117,7 +118,7 @@ function diffRecordFields(existing: any, data: any, input: any): Array<{ field: 
 // relabel-safe payload (no hardcoded "job"): record id/title/type, plus the
 // list of changed fields with old -> new values for use by trigger scoping,
 // conditions, templating, and the logs.
-async function emitRecordUpdated(tenantId: string, record: any, recordTypeId: string, changes: Array<{ field: string; label: string; old: any; new: any }>) {
+async function emitRecordUpdated(tenantId: string, record: any, recordTypeId: string, changes: Array<{ field: string; label: string; old: any; new: any }>, actor: EventActor = { type: "user" }, chainDepth = 0) {
   let recordTypeLabel: string | null = null;
   try {
     const rt = await db.recordType.findFirst({ where: { id: recordTypeId, tenantId } });
@@ -126,7 +127,11 @@ async function emitRecordUpdated(tenantId: string, record: any, recordTypeId: st
   await emitEvent({
     tenantId,
     type: "RecordUpdated",
-    actor: { type: "user" }, // user-driven today; no automation calls updateRecord
+    // Actor passed through from the caller (default "user" for human edits, so
+    // the engine processes them as before). An automation-driven status change
+    // arrives as "automation" and is ignored by the engine's loop guard.
+    actor,
+    chainDepth,
     subject: { type: "record", id: record.id },
     payload: {
       record_id: record.id,

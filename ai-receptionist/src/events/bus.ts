@@ -32,6 +32,9 @@ export interface EmitInput {
   actor?: EventActor;
   subject?: Partial<EventSubject>;
   payload?: Record<string, any>;
+  // Loop-safety: chain depth to stamp on the in-memory event (default 0). Not
+  // persisted. The engine refuses to process events past MAX_CHAIN_DEPTH.
+  chainDepth?: number;
 }
 
 /**
@@ -61,6 +64,7 @@ export async function emitEvent(input: EmitInput): Promise<DomainEvent> {
     subject,
     payload: input.payload ?? {},
     occurredAt: new Date().toISOString(),
+    chainDepth: input.chainDepth ?? 0, // in-memory loop-guard counter; NOT persisted below
   };
 
   // 1) Persist (the event log). The DB id mirrors the in-memory id.

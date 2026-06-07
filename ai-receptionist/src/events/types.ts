@@ -24,6 +24,12 @@ export interface DomainEvent<P = Record<string, any>> {
   subject: EventSubject;
   payload: P;
   occurredAt: string; // ISO timestamp
+  // Loop-safety backstop (Batch A step 1): how many automation-hops deep this
+  // event is in a cascade. A top-level user/system action is 0; each automation
+  // that causes a further event increments it. Carried IN MEMORY only — never
+  // written to the Event table (no migration). The engine refuses to process
+  // beyond MAX_CHAIN_DEPTH.
+  chainDepth?: number;
 }
 
 // Well-known event types. This is a convenience registry for callers and the

@@ -49,6 +49,11 @@ export interface ActionContext {
   subjectType?: "contact" | "record";
   recordId?: string;
   recordTitle?: string | null;
+  // Loop-safety (Batch A step 1): the chain depth a write caused by this run
+  // should stamp on its emitted event. Set by the engine to (incoming depth + 1).
+  // No current action reads it; the Step-2 stage-writing action will pass it
+  // into updateLink/updateRecord so cascades are depth-bounded.
+  chainDepth?: number;
 }
 
 // Metadata for the builder UI. Adding an action = add an executor + an entry
