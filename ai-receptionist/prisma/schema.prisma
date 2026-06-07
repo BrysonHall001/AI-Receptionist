@@ -60,6 +60,7 @@ model Tenant {
   recordTypes      RecordType[]
   records          Record[]
   recordLinks      RecordLink[]
+  stageHistory     StageHistory[]
 }
 
 model User {
@@ -274,10 +275,33 @@ model RecordLink {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   deletedAt    DateTime?
+  stageHistory StageHistory[]
 
   @@index([tenantId, recordId])
   @@index([tenantId, recordId, stageKey])
   @@index([tenantId, parentType, parentId])
+}
+
+// Stage 3a: append-only history of a candidate-job relationship's stage moves.
+// One row per move (and one synthetic backfill row per pre-existing link). Lets
+// us later answer "how long has this link sat in its current stage?" by reading
+// the latest enteredAt for a recordLinkId. NOTHING writes to this on a real move
+// yet (that's Stage 3b) and NOTHING reads it for automations yet (Stage 3c).
+// Tenant-scoped like everything else; cascades away if the link or portal is removed.
+model StageHistory {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recordLinkId String
+  recordLink   RecordLink @relation(fields: [recordLinkId], references: [id], onDelete: Cascade)
+  fromStage    String?    // stage moved OUT OF (null for the first/backfill entry)
+  toStage      String?    // stage moved INTO
+  enteredAt    DateTime   @default(now())
+  source       String     @default("move") // "move" | "backfill"
+  createdAt    DateTime   @default(now())
+
+  @@index([tenantId, recordLinkId, enteredAt])
+  @@index([recordLinkId, enteredAt])
 }
 
 model ActivityLog {
