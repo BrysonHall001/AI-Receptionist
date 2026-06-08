@@ -136,6 +136,34 @@
     return k ? k.charAt(0).toUpperCase() + k.slice(1) : "";
   };
 
+  // Shared English pluralizer (used by the Labels editor's auto-plural AND any
+  // count agreement). Irregulars first, then the regular rules. Preserves the
+  // input's leading capitalization.
+  const IRREGULAR_PLURALS = {
+    person: "people", child: "children", man: "men", woman: "women",
+    foot: "feet", tooth: "teeth", goose: "geese", mouse: "mice",
+    leaf: "leaves", life: "lives", knife: "knives", wife: "wives", half: "halves",
+    datum: "data", analysis: "analyses", staff: "staff", series: "series",
+  };
+  App.pluralize = function (s) {
+    const w = String(s || "").trim();
+    if (!w) return "";
+    const low = w.toLowerCase();
+    let out;
+    if (IRREGULAR_PLURALS[low]) out = IRREGULAR_PLURALS[low];
+    else if (/[^aeiou]y$/.test(low)) return w.slice(0, -1) + "ies";
+    else if (/(s|x|z|ch|sh)$/.test(low)) return w + "es";
+    else return w + "s";
+    // irregular: match the input's leading case
+    return /^[A-Z]/.test(w) ? out.charAt(0).toUpperCase() + out.slice(1) : out;
+  };
+
+  // Count-aware label: singular when n===1, plural otherwise (so 0 and 2+ use
+  // the plural — "0 Clients", "1 Client", "3 Clients"). Never blank/undefined.
+  App.labelFor = function (kind, n) { return App.label(kind, Number(n) === 1 ? "one" : "many"); };
+  // "3 Clients" / "1 Client" — number + the matching form.
+  App.countLabel = function (kind, n) { return n + " " + App.labelFor(kind, n); };
+
   // Load this portal's labels into the cache. Safe to call repeatedly; no-op on
   // failure (keeps defaults). Nothing in the UI reads App.label() yet, so a late
   // load has no visible effect — this just makes the cache available.

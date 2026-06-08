@@ -41,7 +41,7 @@
 
     // KPI row (reuses the .kpi widget styling from Reports)
     const kpis = [
-      { label: "Contacts", value: stats.leads != null ? stats.leads : (contacts.length || 0), href: "#/contacts" },
+      { label: App.label("contact", "many"), value: stats.leads != null ? stats.leads : (contacts.length || 0), href: "#/contacts" },
       { label: "Total calls", value: stats.totalCalls != null ? stats.totalCalls : (calls.length || 0), href: "#/calls" },
       { label: "Completed calls", value: stats.completed != null ? stats.completed : 0, href: "#/calls" },
       { label: "Calls today", value: stats.today != null ? stats.today : 0, href: "#/calls" },
@@ -63,11 +63,11 @@
     // Recent contacts
     const cContacts = el("div", "card today-card");
     const ch = el("div", "section-head");
-    ch.appendChild(el("h2", null, "Recent contacts"));
+    ch.appendChild(el("h2", null, "Recent " + App.label("contact", "many").toLowerCase()));
     const cl = el("a", "muted-link", "View all →"); cl.href = "#/contacts"; ch.appendChild(cl);
     cContacts.appendChild(ch);
     if (!contacts.length) {
-      cContacts.appendChild(el("p", "cell-muted", "No contacts yet. Contacts appear after calls, or import a list."));
+      cContacts.appendChild(el("p", "cell-muted", (`No ${App.label("contact","many").toLowerCase()} yet. ${App.label("contact","many")} appear after calls, or import a list.`)));
     } else {
       const list = el("div", "mini-list");
       contacts.slice(0, 6).forEach((c) => {
@@ -184,14 +184,14 @@
     const dummyBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#129302;</span> Create Dummy contact`);
     dummyBtn.onclick = async () => {
       dummyBtn.disabled = true;
-      try { await App.portalApi("/api/contacts/dummy", { method: "POST", body: JSON.stringify({}) }); App.util.toast("Dummy contact created"); renderContacts(); }
+      try { await App.portalApi("/api/contacts/dummy", { method: "POST", body: JSON.stringify({}) }); App.util.toast(("Dummy " + App.label("contact","one").toLowerCase() + " created")); renderContacts(); }
       catch (e) { App.util.toast(e.message, true); dummyBtn.disabled = false; }
     };
-    const createBtn = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#43;</span> Create Contact`);
+    const createBtn = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#43;</span> Create ${App.label("contact", "one")}`);
     createBtn.onclick = () => openCreateContact();
-    const importBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8681;</span> Import contacts`);
+    const importBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8681;</span> Import ${App.label("contact", "many").toLowerCase()}`);
     importBtn.onclick = openImport;
-    const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export contacts`);
+    const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export ${App.label("contact", "many").toLowerCase()}`);
     exportBtn.onclick = () => openExport(handle ? handle.getColumns() : columns, contacts);
     bar.appendChild(dummyBtn);
     bar.appendChild(createBtn);
@@ -222,22 +222,22 @@
     handle.toolbarLeft.appendChild(bulkWrap);
     function updateBulkBar(ids) { selCount.textContent = ids.length ? `${ids.length} selected` : ""; }
     function selectedRows() { const set = new Set(handle.getSelected()); return contacts.filter((c) => set.has(c.id)); }
-    const bulkMsg = el("div", "bulk-empty hidden", "Select a contact first.");
+    const bulkMsg = el("div", "bulk-empty hidden", ("Select a " + App.label("contact","one").toLowerCase() + " first."));
     bulkMenu.appendChild(bulkMsg);
     let msgTimer = null;
-    function needSelection(text) { bulkMsg.textContent = text || "Select a contact first."; bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
+    function needSelection(text) { bulkMsg.textContent = text || ("Select a " + App.label("contact","one").toLowerCase() + " first."); bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
     function bulkItem(label, fn) { const b = el("button", "bulk-item", label); b.onclick = () => fn(); return b; }
     bulkMenu.appendChild(bulkItem("Email selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("email", selectedRows()); }));
     bulkMenu.appendChild(bulkItem("Text selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("sms", selectedRows()); }));
     bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openExport(handle.getColumns(), rows); }));
     bulkMenu.appendChild(el("div", "pop-sep"));
     bulkMenu.appendChild(bulkItem("Update a field…", () => { const ids = handle.getSelected(); if (!ids.length) return needSelection(); bulkMenu.classList.add("hidden"); openMassUpdate(ids, fields); }));
-    bulkMenu.appendChild(bulkItem("Merge contacts…", () => { const rows = selectedRows(); if (rows.length < 2) { needSelection("Select at least 2 contacts to merge."); return; } bulkMenu.classList.add("hidden"); openMerge(rows, fields); }));
+    bulkMenu.appendChild(bulkItem(("Merge " + App.label("contact","many").toLowerCase() + "…"), () => { const rows = selectedRows(); if (rows.length < 2) { needSelection(("Select at least 2 " + App.label("contact","many").toLowerCase() + " to merge.")); return; } bulkMenu.classList.add("hidden"); openMerge(rows, fields); }));
     bulkMenu.appendChild(el("div", "pop-sep"));
     bulkMenu.appendChild(bulkItem("Delete selected", async () => {
       const ids = handle.getSelected(); if (!ids.length) return needSelection();
       bulkMenu.classList.add("hidden");
-      if (!confirm(`Move ${ids.length} contact${ids.length > 1 ? "s" : ""} to the Recycle Bin?`)) return;
+      if (!confirm(`Move ${App.countLabel("contact", ids.length).toLowerCase()} to the Recycle Bin?`)) return;
       try { await App.portalApi("/api/contacts/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Moved to Recycle Bin"); renderContacts(); }
       catch (e) { App.util.toast(e.message, true); }
     }));
@@ -321,7 +321,7 @@
     const reachable = rows.filter((r) => (kind === "email" ? r.email : r.phone));
     const overlay = el("div", "modal-overlay");
     const modal = el("div", "modal");
-    const title = kind === "email" ? "Email selected contacts" : "Text selected contacts";
+    const title = kind === "email" ? ("Email selected " + App.label("contact","many").toLowerCase()) : ("Text selected " + App.label("contact","many").toLowerCase());
     modal.innerHTML = `<div class="modal-head"><h2>${title}</h2><button class="icon-btn" id="bc-close">&times;</button></div>`;
     const body = el("div", "modal-body");
     const note = el("p", "cell-muted");
@@ -413,7 +413,7 @@
 
     const foot = el("div", "modal-foot");
     const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
-    const save = el("button", "btn btn-primary btn-sm", "Create contact");
+    const save = el("button", "btn btn-primary btn-sm", ("Create " + App.label("contact","one").toLowerCase()));
     foot.appendChild(cancel); foot.appendChild(save);
     inner.appendChild(foot);
     const overlay = modal(inner);
@@ -426,8 +426,8 @@
       if (requireEmail && !payload.email) { toast("Email is required for this CRM", true); return; }
       if (!payload.email && !payload.phone) { toast("Add at least an email or a phone number", true); return; }
       save.disabled = true; save.textContent = "Creating…";
-      try { await App.portalApi("/api/contacts", { method: "POST", body: JSON.stringify(payload) }); toast("Contact created"); overlay.remove(); renderContacts(); }
-      catch (e) { toast(e.message, true); save.disabled = false; save.textContent = "Create contact"; }
+      try { await App.portalApi("/api/contacts", { method: "POST", body: JSON.stringify(payload) }); toast(App.label("contact","one") + " created"); overlay.remove(); renderContacts(); }
+      catch (e) { toast(e.message, true); save.disabled = false; save.textContent = ("Create " + App.label("contact","one").toLowerCase()); }
     };
   }
 
@@ -439,7 +439,7 @@
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Update a field</h2><button class="icon-btn" id="mu-close">&times;</button></div>`;
     const body = el("div", "modal-body");
-    body.appendChild(el("p", "cell-muted", `This will update ${ids.length} selected contact${ids.length > 1 ? "s" : ""}.`));
+    body.appendChild(el("p", "cell-muted", `This will update ${ids.length} selected ${App.labelFor("contact", ids.length).toLowerCase()}.`));
     const pickRow = el("div", "form-row");
     pickRow.appendChild(el("label", "field-label", "Field to change"));
     const pick = el("select", "input");
@@ -462,9 +462,9 @@
     cancel.onclick = () => overlay.remove();
     apply.onclick = async () => {
       const field = pick.value; const value = current.get();
-      if (!confirm(`Set "${field}" on ${ids.length} contact${ids.length > 1 ? "s" : ""}? This can't be undone in bulk.`)) return;
+      if (!confirm(`Set "${field}" on ${App.countLabel("contact", ids.length).toLowerCase()}? This can't be undone in bulk.`)) return;
       apply.disabled = true; apply.textContent = "Applying…";
-      try { const r = await App.portalApi("/api/contacts/bulk-update", { method: "POST", body: JSON.stringify({ ids, field, value }) }); toast(`Updated ${r.count} contact${r.count === 1 ? "" : "s"}`); overlay.remove(); renderContacts(); }
+      try { const r = await App.portalApi("/api/contacts/bulk-update", { method: "POST", body: JSON.stringify({ ids, field, value }) }); toast(`Updated ${App.countLabel("contact", r.count).toLowerCase()}`); overlay.remove(); renderContacts(); }
       catch (e) { toast(e.message, true); apply.disabled = false; apply.textContent = "Apply to selected"; }
     };
   }
@@ -486,11 +486,11 @@
     inner.appendChild(body);
 
     const survWrap = el("div", "form-row");
-    survWrap.appendChild(el("label", "field-label", "Keep as the surviving contact"));
+    survWrap.appendChild(el("label", "field-label", ("Keep as the surviving " + App.label("contact","one").toLowerCase())));
     const survSel = el("select", "input");
     rows.forEach((c) => { const o = el("option", null, esc((c.name || "Unknown") + " · " + (c.phone || ""))); o.value = c.id; survSel.appendChild(o); });
     survWrap.appendChild(survSel); body.appendChild(survWrap);
-    body.appendChild(el("p", "cell-muted", "The surviving contact's phone number is always kept. For other fields, pick which value to keep."));
+    body.appendChild(el("p", "cell-muted", (`The surviving ${App.label("contact","one").toLowerCase()}'s phone number is always kept. For other fields, pick which value to keep.`)));
 
     const grid = el("div", "merge-grid");
     body.appendChild(grid);
@@ -525,12 +525,12 @@
     paintGrid();
 
     const warn = el("div", "merge-warn");
-    warn.innerHTML = `<strong>Before you merge:</strong> the other ${rows.length - 1} contact(s) will be merged into the one you keep. Their calls and activity history move to the surviving contact, and the merged-away contacts are moved to the <strong>Recycle Bin</strong> (restorable for 30 days). The surviving contact keeps its phone number.`;
+    warn.innerHTML = `<strong>Before you merge:</strong> the other ${rows.length - 1} ${App.label("contact","many").toLowerCase()} will be merged into the one you keep. Their calls and activity history move to the surviving ${App.label("contact","one").toLowerCase()}, and the merged-away ${App.label("contact","many").toLowerCase()} are moved to the <strong>Recycle Bin</strong> (restorable for 30 days). The surviving ${App.label("contact","one").toLowerCase()} keeps its phone number.`;
     body.appendChild(warn);
 
     const foot = el("div", "modal-foot");
     const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
-    const go = el("button", "btn btn-primary btn-sm", "Merge contacts");
+    const go = el("button", "btn btn-primary btn-sm", ("Merge " + App.label("contact","many").toLowerCase()));
     foot.appendChild(cancel); foot.appendChild(go); inner.appendChild(foot);
     const overlay = modal(inner);
     inner.querySelector("#mg-close").onclick = () => overlay.remove();
@@ -538,10 +538,10 @@
     go.onclick = async () => {
       const loserIds = rows.map((c) => c.id).filter((id) => id !== survivorId);
       const fieldValues = {}; Object.keys(chosen).forEach((k) => { if (k !== "phone") fieldValues[k] = chosen[k]; });
-      if (!confirm(`Merge ${loserIds.length} contact(s) into the surviving one? This moves their history and sends them to the Recycle Bin.`)) return;
+      if (!confirm(`Merge ${App.countLabel("contact", loserIds.length).toLowerCase()} into the surviving one? This moves their history and sends them to the Recycle Bin.`)) return;
       go.disabled = true; go.textContent = "Merging…";
-      try { await App.portalApi("/api/contacts/merge", { method: "POST", body: JSON.stringify({ survivorId, loserIds, fieldValues }) }); toast("Contacts merged"); overlay.remove(); renderContacts(); }
-      catch (e) { toast(e.message, true); go.disabled = false; go.textContent = "Merge contacts"; }
+      try { await App.portalApi("/api/contacts/merge", { method: "POST", body: JSON.stringify({ survivorId, loserIds, fieldValues }) }); toast((App.label("contact","many") + " merged")); overlay.remove(); renderContacts(); }
+      catch (e) { toast(e.message, true); go.disabled = false; go.textContent = ("Merge " + App.label("contact","many").toLowerCase()); }
     };
   }
 
@@ -565,7 +565,7 @@
     const container = el("div", "fade-in");
     const head = el("div", "rb-head");
     head.innerHTML = `<div><h1 class="rb-title">&#128465; Recycle Bin</h1><p class="cell-muted">Deleted contacts are kept for 30 days, then permanently removed. They don't appear anywhere else.</p></div>`;
-    const backBtn = el("a", "btn btn-ghost btn-sm", "← Back to Contacts");
+    const backBtn = el("a", "btn btn-ghost btn-sm", ("← Back to " + App.label("contact","many")));
     backBtn.href = "#/contacts";
     head.appendChild(backBtn);
     container.appendChild(head);
@@ -584,8 +584,8 @@
     const rc = el("span", "bulk-count", "");
     restoreBtn.onclick = async () => {
       const ids = handle.getSelected();
-      if (!ids.length) { App.util.toast("Select a contact first.", true); return; }
-      try { await App.portalApi("/api/contacts/restore", { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Restored to Contacts"); renderRecycleBin(); }
+      if (!ids.length) { App.util.toast(("Select a " + App.label("contact","one").toLowerCase() + " first."), true); return; }
+      try { await App.portalApi("/api/contacts/restore", { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Restored to " + App.label("contact","many")); renderRecycleBin(); }
       catch (e) { App.util.toast(e.message, true); }
     };
     if (handle.toolbarLeft) { handle.toolbarLeft.appendChild(restoreBtn); handle.toolbarLeft.appendChild(rc); }
@@ -734,7 +734,7 @@
     function matching() { return App.table.pipeline(rows, exportable, exState); }
     function updateCount() {
       const n = matching().length;
-      inner.querySelector("#ex-count").textContent = `${n} of ${rows.length} contacts match.`;
+      inner.querySelector("#ex-count").textContent = `${n} of ${App.countLabel("contact", rows.length).toLowerCase()} match.`;
     }
     updateCount();
 
@@ -766,7 +766,7 @@
       const cols = exportable.filter((c) => selected.has(c.key));
       if (!cols.length) { App.util.toast("Pick at least one field", true); return; }
       const out = matching();
-      if (!out.length) { App.util.toast("No contacts match", true); return; }
+      if (!out.length) { App.util.toast(("No " + App.label("contact","many").toLowerCase() + " match"), true); return; }
       const header = cols.map((c) => csvCell(c.label)).join(",");
       const lines = out.map((row) => cols.map((c) => csvCell(c.text ? c.text(row) : c.get(row))).join(","));
       const csv = [header, ...lines].join("\n");
@@ -778,7 +778,7 @@
           const aoa = [cols.map((c) => c.label), ...out.map((row) => cols.map((c) => (c.text ? c.text(row) : c.get(row)) ?? ""))];
           const ws = XLSX.utils.aoa_to_sheet(aoa);
           const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, "Contacts");
+          XLSX.utils.book_append_sheet(wb, ws, App.label("contact", "many"));
           const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
           downloadBlob(`${fileBase}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         }
@@ -787,7 +787,7 @@
       }
       try {
         await App.portalApi("/api/exports", { method: "POST", body: JSON.stringify({ name, rowCount: out.length, fields: cols.map((c) => c.label), csv }) });
-        App.util.toast(`Exported ${out.length} contacts`);
+        App.util.toast(`Exported ${App.countLabel("contact", out.length).toLowerCase()}`);
         loadHistory();
       } catch (err) { App.util.toast("Downloaded, but couldn't save to history: " + err.message, true); }
     };
@@ -847,7 +847,7 @@
     }
     wrap.appendChild(bar);
 
-    const typeWord = (selectedType && (selectedType.label || "").toLowerCase()) || "record";
+    const typeWord = (selectedType && (selectedType.label || "").toLowerCase()) || App.label("record","one").toLowerCase();
     const intro = el("p", "muted");
     intro.style.margin = "0 0 14px";
     intro.textContent = canEdit
@@ -955,23 +955,23 @@
     function subtypesCard() {
       const card = el("div", "fields-section-card");
       const head = el("div", "fields-section-head");
-      head.appendChild(el("div", "fields-section-name", "Job types & pipelines"));
-      const addBtn = el("button", "btn btn-ghost btn-sm", "+ Add job type");
+      head.appendChild(el("div", "fields-section-name", (esc((selectedType && selectedType.label) || App.label("job","one")) + " types & pipelines")));
+      const addBtn = el("button", "btn btn-ghost btn-sm", ("+ Add " + (((selectedType && selectedType.label) || App.label("job","one")).toLowerCase()) + " type"));
       addBtn.onclick = async () => {
-        const name = prompt("Name this job type (e.g. Technical, Field, Sales):");
+        const name = prompt("Name this " + (((selectedType && selectedType.label) || App.label("job","one")).toLowerCase()) + " type (e.g. Technical, Field, Sales):");
         if (!name || !name.trim()) return;
-        try { await App.portalApi("/api/record-subtypes/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Job type added"); renderFields(true); }
+        try { await App.portalApi("/api/record-subtypes/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast((((selectedType && selectedType.label) || App.label("job","one"))) + " type added"); renderFields(true); }
         catch (e) { App.util.toast(e.message, true); }
       };
       head.appendChild(addBtn);
       card.appendChild(head);
       const note = el("p", "muted");
       note.style.cssText = "margin:2px 0 12px; font-size:13px;";
-      note.textContent = `Each job type has its own pipeline. A job's Type chooses which pipeline its candidates move through. Renaming changes labels only; a type with jobs (or a stage with candidates) can't be deleted until those are moved.`;
+      note.textContent = `Each ${(((selectedType && selectedType.label) || App.label("job","one")).toLowerCase())} type has its own pipeline. A ${(((selectedType && selectedType.label) || App.label("job","one")).toLowerCase())}'s Type chooses which pipeline its ${App.label("contact","many").toLowerCase()} move through. Renaming changes labels only; a type with ${(((selectedType && selectedType.labelPlural) || App.label("job","many")).toLowerCase())} (or a ${App.label("stage","one").toLowerCase()} with ${App.label("contact","many").toLowerCase()}) can't be deleted until those are moved.`;
       card.appendChild(note);
 
       const subtypes = (((selectedType && selectedType.subtypes) || []).slice()).sort((a, b) => (a.order || 0) - (b.order || 0));
-      if (!subtypes.length) card.appendChild(el("div", "cell-muted", "No job types yet — click “+ Add job type”."));
+      if (!subtypes.length) card.appendChild(el("div", "cell-muted", ("No " + (((selectedType && selectedType.label) || App.label("job","one")).toLowerCase()) + " types yet — click “+ Add " + (((selectedType && selectedType.label) || App.label("job","one")).toLowerCase()) + " type”.")));
 
       subtypes.forEach((st, sIdx) => {
         const block = el("div", "subtype-block");
@@ -989,20 +989,20 @@
         sdown.onclick = () => reorderType(sIdx, sIdx + 1);
         const sren = el("button", "btn btn-ghost btn-sm", "Rename");
         sren.onclick = async () => {
-          const name = prompt("Rename job type:", st.label); if (!name || !name.trim()) return;
+          const name = prompt(("Rename " + (((selectedType && selectedType.label) || App.label("job","one")).toLowerCase()) + " type:"), st.label); if (!name || !name.trim()) return;
           try { await App.portalApi("/api/record-subtypes/rename", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: st.key, label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); }
           catch (e) { App.util.toast(e.message, true); }
         };
-        const saddStage = el("button", "btn btn-ghost btn-sm", "+ Add stage");
+        const saddStage = el("button", "btn btn-ghost btn-sm", ("+ Add " + App.label("stage","one").toLowerCase()));
         saddStage.onclick = async () => {
-          const name = prompt(`Add a stage to “${st.label}”:`); if (!name || !name.trim()) return;
-          try { await App.portalApi("/api/record-stages/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, label: name.trim() }) }); App.util.toast("Stage added"); renderFields(true); }
+          const name = prompt(`Add a ${App.label("stage","one").toLowerCase()} to “${st.label}”:`); if (!name || !name.trim()) return;
+          try { await App.portalApi("/api/record-stages/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, label: name.trim() }) }); App.util.toast(App.label("stage","one") + " added"); renderFields(true); }
           catch (e) { App.util.toast(e.message, true); }
         };
         const sdel = el("button", "link-danger", "Delete type");
         sdel.onclick = async () => {
-          if (!confirm(`Delete job type “${st.label}”? Its pipeline is removed too.`)) return;
-          try { await App.portalApi("/api/record-subtypes/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: st.key }) }); App.util.toast("Job type deleted"); renderFields(true); }
+          if (!confirm(`Delete ${(((selectedType && selectedType.label) || App.label("job","one")).toLowerCase())} type “${st.label}”? Its pipeline is removed too.`)) return;
+          try { await App.portalApi("/api/record-subtypes/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: st.key }) }); App.util.toast((((selectedType && selectedType.label) || App.label("job","one"))) + " type deleted"); renderFields(true); }
           catch (e) { App.util.toast(e.message, true); } // blocked while jobs use it
         };
         btools.appendChild(saddStage); btools.appendChild(sup); btools.appendChild(sdown); btools.appendChild(sren); btools.appendChild(sdel);
@@ -1011,7 +1011,7 @@
 
         const stages = (st.stages || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
         const list = el("div", "stage-list");
-        if (!stages.length) list.appendChild(el("div", "cell-muted", "No stages yet — click “+ Add stage”."));
+        if (!stages.length) list.appendChild(el("div", "cell-muted", ("No " + App.label("stage","many").toLowerCase() + " yet — click “+ Add " + App.label("stage","one").toLowerCase() + "”.")));
         stages.forEach((s, idx) => {
           const row = el("div", "stage-row");
           row.appendChild(el("div", "stage-name", esc(s.label)));
@@ -1027,14 +1027,14 @@
           down.onclick = () => reorder(idx, idx + 1);
           const ren = el("button", "btn btn-ghost btn-sm", "Rename");
           ren.onclick = async () => {
-            const name = prompt("Rename stage:", s.label); if (!name || !name.trim()) return;
+            const name = prompt("Rename " + App.label("stage","one").toLowerCase() + ":", s.label); if (!name || !name.trim()) return;
             try { await App.portalApi("/api/record-stages/rename", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, key: s.key, label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); }
             catch (e) { App.util.toast(e.message, true); }
           };
           const del = el("button", "link-danger", "Delete");
           del.onclick = async () => {
-            if (!confirm(`Delete stage “${s.label}”?`)) return;
-            try { await App.portalApi("/api/record-stages/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, key: s.key }) }); App.util.toast("Stage deleted"); renderFields(true); }
+            if (!confirm(`Delete ${App.label("stage","one").toLowerCase()} “${s.label}”?`)) return;
+            try { await App.portalApi("/api/record-stages/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, key: s.key }) }); App.util.toast(App.label("stage","one") + " deleted"); renderFields(true); }
             catch (e) { App.util.toast(e.message, true); } // blocked while candidates occupy it
           };
           tools.appendChild(up); tools.appendChild(down); tools.appendChild(ren); tools.appendChild(del);
@@ -1233,7 +1233,7 @@
     catch (err) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(err.message)}</p></div>`; return; }
 
     const wrap = el("div", "fade-in contact-page");
-    const back = el("a", "back-link", "← Contacts");
+    const back = el("a", "back-link", ("← " + App.label("contact","many")));
     back.href = "#/contacts";
     wrap.appendChild(back);
 
@@ -1243,7 +1243,7 @@
       <div class="contact-sub">${esc(c.phone || "")}${c.email ? " · " + esc(c.email) : ""}</div></div>`;
     const runAuto = el("button", "btn btn-ghost btn-sm", "Run automation");
     runAuto.style.marginLeft = "auto";
-    runAuto.onclick = () => openRunAutomation(id, c.name || c.phone || "this contact");
+    runAuto.onclick = () => openRunAutomation(id, c.name || c.phone || ("this " + App.label("contact","one").toLowerCase()));
     head.appendChild(runAuto);
     wrap.appendChild(head);
 
@@ -1270,7 +1270,7 @@
 
     // ---- Linked Jobs section: list linked jobs, manage stage/unlink, and link a job ----
     const jobsCard = el("div", "card linked-jobs-card");
-    jobsCard.appendChild(el("div", "drawer-section-title", "Jobs"));
+    jobsCard.appendChild(el("div", "drawer-section-title", App.label("job","many")));
     const jobsList = el("div", "link-list");
     jobsCard.appendChild(jobsList);
     const jobAddRow = el("div", "link-add");
@@ -1295,20 +1295,20 @@
       try { links = await App.portalApi(`/api/contacts/${id}/links?type=job`); }
       catch (e) { jobsList.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
       jobsList.innerHTML = "";
-      if (!links.length) { jobsList.appendChild(el("div", "cell-muted", "Not linked to any jobs yet.")); return; }
+      if (!links.length) { jobsList.appendChild(el("div", "cell-muted", ("Not linked to any " + App.label("job","many").toLowerCase() + " yet."))); return; }
       links.forEach((lk) => {
         const row = el("div", "link-row");
         const subKey = lk.record ? lk.record.subtypeKey : null;
-        const title = lk.record ? (lk.record.title || "Untitled job") : "Job";
+        const title = lk.record ? (lk.record.title || ("Untitled " + App.label("job","one").toLowerCase())) : App.label("job","one");
         const nameEl = el("div", "link-name"); nameEl.innerHTML = `${esc(title)}${subKey ? ` <span class="cell-muted link-ptype">${esc(jobSubtypeLabel(subKey))}</span>` : ""}`;
         if (lk.record) { nameEl.style.cursor = "pointer"; nameEl.onclick = () => App.go("#/record/" + lk.record.id); }
         row.appendChild(nameEl);
         const stageSel = el("select", "input link-stage");
-        stageSel.appendChild(el("option", null, "— stage —"));
+        stageSel.appendChild(el("option", null, ("— " + App.label("stage","one").toLowerCase() + " —")));
         let known = false;
         stagesForJob(subKey).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) { o.selected = true; known = true; } stageSel.appendChild(o); });
         if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSel.appendChild(o); }
-        stageSel.onchange = async () => { try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: stageSel.value || null }) }); toast("Stage updated"); } catch (e) { toast(e.message, true); } };
+        stageSel.onchange = async () => { try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: stageSel.value || null }) }); toast(App.label("stage","one") + " updated"); } catch (e) { toast(e.message, true); } };
         row.appendChild(stageSel);
         const unlink = el("button", "link-danger", "Unlink");
         unlink.onclick = async () => { if (!confirm(`Unlink “${title}”?`)) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedJobs(); } catch (e) { toast(e.message, true); } };
@@ -1319,7 +1319,7 @@
 
     // Link-a-job search box (in-flow results; reuses the SAME RecordLink endpoint,
     // initiated from the contact side: POST /api/records/:jobId/links with this contact).
-    const jobInput = el("input", "input link-search"); jobInput.placeholder = "Link a job — type a title…";
+    const jobInput = el("input", "input link-search"); jobInput.placeholder = ("Link a " + App.label("job","one").toLowerCase() + " — type a title…");
     jobAddRow.appendChild(jobInput);
     const jobResults = el("div"); jobResults.style.cssText = "margin-top:8px; display:none;";
     jobAddRow.appendChild(jobResults);
@@ -1333,7 +1333,7 @@
       const bits = [];
       if (j.subtypeKey) bits.push(jobSubtypeLabel(j.subtypeKey));
       if (j.stageKey) bits.push(jobStatusLabel(j.stageKey));
-      b.innerHTML = `<div style="font-weight:600;">${esc(j.title || "Untitled job")}</div>` + (bits.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(bits.join(" · "))}</div>` : "");
+      b.innerHTML = `<div style="font-weight:600;">${esc(j.title || ("Untitled " + App.label("job","one").toLowerCase()))}</div>` + (bits.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(bits.join(" · "))}</div>` : "");
       b.onclick = async () => {
         try {
           const firstStage = (stagesForJob(j.subtypeKey))[0];
@@ -1346,10 +1346,10 @@
     async function runJobSearch() {
       await ensureJobMeta();
       const list = await ensureJobs();
-      if (!list.length) { showJobResults([jobMsg("No jobs yet — create one on the Jobs page first.")]); return; }
+      if (!list.length) { showJobResults([jobMsg(("No " + App.label("job","many").toLowerCase() + " yet — create one on the " + App.label("job","many") + " page first."))]); return; }
       const q = jobInput.value.trim().toLowerCase();
       const matches = !q ? list.slice(0, 8) : list.filter((j) => (j.title || "").toLowerCase().includes(q)).slice(0, 8);
-      if (!matches.length) { showJobResults([jobMsg(`No jobs match “${jobInput.value.trim()}”.`)]); return; }
+      if (!matches.length) { showJobResults([jobMsg(`No ${App.label("job","many").toLowerCase()} match “${jobInput.value.trim()}”.`)]); return; }
       showJobResults(matches.map(jobButton));
     }
     jobInput.oninput = App.util.debounce(runJobSearch, 200);
@@ -1377,7 +1377,7 @@
         save.disabled = true; save.textContent = "Saving…";
         try {
           await App.portalApi(`/api/contacts/${id}`, { method: "PATCH", body: JSON.stringify({ name: values.name, phone: values.phone, email: values.email, intent: values.intent, customFields: custom }) });
-          App.util.toast("Contact saved");
+          App.util.toast((App.label("contact","one") + " saved"));
           c.name = values.name; c.email = values.email; c.phone = values.phone;
           App.util.$(".contact-name", wrap).textContent = values.name || "Unknown";
         } catch (e) { App.util.toast(e.message, true); }
@@ -1643,15 +1643,8 @@
         types = r[0]; labelsData = r[1];
       } catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:6px">Couldn’t load labels.</div>`; return; }
 
-      // Simple English pluralizer: consonant+y -> ies; s/x/z/ch/sh -> es; else +s.
-      function pluralize(s) {
-        const w = String(s || "").trim();
-        if (!w) return "";
-        const low = w.toLowerCase();
-        if (/[^aeiou]y$/.test(low)) return w.slice(0, -1) + "ies";
-        if (/(s|x|z|ch|sh)$/.test(low)) return w + "es";
-        return w + "s";
-      }
+      // Shared pluralizer (handles irregulars too).
+      const pluralize = App.pluralize;
 
       const generic = (labelsData && labelsData.generic) || {};
       const GENERIC_WORDS = [
@@ -1848,7 +1841,7 @@
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Import contacts</h2><button class="icon-btn" id="imp-close">&times;</button></div>
       <div class="modal-body">
-        <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing.${requireEmail ? " This CRM requires a unique email on every contact, so the Email column must be mapped." : ""}</p>
+        <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing.${requireEmail ? (" This CRM requires a unique email on every " + App.label("contact","one").toLowerCase() + ", so the Email column must be mapped.") : ""}</p>
         <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,text/csv" class="input" />
         <div id="imp-step2"></div>
       </div>`;
@@ -1890,7 +1883,7 @@
       btn.disabled = true; btn.textContent = "Importing…";
       try {
         const res = await App.portalApi("/api/contacts/import", { method: "POST", body: JSON.stringify({ rows: mapped }) });
-        toast(`Imported ${res.imported} contacts${res.skipped ? `, skipped ${res.skipped}` : ""}`);
+        toast(`Imported ${App.countLabel("contact", res.imported).toLowerCase()}${res.skipped ? `, skipped ${res.skipped}` : ""}`);
         overlay.remove();
         if (current === "contacts") renderContacts();
       } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Import"; }
@@ -1953,7 +1946,7 @@
         App.portalApi("/api/record-types").catch(() => []),
       ]);
     } catch (e) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
-    const type = (types || []).find((t) => t.key === typeKey) || { key: typeKey, label: "Record", labelPlural: "Records", stages: [], recordStages: [] };
+    const type = (types || []).find((t) => t.key === typeKey) || { key: typeKey, label: App.label("record","one"), labelPlural: "Records", stages: [], recordStages: [] };
     const titleEl = document.querySelector(".page-title"); if (titleEl) titleEl.textContent = type.labelPlural || type.label;
 
     const allColumns = recordColumnDefs(fields, type);
@@ -1966,12 +1959,12 @@
     const dummyBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#129302;</span> Create Dummy ${esc(type.label)}`);
     dummyBtn.onclick = async () => {
       dummyBtn.disabled = true;
-      try { await App.portalApi("/api/records/dummy", { method: "POST", body: JSON.stringify({ type: typeKey }) }); toast(`Dummy ${(type.label || "record").toLowerCase()} created`); renderRecordList(typeKey); }
+      try { await App.portalApi("/api/records/dummy", { method: "POST", body: JSON.stringify({ type: typeKey }) }); toast(`Dummy ${(type.label || App.label("record","one").toLowerCase()).toLowerCase()} created`); renderRecordList(typeKey); }
       catch (e) { toast(e.message, true); dummyBtn.disabled = false; }
     };
     const createBtn = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#43;</span> Create ${esc(type.label)}`);
     createBtn.onclick = () => openCreateRecord(typeKey, fields, type);
-    const importBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8681;</span> Import ${esc(type.labelPlural || "records")}`);
+    const importBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8681;</span> Import ${esc(type.labelPlural || App.label("record","many").toLowerCase())}`);
     importBtn.onclick = () => openRecordImport(typeKey, fields, type);
     const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
     exportBtn.onclick = () => openRecordExport(handle ? handle.getColumns() : columns, records, type.labelPlural || type.label);
@@ -1991,7 +1984,7 @@
       onRowClick: (r) => App.go("#/record/" + r.id),
       onSelectionChange: (ids) => { selCount.textContent = ids.length ? `${ids.length} selected` : ""; },
       defaultSort: "createdAt", defaultSortDir: "desc",
-      emptyHtml: `<div class="empty"><div class="empty-emoji">&#128188;</div><h3>No ${esc((type.labelPlural || "records").toLowerCase())} yet</h3><p>Create your first ${esc((type.label || "record").toLowerCase())} to get started.</p></div>`,
+      emptyHtml: `<div class="empty"><div class="empty-emoji">&#128188;</div><h3>No ${esc((type.labelPlural || App.label("record","many").toLowerCase()).toLowerCase())} yet</h3><p>Create your first ${esc((type.label || App.label("record","one").toLowerCase()).toLowerCase())} to get started.</p></div>`,
     });
     if (handle && handle.toolbarLeft) mountSavedFilters(handle, typeKey);
 
@@ -2001,10 +1994,10 @@
     bulkWrap.appendChild(bulkBtn); bulkWrap.appendChild(bulkMenu); bulkWrap.appendChild(selCount);
     handle.toolbarLeft.appendChild(bulkWrap);
     function selectedRows() { const set = new Set(handle.getSelected()); return records.filter((r) => set.has(r.id)); }
-    const bulkMsg = el("div", "bulk-empty hidden", `Select a ${(type.label || "record").toLowerCase()} first.`);
+    const bulkMsg = el("div", "bulk-empty hidden", `Select a ${(type.label || App.label("record","one").toLowerCase()).toLowerCase()} first.`);
     bulkMenu.appendChild(bulkMsg);
     let msgTimer = null;
-    function needSelection(text) { bulkMsg.textContent = text || `Select a ${(type.label || "record").toLowerCase()} first.`; bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
+    function needSelection(text) { bulkMsg.textContent = text || `Select a ${(type.label || App.label("record","one").toLowerCase()).toLowerCase()} first.`; bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
     function bulkItem(label, fn) { const b = el("button", "bulk-item", label); b.onclick = () => fn(); return b; }
     bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openRecordExport(handle.getColumns(), rows, type.labelPlural || type.label); }));
     bulkMenu.appendChild(bulkItem("Update a field…", () => { const ids = handle.getSelected(); if (!ids.length) return needSelection(); bulkMenu.classList.add("hidden"); openRecordMassUpdate(ids, fields, type, typeKey); }));
@@ -2012,7 +2005,7 @@
     bulkMenu.appendChild(bulkItem("Delete selected", async () => {
       const ids = handle.getSelected(); if (!ids.length) return needSelection();
       bulkMenu.classList.add("hidden");
-      if (!confirm(`Move ${ids.length} ${(ids.length > 1 ? (type.labelPlural || "records") : (type.label || "record")).toLowerCase()} to the Recycle Bin?`)) return;
+      if (!confirm(`Move ${ids.length} ${(ids.length > 1 ? (type.labelPlural || App.label("record","many").toLowerCase()) : (type.label || App.label("record","one").toLowerCase())).toLowerCase()} to the Recycle Bin?`)) return;
       try { await App.portalApi("/api/records/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) }); toast("Deleted"); renderRecordList(typeKey); }
       catch (e) { toast(e.message, true); }
     }));
@@ -2029,13 +2022,13 @@
 
   function openCreateRecord(typeKey, fields, type) {
     const inner = el("div");
-    inner.innerHTML = `<div class="modal-head"><h2>Create ${esc(type.label || "record")}</h2><button class="icon-btn" id="cr-close">&times;</button></div><div class="modal-body" id="cr-body"></div>`;
+    inner.innerHTML = `<div class="modal-head"><h2>Create ${esc(type.label || App.label("record","one").toLowerCase())}</h2><button class="icon-btn" id="cr-close">&times;</button></div><div class="modal-body" id="cr-body"></div>`;
     const overlay = modal(inner);
     inner.querySelector("#cr-close").onclick = () => overlay.remove();
     const body = inner.querySelector("#cr-body");
 
     body.appendChild(el("label", "field-label", "Title *"));
-    const titleInp = el("input", "input"); titleInp.placeholder = `e.g. ${esc(type.label || "Record")} name`;
+    const titleInp = el("input", "input"); titleInp.placeholder = `e.g. ${esc(type.label || App.label("record","one"))} name`;
     body.appendChild(titleInp);
 
     // Type (subtype) is required for record types that define job types.
@@ -2075,7 +2068,7 @@
       save.disabled = true; save.textContent = "Creating…";
       try {
         const rec = await App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, customFields: custom }) });
-        toast(`${type.label || "Record"} created`);
+        toast(`${type.label || App.label("record","one")} created`);
         overlay.remove();
         App.go("#/record/" + rec.id);
       } catch (e) { toast(e.message, true); save.disabled = false; save.textContent = "Create"; }
@@ -2085,7 +2078,7 @@
 
   function openRecordImport(typeKey, fields, type) {
     const inner = el("div");
-    inner.innerHTML = `<div class="modal-head"><h2>Import ${esc(type.labelPlural || "records")}</h2><button class="icon-btn" id="imp-close">&times;</button></div>
+    inner.innerHTML = `<div class="modal-head"><h2>Import ${esc(type.labelPlural || App.label("record","many").toLowerCase())}</h2><button class="icon-btn" id="imp-close">&times;</button></div>
       <div class="modal-body">
         <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing. Each row needs a Title.</p>
         <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,text/csv" class="input" />
@@ -2124,7 +2117,7 @@
           <label class="field-label">${esc(t.label)}${t.required ? " (required)" : ""}</label>
           <select class="input map-sel" data-key="${esc(t.key)}">${optionsHtml(guess[t.key])}</select>`).join("")}</div>
           <p class="cell-muted">${dataRows.length} rows detected. Rows with no Title will be skipped.</p>
-          <button class="btn btn-primary btn-block" id="imp-go">Import ${dataRows.length} ${esc((type.labelPlural || "records").toLowerCase())}</button>`;
+          <button class="btn btn-primary btn-block" id="imp-go">Import ${dataRows.length} ${esc((type.labelPlural || App.label("record","many").toLowerCase()).toLowerCase())}</button>`;
         host.querySelector("#imp-go").onclick = async () => {
           const map = {};
           App.util.$$(".map-sel", host).forEach((s) => { map[s.dataset.key] = parseInt(s.value, 10); });
@@ -2152,7 +2145,7 @@
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Update a field</h2><button class="icon-btn" id="mu-close">&times;</button></div>
       <div class="modal-body">
-        <p class="cell-muted">Set one field on ${ids.length} ${(ids.length > 1 ? (type.labelPlural || "records") : (type.label || "record")).toLowerCase()}.</p>
+        <p class="cell-muted">Set one field on ${ids.length} ${(ids.length > 1 ? (type.labelPlural || App.label("record","many").toLowerCase()) : (type.label || App.label("record","one").toLowerCase())).toLowerCase()}.</p>
         <label class="field-label">Field</label>
         <select id="mu-field" class="input"></select>
         <div id="mu-valwrap"></div>
@@ -2177,7 +2170,7 @@
         (f._subtypes || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((st) => { const o = el("option", null, esc(st.label)); o.value = st.key; s.appendChild(o); });
         valWrap.appendChild(s); getVal = () => s.value || null;
         const warn = el("p", "muted"); warn.style.cssText = "margin:8px 0 0; font-size:12.5px;";
-        warn.textContent = "Changing Type switches a job's pipeline. Candidates keep their current stage value, even if the new type's pipeline doesn't include it — re-stage them afterward.";
+        warn.textContent = (`Changing Type switches a ${App.label("job","one").toLowerCase()}'s pipeline. ${App.label("contact","many")} keep their current ${App.label("stage","one").toLowerCase()} value, even if the new type's pipeline doesn't include it — re-${App.label("stage","one").toLowerCase()} them afterward.`);
         valWrap.appendChild(warn);
       } else if (f.type === "stage") {
         const s = el("select", "input"); s.appendChild(el("option", null, "— none —"));
@@ -2201,7 +2194,7 @@
     const exState = { rules: [], search: "" };
     const selected = new Set(exportable.map((c) => c.key));
     const inner = el("div");
-    inner.innerHTML = `<div class="modal-head"><h2>Export ${esc(typeLabel || "records")}</h2><button class="icon-btn" id="ex-close">&times;</button></div>
+    inner.innerHTML = `<div class="modal-head"><h2>Export ${esc(typeLabel || App.label("record","many").toLowerCase())}</h2><button class="icon-btn" id="ex-close">&times;</button></div>
       <div class="modal-body">
         <label class="field-label">Export name *</label>
         <input id="ex-name" class="input" placeholder="e.g. Open roles" />
@@ -2243,7 +2236,7 @@
       if (format === "xlsx" && typeof XLSX !== "undefined") {
         const aoa = [cols.map((c) => c.label), ...out.map((row) => cols.map((c) => (c.text ? c.text(row) : c.get(row)) ?? ""))];
         const ws = XLSX.utils.aoa_to_sheet(aoa); const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Records");
+        XLSX.utils.book_append_sheet(wb, ws, (type.labelPlural || App.label("record","many")));
         const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
         downloadBlob(`${fileBase}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       } else {
@@ -2260,20 +2253,20 @@
     let rec, types;
     try { [rec, types] = await Promise.all([App.portalApi("/api/records/" + id), App.portalApi("/api/record-types").catch(() => [])]); }
     catch (e) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
-    const type = (types || []).find((t) => t.id === rec.recordTypeId) || { key: "record", label: "Record", labelPlural: "Records", stages: [], recordStages: [] };
+    const type = (types || []).find((t) => t.id === rec.recordTypeId) || { key: "record", label: App.label("record","one"), labelPlural: "Records", stages: [], recordStages: [] };
     let fields = [];
     let fieldSections = [];
     try { [fields, fieldSections] = await Promise.all([App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)), App.portalApi("/api/field-sections?recordType=" + encodeURIComponent(type.key)).catch(() => [])]); } catch (e) { fields = []; }
 
     const wrap = el("div", "fade-in contact-page");
-    const back = el("a", "back-link", "← " + esc(type.labelPlural || "Records"));
+    const back = el("a", "back-link", "← " + esc(type.labelPlural || App.label("record","many")));
     back.href = "#/jobs";
     wrap.appendChild(back);
 
     const head = el("div", "contact-head");
     head.innerHTML = `<div class="contact-avatar">${esc((rec.title || type.label || "?").charAt(0).toUpperCase())}</div>
-      <div><h1 class="contact-name">${esc(rec.title || "Untitled " + (type.label || "record"))}</h1>
-      <div class="contact-sub">${esc(type.label || "Record")}${rec.stageKey ? " · " + esc(recordStageLabel(type, rec.stageKey)) : ""}</div></div>`;
+      <div><h1 class="contact-name">${esc(rec.title || "Untitled " + (type.label || App.label("record","one").toLowerCase()))}</h1>
+      <div class="contact-sub">${esc(type.label || App.label("record","one"))}${rec.stageKey ? " · " + esc(recordStageLabel(type, rec.stageKey)) : ""}</div></div>`;
     wrap.appendChild(head);
 
     // ---- Details card (editable fields) ----
@@ -2323,7 +2316,7 @@
         await App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, customFields: custom }) });
         toast("Saved");
         rec.title = titleInp.value.trim();
-        App.util.$(".contact-name", wrap).textContent = rec.title || ("Untitled " + (type.label || "record"));
+        App.util.$(".contact-name", wrap).textContent = rec.title || ("Untitled " + (type.label || App.label("record","one").toLowerCase()));
         // A status/field save may have fired an automation that moves candidates
         // server-side; refresh the board shortly after so it reflects the change
         // without navigating away. (Async automations run just after the save.)
@@ -2338,7 +2331,7 @@
     // ---- Linked candidates card: List | Board (kanban) — two views of the SAME links ----
     const linkCard = el("div", "card");
     const candHead = el("div", "cand-head");
-    candHead.appendChild(el("div", "drawer-section-title", "Candidates"));
+    candHead.appendChild(el("div", "drawer-section-title", App.label("contact","many")));
     const candToggle = el("div", "seg-toggle");
     const tabListBtn = el("button", "seg-btn seg-on", "List");
     const tabBoardBtn = el("button", "seg-btn", "Board");
@@ -2399,7 +2392,7 @@
     view().innerHTML = "";
     view().appendChild(wrap);
 
-    function candWho(lk) { return lk.parent ? (lk.parent.name || lk.parent.email || lk.parent.phone || "Contact") : (lk.parentType + " " + lk.parentId); }
+    function candWho(lk) { return lk.parent ? (lk.parent.name || lk.parent.email || lk.parent.phone || App.label("contact","one")) : (lk.parentType + " " + lk.parentId); }
     function candSub(lk) { if (!lk.parent) return ""; const nm = candWho(lk); const s = []; if (lk.parent.email && lk.parent.email !== nm) s.push(lk.parent.email); if (lk.parent.phone && lk.parent.phone !== nm) s.push(lk.parent.phone); return s.join(" · "); }
 
     async function loadLinks() {
@@ -2429,7 +2422,7 @@
     function renderCandList() {
       candBody.innerHTML = "";
       const listEl = el("div", "link-list");
-      if (!links.length) listEl.appendChild(el("div", "cell-muted", "No candidates linked yet."));
+      if (!links.length) listEl.appendChild(el("div", "cell-muted", ("No " + App.label("contact","many").toLowerCase() + " linked yet.")));
       links.forEach((lk) => {
         const row = el("div", "link-row");
         const who = candWho(lk);
@@ -2438,12 +2431,12 @@
         if (lk.parentType === "contact" && lk.parent) { nameEl.style.cursor = "pointer"; nameEl.onclick = () => App.go("#/contact/" + lk.parent.id); }
         row.appendChild(nameEl);
         const stageSelL = el("select", "input link-stage");
-        stageSelL.appendChild(el("option", null, "— stage —"));
+        stageSelL.appendChild(el("option", null, ("— " + App.label("stage","one").toLowerCase() + " —")));
         const stages = currentStages();
         let known = false;
         stages.forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) { o.selected = true; known = true; } stageSelL.appendChild(o); });
         if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSelL.appendChild(o); }
-        stageSelL.onchange = async () => { const v = stageSelL.value || null; try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: v }) }); lk.stageKey = v; toast("Stage updated"); } catch (e) { toast(e.message, true); } };
+        stageSelL.onchange = async () => { const v = stageSelL.value || null; try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: v }) }); lk.stageKey = v; toast(App.label("stage","one") + " updated"); } catch (e) { toast(e.message, true); } };
         row.appendChild(stageSelL);
         const unlink = el("button", "link-danger", "Unlink");
         unlink.onclick = async () => { if (!confirm(`Unlink ${who}?`)) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (e) { toast(e.message, true); } };
@@ -2475,7 +2468,7 @@
     // (or is unset). Dropping persists RecordLink.stageKey and updates in place.
     function renderCandBoard() {
       candBody.innerHTML = "";
-      if (!links.length) { candBody.appendChild(el("div", "cell-muted", "No candidates linked yet — link one below to start the board.")); return; }
+      if (!links.length) { candBody.appendChild(el("div", "cell-muted", ("No " + App.label("contact","many").toLowerCase() + " linked yet — link one below to start the board."))); return; }
       const stages = currentStages();
       const known = new Set(stages.map((s) => s.key));
       const board = el("div", "kanban");
@@ -2486,7 +2479,7 @@
           const n = m.cards.querySelectorAll(".kanban-card").length;
           m.count.textContent = String(n);
           let ph = m.cards.querySelector(".kanban-empty");
-          if (n === 0) { if (!ph) m.cards.appendChild(el("div", "kanban-empty", "No candidates")); }
+          if (n === 0) { if (!ph) m.cards.appendChild(el("div", "kanban-empty", ("No " + App.label("contact","many").toLowerCase()))); }
           else if (ph) ph.remove();
         });
       }
@@ -2527,7 +2520,7 @@
     // portal-scoped) and link the chosen one. Results render IN-FLOW (not an
     // absolutely-positioned dropdown) because the enclosing .card has
     // overflow:hidden, which clipped the old absolute dropdown so it never showed.
-    const addInput = el("input", "input link-search"); addInput.placeholder = "Link a contact — type a name…";
+    const addInput = el("input", "input link-search"); addInput.placeholder = ("Link a " + App.label("contact","one").toLowerCase() + " — type a name…");
     addRow.appendChild(addInput);
     const results = el("div");
     results.style.cssText = "margin-top:8px; display:none;";
@@ -2553,7 +2546,7 @@
     function resultButton(c) {
       const r = el("button", "link-result");
       r.style.cssText = "line-height:1.35;";
-      const name = c.name || c.email || c.phone || "Contact";
+      const name = c.name || c.email || c.phone || App.label("contact","one");
       const sub = [];
       if (c.email && c.email !== name) sub.push(c.email);
       if (c.phone && c.phone !== name) sub.push(c.phone);
@@ -2570,10 +2563,10 @@
     }
     async function runSearch() {
       const list = await ensureContacts();
-      if (!list.length) { showResults([msgNode("This portal has no contacts yet — add one on the Contacts page first.")]); return; }
+      if (!list.length) { showResults([msgNode((`This portal has no ${App.label("contact","many").toLowerCase()} yet — add one on the ${App.label("contact","many")} page first.`))]); return; }
       const q = addInput.value.trim().toLowerCase();
       const matches = !q ? list.slice(0, 8) : list.filter((c) => ((c.name || "") + " " + (c.email || "") + " " + (c.phone || "")).toLowerCase().includes(q)).slice(0, 8);
-      if (!matches.length) { showResults([msgNode(`No contacts match “${addInput.value.trim()}”.`)]); return; }
+      if (!matches.length) { showResults([msgNode(`No ${App.label("contact","many").toLowerCase()} match “${addInput.value.trim()}”.`)]); return; }
       showResults(matches.map(resultButton));
     }
     addInput.oninput = App.util.debounce(runSearch, 200);
