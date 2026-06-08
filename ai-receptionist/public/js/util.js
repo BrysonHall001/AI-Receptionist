@@ -164,6 +164,34 @@
   // "3 Clients" / "1 Client" — number + the matching form.
   App.countLabel = function (kind, n) { return n + " " + App.labelFor(kind, n); };
 
+  // Swap the built-in English object-nouns in a display string for this portal's
+  // labels. By default only Contact(s)/Candidate(s) are swapped (these never
+  // collide with common words or feature names here). Pass {all:true} in
+  // controlled contexts (trigger/action labels, builder hints) to also swap
+  // Job(s)/Record(s)/Stage(s) — NOT for free prose, where "a record of…" or
+  // "scheduled jobs" would be mangled. Whole-word, case- and number-preserving.
+  App.relabelText = function (text, opts) {
+    if (text == null) return text;
+    let out = String(text);
+    const o = opts || {};
+    const swap = (one, many, kind) => {
+      const Lm = App.label(kind, "many"), Lo = App.label(kind, "one");
+      out = out
+        .replace(new RegExp("\\b" + many + "\\b", "g"), Lm)
+        .replace(new RegExp("\\b" + one + "\\b", "g"), Lo)
+        .replace(new RegExp("\\b" + many.toLowerCase() + "\\b", "g"), Lm.toLowerCase())
+        .replace(new RegExp("\\b" + one.toLowerCase() + "\\b", "g"), Lo.toLowerCase());
+    };
+    swap("Contact", "Contacts", "contact");
+    swap("Candidate", "Candidates", "contact"); // candidates = the linked contacts
+    if (o.all) {
+      swap("Job", "Jobs", "job");
+      swap("Record", "Records", "record");
+      swap("Stage", "Stages", "stage");
+    }
+    return out;
+  };
+
   // Load this portal's labels into the cache. Safe to call repeatedly; no-op on
   // failure (keeps defaults). Nothing in the UI reads App.label() yet, so a late
   // load has no visible effect — this just makes the cache available.

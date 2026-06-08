@@ -231,7 +231,8 @@
     }
   }
 
-  function triggerLabel(type) {
+  function triggerLabel(type) { return App.relabelText(triggerLabelRaw(type), { all: true }); }
+  function triggerLabelRaw(type) {
     // "FieldChanged:<key>" is a field-scoped variant stored in triggerType.
     if (type && type.indexOf("FieldChanged:") === 0) {
       const key = type.slice("FieldChanged:".length);
@@ -279,7 +280,7 @@
   }
   function actionLabel(type) {
     const a = (meta.actions || []).find((x) => x.type === type);
-    return a ? a.label : type;
+    return a ? App.relabelText(a.label, { all: true }) : type;
   }
   // Batch C1 Pass 2: the "When" line for the live preview AND the wizard review,
   // so both read identically. For complete triggers this is exactly
@@ -342,14 +343,14 @@
     ordered.forEach((g) => {
       const og = el("optgroup"); og.label = g;
       trigs.filter((t) => (t.group || "Other") === g).forEach((t) => {
-        const o = el("option", null, esc(t.label)); o.value = t.type; if (t.type === selectedType) o.selected = true; og.appendChild(o);
+        const o = el("option", null, esc(App.relabelText(t.label, { all: true }))); o.value = t.type; if (t.type === selectedType) o.selected = true; og.appendChild(o);
       });
       sel.appendChild(og);
     });
   }
   // One-line help text for the base trigger / action (from the registry via /meta).
-  function triggerDescription(type) { const t = (meta.triggers || []).find((x) => x.type === triggerBase(type)); return (t && t.description) || ""; }
-  function actionDescription(type) { const a = (meta.actions || []).find((x) => x.type === type); return (a && a.description) || ""; }
+  function triggerDescription(type) { const t = (meta.triggers || []).find((x) => x.type === triggerBase(type)); return App.relabelText((t && t.description) || "", { all: true }); }
+  function actionDescription(type) { const a = (meta.actions || []).find((x) => x.type === type); return App.relabelText((a && a.description) || "", { all: true }); }
   // A record-subject trigger acts on the record (e.g. a job), not a contact.
   function isRecordTrigger(tt) { return tt === "RecordUpdated" || (tt && tt.indexOf("RecordUpdated:") === 0); }
   // The condition field list depends on the subject: a record trigger offers the
@@ -642,7 +643,7 @@
   function presetCard(p, pbody, data, overlay) {
     const card = el("div", "preset-card");
     const head = el("div");
-    head.innerHTML = `<div class="preset-name">${esc(p.name)}</div><div class="preset-desc">${esc(p.description)}</div>`;
+    head.innerHTML = `<div class="preset-name">${esc(App.relabelText(p.name))}</div><div class="preset-desc">${esc(App.relabelText(p.description))}</div>`;
     card.appendChild(head);
     card.appendChild(shapeEl(p.shape));
     if (p.missing && p.missing.length) {
@@ -662,12 +663,12 @@
   // Visual cue of the trigger -> action shape (chips joined by arrows).
   function shapeEl(shape) {
     const wrap = el("div", "preset-shape");
-    wrap.appendChild(el("span", "shape-chip trigger", esc((shape && shape.trigger) || "Trigger")));
+    wrap.appendChild(el("span", "shape-chip trigger", esc(App.relabelText((shape && shape.trigger) || "Trigger"))));
     ((shape && shape.actions) || []).forEach((a) => {
       const arrow = el("span", "shape-arrow");
       arrow.innerHTML = `<svg width="16" height="10" viewBox="0 0 16 10" fill="none"><path d="M0 5h13M9 1l5 4-5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
       wrap.appendChild(arrow);
-      wrap.appendChild(el("span", "shape-chip action", esc(a)));
+      wrap.appendChild(el("span", "shape-chip action", esc(App.relabelText(a))));
     });
     return wrap;
   }
@@ -680,17 +681,17 @@
     pbody.appendChild(back);
 
     const head = el("div", "preset-pv-head");
-    head.innerHTML = `<div class="preset-pv-title">${esc(p.name)}</div><div class="preset-pv-desc">${esc(p.description)}</div>`;
+    head.innerHTML = `<div class="preset-pv-title">${esc(App.relabelText(p.name))}</div><div class="preset-pv-desc">${esc(App.relabelText(p.description))}</div>`;
     pbody.appendChild(head);
 
     pbody.appendChild(shapeEl(p.shape));
 
     const sm = p.summary || {};
-    const conds = (sm.conditions || []).map((c) => `<li>${esc(c)}</li>`).join("") || "<li>Always runs</li>";
-    const acts = (sm.actions || []).map((a) => `<li>${esc(a)}</li>`).join("") || "<li>—</li>";
+    const conds = (sm.conditions || []).map((c) => `<li>${esc(App.relabelText(c))}</li>`).join("") || "<li>Always runs</li>";
+    const acts = (sm.actions || []).map((a) => `<li>${esc(App.relabelText(a))}</li>`).join("") || "<li>—</li>";
     const sec = el("div", "preset-pv-section");
     sec.innerHTML = `
-      <div class="pv-block"><div class="pv-k">When</div><div class="pv-v">${esc(sm.trigger || "")}</div></div>
+      <div class="pv-block"><div class="pv-k">When</div><div class="pv-v">${esc(App.relabelText(sm.trigger || ""))}</div></div>
       <div class="pv-block"><div class="pv-k">If</div><div class="pv-v"><ul>${conds}</ul></div></div>
       <div class="pv-block"><div class="pv-k">Then</div><div class="pv-v"><ul>${acts}</ul></div></div>`;
     pbody.appendChild(sec);
@@ -710,7 +711,7 @@
       pbody.appendChild(fsec);
     }
 
-    if (p.note) pbody.appendChild(hint(p.note));
+    if (p.note) pbody.appendChild(hint(App.relabelText(p.note)));
 
     const bar = el("div", "modal-savebar");
     const cancel = el("button", "btn btn-ghost", "Back");
@@ -949,7 +950,7 @@
       } else if (w.baseTrigger === "StageChanged") {
         extra.appendChild(small("Which stage? (choose “Any stage” to run on every stage change)"));
         const ss = el("select", "input");
-        const any = el("option", null, "Any stage"); any.value = ""; ss.appendChild(any);
+        const any = el("option", null, App.relabelText("Any stage", { all: true })); any.value = ""; ss.appendChild(any);
         (meta.stages || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === w.triggerStage) o.selected = true; ss.appendChild(o); });
         ss.onchange = () => { w.triggerStage = ss.value; };
         extra.appendChild(ss);
@@ -998,7 +999,7 @@
         extra.appendChild(small("Run when something has sat in its current stage, no movement, for at least this many days:"));
         const rowEl = el("div", "wiz-cond-row");
         const days = el("input", "input"); days.type = "number"; days.min = "1"; days.placeholder = "7"; days.style.flex = "0 0 80px"; days.value = w.stall.days || "7"; days.oninput = () => { w.stall.days = days.value; };
-        const stageSel = el("select", "input"); const any = el("option", null, "Any stage"); any.value = ""; stageSel.appendChild(any);
+        const stageSel = el("select", "input"); const any = el("option", null, App.relabelText("Any stage", { all: true })); any.value = ""; stageSel.appendChild(any);
         (meta.stages || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === w.stall.stageKey) o.selected = true; stageSel.appendChild(o); });
         stageSel.onchange = () => { w.stall.stageKey = stageSel.value; };
         rowEl.appendChild(days); rowEl.appendChild(stageSel);
@@ -1106,7 +1107,8 @@
 
   // Plain-English one-liner for an assembled action (best-effort; falls back to
   // the action's label from /meta).
-  function actionSummary(a) {
+  function actionSummary(a) { return App.relabelText(actionSummaryRaw(a), { all: true }); }
+  function actionSummaryRaw(a) {
     const c = a.config || {};
     if (a.type === "send_email") return "Send an email" + (c.subject ? ` (“${c.subject}”)` : "");
     if (a.type === "send_sms") return "Send an SMS";
@@ -1197,7 +1199,7 @@
     // purely by the two enabled states — never by name-matching.
     if (pairInfo && pairInfo.kind === "id" && pairInfo.partner && a.enabled && !pairInfo.partner.enabled) {
       card.appendChild(el("div", "pair-warn",
-        `This is on, but its paired automation “${esc(pairInfo.partner.name)}” is turned off — contacts on that branch will get nothing. Turn both on for full coverage.`));
+        App.relabelText(`This is on, but its paired automation “${esc(pairInfo.partner.name)}” is turned off — contacts on that branch will get nothing. Turn both on for full coverage.`, { all: true })));
     }
     // Quiet note if the partner of a durable pair was deleted.
     if (pairInfo && pairInfo.orphan) {
@@ -1420,7 +1422,7 @@
       } else if (baseTrigger === "StageChanged") {
         trigExtra.appendChild(small("Which stage? (choose “Any stage” to run on every stage change)"));
         const stageSel = el("select", "input");
-        const any = el("option", null, "Any stage"); any.value = ""; stageSel.appendChild(any);
+        const any = el("option", null, App.relabelText("Any stage", { all: true })); any.value = ""; stageSel.appendChild(any);
         (meta.stages || []).forEach((s) => {
           const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === triggerStage) o.selected = true; stageSel.appendChild(o);
         });
@@ -1430,7 +1432,7 @@
           trigExtra.appendChild(small("No pipeline stages found yet. You can still choose “Any stage”."));
         }
         const note = el("div", "wf-hint", ""); note.style.margin = "6px 0 0";
-        note.textContent = "Runs when a linked contact moves to a different stage on a record. The contact is the subject.";
+        note.textContent = App.relabelText("Runs when a linked contact moves to a different stage on a record. The contact is the subject.", { all: true });
         trigExtra.appendChild(note);
       } else if (baseTrigger === "RecordUpdated") {
         trigExtra.appendChild(small("Which field changed? (choose “Any field” for any change)"));
@@ -1461,7 +1463,7 @@
         trigExtra.appendChild(rnote);
       } else if (baseTrigger === "Manual") {
         const note = el("div", "wf-hint", "");
-        note.textContent = "This flow does not fire on its own. It runs when you open a contact and click “Run automation.”";
+        note.textContent = App.relabelText("This flow does not fire on its own. It runs when you open a contact and click “Run automation.”", { all: true });
         note.style.margin = "0";
         trigExtra.appendChild(note);
       } else if (baseTrigger === "Scheduled") {
@@ -1497,7 +1499,7 @@
         trigExtra.appendChild(rowEl);
         trigExtra.appendChild(small("In which stage? (choose “Any stage” to watch every stage)"));
         const stageSel = el("select", "input"); stageSel.style.marginBottom = "0";
-        const any = el("option", null, "Any stage"); any.value = ""; stageSel.appendChild(any);
+        const any = el("option", null, App.relabelText("Any stage", { all: true })); any.value = ""; stageSel.appendChild(any);
         (meta.stages || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === stall.stageKey) o.selected = true; stageSel.appendChild(o); });
         stageSel.onchange = () => { stall.stageKey = stageSel.value; syncTrigger(); };
         trigExtra.appendChild(stageSel);
@@ -1599,7 +1601,7 @@
     // Keep a previously-saved action visible even if it's not in the current
     // allowed set (e.g. after switching trigger), so nothing is silently changed.
     if (act.type && !opts.some((a) => a.type === act.type)) opts.unshift({ type: act.type, label: actionLabel(act.type) });
-    opts.forEach((a) => { const o = el("option", null, esc(a.label)); o.value = a.type; if (a.type === act.type) o.selected = true; sel.appendChild(o); });
+    opts.forEach((a) => { const o = el("option", null, esc(App.relabelText(a.label, { all: true }))); o.value = a.type; if (a.type === act.type) o.selected = true; sel.appendChild(o); });
     sel.onchange = () => { act.type = sel.value; act.config = {}; redraw(); };
     head.appendChild(sel);
     const rm = el("button", "rule-remove", "&times;");
@@ -1629,7 +1631,7 @@
       if (!isStalled) return;
       const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
-      const lbl = el("label", null, "Allow sending to more than 25 stalled contacts in one sweep");
+      const lbl = el("label", null, App.relabelText("Allow sending to more than 25 stalled contacts in one sweep", { all: true }));
       lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
       lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
@@ -1645,7 +1647,7 @@
     const selectOf = (key, options, ph) => {
       const s = el("select", "input");
       const blank = el("option", null, ph || "— choose —"); blank.value = ""; s.appendChild(blank);
-      options.forEach((o) => { const op = el("option", null, esc(o.label)); op.value = o.value; if (c[key] === o.value) op.selected = true; s.appendChild(op); });
+      options.forEach((o) => { const op = el("option", null, esc(App.relabelText(o.label, { all: true }))); op.value = o.value; if (c[key] === o.value) op.selected = true; s.appendChild(op); });
       s.onchange = () => { c[key] = s.value; };
       return s;
     };
@@ -1717,7 +1719,7 @@
         if (c.subAction === "email" || c.subAction === "sms") {
           const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
           const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
-          const lbl = el("label", null, "Allow sending to more than 25 linked contacts in one run");
+          const lbl = el("label", null, App.relabelText("Allow sending to more than 25 linked contacts in one run", { all: true }));
           lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
           lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
           cbWrap.appendChild(cb); cbWrap.appendChild(lbl); sub.appendChild(cbWrap);
@@ -1733,7 +1735,7 @@
       if (!(meta.stages || []).length) cfg.appendChild(small("No pipeline stages found yet."));
       const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
-      const lbl = el("label", null, "Allow moving more than 25 contacts in one run"); lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer"; lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
+      const lbl = el("label", null, App.relabelText("Allow moving more than 25 contacts in one run", { all: true })); lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer"; lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
       cfg.appendChild(small("An automated move does not set off other automations (loop-safe), and is recorded in the contact's stage history."));
     } else if (act.type === "set_record_field") {
@@ -1785,7 +1787,7 @@
       cfg.appendChild(targetSelect(c, "contact"));
       const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
-      const lbl = el("label", null, "Allow deleting more than 10 contacts in one run");
+      const lbl = el("label", null, App.relabelText("Allow deleting more than 10 contacts in one run", { all: true }));
       lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
       lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
@@ -1796,7 +1798,7 @@
       (meta.recordTypes || []).forEach((t) => { const o = el("option", null, esc(t.label)); o.value = t.key; if (c.recordType === t.key) o.selected = true; typeSel.appendChild(o); });
       cfg.appendChild(typeSel);
       cfg.appendChild(small("Title (supports {{field}}):"));
-      cfg.appendChild(text("title", "New record title"));
+      cfg.appendChild(text("title", App.relabelText("New record title", { all: true })));
       const depHost = el("div"); depHost.style.marginTop = "8px"; cfg.appendChild(depHost);
       function renderCreateDeps() {
         depHost.innerHTML = "";
@@ -1825,7 +1827,7 @@
       cfg.appendChild(small("Deletes the records found by a Find records action above. Deleted records go to the Recycle Bin and can be restored."));
       const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
-      const lbl = el("label", null, "Allow deleting more than 10 records in one run");
+      const lbl = el("label", null, App.relabelText("Allow deleting more than 10 records in one run", { all: true }));
       lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
       lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
@@ -1948,14 +1950,14 @@
 
   // ---------------- Test run ----------------
   function openTest(a) {
-    if (!contacts.length) { toast("No contacts to test against", true); return; }
+    if (!contacts.length) { toast(App.relabelText("No contacts to test against", { all: true }), true); return; }
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Test “${esc(a.name)}”</h2><button class="icon-btn" id="t-close">&times;</button></div>`;
     const b = el("div", "modal-body");
     b.appendChild(small("Run this automation against a contact now. Conditions are still evaluated; actions will really run (emails/SMS respect mock mode)."));
     const sel = el("select", "input");
     contacts.slice(0, 500).forEach((c) => { const o = el("option", null, esc(c.name || c.phone || c.id)); o.value = c.id; sel.appendChild(o); });
-    b.appendChild(label("Contact"));
+    b.appendChild(label(App.relabelText("Contact", { all: true })));
     b.appendChild(sel);
     const out = el("div", "test-out");
     b.appendChild(out);
@@ -2082,7 +2084,7 @@
   }
 
   function label(t) { return el("label", "field-label", esc(t)); }
-  function small(t) { const s = el("div", "cfg-label"); s.textContent = t; return s; }
+  function small(t) { const s = el("div", "cfg-label"); s.textContent = App.relabelText(t, { all: true }); return s; }
   function hint(t) { const d = el("div", "wf-hint"); d.textContent = t; return d; }
   function fmt(iso) { try { return new Date(iso).toLocaleString(); } catch { return iso; } }
   function modal(inner, extraClass) {

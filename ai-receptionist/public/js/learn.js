@@ -463,14 +463,14 @@
   ];
 
   function renderBlock(b) {
-    if (b.p) return el("p", "learn-p", esc(b.p));
-    if (b.tip) { const d = el("div", "learn-tip"); d.innerHTML = `<strong>Tip:</strong> ${esc(b.tip)}`; return d; }
+    if (b.p) return el("p", "learn-p", esc(App.relabelText(b.p)));
+    if (b.tip) { const d = el("div", "learn-tip"); d.innerHTML = `<strong>Tip:</strong> ${esc(App.relabelText(b.tip))}`; return d; }
     // Screenshot placeholders are intentionally not rendered (real images come
     // later). Any leftover { shot } block is skipped so no empty frame appears.
     if (b.shot) return null;
     if (b.steps) {
       const ol = el("ol", "learn-steps");
-      b.steps.forEach((s) => ol.appendChild(el("li", null, esc(s))));
+      b.steps.forEach((s) => ol.appendChild(el("li", null, esc(App.relabelText(s)))));
       return ol;
     }
     return null;
@@ -508,8 +508,8 @@
       currentId = id;
       paintNav();
       const card = el("div", "card learn-article");
-      card.appendChild(el("div", "learn-eyebrow", esc(cat)));
-      card.appendChild(el("h2", "learn-article-title", esc(found.title)));
+      card.appendChild(el("div", "learn-eyebrow", esc(App.relabelText(cat))));
+      card.appendChild(el("h2", "learn-article-title", esc(App.relabelText(found.title))));
       (found.blocks || []).forEach((b) => { const node = renderBlock(b); if (node) card.appendChild(node); });
       content.innerHTML = "";
       content.appendChild(card);
@@ -522,9 +522,9 @@
       GUIDES.forEach((g) => {
         const items = g.items.filter((it) => !term || it.title.toLowerCase().includes(term) || g.cat.toLowerCase().includes(term));
         if (!items.length) return;
-        navList.appendChild(el("div", "learn-cat", esc(g.cat)));
+        navList.appendChild(el("div", "learn-cat", esc(App.relabelText(g.cat))));
         items.forEach((it) => {
-          const b = el("button", "learn-link" + (it.id === currentId ? " active" : ""), esc(it.title));
+          const b = el("button", "learn-link" + (it.id === currentId ? " active" : ""), esc(App.relabelText(it.title)));
           b.onclick = () => showGuide(it.id);
           navList.appendChild(b);
         });
