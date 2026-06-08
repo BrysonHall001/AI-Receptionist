@@ -1628,11 +1628,12 @@
       };
     }
 
-    // Labels editor — rename this portal's core nouns (singular + plural).
-    // Record types write to label/labelPlural; generic words to Tenant.labels.
+    // Labels editor — one clean list of this portal's nouns. Type the SINGULAR;
+    // the plural auto-fills (and stays editable for irregulars). Record types
+    // write to label/labelPlural; generic words to Tenant.labels.
     async function secLabels(panel) {
       panel.innerHTML = `<h2 class="settings-h">Labels</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:4px">Rename what things are called in this portal. Set the singular and plural for each.</p>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:4px">Rename what things are called in this portal. Type the <strong>singular</strong> — the plural fills in for you, and you can edit it.</p>
         <p class="cell-muted" style="font-size:12.5px;margin-bottom:16px;font-style:italic">Changes apply across the app as more areas are updated to use your labels.</p>
         <div id="lbl-body"><div class="cell-muted" style="padding:6px">Loading…</div></div>`;
       const body = panel.querySelector("#lbl-body");
@@ -1642,6 +1643,16 @@
         types = r[0]; labelsData = r[1];
       } catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:6px">Couldn’t load labels.</div>`; return; }
 
+      // Simple English pluralizer: consonant+y -> ies; s/x/z/ch/sh -> es; else +s.
+      function pluralize(s) {
+        const w = String(s || "").trim();
+        if (!w) return "";
+        const low = w.toLowerCase();
+        if (/[^aeiou]y$/.test(low)) return w.slice(0, -1) + "ies";
+        if (/(s|x|z|ch|sh)$/.test(low)) return w + "es";
+        return w + "s";
+      }
+
       const generic = (labelsData && labelsData.generic) || {};
       const GENERIC_WORDS = [
         { key: "record", dflt: { one: "Record", many: "Records" } },
@@ -1649,41 +1660,37 @@
       ];
 
       body.innerHTML = "";
-      const rows = []; // { key, scope:'type'|'generic', oneEl, manyEl }
+      const rows = []; // { key, scope, oneEl, manyEl, touched }
 
-      function group(title, hint) {
-        const g = el("div", "lbl-group");
-        g.appendChild(el("div", "lbl-group-title", esc(title)));
-        if (hint) { const h = el("div", "cell-muted"); h.style.cssText = "font-size:12.5px;margin:-2px 0 8px"; h.textContent = hint; g.appendChild(h); }
-        const head = el("div", "lbl-row lbl-head");
-        head.appendChild(el("div", "lbl-key", "Key"));
-        head.appendChild(el("div", null, "Singular"));
-        head.appendChild(el("div", null, "Plural"));
-        g.appendChild(head);
-        return g;
-      }
-      function addRow(g, scope, key, one, many) {
+      // One header for the single list.
+      const head = el("div", "lbl-row lbl-head");
+      head.appendChild(el("div", null, "Singular"));
+      head.appendChild(el("div", null, "Plural (auto — editable)"));
+      body.appendChild(head);
+
+      function addRow(scope, key, one, many) {
         const r = el("div", "lbl-row");
-        r.appendChild(el("div", "lbl-key", esc(key)));
         const o = el("input", "input"); o.value = one || ""; o.placeholder = "Singular";
         const m = el("input", "input"); m.value = many || ""; m.placeholder = "Plural";
+        m.title = "Auto-generated from the singular — edit for irregulars (e.g. Person → People)";
         r.appendChild(o); r.appendChild(m);
-        g.appendChild(r);
-        rows.push({ key: key, scope: scope, oneEl: o, manyEl: m });
+        body.appendChild(r);
+        // If the stored plural already matches the auto-rule, keep auto-tracking;
+        // if it's a custom/irregular plural, treat it as user-set (don't clobber).
+        const row = { key: key, scope: scope, oneEl: o, manyEl: m, touched: !!(many && many !== pluralize(one)) };
+        o.addEventListener("input", () => { if (!row.touched) m.value = pluralize(o.value); });
+        m.addEventListener("input", () => { row.touched = true; });
+        rows.push(row);
       }
 
-      const gTypes = group("Object names", "Your main record types.");
+      // Record types first (their singular is the type's label), then generic words.
       (types || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((t) => {
-        addRow(gTypes, "type", t.key, t.label || "", t.labelPlural || t.label || "");
+        addRow("type", t.key, t.label || "", t.labelPlural || pluralize(t.label || ""));
       });
-      body.appendChild(gTypes);
-
-      const gGen = group("Other words");
       GENERIC_WORDS.forEach((w) => {
         const cur = generic[w.key] || {};
-        addRow(gGen, "generic", w.key, cur.one || w.dflt.one, cur.many || w.dflt.many);
+        addRow("generic", w.key, cur.one || w.dflt.one, cur.many || w.dflt.many);
       });
-      body.appendChild(gGen);
 
       const saveBtn = el("button", "btn btn-primary btn-sm", "Save labels");
       saveBtn.style.marginTop = "16px";
@@ -1691,8 +1698,9 @@
         const payload = { types: {}, generic: {} };
         for (const row of rows) {
           const one = row.oneEl.value.trim();
-          const many = row.manyEl.value.trim();
-          if (!one || !many) { toast(`Both singular and plural are required (check “${row.key}”)`, true); return; }
+          let many = row.manyEl.value.trim();
+          if (!one) { toast("Each word needs a singular name", true); return; }
+          if (!many) many = pluralize(one); // derive if the user cleared it
           payload[row.scope === "type" ? "types" : "generic"][row.key] = { one: one, many: many };
         }
         try {
