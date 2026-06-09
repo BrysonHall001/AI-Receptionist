@@ -1182,6 +1182,14 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .swimlane-type { flex: 0 0 auto; }
 .kanban-col--current { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .kanban-col--current .kanban-col-name { color: var(--accent); }
+/* List/table dashboard widget + its column picker */
+.w-list-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.w-list-col { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); }
+.widget-list { overflow: auto; max-height: 100%; }
+.widget-list table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.widget-list th { text-align: left; font-weight: 600; color: var(--ink-soft); padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+.widget-list td { padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.widget-list-more { padding: 6px 8px; color: var(--ink-faint); font-size: 12px; }
 
 /* ======================================================================
    Settings sub-shell — two-pane layout inside the settings view only.

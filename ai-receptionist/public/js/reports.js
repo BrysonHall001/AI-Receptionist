@@ -88,7 +88,46 @@
     if (!hideScales) o.scales = { x: { stacked: !!stacked, ticks: { maxRotation: 60, minRotation: 0, autoSkip: true, callback: function (v) { const lab = this.getLabelForValue ? this.getLabelForValue(v) : v; return (typeof lab === "string" && lab.length > 18) ? lab.slice(0, 17) + "…" : lab; } } }, y: { stacked: !!stacked, beginAtZero: true } };
     return o;
   }
+  function defaultListColumns(src) { return (src.reportFields || []).slice(0, 4).map((f) => f.key); }
+
+  // List / table widget — reuses the report engine's columns (buildColumns) and
+  // the SAME filter pipeline (App.table.pipeline) as the Contacts table, then
+  // renders a compact, read-only table of the chosen columns. Recent-first when
+  // the source has a date field, so a fresh one mirrors a "recent rows" feed.
+  function renderListWidget(host, w, src, rows, fields) {
+    const { el, esc } = U();
+    host.innerHTML = "";
+    const byKey = {}; fields.forEach((f) => { byKey[f.key] = f; });
+    const chosenKeys = (Array.isArray(w.columns) && w.columns.length ? w.columns : defaultListColumns(src)).filter((k) => byKey[k]);
+    if (!chosenKeys.length) { host.appendChild(el("div", "cell-muted", "No columns selected.")); return; }
+    const allCols = buildColumns(src, fields);
+    const colByKey = {}; allCols.forEach((c) => { colByKey[c.key] = c; });
+    const filtered = (App.table && App.table.pipeline) ? App.table.pipeline(rows, allCols, { rules: w.filters || [] }) : rows.slice();
+    const dateField = fields.find((f) => f.type === "date");
+    let out = filtered.slice();
+    if (dateField) out.sort((a, b) => { const av = new Date(valueOf(src, a, dateField.key) || 0).getTime(); const bv = new Date(valueOf(src, b, dateField.key) || 0).getTime(); return bv - av; });
+    const limit = (w.limit && w.limit > 0) ? w.limit : 50;
+    const total = out.length;
+    out = out.slice(0, limit);
+    const box = el("div", "widget-list");
+    const table = el("table");
+    const thead = el("thead"); const htr = el("tr");
+    chosenKeys.forEach((k) => htr.appendChild(el("th", null, esc(byKey[k].label))));
+    thead.appendChild(htr); table.appendChild(thead);
+    const tb = el("tbody");
+    if (!out.length) { const tr = el("tr"); const td = el("td", "cell-muted", "No rows."); td.colSpan = chosenKeys.length; tr.appendChild(td); tb.appendChild(tr); }
+    else out.forEach((r) => {
+      const tr = el("tr");
+      chosenKeys.forEach((k) => { const c = colByKey[k]; const v = c ? scalar(c.text ? c.text(r) : c.get(r)) : ""; tr.appendChild(el("td", null, esc(v == null ? "" : String(v)))); });
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb); box.appendChild(table);
+    if (total > out.length) box.appendChild(el("div", "widget-list-more", "Showing " + out.length + " of " + total));
+    host.appendChild(box);
+  }
+
   function renderWidgetBody(host, w, src, rows, fields, charts) {
+    if (w.type === "list") { renderListWidget(host, w, src, rows, fields); return; }
     const agg = aggregate(src, rows, fields, w);
     host.innerHTML = "";
     const { el, esc } = U();
@@ -185,12 +224,23 @@
         defaultGroupByKey: "stageLabel",
       };
     }
+    // Calls source — the call log as a reportable dataset (all fields top-level).
+    function buildCallsSource(calls) {
+      const reportFields = [
+        { key: "name", label: "Caller", type: "text" },
+        { key: "phone", label: "Phone", type: "text" },
+        { key: "intent", label: "Reason", type: "text" },
+        { key: "status", label: "Status", type: "text" },
+        { key: "createdAt", label: "Time Created", type: "date" },
+      ];
+      return { key: "calls", label: "Calls", topLevel: ["name", "phone", "intent", "status", "createdAt"], rows: calls || [], reportFields: reportFields };
+    }
 
     async function boot() {
       host.innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`;
       try {
         const dashReq = opts.home ? App.portalApi("/api/dashboards/home") : App.portalApi("/api/dashboards");
-        const [d, contacts, contactFields, recordTypes, pipeline] = await Promise.all([
+        const [d, contacts, contactFields, recordTypes, pipeline, calls] = await Promise.all([
           dashReq,
           App.portalApi("/api/contacts"),
           App.portalApi("/api/fields"),
@@ -198,6 +248,7 @@
           // Defensive: if the pipeline route isn't present yet, the funnel source
           // is simply empty rather than breaking the whole Reports page.
           App.portalApi("/api/pipeline").catch(() => []),
+          App.portalApi("/api/calls").catch(() => []),
         ]);
         state.dashboards = opts.home ? [d] : d;
 
@@ -214,6 +265,8 @@
         loaded.forEach((s) => { sources[s.key] = s; });
         // Pipeline / Funnel source (one row per contact-in-a-policy link).
         sources.pipeline = buildFunnelSource(Array.isArray(pipeline) ? pipeline : [], contactFields);
+        // Calls source (powers the List widget's "recent calls" feed and more).
+        sources.calls = buildCallsSource(Array.isArray(calls) ? calls : []);
         state.sources = sources;
       } catch (e) { host.innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return api; }
       if (!state.currentId && state.dashboards.length) state.currentId = state.dashboards[0].id;
@@ -435,12 +488,13 @@
           <label class="field-label">Data source</label>
           <select id="w-source" class="input">${sourceOptions().map((o) => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join("")}</select>
           <label class="field-label">Type</label>
-          <select id="w-type" class="input"><option value="kpi">KPI (single number)</option><option value="bar">Bar chart</option><option value="stacked">Stacked bar</option><option value="line">Line chart</option><option value="pie">Pie chart</option><option value="heatmap">Heat map</option></select>
-          <label class="field-label">Measure</label>
+          <select id="w-type" class="input"><option value="kpi">KPI (single number)</option><option value="bar">Bar chart</option><option value="stacked">Stacked bar</option><option value="line">Line chart</option><option value="pie">Pie chart</option><option value="heatmap">Heat map</option><option value="list">List / table</option></select>
+          <div id="w-measure-wrap"><label class="field-label">Measure</label>
           <div class="w-row"><select id="w-mop" class="input"><option value="count">Count</option><option value="sum">Sum of…</option><option value="avg">Average of…</option></select>
-          <select id="w-mfield" class="input" style="display:none"></select></div>
+          <select id="w-mfield" class="input" style="display:none"></select></div></div>
           <div id="w-group-wrap"><label class="field-label">Group by</label><div id="w-group"></div></div>
           <div id="w-series-wrap" style="display:none"><label class="field-label" id="w-series-label">Stack by</label><div id="w-series"></div></div>
+          <div id="w-list-wrap" style="display:none"><label class="field-label">Columns</label><div id="w-list-cols" class="w-list-cols"></div></div>
           <label class="field-label">Filters</label><div id="w-filters"></div>
           <div class="w-preview-label">Preview</div><div id="w-preview" class="w-preview"></div>
           <button id="w-save" class="btn btn-primary btn-block">${existing ? "Save widget" : "Add widget"}</button>
@@ -451,7 +505,20 @@
       $("#w-type").value = w.type; $("#w-mop").value = w.measure.op;
 
       function curSource() { return state.sources[curSrcKey] || state.sources.contacts; }
-      let groupEd, seriesEd;
+      let groupEd, seriesEd, listColsEd;
+      // A simple checkbox column picker for the List widget (mirrors the manage-
+      // columns pattern); chosen keys are stored in the widget JSON as w.columns.
+      function listColsEditor(hostEl, flds, chosen, onChange) {
+        const sel = new Set(chosen || []); const boxes = [];
+        flds.forEach((f) => {
+          const lab = el("label", "w-list-col");
+          const cb = el("input"); cb.type = "checkbox"; cb.value = f.key; if (sel.has(f.key)) cb.checked = true;
+          cb.onchange = () => onChange && onChange();
+          lab.appendChild(cb); lab.appendChild(document.createTextNode(" " + f.label));
+          hostEl.appendChild(lab); boxes.push(cb);
+        });
+        return { getCols: () => boxes.filter((b) => b.checked).map((b) => b.value) };
+      }
       // (Re)build every source-dependent control from the chosen source's fields.
       // initial=true restores the widget's saved selections; a manual source
       // switch (initial=false) clears them, since field keys differ per source.
@@ -472,9 +539,20 @@
         seriesEd = dimListEditor($("#w-series"), src.reportFields, initial ? toDims(w.series, w.seriesDate) : [], () => preview());
         $("#w-filters").innerHTML = "";
         $("#w-filters").appendChild(App.table.ruleEditor(buildColumns(src, src.reportFields), src.rows, w.filters, () => preview()));
+        $("#w-list-cols").innerHTML = "";
+        const colInit = (initial && Array.isArray(w.columns) && w.columns.length) ? w.columns : defaultListColumns(src);
+        listColsEd = listColsEditor($("#w-list-cols"), src.reportFields, colInit, () => preview());
       }
-      function sync() { const t = $("#w-type").value; $("#w-mfield").style.display = $("#w-mop").value === "count" ? "none" : "block"; $("#w-group-wrap").style.display = t === "kpi" ? "none" : "block"; const ns = t === "stacked" || t === "heatmap"; $("#w-series-wrap").style.display = ns ? "block" : "none"; $("#w-series-label").textContent = t === "heatmap" ? "Rows (second dimension)" : "Stack by"; preview(); }
-      function collect() { const t = $("#w-type").value; const mop = $("#w-mop").value; return { id: w.id, title: $("#w-title").value.trim() || "Untitled", source: curSrcKey, type: t, measure: mop === "count" ? { op: "count" } : { op: mop, field: $("#w-mfield").value }, groupBy: t === "kpi" ? [] : groupEd.getDims(), series: (t === "stacked" || t === "heatmap") ? seriesEd.getDims() : [], filters: w.filters, cw: w.cw, ch: w.ch }; }
+      function sync() { const t = $("#w-type").value; const isList = t === "list"; $("#w-measure-wrap").style.display = isList ? "none" : "block"; $("#w-mfield").style.display = (!isList && $("#w-mop").value !== "count") ? "block" : "none"; $("#w-group-wrap").style.display = (isList || t === "kpi") ? "none" : "block"; const ns = t === "stacked" || t === "heatmap"; $("#w-series-wrap").style.display = ns ? "block" : "none"; $("#w-series-label").textContent = t === "heatmap" ? "Rows (second dimension)" : "Stack by"; $("#w-list-wrap").style.display = isList ? "block" : "none"; preview(); }
+      function collect() {
+        const t = $("#w-type").value; const mop = $("#w-mop").value;
+        const base = { id: w.id, title: $("#w-title").value.trim() || "Untitled", source: curSrcKey, type: t, filters: w.filters, cw: w.cw, ch: w.ch };
+        if (t === "list") { base.columns = listColsEd ? listColsEd.getCols() : []; base.measure = { op: "count" }; base.groupBy = []; base.series = []; return base; }
+        base.measure = mop === "count" ? { op: "count" } : { op: mop, field: $("#w-mfield").value };
+        base.groupBy = t === "kpi" ? [] : groupEd.getDims();
+        base.series = (t === "stacked" || t === "heatmap") ? seriesEd.getDims() : [];
+        return base;
+      }
       function preview() { previewCharts.forEach((c) => { try { c.destroy(); } catch (e) {} }); previewCharts = []; try { const s = curSource(); renderWidgetBody($("#w-preview"), collect(), s, s.rows, s.reportFields, previewCharts); } catch (e) { $("#w-preview").innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; } }
       $("#w-source").addEventListener("change", () => { curSrcKey = $("#w-source").value; rebuildForSource(false); sync(); });
       ["#w-type", "#w-mop", "#w-mfield", "#w-title"].forEach((s) => { $(s).addEventListener("change", sync); $(s).addEventListener("input", preview); });
