@@ -29,7 +29,7 @@
     if (typeof v === "string" && v) return [{ key: v, date: legacyDate }];
     return [];
   }
-  function dimMeta(fields, dim) { const f = fields.find((x) => x.key === dim.key) || { key: dim.key, label: dim.key, type: "text" }; return { key: f.key, label: f.label, type: f.type, bucket: dim.date }; }
+  function dimMeta(fields, dim) { const f = fields.find((x) => x.key === dim.key) || { key: dim.key, label: dim.key, type: "text" }; return { key: f.key, label: f.label, type: f.type, bucket: dim.date, catOrder: f.catOrder || null }; }
   function oneLabel(src, c, dm) {
     const v = valueOf(src, c, dm.key);
     if (dm.type === "date") return v ? bucketDate(v, dm.bucket || "month") : "(none)";
@@ -58,9 +58,17 @@
     const groupDims = toDims(w.groupBy, w.groupByDate);
     if (!groupDims.length) return { kind: "kpi", value: measureValue(src, filtered, measure) };
     const seriesDims = toDims(w.series, w.seriesDate);
+    // When the (single) group dimension is an ordered category (e.g. pipeline
+    // stage), sort by that order instead of by count/alpha. Generic: any field
+    // can carry a catOrder map {label: index}; nothing is funnel-specific here.
+    const single = groupDims.length === 1 ? dimMeta(fields, groupDims[0]) : null;
+    const catOrder = single && single.catOrder ? single.catOrder : null;
+    const catRank = (lab) => { const r = catOrder ? catOrder[lab] : undefined; return (r === undefined || r === null) ? 1e9 : r; };
     if (w.type === "stacked" || w.type === "heatmap") {
       const xMap = groupRows(src, filtered, groupDims, fields);
-      let labels = Array.from(xMap.keys()).sort(); if (labels.length > CAP) labels = labels.slice(0, CAP);
+      let labels = Array.from(xMap.keys());
+      labels.sort(catOrder ? (a, b) => (catRank(a) - catRank(b)) || String(a).localeCompare(String(b)) : undefined);
+      if (labels.length > CAP) labels = labels.slice(0, CAP);
       const seriesNames = seriesDims.length ? Array.from(new Set(filtered.map((r) => compoundLabel(src, r, seriesDims, fields)))).sort().slice(0, CAP) : ["All"];
       const series = seriesNames.map((sn) => ({ name: sn, data: labels.map((lab) => { const rws = (xMap.get(lab) || []).filter((r) => !seriesDims.length || compoundLabel(src, r, seriesDims, fields) === sn); return measureValue(src, rws, measure); }) }));
       if (w.type === "heatmap") { let max = 0; series.forEach((s) => s.data.forEach((v) => { if (v > max) max = v; })); return { kind: "heatmap", cols: labels, rows: seriesNames, series, max }; }
@@ -68,8 +76,8 @@
     }
     const map = groupRows(src, filtered, groupDims, fields);
     let entries = Array.from(map.entries()).map(([label, rws]) => [label, measureValue(src, rws, measure)]);
-    const isDate = groupDims.length === 1 && dimMeta(fields, groupDims[0]).type === "date";
-    entries.sort((a, b) => (isDate ? String(a[0]).localeCompare(String(b[0])) : b[1] - a[1]));
+    const isDate = single && single.type === "date";
+    entries.sort((a, b) => (catOrder ? (catRank(a[0]) - catRank(b[0])) || String(a[0]).localeCompare(String(b[0])) : (isDate ? String(a[0]).localeCompare(String(b[0])) : b[1] - a[1])));
     if (entries.length > CAP) entries = entries.slice(0, CAP);
     return { kind: "series", labels: entries.map((e) => e[0]), data: entries.map((e) => e[1]), measureLabel: measureLabel(measure, fields) };
   }
@@ -145,16 +153,48 @@
         reportFields: reportFields,
       };
     }
+    // Pipeline / Funnel source: one row per contact-in-a-policy link. Stage is an
+    // ORDERED category (catOrder = stage label -> pipeline-order index) so the
+    // funnel shows stages in pipeline order. Contact CUSTOM fields are pickable
+    // too (read from row.customFields); contact system fields are represented by
+    // the explicit "Contact name" top-level field.
+    function buildFunnelSource(rows, contactFields) {
+      const order = {};
+      (rows || []).forEach((r) => {
+        const k = r.stageLabel; const o = (typeof r.stageOrder === "number") ? r.stageOrder : 9999;
+        if (k != null && (!(k in order) || o < order[k])) order[k] = o;
+      });
+      const customContact = (contactFields || []).filter((f) => f && !f.system);
+      const reportFields = [
+        { key: "stageLabel", label: "Stage", type: "text", catOrder: order },
+        { key: "recordTypeLabel", label: "Policy / record type", type: "text" },
+        { key: "recordStatusLabel", label: "Record status", type: "text" },
+        { key: "subtypeLabel", label: "Type", type: "text" },
+        { key: "contactName", label: "Contact name", type: "text" },
+        { key: "createdAt", label: "Time Created", type: "date" },
+      ].concat(customContact);
+      return {
+        key: "pipeline",
+        label: "Pipeline / Funnel",
+        topLevel: ["stageLabel", "stageKey", "stageOrder", "recordTypeLabel", "recordStatusLabel", "subtypeLabel", "contactName", "contactIntent", "createdAt"],
+        rows: rows || [],
+        reportFields: reportFields,
+        defaultGroupByKey: "stageLabel",
+      };
+    }
 
     async function boot() {
       host.innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`;
       try {
         const dashReq = opts.home ? App.portalApi("/api/dashboards/home") : App.portalApi("/api/dashboards");
-        const [d, contacts, contactFields, recordTypes] = await Promise.all([
+        const [d, contacts, contactFields, recordTypes, pipeline] = await Promise.all([
           dashReq,
           App.portalApi("/api/contacts"),
           App.portalApi("/api/fields"),
           App.portalApi("/api/record-types"),
+          // Defensive: if the pipeline route isn't present yet, the funnel source
+          // is simply empty rather than breaking the whole Reports page.
+          App.portalApi("/api/pipeline").catch(() => []),
         ]);
         state.dashboards = opts.home ? [d] : d;
 
@@ -169,6 +209,8 @@
           return buildRecordSource(rt, Array.isArray(rows) ? rows : [], Array.isArray(fields) ? fields : []);
         }));
         loaded.forEach((s) => { sources[s.key] = s; });
+        // Pipeline / Funnel source (one row per contact-in-a-policy link).
+        sources.pipeline = buildFunnelSource(Array.isArray(pipeline) ? pipeline : [], contactFields);
         state.sources = sources;
       } catch (e) { host.innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return api; }
       if (!state.currentId && state.dashboards.length) state.currentId = state.dashboards[0].id;
@@ -415,7 +457,11 @@
         $("#w-mop").options[0].textContent = "Count of " + String(src.label || "records").toLowerCase();
         if (!initial) w.filters = [];
         $("#w-group").innerHTML = ""; $("#w-series").innerHTML = "";
-        groupEd = dimListEditor($("#w-group"), src.reportFields, initial ? toDims(w.groupBy, w.groupByDate) : [], () => preview());
+        // On a manual source switch, prefill the source's natural group-by (the
+        // funnel declares Stage) so the common case is one click. Editing an
+        // existing widget restores its saved dimensions instead.
+        const gInit = initial ? toDims(w.groupBy, w.groupByDate) : (src.defaultGroupByKey ? [{ key: src.defaultGroupByKey }] : []);
+        groupEd = dimListEditor($("#w-group"), src.reportFields, gInit, () => preview());
         seriesEd = dimListEditor($("#w-series"), src.reportFields, initial ? toDims(w.series, w.seriesDate) : [], () => preview());
         $("#w-filters").innerHTML = "";
         $("#w-filters").appendChild(App.table.ruleEditor(buildColumns(src, src.reportFields), src.rows, w.filters, () => preview()));

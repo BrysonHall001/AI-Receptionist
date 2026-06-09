@@ -8,6 +8,7 @@ import { listSections, createSection, renameSection, reorderSections, deleteSect
 import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels } from "../services/recordTypeService";
 import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
+import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
 import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
@@ -693,6 +694,17 @@ apiRouter.get("/contacts/:id/links", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const type = req.query.type ? String(req.query.type) : null;
   res.json(await listLinksForContact(tenantId, req.params.id, type));
+});
+
+// ---- Pipeline / Funnel read model (records reporting). One row per active
+// contact-in-a-policy link, with its current stage (key + label + pipeline
+// order), the parent record's type/status/subtype, and the linked contact's
+// fields - enough for the report engine to group/filter on all of them.
+// Tenant-scoped like everything else; reads existing columns only. ----
+apiRouter.get("/pipeline", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listPipelineLinks(tenantId));
 });
 
 apiRouter.get("/fields", async (req: Request, res: Response) => {
