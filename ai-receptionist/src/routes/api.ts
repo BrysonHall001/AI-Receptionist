@@ -17,7 +17,7 @@ import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listExports, createExport, getExportCsv } from "../services/exportService";
-import { updatePortal, getPortal, setTenantLabels, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
+import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns } from "../services/userService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
@@ -406,7 +406,7 @@ apiRouter.get("/labels", async (req: Request, res: Response) => {
   // defaults — never a 400/console error.
   const tenantId = resolveTenantScope(req);
   if (!tenantId) {
-    res.json({ types: {}, generic: {} });
+    res.json({ types: {}, generic: {}, nav: { order: [], hidden: [], labels: {} } });
     return;
   }
   const types: Record<string, { one: string; many: string }> = {};
@@ -414,7 +414,20 @@ apiRouter.get("/labels", async (req: Request, res: Response) => {
     if (rt && rt.key) types[rt.key] = { one: rt.label, many: rt.labelPlural || rt.label };
   }
   const portal = await getPortal(tenantId);
-  res.json({ types, generic: (portal && (portal as any).labels) || {} });
+  // Tenant.labels holds BOTH the generic noun overrides AND a reserved `nav` key.
+  // Split them: `generic` is what App.label() reads (must NOT contain `nav`), and
+  // `nav` is surfaced on its own for the nav renderer + the Settings editor.
+  const allLabels = (portal && (portal as any).labels && typeof (portal as any).labels === "object") ? { ...(portal as any).labels } : {};
+  const navRaw = allLabels.nav;
+  delete allLabels.nav;
+  const nav = navRaw && typeof navRaw === "object"
+    ? {
+        order: Array.isArray(navRaw.order) ? navRaw.order : [],
+        hidden: Array.isArray(navRaw.hidden) ? navRaw.hidden : [],
+        labels: navRaw.labels && typeof navRaw.labels === "object" ? navRaw.labels : {},
+      }
+    : { order: [], hidden: [], labels: {} };
+  res.json({ types, generic: allLabels, nav });
 });
 
 // Save per-portal labels (the Labels editor). Portal-scoped + admin-only.
@@ -441,6 +454,9 @@ apiRouter.patch("/labels", async (req: Request, res: Response) => {
     }
     if (body.generic && typeof body.generic === "object") {
       await setTenantLabels(tenantId, body.generic);
+    }
+    if (body.nav && typeof body.nav === "object") {
+      await setTenantNav(tenantId, body.nav);
     }
     res.json({ ok: true });
   } catch (err) {

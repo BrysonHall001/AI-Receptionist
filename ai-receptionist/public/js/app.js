@@ -34,6 +34,43 @@
   const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"]];
   const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"]];
 
+  // ---- Per-portal nav config (single source of truth = App.state.labels.nav) ----
+  // Read by the sidebar here and, later, by the per-row nav menu. Order, hide, and
+  // per-href label overrides all live in one object so there's never a second store.
+  App.navConfig = function () {
+    const n = (App.state.labels && App.state.labels.nav) || {};
+    return {
+      order: Array.isArray(n.order) ? n.order : [],
+      hidden: Array.isArray(n.hidden) ? n.hidden : [],
+      labels: (n.labels && typeof n.labels === "object") ? n.labels : {},
+    };
+  };
+  // Home Dashboard is never hideable, so there's always a landing page.
+  App.isNavHidden = function (href) {
+    if (href === "#/dashboard") return false;
+    return App.navConfig().hidden.indexOf(href) !== -1;
+  };
+  // Display text for a nav item: record-type items (kind set) keep flowing through
+  // the labels system; the fixed items use the per-portal override, falling back to
+  // the built-in literal when there's no override.
+  App.navLabel = function (href, label, kind) {
+    if (kind) return App.label(kind, "many");
+    const o = App.navConfig().labels[href];
+    return (o && String(o).trim()) ? o : label;
+  };
+  // Apply order + hide to a nav list. Items named in cfg.order come first in that
+  // order; any remaining default items keep their original relative order (so a
+  // newly-shipped nav item still shows even under an older saved order). Hidden
+  // items are dropped — except Home Dashboard, which always stays.
+  App.applyNavConfig = function (navList) {
+    const cfg = App.navConfig();
+    const byHref = {}; navList.forEach((it) => { byHref[it[0]] = it; });
+    const seen = {}; const ordered = [];
+    cfg.order.forEach((href) => { if (byHref[href] && !seen[href]) { ordered.push(byHref[href]); seen[href] = true; } });
+    navList.forEach((it) => { if (!seen[it[0]]) { ordered.push(it); seen[it[0]] = true; } });
+    return ordered.filter((it) => it[0] === "#/dashboard" || cfg.hidden.indexOf(it[0]) === -1);
+  };
+
   function buildShell(section, activePath) {
     const me = App.state.me;
     const root = App.util.$("#app");
@@ -52,9 +89,10 @@
     side.appendChild(brand);
 
     const nav = el("nav", "sidebar-nav");
-    const items = section === "admin" ? ADMIN_NAV : PORTAL_NAV;
+    const isAdmin = section === "admin";
+    const items = isAdmin ? ADMIN_NAV : App.applyNavConfig(PORTAL_NAV);
     items.forEach(([href, label, kind]) => {
-      const text = kind ? App.label(kind, "many") : label;
+      const text = isAdmin ? (kind ? App.label(kind, "many") : label) : App.navLabel(href, label, kind);
       const a = el("a", "nav-item" + (href === activePath ? " active" : ""), esc(text));
       a.href = href;
       nav.appendChild(a);
@@ -180,6 +218,9 @@
     const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/settings": "settings" };
     if (portalViews[path]) {
       if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
+      // If this page has been hidden from the nav for this portal, send the user
+      // to the always-present Home Dashboard rather than a page with no way back.
+      if (App.isNavHidden && App.isNavHidden("#" + path)) return App.go("#/dashboard");
       buildShell("portal", path === "/settings" ? "#/settings" : "#" + path);
       return App.portal.render(portalViews[path]);
     }

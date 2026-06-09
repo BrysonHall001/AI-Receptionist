@@ -198,7 +198,7 @@
   App.loadLabels = async function () {
     try {
       const data = await portalApi("/api/labels");
-      App.state.labels = { types: data.types || {}, generic: data.generic || {} };
+      App.state.labels = { types: data.types || {}, generic: data.generic || {}, nav: data.nav || { order: [], hidden: [], labels: {} } };
     } catch (e) { /* keep whatever we had; defaults still work */ }
     return App.state.labels;
   };

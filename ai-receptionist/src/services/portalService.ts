@@ -58,6 +58,39 @@ export async function setTenantLabels(
   return current;
 }
 
+// Per-portal left-nav config, stored as a reserved `nav` key INSIDE Tenant.labels
+// (so there's no schema change / no migration). Shape:
+//   { order: string[], hidden: string[], labels: { [href]: string } }
+// - order:  preferred nav item order, by href ("#/calls", ...). Unknown/new hrefs
+//           simply fall back to their default position on the client.
+// - hidden: hrefs the portal has hidden. Home Dashboard (#/dashboard) can NEVER be
+//           hidden, so it's stripped here defensively even if a client sends it.
+// - labels: per-href display overrides for the fixed nav items (Calls/Reports/etc.).
+//           A blank value means "use the built-in default", so we just don't store it.
+// This is the single source of truth the later per-row nav menu will read/write too.
+export const NAV_HOME_HREF = "#/dashboard";
+export async function setTenantNav(
+  tenantId: string,
+  nav: { order?: string[]; hidden?: string[]; labels?: Record<string, string> }
+) {
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!t) throw new Error("Portal not found");
+  const current = (t as any).labels && typeof (t as any).labels === "object" ? { ...(t as any).labels } : {};
+  const order = Array.isArray(nav.order) ? nav.order.filter((h) => typeof h === "string") : [];
+  const hidden = (Array.isArray(nav.hidden) ? nav.hidden.filter((h) => typeof h === "string") : [])
+    .filter((h) => h !== NAV_HOME_HREF);
+  const labels: Record<string, string> = {};
+  if (nav.labels && typeof nav.labels === "object") {
+    for (const [href, val] of Object.entries(nav.labels)) {
+      const s = String(val == null ? "" : val).trim();
+      if (s) labels[href] = s;
+    }
+  }
+  current.nav = { order, hidden, labels };
+  await prisma.tenant.update({ where: { id: tenantId }, data: { labels: current } as any });
+  return current.nav;
+}
+
 export async function createPortal(input: {
   name: string;
   businessType?: string;
