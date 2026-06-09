@@ -1,1 +1,3 @@
 *.zip
+.bak-*
+_root_junk_backup/
