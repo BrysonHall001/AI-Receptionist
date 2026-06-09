@@ -576,6 +576,7 @@
     let handle;
     handle = App.table.mount({
       container: tableHost, columns, rows: deleted, selectable: true, rowId: (r) => r.id,
+      onRowClick: (r) => App.go("#/contact/" + r.id),
       onSelectionChange: (ids) => { rc.textContent = ids.length ? `${ids.length} selected` : ""; },
       defaultSort: "createdAt", defaultSortDir: "desc",
       emptyHtml: `<div class="empty"><div class="empty-emoji">&#128465;</div><h3>Recycle Bin is empty</h3><p>Deleted contacts will appear here for 30 days.</p></div>`,
@@ -625,7 +626,7 @@
       save.onclick = async () => {
         const def = handle.getState();
         if (!def.rules.length && !Object.keys(def.colFilters).length && !def.search) { App.util.toast("Set some filters first", true); return; }
-        const name = prompt("Name this filter:");
+        const name = await promptModal({ title: "Save filter", label: "Name this filter", okText: "Save" });
         if (!name || !name.trim()) return;
         try { await App.portalApi("/api/saved-filters", { method: "POST", body: JSON.stringify({ name: name.trim(), view: viewName, definition: def }) }); App.util.toast("Filter saved"); load(); }
         catch (err) { App.util.toast(err.message, true); }
@@ -838,7 +839,7 @@
       bar.appendChild(add);
       const addSec = el("button", "btn btn-ghost btn-sm", "+ Add section");
       addSec.onclick = async () => {
-        const name = prompt("Name this section (e.g. Contact details, Pipeline):");
+        const name = await promptModal({ title: "Add a section", label: "Section name", placeholder: "e.g. Contact details, Pipeline", okText: "Add" });
         if (!name || !name.trim()) return;
         try { await App.portalApi("/api/field-sections", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Section added"); renderFields(true); }
         catch (e) { App.util.toast(e.message, true); }
@@ -920,7 +921,7 @@
         const up = el("button", "btn btn-ghost btn-sm", "↑"); up.title = "Move section up"; up.disabled = idx === 0; up.onclick = () => moveSection(idx, -1);
         const down = el("button", "btn btn-ghost btn-sm", "↓"); down.title = "Move section down"; down.disabled = idx === sorted.length - 1; down.onclick = () => moveSection(idx, 1);
         const ren = el("button", "btn btn-ghost btn-sm", "Rename");
-        ren.onclick = async () => { const name = prompt("Rename section:", section.label); if (!name || !name.trim()) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "PATCH", body: JSON.stringify({ label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
+        ren.onclick = async () => { const name = await promptModal({ title: "Rename section", label: "Section name", value: section.label, okText: "Rename" }); if (!name || !name.trim()) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "PATCH", body: JSON.stringify({ label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
         const del = el("button", "link-danger", "Delete");
         del.onclick = async () => { if (!confirm(`Delete section “${section.label}”? Its fields move to Ungrouped — no fields are deleted.`)) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "DELETE" }); App.util.toast("Section deleted"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
         tools.appendChild(up); tools.appendChild(down); tools.appendChild(ren); tools.appendChild(del);
@@ -1867,6 +1868,10 @@
       setTimeout(() => { input.focus(); input.select(); }, 0);
     });
   }
+  // Expose the ONE styled prompt component so other modules (reports, compose,
+  // theme) reuse it instead of native prompt() — no second component invented.
+  App.ui = App.ui || {};
+  App.ui.promptModal = promptModal;
 
   // Styled modal shown when a record-level Status delete is BLOCKED. Lists the
   // records holding it (linked to their profiles) and the automations that

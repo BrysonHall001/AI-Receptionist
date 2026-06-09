@@ -246,7 +246,7 @@
 
       saveBtn.onclick = async () => {
         readEditor();
-        let name = window.prompt("Name this theme:", "");
+        let name = await App.ui.promptModal({ title: "Save theme", label: "Name this theme", okText: "Save" });
         if (name === null) return; // cancelled
         name = String(name).replace(/[<>]/g, "").trim().slice(0, MAX_NAME);
         if (!name) name = "My theme";

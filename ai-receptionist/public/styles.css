@@ -1051,7 +1051,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .learn-link { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 8px 10px; font-size: 13.5px; color: var(--ink-soft); cursor: pointer; }
 .learn-link:hover { background: var(--gray-soft); color: var(--ink); }
 .learn-link.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.learn-article { padding: 26px 30px; max-width: 760px; }
+.learn-article { padding: 26px 30px; max-width: none; }
 .learn-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 6px; }
 .learn-article-title { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 14px; }
 .learn-p { color: var(--ink-soft); line-height: 1.65; margin: 0 0 14px; }

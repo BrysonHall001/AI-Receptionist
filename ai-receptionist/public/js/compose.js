@@ -117,7 +117,7 @@
       tplMenu.appendChild(el("div", "pop-sep"));
       const save = el("button", "saved-save", "+ Save current as template");
       save.onclick = async () => {
-        const name = prompt("Name this template:");
+        const name = await App.ui.promptModal({ title: "Save template", label: "Template name", okText: "Save" });
         if (!name || !name.trim()) return;
         const payload = kind === "email"
           ? { name: name.trim(), kind: "email", subject: subjectInput ? subjectInput.value : "", body: api.getHTML() }
