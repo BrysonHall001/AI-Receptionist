@@ -19,98 +19,14 @@
     if (v === "automations") return App.automations.render(view());
     if (v === "learn") return App.learn.render(view());
     if (v === "settings") return renderSettings(sub);
-    return renderDashboard();
+    return App.reports.mountHome(view());
   }
   function refresh() { return render(current); }
 
   function loading() { view().innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`; }
 
   // ---------------- Dashboard ----------------
-  async function renderDashboard() {
-    loading();
-    const [stats, contacts, calls] = await Promise.all([
-      App.portalApi("/api/stats").catch(() => ({})),
-      App.portalApi("/api/contacts").catch(() => []),
-      App.portalApi("/api/calls").catch(() => []),
-    ]);
-    const wrap = el("div", "fade-in");
-
-    const hi = el("div", "today-head");
-    hi.innerHTML = `<h1 class="today-title">Today</h1><p class="cell-muted">A quick overview of your CRM. Jump into a section from the left, or the links below.</p>`;
-    wrap.appendChild(hi);
-
-    // KPI row (reuses the .kpi widget styling from Reports)
-    const kpis = [
-      { label: App.label("contact", "many"), value: stats.leads != null ? stats.leads : (contacts.length || 0), href: "#/contacts" },
-      { label: "Total calls", value: stats.totalCalls != null ? stats.totalCalls : (calls.length || 0), href: "#/calls" },
-      { label: "Completed calls", value: stats.completed != null ? stats.completed : 0, href: "#/calls" },
-      { label: "Calls today", value: stats.today != null ? stats.today : 0, href: "#/calls" },
-    ];
-    const kpiRow = el("div", "kpi-row");
-    kpis.forEach((k) => {
-      const card = el("a", "card kpi-card");
-      card.href = k.href;
-      const kp = el("div", "kpi");
-      kp.appendChild(el("div", "kpi-value", String(k.value)));
-      kp.appendChild(el("div", "kpi-label", k.label));
-      card.appendChild(kp);
-      kpiRow.appendChild(card);
-    });
-    wrap.appendChild(kpiRow);
-
-    const cols = el("div", "today-cols");
-
-    // Recent contacts
-    const cContacts = el("div", "card today-card");
-    const ch = el("div", "section-head");
-    ch.appendChild(el("h2", null, "Recent " + App.label("contact", "many").toLowerCase()));
-    const cl = el("a", "muted-link", "View all →"); cl.href = "#/contacts"; ch.appendChild(cl);
-    cContacts.appendChild(ch);
-    if (!contacts.length) {
-      cContacts.appendChild(el("p", "cell-muted", (`No ${App.label("contact","many").toLowerCase()} yet. ${App.label("contact","many")} appear after calls, or import a list.`)));
-    } else {
-      const list = el("div", "mini-list");
-      contacts.slice(0, 6).forEach((c) => {
-        const row = el("button", "mini-row");
-        row.innerHTML = `<div class="mini-main"><div class="cell-strong">${esc(c.name || "Unknown")}</div><div class="cell-muted">${esc(c.email || c.phone || "")}</div></div><div class="cell-muted mini-when">${fmtDate(c.createdAt)}</div>`;
-        row.onclick = () => App.go("#/contact/" + c.id);
-        list.appendChild(row);
-      });
-      cContacts.appendChild(list);
-    }
-    cols.appendChild(cContacts);
-
-    // Recent calls
-    const cCalls = el("div", "card today-card");
-    const kh = el("div", "section-head");
-    kh.appendChild(el("h2", null, "Recent calls"));
-    const kl = el("a", "muted-link", "View all →"); kl.href = "#/calls"; kh.appendChild(kl);
-    cCalls.appendChild(kh);
-    if (!calls.length) {
-      cCalls.appendChild(el("p", "cell-muted", "No calls yet."));
-    } else {
-      const list = el("div", "mini-list");
-      calls.slice(0, 6).forEach((c) => {
-        const row = el("button", "mini-row");
-        row.innerHTML = `<div class="mini-main"><div class="cell-strong">${esc(c.name || "Unknown caller")}</div><div class="cell-muted cell-truncate">${esc(c.intent || c.phone || c.fromNumber || "")}</div></div><div class="mini-when">${statusBadge(c.status)}</div>`;
-        row.onclick = () => openCall(c.id);
-        list.appendChild(row);
-      });
-      cCalls.appendChild(list);
-    }
-    cols.appendChild(cCalls);
-
-    wrap.appendChild(cols);
-
-    const more = el("div", "today-foot");
-    const repLink = el("a", "btn btn-ghost btn-sm", "Open Reports & dashboards →");
-    repLink.href = "#/reports";
-    more.appendChild(repLink);
-    wrap.appendChild(more);
-
-    view().innerHTML = "";
-    view().appendChild(wrap);
-  }
+  // (Old hand-built Dashboard page retired — the "#/dashboard" view now renders the persistent Home Dashboard via App.reports.mountHome.)
 
   // ---------------- Calls ----------------
   async function renderCalls() {

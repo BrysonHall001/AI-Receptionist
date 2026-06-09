@@ -340,8 +340,9 @@ apiRouter.patch("/dashboards/:id", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const { name, widgets } = (req.body ?? {}) as any;
   try {
-    res.json(await updateDashboard(req.params.id, tenantId, { name, widgets }));
+    res.json(await updateDashboard(req.params.id, tenantId, { name, widgets }, req.user!.role));
   } catch (err) {
+    if ((err as any).code === "FORBIDDEN") { res.status(403).json({ error: (err as Error).message }); return; }
     res.status(400).json({ error: (err as Error).message });
   }
 });

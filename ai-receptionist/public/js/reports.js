@@ -116,6 +116,9 @@
   function createView(host, opts) {
     opts = opts || {};
     const compact = !!opts.compact;
+    // The Home Dashboard is shared per-portal; only admins can edit it. Regular
+    // Reports-page dashboards keep their existing (everyone) editability.
+    const canEdit = !opts.home || !!(App.state.me && App.state.me.role && App.state.me.role !== "CLIENT_USER");
     const cardH = compact ? 200 : 260;
     const state = { dashboards: [], sources: {}, currentId: null, charts: [] };
     const { el, esc, toast } = U();
@@ -241,8 +244,10 @@
       if (opts.home) {
         bar.appendChild(el("div", "reports-bar-left"));
         const right = el("div", "reports-bar-right");
-        const addW = el("button", "btn btn-primary btn-sm", "+ Add widget"); addW.onclick = () => openEditor(null);
-        right.appendChild(addW);
+        if (canEdit) {
+          const addW = el("button", "btn btn-primary btn-sm", "+ Add widget"); addW.onclick = () => openEditor(null);
+          right.appendChild(addW);
+        }
         bar.appendChild(right);
         wrap.appendChild(bar);
       } else {
@@ -338,6 +343,7 @@
       titleWrap.appendChild(handle);
       titleWrap.appendChild(el("div", "widget-title", esc(w.title || "Untitled")));
       head.appendChild(titleWrap);
+      if (canEdit) {
       const actions = el("div", "widget-actions");
       const wSel = el("select", "w-size-select"); wSel.title = "Width";
       [["1", "S"], ["2", "M"], ["3", "L"], ["4", "Full"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (v === String(sz.cw)) o.selected = true; wSel.appendChild(o); });
@@ -351,10 +357,11 @@
       const del = el("button", "icon-btn", "×"); del.title = "Delete"; del.onclick = () => removeWidget(w.id);
       actions.appendChild(dup); actions.appendChild(edit); actions.appendChild(del);
       head.appendChild(actions);
+      }
       card.appendChild(head);
       const body = el("div", "widget-body");
       card.appendChild(body);
-      attachDnD(card, handle, w.id);
+      if (canEdit) attachDnD(card, handle, w.id); else handle.style.display = "none";
       return card;
     }
 

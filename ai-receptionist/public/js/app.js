@@ -31,7 +31,7 @@
   // at render time via App.label(kind,"many") so renaming the contact/job record
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
-  const PORTAL_NAV = [["#/dashboard", "Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"]];
+  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"]];
   const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"]];
 
   function buildShell(section, activePath) {
@@ -87,8 +87,8 @@
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
     } else {
-      const titleMap = { "#/dashboard": "Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/fields": "Fields", "#/reports": "Reports", "#/automations": "Automations", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users" };
-      topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Dashboard"));
+      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/fields": "Fields", "#/reports": "Reports", "#/automations": "Automations", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users" };
+      topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Home Dashboard"));
     }
     topbar.appendChild(topLeft);
 

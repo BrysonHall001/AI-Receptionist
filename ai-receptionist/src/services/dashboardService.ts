@@ -59,10 +59,12 @@ export async function createDashboard(tenantId: string, name: string, createdByI
   return serialize(d);
 }
 
-export async function updateDashboard(id: string, tenantId: string, data: { name?: string; widgets?: unknown }) {
+export async function updateDashboard(id: string, tenantId: string, data: { name?: string; widgets?: unknown }, actorRole?: string | null) {
   const d = await prisma.dashboard.findUnique({ where: { id } });
   if (!d || d.tenantId !== tenantId) throw new Error("Dashboard not found");
   const isHome = d.name === HOME_DASHBOARD_NAME;
+  // The Home Dashboard is shared per-portal; only admins may edit it.
+  if (isHome && actorRole === "CLIENT_USER") { const e: any = new Error("Only admins can edit the Home Dashboard"); e.code = "FORBIDDEN"; throw e; }
   const patch: any = {};
   // The home dashboard keeps its sentinel name; ignore rename attempts on it and
   // block anyone else from adopting the reserved name.
