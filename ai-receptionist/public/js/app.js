@@ -74,6 +74,167 @@
     return ordered.filter((it) => it[0] === "#/dashboard" || cfg.hidden.indexOf(it[0]) === -1);
   };
 
+  // ---- Writers: both go through the EXISTING admin-gated PATCH /api/labels, then
+  // refresh the cache and repaint. Settings pane + hamburger are two views of this
+  // one stored config, so after either writes, both reflect it. -------------------
+  function navToast(msg, bad) { if (App.util && App.util.toast) App.util.toast(msg, bad); }
+  // setTenantNav REPLACES the whole nav object, so callers must pass the COMPLETE
+  // {order,hidden,labels} (we never send a partial that would wipe the rest).
+  App.persistNav = async function (nav) {
+    try {
+      await App.portalApi("/api/labels", { method: "PATCH", body: JSON.stringify({ nav: { order: nav.order || [], hidden: nav.hidden || [], labels: nav.labels || {} } }) });
+      await App.loadLabels();
+      if (App._route) App._route();
+    } catch (e) { navToast(e.message, true); }
+  };
+  // Renaming a record-type-backed item (Contacts/Jobs) goes through the record-type
+  // label path — identical to the Settings noun editor — NOT a nav.labels override.
+  App.persistTypeLabel = async function (key, one, many) {
+    try {
+      await App.portalApi("/api/labels", { method: "PATCH", body: JSON.stringify({ types: { [key]: { one: one, many: many } } }) });
+      await App.loadLabels();
+      if (App._route) App._route();
+    } catch (e) { navToast(e.message, true); }
+  };
+  // Full ordering of ALL nav hrefs (saved order then defaults) — used by reorder so
+  // hidden items keep their relative slot even though they aren't shown as targets.
+  App.fullNavOrder = function () {
+    const cfg = App.navConfig();
+    const all = (App.PORTAL_NAV || []).map((it) => it[0]);
+    const seen = {}; const out = [];
+    cfg.order.forEach((h) => { if (all.indexOf(h) !== -1 && !seen[h]) { out.push(h); seen[h] = true; } });
+    all.forEach((h) => { if (!seen[h]) { out.push(h); seen[h] = true; } });
+    return out;
+  };
+
+  // ---- Per-row hamburger: a desktop/touch shortcut onto the SAME config. The icon
+  // is BOTH the menu trigger and the drag handle; we tell the two apart by MOVEMENT
+  // (a small pixel threshold), never a hold-timer. -------------------------------
+  const NAV_DRAG_THRESHOLD = 5; // px; small wiggle still counts as a click
+  let navMenuEl = null;
+  function closeNavMenu() {
+    if (navMenuEl) { navMenuEl.remove(); navMenuEl = null; }
+    document.removeEventListener("pointerdown", onNavMenuDocDown, true);
+    document.removeEventListener("keydown", onNavMenuKey, true);
+  }
+  function onNavMenuDocDown(e) { if (navMenuEl && !navMenuEl.contains(e.target)) closeNavMenu(); }
+  function onNavMenuKey(e) { if (e.key === "Escape") closeNavMenu(); }
+
+  function navItemAt(x, y) {
+    let n = document.elementFromPoint(x, y);
+    while (n && !(n.classList && n.classList.contains("nav-item"))) n = n.parentElement;
+    return (n && n.dataset && n.dataset.href) ? n : null;
+  }
+  function clearNavDragVisuals() {
+    document.querySelectorAll(".nav-item.nav-dragging").forEach((n) => n.classList.remove("nav-dragging"));
+    document.querySelectorAll(".nav-item.nav-drop-target").forEach((n) => n.classList.remove("nav-drop-target"));
+  }
+
+  function attachNavBurger(burger, rowEl, href, label, kind) {
+    let sx = null, sy = null, dragging = false;
+    burger.style.touchAction = "none";
+    // Absorb the click so a burger interaction never navigates the parent link.
+    burger.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
+    burger.addEventListener("pointerdown", (e) => {
+      if (e.button !== undefined && e.button !== 0) return; // primary button / touch only
+      e.preventDefault(); e.stopPropagation();
+      sx = e.clientX; sy = e.clientY; dragging = false;
+      try { burger.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    burger.addEventListener("pointermove", (e) => {
+      if (sx === null) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!dragging && (dx * dx + dy * dy) > NAV_DRAG_THRESHOLD * NAV_DRAG_THRESHOLD) {
+        dragging = true; rowEl.classList.add("nav-dragging");
+      }
+      if (dragging) {
+        e.preventDefault();
+        clearNavDragVisuals(); rowEl.classList.add("nav-dragging");
+        const t = navItemAt(e.clientX, e.clientY);
+        if (t && t.dataset.href !== href) t.classList.add("nav-drop-target");
+      }
+    });
+    burger.addEventListener("pointerup", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      try { burger.releasePointerCapture(e.pointerId); } catch (_) {}
+      const wasDragging = dragging; const ex = e.clientX, ey = e.clientY;
+      sx = null; sy = null; dragging = false;
+      if (wasDragging) {
+        const t = navItemAt(ex, ey); const target = t && t.dataset.href;
+        clearNavDragVisuals();
+        if (target && target !== href) {
+          let order = App.fullNavOrder().filter((h) => h !== href);
+          let ti = order.indexOf(target); if (ti < 0) ti = order.length;
+          order.splice(ti, 0, href);
+          const cfg = App.navConfig();
+          App.persistNav({ order: order, hidden: cfg.hidden, labels: cfg.labels });
+        }
+      } else {
+        openNavMenu(burger, href, label, kind);
+      }
+    });
+    burger.addEventListener("pointercancel", () => { sx = null; dragging = false; clearNavDragVisuals(); });
+  }
+
+  function openNavMenu(anchor, href, label, kind) {
+    closeNavMenu();
+    const menu = el("div", "nav-burger-menu");
+    const rename = el("button", "nav-burger-item", "Rename…");
+    rename.onclick = () => { closeNavMenu(); renameNavItem(href, label, kind); };
+    menu.appendChild(rename);
+    if (href !== "#/dashboard") { // Home Dashboard is never hideable
+      const hide = el("button", "nav-burger-item nav-burger-danger", "Hide");
+      hide.onclick = () => { closeNavMenu(); hideNavItem(href, label, kind); };
+      menu.appendChild(hide);
+    }
+    document.body.appendChild(menu);
+    navMenuEl = menu;
+    const r = anchor.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.top = Math.round(r.bottom + 4) + "px";
+    menu.style.left = Math.round(Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + "px";
+    setTimeout(() => {
+      document.addEventListener("pointerdown", onNavMenuDocDown, true);
+      document.addEventListener("keydown", onNavMenuKey, true);
+    }, 0);
+  }
+
+  async function renameNavItem(href, label, kind) {
+    if (kind) {
+      // Record-type-backed: edit the noun (singular), plural auto-derives — exactly
+      // like the Settings noun editor. This updates the word everywhere it's used.
+      const cur = App.label(kind, "one");
+      const val = await App.ui.promptModal({ title: "Rename", label: "Singular name (the plural updates automatically — fine-tune it in Settings → Labels)", value: cur, okText: "Save" });
+      if (val === null) return;
+      const one = String(val).trim(); if (!one) { navToast("Name can’t be blank", true); return; }
+      await App.persistTypeLabel(kind, one, App.pluralize(one));
+    } else {
+      const cfg = App.navConfig();
+      const cur = cfg.labels[href] || label;
+      const val = await App.ui.promptModal({ title: "Rename", label: "Menu label", value: cur, okText: "Save" });
+      if (val === null) return;
+      const name = String(val).trim();
+      const labels = Object.assign({}, cfg.labels);
+      if (name) labels[href] = name; else delete labels[href]; // blank = back to default
+      await App.persistNav({ order: cfg.order, hidden: cfg.hidden, labels: labels });
+    }
+  }
+
+  async function hideNavItem(href, label, kind) {
+    const disp = kind ? App.label(kind, "many") : (App.navConfig().labels[href] || label);
+    const ok = await App.ui.confirmModal({
+      title: "Hide this page?",
+      message: "“" + disp + "” will be removed from the left-hand menu. You can restore it any time from Settings → Labels → “Pages & navigation”.",
+      confirmText: "Hide page",
+    });
+    if (!ok) return;
+    const cfg = App.navConfig();
+    const hidden = cfg.hidden.indexOf(href) === -1 ? cfg.hidden.concat([href]) : cfg.hidden;
+    // persistNav repaints; if the user was viewing this page, route()'s hidden-page
+    // guard sends them to Home Dashboard automatically.
+    await App.persistNav({ order: cfg.order, hidden: hidden, labels: cfg.labels });
+  }
+
   function buildShell(section, activePath) {
     const me = App.state.me;
     const root = App.util.$("#app");
@@ -93,11 +254,19 @@
 
     const nav = el("nav", "sidebar-nav");
     const isAdmin = section === "admin";
+    const canEditNav = !isAdmin && me && (me.role === "PORTAL_ADMIN" || me.role === "SUPER_ADMIN");
     const items = isAdmin ? ADMIN_NAV : App.applyNavConfig(PORTAL_NAV);
     items.forEach(([href, label, kind]) => {
       const text = isAdmin ? (kind ? App.label(kind, "many") : label) : App.navLabel(href, label, kind);
-      const a = el("a", "nav-item" + (href === activePath ? " active" : ""), esc(text));
+      const a = el("a", "nav-item" + (href === activePath ? " active" : "") + (canEditNav ? " nav-item--editable" : ""), esc(text));
       a.href = href;
+      a.dataset.href = href;
+      if (canEditNav) {
+        const burger = el("span", "nav-burger", "⋮");
+        burger.title = "Rename, reorder, or hide";
+        attachNavBurger(burger, a, href, label, kind);
+        a.appendChild(burger);
+      }
       nav.appendChild(a);
     });
     side.appendChild(nav);
