@@ -1174,6 +1174,14 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .kanban-card-x { position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; line-height: 16px; text-align: center; border: 0; border-radius: 5px; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 15px; opacity: 0; transition: opacity 0.12s ease; }
 .kanban-card:hover .kanban-card-x { opacity: 1; }
 .kanban-card-x:hover { background: var(--line); color: var(--ink); }
+/* Contact-side swimlane board: one lane per linked policy, each lane a sibling
+   of the policy board (reuses .kanban / .kanban-col / .kanban-card). */
+.swimlanes { display: flex; flex-direction: column; gap: 18px; }
+.swimlane-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.swimlane-title { font-weight: 700; color: var(--ink); font-size: 14px; }
+.swimlane-type { flex: 0 0 auto; }
+.kanban-col--current { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.kanban-col--current .kanban-col-name { color: var(--accent); }
 
 /* ======================================================================
    Settings sub-shell — two-pane layout inside the settings view only.

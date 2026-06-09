@@ -1334,12 +1334,23 @@
 
     // ---- Linked Jobs section: list linked jobs, manage stage/unlink, and link a job ----
     const jobsCard = el("div", "card linked-jobs-card");
-    jobsCard.appendChild(el("div", "drawer-section-title", App.label("job","many")));
-    const jobsList = el("div", "link-list");
-    jobsCard.appendChild(jobsList);
+    const jobsHead = el("div", "cand-head");
+    jobsHead.appendChild(el("div", "drawer-section-title", App.label("job","many")));
+    const jobsToggle = el("div", "seg-toggle");
+    const jobsListBtn = el("button", "seg-btn seg-on", "List");
+    const jobsBoardBtn = el("button", "seg-btn", "Board");
+    jobsToggle.appendChild(jobsListBtn); jobsToggle.appendChild(jobsBoardBtn);
+    jobsHead.appendChild(jobsToggle);
+    jobsCard.appendChild(jobsHead);
+    const jobsBody = el("div"); // holds either the list or the swimlane board
+    jobsCard.appendChild(jobsBody);
     const jobAddRow = el("div", "link-add");
     jobsCard.appendChild(jobAddRow);
     wrap.appendChild(jobsCard);
+    let jobLinks = [];
+    let jobsView = "list"; // List is the default; Board is the toggle
+    jobsListBtn.onclick = () => { if (jobsView === "list") return; jobsView = "list"; jobsListBtn.classList.add("seg-on"); jobsBoardBtn.classList.remove("seg-on"); renderJobs(); };
+    jobsBoardBtn.onclick = () => { if (jobsView === "board") return; jobsView = "board"; jobsBoardBtn.classList.add("seg-on"); jobsListBtn.classList.remove("seg-on"); renderJobs(); };
 
     let jobType = null;
     async function ensureJobMeta() {
@@ -1353,14 +1364,24 @@
     const stagesForJob = (k) => { const st = ((jobType && jobType.subtypes) || []).find((x) => x.key === k); return st ? (st.stages || []) : ((jobType && jobType.stages) || []); };
 
     async function loadLinkedJobs() {
-      jobsList.innerHTML = `<div class="cell-muted">Loading…</div>`;
+      jobsBody.innerHTML = `<div class="cell-muted">Loading…</div>`;
       await ensureJobMeta();
-      let links = [];
-      try { links = await App.portalApi(`/api/contacts/${id}/links?type=job`); }
-      catch (e) { jobsList.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
-      jobsList.innerHTML = "";
-      if (!links.length) { jobsList.appendChild(el("div", "cell-muted", ("Not linked to any " + App.label("job","many").toLowerCase() + " yet."))); return; }
-      links.forEach((lk) => {
+      try { jobLinks = await App.portalApi(`/api/contacts/${id}/links?type=job`); }
+      catch (e) { jobsBody.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+      if (!Array.isArray(jobLinks)) jobLinks = [];
+      renderJobs();
+    }
+
+    function renderJobs() { if (jobsView === "board") renderJobsBoard(); else renderJobsList(); }
+
+    // List view — the original per-link rows (title + Stage dropdown + Unlink).
+    // The dropdown writes the SAME RecordLink.stageKey and updates the in-memory
+    // link so the Board view reflects it without a refetch.
+    function renderJobsList() {
+      jobsBody.innerHTML = "";
+      const jobsList = el("div", "link-list");
+      if (!jobLinks.length) { jobsList.appendChild(el("div", "cell-muted", ("Not linked to any " + App.label("job","many").toLowerCase() + " yet."))); jobsBody.appendChild(jobsList); return; }
+      jobLinks.forEach((lk) => {
         const row = el("div", "link-row");
         const subKey = lk.record ? lk.record.subtypeKey : null;
         const title = lk.record ? (lk.record.title || ("Untitled " + App.label("job","one").toLowerCase())) : App.label("job","one");
@@ -1372,13 +1393,100 @@
         let known = false;
         stagesForJob(subKey).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) { o.selected = true; known = true; } stageSel.appendChild(o); });
         if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSel.appendChild(o); }
-        stageSel.onchange = async () => { try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: stageSel.value || null }) }); toast(App.label("stage","one") + " updated"); } catch (e) { toast(e.message, true); } };
+        stageSel.onchange = async () => { const v = stageSel.value || null; try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: v }) }); lk.stageKey = v; toast(App.label("stage","one") + " updated"); } catch (e) { toast(e.message, true); } };
         row.appendChild(stageSel);
         const unlink = el("button", "link-danger", "Unlink");
         unlink.onclick = async () => { if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedJobs(); } catch (e) { toast(e.message, true); } };
         row.appendChild(unlink);
         jobsList.appendChild(row);
       });
+      jobsBody.appendChild(jobsList);
+    }
+
+    // Board view — SWIMLANES. A contact can be on many policies, each with its
+    // OWN pipeline, so there's no single set of columns. We render one lane per
+    // linked policy; each lane shows THAT policy's stages as columns (in pipeline
+    // order) with the contact as a single card in its current stage. Dragging the
+    // card within its lane changes the contact's stage on that policy via the SAME
+    // PATCH /api/record-links/:id the policy board and the list dropdown use.
+    function renderJobsBoard() {
+      jobsBody.innerHTML = "";
+      if (!jobLinks.length) {
+        const empty = el("div", "cell-muted"); empty.style.cssText = "padding:10px 2px;";
+        empty.textContent = "Not linked to any " + App.label("job","many").toLowerCase() + " yet — link one below to start the board.";
+        jobsBody.appendChild(empty);
+        return;
+      }
+      const lanes = el("div", "swimlanes");
+      jobLinks.forEach((lk) => lanes.appendChild(buildJobLane(lk)));
+      jobsBody.appendChild(lanes);
+    }
+
+    function buildJobLane(lk) {
+      const lane = el("div", "swimlane");
+      const subKey = lk.record ? lk.record.subtypeKey : null;
+      const title = lk.record ? (lk.record.title || ("Untitled " + App.label("job","one").toLowerCase())) : App.label("job","one");
+      const head = el("div", "swimlane-head");
+      const titleEl = el("span", "swimlane-title", esc(title));
+      if (lk.record) { titleEl.style.cursor = "pointer"; titleEl.onclick = () => App.go("#/record/" + lk.record.id); }
+      head.appendChild(titleEl);
+      if (subKey) head.appendChild(el("span", "swimlane-type pill", esc(jobSubtypeLabel(subKey))));
+      lane.appendChild(head);
+
+      const stages = stagesForJob(subKey);
+      const known = new Set(stages.map((s) => s.key));
+      const board = el("div", "kanban");
+      let laneDragHandled = false;
+
+      function highlightCurrent() {
+        board.querySelectorAll(".kanban-col").forEach((col) => col.classList.toggle("kanban-col--current", !!col.querySelector(".kanban-card")));
+      }
+      function makeCard() {
+        const card = el("div", "kanban-card");
+        card.draggable = true; card.dataset.linkId = lk.id;
+        card.appendChild(el("div", "kanban-card-name", esc(c.name || c.phone || App.label("contact","one"))));
+        const x = el("button", "kanban-card-x", "×"); x.title = "Unlink";
+        x.onclick = async (e) => { e.stopPropagation(); if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedJobs(); } catch (err) { toast(err.message, true); } };
+        card.appendChild(x);
+        card.addEventListener("dragstart", () => { laneDragHandled = false; card.classList.add("dragging"); });
+        card.addEventListener("dragend", () => { card.classList.remove("dragging"); board.querySelectorAll(".kanban-col--over").forEach((cc) => cc.classList.remove("kanban-col--over")); if (!laneDragHandled) renderJobsBoard(); });
+        return card;
+      }
+      const card = makeCard();
+
+      function makeCol(key, label, isReview) {
+        const col = el("div", "kanban-col" + (isReview ? " kanban-col--review" : ""));
+        col.dataset.stage = key == null ? "" : key;
+        const h = el("div", "kanban-col-head");
+        h.appendChild(el("span", "kanban-col-name", label));
+        col.appendChild(h);
+        const cards = el("div", "kanban-cards"); col.appendChild(cards);
+        // Scoped to THIS lane's board: another lane's card can't be dropped here.
+        col.addEventListener("dragover", (e) => { const d = board.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault(); col.classList.add("kanban-col--over"); cards.appendChild(d); });
+        col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("kanban-col--over"); });
+        col.addEventListener("drop", async (e) => {
+          const d = board.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault();
+          col.classList.remove("kanban-col--over"); laneDragHandled = true;
+          cards.appendChild(d); highlightCurrent();
+          const newStage = isReview ? null : key;
+          if (newStage === (lk.stageKey ?? null)) return; // dropped back where it was
+          try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: newStage }) }); lk.stageKey = newStage; toast(App.label("stage","one") + " updated"); }
+          catch (err) { toast(err.message, true); renderJobsBoard(); }
+        });
+        return { col, cards, key, isReview };
+      }
+
+      const cols = [];
+      const inPipeline = !!(lk.stageKey && known.has(lk.stageKey));
+      if (!inPipeline) cols.push(makeCol(null, "Needs review", true)); // unset or off-pipeline stage
+      stages.forEach((s) => cols.push(makeCol(s.key, s.label, false)));
+      cols.forEach((m) => board.appendChild(m.col));
+      // Drop the single card into its current stage column (or Needs review).
+      const target = inPipeline ? cols.find((m) => m.key === lk.stageKey) : cols.find((m) => m.isReview);
+      (target || cols[0]).cards.appendChild(card);
+      highlightCurrent();
+      lane.appendChild(board);
+      return lane;
     }
 
     // Link-a-job search box (in-flow results; reuses the SAME RecordLink endpoint,
