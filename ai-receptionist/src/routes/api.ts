@@ -6,6 +6,7 @@ import { importContacts, updateContact, softDeleteContacts, restoreContacts, pur
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
 import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels } from "../services/recordTypeService";
+import { addRecordStatus, renameRecordStatus, reorderRecordStatuses, deleteRecordStatus } from "../services/recordTypeService";
 import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listPipelineLinks } from "../services/pipelineService";
@@ -558,6 +559,46 @@ apiRouter.post("/record-stages/delete", async (req: Request, res: Response) => {
   if (!fieldsAdminOnly(req, res)) return;
   try { const { recordType, subtypeKey, key } = (req.body ?? {}) as any; res.json(await deleteStage(tenantId, recordType, subtypeKey, key)); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// ---- Record-level STATUS editor (RecordType.recordStages). Distinct from the
+// pipeline /record-stages routes above (those take a subtypeKey). Admin-gated.
+// Delete runs the dual guard in the service and, when blocked, returns 409 with
+// a structured blocker list (records + automations) for the in-app modal. ----
+apiRouter.post("/record-statuses/add", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { const { recordType, label } = (req.body ?? {}) as any; res.json(await addRecordStatus(tenantId, recordType, label)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/record-statuses/rename", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { const { recordType, key, label } = (req.body ?? {}) as any; res.json(await renameRecordStatus(tenantId, recordType, key, label)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/record-statuses/reorder", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { const { recordType, orderedKeys } = (req.body ?? {}) as any; res.json(await reorderRecordStatuses(tenantId, recordType, orderedKeys ?? [])); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/record-statuses/delete", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { const { recordType, key } = (req.body ?? {}) as any; res.json(await deleteRecordStatus(tenantId, recordType, key)); }
+  catch (err) {
+    const e = err as any;
+    if (e && e.code === "STATUS_IN_USE") { res.status(409).json({ error: "STATUS_IN_USE", blockers: e.blockers }); return; }
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 // Assign a field to a section (display-only).

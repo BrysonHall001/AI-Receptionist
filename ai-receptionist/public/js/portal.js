@@ -859,7 +859,7 @@
       const card = el("div", "card");
       card.appendChild(el("div", "cell-muted", "No fields yet for this type. Click “+ Add field” to create one."));
       wrap.appendChild(card);
-      if (canEdit && selectedType && selectedType.key !== "contact") wrap.appendChild(subtypesCard());
+      if (canEdit && selectedType && selectedType.key !== "contact") { wrap.appendChild(subtypesCard()); wrap.appendChild(statusesCard()); }
       view().innerHTML = ""; view().appendChild(wrap); return;
     }
 
@@ -958,7 +958,7 @@
       head.appendChild(el("div", "fields-section-name", (esc((selectedType && selectedType.label) || App.label("job","one")) + " types & pipelines")));
       const addBtn = el("button", "btn btn-ghost btn-sm", ("+ Add " + (((selectedType && selectedType.label) || App.label("job","one")).toLowerCase()) + " type"));
       addBtn.onclick = async () => {
-        const name = prompt("Name this " + (((selectedType && selectedType.label) || App.label("job","one")).toLowerCase()) + " type (e.g. Technical, Field, Sales):");
+        const name = await promptModal({ title: "Add a type", label: "Name this " + (((selectedType && selectedType.label) || App.label("job","one")).toLowerCase()) + " type", placeholder: "e.g. Technical, Field, Sales", okText: "Add" });
         if (!name || !name.trim()) return;
         try { await App.portalApi("/api/record-subtypes/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast((((selectedType && selectedType.label) || App.label("job","one"))) + " type added"); renderFields(true); }
         catch (e) { App.util.toast(e.message, true); }
@@ -989,13 +989,13 @@
         sdown.onclick = () => reorderType(sIdx, sIdx + 1);
         const sren = el("button", "btn btn-ghost btn-sm", "Rename");
         sren.onclick = async () => {
-          const name = prompt(("Rename " + (((selectedType && selectedType.label) || App.label("job","one")).toLowerCase()) + " type:"), st.label); if (!name || !name.trim()) return;
+          const name = await promptModal({ title: "Rename type", label: "Type name", value: st.label, okText: "Rename" }); if (!name || !name.trim()) return;
           try { await App.portalApi("/api/record-subtypes/rename", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: st.key, label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); }
           catch (e) { App.util.toast(e.message, true); }
         };
         const saddStage = el("button", "btn btn-ghost btn-sm", ("+ Add " + App.label("stage","one").toLowerCase()));
         saddStage.onclick = async () => {
-          const name = prompt(`Add a ${App.label("stage","one").toLowerCase()} to “${st.label}”:`); if (!name || !name.trim()) return;
+          const name = await promptModal({ title: "Add a " + App.label("stage","one").toLowerCase(), label: "Add to “" + st.label + "”", okText: "Add" }); if (!name || !name.trim()) return;
           try { await App.portalApi("/api/record-stages/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, label: name.trim() }) }); App.util.toast(App.label("stage","one") + " added"); renderFields(true); }
           catch (e) { App.util.toast(e.message, true); }
         };
@@ -1027,7 +1027,7 @@
           down.onclick = () => reorder(idx, idx + 1);
           const ren = el("button", "btn btn-ghost btn-sm", "Rename");
           ren.onclick = async () => {
-            const name = prompt("Rename " + App.label("stage","one").toLowerCase() + ":", s.label); if (!name || !name.trim()) return;
+            const name = await promptModal({ title: "Rename " + App.label("stage","one").toLowerCase(), label: App.label("stage","one") + " name", value: s.label, okText: "Rename" }); if (!name || !name.trim()) return;
             try { await App.portalApi("/api/record-stages/rename", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, key: s.key, label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); }
             catch (e) { App.util.toast(e.message, true); }
           };
@@ -1047,9 +1047,72 @@
       return card;
     }
 
+    // Record-level STATUS editor (RecordType.recordStages) — the Status dropdown
+    // on a record's own profile. Mirrors the pipeline editor's look. Keys are
+    // immutable; rename = label only; reorder = cosmetic. Delete is guarded
+    // server-side and, when blocked, opens statusBlockedModal with the list.
+    function statusesCard() {
+      const typeLabel = (selectedType && selectedType.label) || App.label("record","one");
+      const card = el("div", "fields-section-card");
+      const head = el("div", "fields-section-head");
+      head.appendChild(el("div", "fields-section-name", "Statuses"));
+      const addBtn = el("button", "btn btn-ghost btn-sm", "+ Add status");
+      addBtn.onclick = async () => {
+        const name = await promptModal({ title: "Add a status", label: "New status for " + typeLabel, placeholder: "e.g. On hold", okText: "Add" });
+        if (!name || !name.trim()) return;
+        try { await App.portalApi("/api/record-statuses/add", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Status added"); renderFields(true); }
+        catch (e) { App.util.toast(e.message, true); }
+      };
+      head.appendChild(addBtn);
+      card.appendChild(head);
+      const note = el("p", "muted");
+      note.style.cssText = "margin:2px 0 12px; font-size:13px;";
+      note.textContent = "These are the Status options on a " + typeLabel.toLowerCase() + "’s profile. Renaming changes the label only — the underlying key never changes. A status that records use, or that an automation references, can’t be deleted until those are changed.";
+      card.appendChild(note);
+
+      const statuses = (((selectedType && selectedType.recordStages) || []).slice()).sort((a, b) => (a.order || 0) - (b.order || 0));
+      const list = el("div", "stage-list");
+      if (!statuses.length) list.appendChild(el("div", "cell-muted", "No statuses yet — click “+ Add status”."));
+      statuses.forEach((s, idx) => {
+        const row = el("div", "stage-row");
+        row.appendChild(el("div", "stage-name", esc(s.label)));
+        const tools = el("div", "fields-section-tools");
+        const up = el("button", "btn btn-ghost btn-sm", "↑"); up.title = "Move up"; up.disabled = idx === 0;
+        const down = el("button", "btn btn-ghost btn-sm", "↓"); down.title = "Move down"; down.disabled = idx === statuses.length - 1;
+        const reorder = async (from, to) => {
+          const keys = statuses.map((x) => x.key); const m = keys.splice(from, 1)[0]; keys.splice(to, 0, m);
+          try { await App.portalApi("/api/record-statuses/reorder", { method: "POST", body: JSON.stringify({ recordType: selectedKey, orderedKeys: keys }) }); renderFields(true); }
+          catch (e) { App.util.toast(e.message, true); }
+        };
+        up.onclick = () => reorder(idx, idx - 1);
+        down.onclick = () => reorder(idx, idx + 1);
+        const ren = el("button", "btn btn-ghost btn-sm", "Rename");
+        ren.onclick = async () => {
+          const name = await promptModal({ title: "Rename status", label: "Status name", value: s.label, okText: "Rename" });
+          if (!name || !name.trim()) return;
+          try { await App.portalApi("/api/record-statuses/rename", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: s.key, label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); }
+          catch (e) { App.util.toast(e.message, true); }
+        };
+        const del = el("button", "link-danger", "Delete");
+        del.onclick = async () => {
+          if (!confirm("Delete status “" + s.label + "”?")) return;
+          try { await App.portalApi("/api/record-statuses/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: s.key }) }); App.util.toast("Status deleted"); renderFields(true); }
+          catch (e) {
+            if (e && e.data && e.data.error === "STATUS_IN_USE") statusBlockedModal(e.data.blockers);
+            else App.util.toast(e.message, true);
+          }
+        };
+        tools.appendChild(up); tools.appendChild(down); tools.appendChild(ren); tools.appendChild(del);
+        row.appendChild(tools);
+        list.appendChild(row);
+      });
+      card.appendChild(list);
+      return card;
+    }
+
     sorted.forEach((s, i) => wrap.appendChild(sectionCard(s, bySection[s.id], i)));
     if (ungrouped.length || !sorted.length) wrap.appendChild(ungroupedCard(ungrouped));
-    if (canEdit && selectedType && selectedType.key !== "contact") wrap.appendChild(subtypesCard());
+    if (canEdit && selectedType && selectedType.key !== "contact") { wrap.appendChild(subtypesCard()); wrap.appendChild(statusesCard()); }
 
     view().innerHTML = "";
     view().appendChild(wrap);
@@ -1771,6 +1834,95 @@
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     document.body.appendChild(overlay);
     return overlay;
+  }
+
+  // Styled in-app replacement for the native prompt() box. Resolves the typed
+  // string, or null on cancel/close/Escape. Enter submits.
+  function promptModal(opts) {
+    opts = opts || {};
+    return new Promise((resolve) => {
+      const inner = el("div");
+      inner.innerHTML = `<div class="modal-head"><h2>${esc(opts.title || "Enter a value")}</h2><button class="icon-btn" id="pm-close">&times;</button></div>`;
+      const body = el("div", "modal-body");
+      if (opts.label) body.appendChild(el("label", "field-label", esc(opts.label)));
+      const input = el("input", "input");
+      input.type = "text";
+      input.value = opts.value || "";
+      if (opts.placeholder) input.placeholder = opts.placeholder;
+      body.appendChild(input);
+      inner.appendChild(body);
+      const foot = el("div", "modal-foot");
+      const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+      const ok = el("button", "btn btn-primary btn-sm", opts.okText || "Save");
+      foot.appendChild(cancel); foot.appendChild(ok);
+      inner.appendChild(foot);
+      const overlay = modal(inner);
+      let done = false;
+      const finish = (val) => { if (done) return; done = true; overlay.remove(); resolve(val); };
+      inner.querySelector("#pm-close").onclick = () => finish(null);
+      cancel.onclick = () => finish(null);
+      ok.onclick = () => finish(input.value);
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); finish(input.value); } else if (e.key === "Escape") { finish(null); } });
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) finish(null); });
+      setTimeout(() => { input.focus(); input.select(); }, 0);
+    });
+  }
+
+  // Styled modal shown when a record-level Status delete is BLOCKED. Lists the
+  // records holding it (linked to their profiles) and the automations that
+  // reference it (linked to the Automations page, with a where-used note).
+  // Read-only — no auto-fix. Blockers shape comes from the 409 response.
+  function statusBlockedModal(blockers) {
+    blockers = blockers || {};
+    const st = blockers.status || {};
+    const records = blockers.records || [];
+    const autos = blockers.automations || [];
+    const recordCount = blockers.recordCount || records.length;
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Can’t delete “${esc(st.label || st.key || "status")}”</h2><button class="icon-btn" id="sb-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    const intro = el("p", "muted");
+    intro.style.cssText = "margin:0 0 12px; font-size:13px;";
+    intro.textContent = "This status is still in use. Move these onto another status (or change the automations), then delete it.";
+    body.appendChild(intro);
+    const overlay = modal(inner);
+    if (recordCount > 0) {
+      body.appendChild(el("div", "fields-section-name", `${recordCount} record${recordCount === 1 ? "" : "s"} using this status`));
+      const ul = el("div", "stage-list");
+      records.forEach((r) => {
+        const row = el("div", "stage-row");
+        const a = el("a", "stage-name", esc(r.title || "(untitled)"));
+        a.href = "#/record/" + r.id; a.style.cursor = "pointer";
+        a.onclick = (e) => { e.preventDefault(); overlay.remove(); App.go("#/record/" + r.id); };
+        row.appendChild(a);
+        ul.appendChild(row);
+      });
+      if (recordCount > records.length) ul.appendChild(el("div", "cell-muted", `…and ${recordCount - records.length} more`));
+      body.appendChild(ul);
+    }
+    if (autos.length) {
+      const h = el("div", "fields-section-name", `${autos.length} automation${autos.length === 1 ? "" : "s"} referencing this status`);
+      h.style.marginTop = "14px";
+      body.appendChild(h);
+      const ul = el("div", "stage-list");
+      autos.forEach((a) => {
+        const row = el("div", "stage-row");
+        const link = el("a", "stage-name", esc(a.name || "(untitled automation)"));
+        link.href = "#/automations"; link.style.cursor = "pointer";
+        link.onclick = (e) => { e.preventDefault(); overlay.remove(); App.go("#/automations"); };
+        row.appendChild(link);
+        row.appendChild(el("div", "cell-muted", "used in " + ((a.where || []).join(", ") || "this automation")));
+        ul.appendChild(row);
+      });
+      body.appendChild(ul);
+    }
+    inner.appendChild(body);
+    const foot = el("div", "modal-foot");
+    const ok = el("button", "btn btn-primary btn-sm", "Got it");
+    foot.appendChild(ok);
+    inner.appendChild(foot);
+    inner.querySelector("#sb-close").onclick = () => overlay.remove();
+    ok.onclick = () => overlay.remove();
   }
 
   // Manual trigger: pick an enabled Manual flow and run it on this contact now.

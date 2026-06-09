@@ -308,3 +308,115 @@ export async function validateSubtypeForType(tenantId: string, recordTypeId: str
   if (!subtypes.some((s) => s.key === key)) throw new Error("Unknown type");
   return key;
 }
+
+// ============================================================================
+// Record-level STATUS editor (RecordType.recordStages)
+// ----------------------------------------------------------------------------
+// recordStages is a JSON array {key,label,order} on the record type — the Status
+// dropdown on a record's OWN profile (Record.stageKey). This is DISTINCT from
+// pipeline stages (subtypes[].stages / RecordLink.stageKey). These functions
+// mirror the subtype/stage editors above: keys are immutable, rename is a
+// label-only change, reorder is cosmetic. Delete runs a DUAL guard (records in
+// use AND automations referencing the key) and refuses with a blocker list.
+// ============================================================================
+
+function normRecordStages(stages: any): { key: string; label: string; order: number }[] {
+  return (Array.isArray(stages) ? stages : []).map((s: any, i: number) => ({ key: String(s.key), label: String(s.label ?? s.key), order: i }));
+}
+
+export async function addRecordStatus(tenantId: string, recordType: string, label: string) {
+  const lbl = String(label || "").trim();
+  if (!lbl) throw new Error("Status name is required");
+  const row = await loadTypeRow(tenantId, recordType);
+  const recordStages = normRecordStages(row.recordStages);
+  const key = slugify(lbl, recordStages.map((s) => s.key), "status");
+  recordStages.push({ key, label: lbl, order: recordStages.length });
+  await db.recordType.update({ where: { id: row.id }, data: { recordStages } });
+  return serializeRecordType({ ...row, recordStages });
+}
+
+export async function renameRecordStatus(tenantId: string, recordType: string, key: string, label: string) {
+  const lbl = String(label || "").trim();
+  if (!lbl) throw new Error("Status name is required");
+  const row = await loadTypeRow(tenantId, recordType);
+  const recordStages = normRecordStages(row.recordStages);
+  const s = recordStages.find((x) => x.key === key);
+  if (!s) throw new Error("Status not found");
+  s.label = lbl; // key stays stable — existing records & automations keep working
+  await db.recordType.update({ where: { id: row.id }, data: { recordStages } });
+  return serializeRecordType({ ...row, recordStages });
+}
+
+export async function reorderRecordStatuses(tenantId: string, recordType: string, orderedKeys: string[]) {
+  const row = await loadTypeRow(tenantId, recordType);
+  const recordStages = normRecordStages(row.recordStages);
+  const byKey: Record<string, any> = {}; recordStages.forEach((s) => (byKey[s.key] = s));
+  const next: any[] = [];
+  (orderedKeys || []).forEach((k) => { if (byKey[k]) { next.push(byKey[k]); delete byKey[k]; } });
+  recordStages.forEach((s) => { if (byKey[s.key]) next.push(s); });
+  next.forEach((s, i) => (s.order = i));
+  await db.recordType.update({ where: { id: row.id }, data: { recordStages: next } });
+  return serializeRecordType({ ...row, recordStages: next });
+}
+
+/** Active records of this type currently holding a given status key. */
+export async function countRecordsInStatus(tenantId: string, recordTypeId: string, key: string): Promise<number> {
+  return db.record.count({ where: { tenantId, recordTypeId, stageKey: key, deletedAt: null } });
+}
+
+// PURE detector (no DB): given one automation row and a status key, return where
+// it references that key — any of "a trigger" / "an action" / "a condition".
+// Match is by key string, since keys are what every reference stores. This is
+// the exact logic the delete guard uses; kept pure so it can be unit-tested.
+export function statusRefsInAutomation(auto: any, key: string): string[] {
+  const where: string[] = [];
+  if (auto && String(auto.triggerType || "") === "RecordUpdated:status=" + key) where.push("a trigger");
+  const actions = Array.isArray(auto && auto.actions) ? auto.actions : [];
+  const actionHit = actions.some((a: any) => {
+    if (!a) return false;
+    if (a.type === "set_record_field" && a.field === "status" && a.value === key) return true;
+    if (a.type === "update_record_item" && Array.isArray(a.values) && a.values.some((v: any) => v && v.field === "status" && v.value === key)) return true;
+    if (a.type === "create_record_item" && a.stageKey === key) return true;
+    return false;
+  });
+  if (actionHit) where.push("an action");
+  const conds = Array.isArray(auto && auto.conditions) ? auto.conditions : [];
+  if (conds.some((c: any) => c && c.field === "status" && c.value === key)) where.push("a condition");
+  return where;
+}
+
+/** Automations in the tenant referencing this status key (id + name + where). */
+export async function automationsReferencingStatus(tenantId: string, key: string): Promise<{ id: string; name: string; where: string[] }[]> {
+  const autos = await db.automation.findMany({ where: { tenantId } });
+  const out: { id: string; name: string; where: string[] }[] = [];
+  for (const a of autos as any[]) {
+    const where = statusRefsInAutomation(a, key);
+    if (where.length) out.push({ id: a.id, name: a.name || "(untitled automation)", where });
+  }
+  return out;
+}
+
+export async function deleteRecordStatus(tenantId: string, recordType: string, key: string) {
+  const row = await loadTypeRow(tenantId, recordType);
+  const recordStages = normRecordStages(row.recordStages);
+  const target = recordStages.find((s) => s.key === key);
+  if (!target) throw new Error("Status not found");
+  // DUAL GUARD — records holding it (scoped to this type) AND automations
+  // referencing the key (tenant-wide, conservative). Refuse with a blocker list.
+  const recordCount = await countRecordsInStatus(tenantId, row.id, key);
+  const records = recordCount > 0
+    ? (await db.record.findMany({ where: { tenantId, recordTypeId: row.id, stageKey: key, deletedAt: null }, select: { id: true, title: true }, take: 25, orderBy: { createdAt: "desc" } }))
+        .map((r: any) => ({ id: r.id, title: r.title || "(untitled)" }))
+    : [];
+  const automations = await automationsReferencingStatus(tenantId, key);
+  if (recordCount > 0 || automations.length > 0) {
+    const err: any = new Error("STATUS_IN_USE");
+    err.code = "STATUS_IN_USE";
+    err.blockers = { status: { key, label: target.label || key }, recordCount, records, automations };
+    throw err;
+  }
+  const next = recordStages.filter((s) => s.key !== key);
+  next.forEach((s, i) => (s.order = i));
+  await db.recordType.update({ where: { id: row.id }, data: { recordStages: next } });
+  return serializeRecordType({ ...row, recordStages: next });
+}
