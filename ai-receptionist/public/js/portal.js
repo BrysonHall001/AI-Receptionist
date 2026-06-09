@@ -1716,13 +1716,18 @@
       };
     }
 
-    // Labels editor — one clean list of this portal's nouns. Type the SINGULAR;
-    // the plural auto-fills (and stays editable for irregulars). Record types
-    // write to label/labelPlural; generic words to Tenant.labels.
+    // Labels editor — TWO groups:
+    //  1) "What things are called": the concept nouns (record types + record/stage)
+    //     that ripple through the app. Type the SINGULAR; the plural auto-fills and
+    //     stays editable. Record types write label/labelPlural; generic words go to
+    //     Tenant.labels.
+    //  2) "Pages & navigation": the left-nav items — rename the fixed ones, drag to
+    //     reorder, and show/hide. All written to the ONE nav config (Tenant.labels.nav)
+    //     that the sidebar and the later per-row menu both read. Items already named
+    //     by group 1 (e.g. Contacts→Clients) keep that name here — not renamed twice.
     async function secLabels(panel) {
       panel.innerHTML = `<h2 class="settings-h">Labels</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:4px">Rename what things are called in this portal. Type the <strong>singular</strong> — the plural fills in for you, and you can edit it.</p>
-        <p class="cell-muted" style="font-size:12.5px;margin-bottom:16px;font-style:italic">Changes apply across the app as more areas are updated to use your labels.</p>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:16px">Control what things are called in this portal and how the left-hand menu looks.</p>
         <div id="lbl-body"><div class="cell-muted" style="padding:6px">Loading…</div></div>`;
       const body = panel.querySelector("#lbl-body");
       let types, labelsData;
@@ -1731,40 +1736,38 @@
         types = r[0]; labelsData = r[1];
       } catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:6px">Couldn’t load labels.</div>`; return; }
 
-      // Shared pluralizer (handles irregulars too).
       const pluralize = App.pluralize;
-
       const generic = (labelsData && labelsData.generic) || {};
+      const navCfg = (labelsData && labelsData.nav && typeof labelsData.nav === "object") ? labelsData.nav : { order: [], hidden: [], labels: {} };
       const GENERIC_WORDS = [
         { key: "record", dflt: { one: "Record", many: "Records" } },
         { key: "stage", dflt: { one: "Stage", many: "Stages" } },
       ];
 
       body.innerHTML = "";
-      const rows = []; // { key, scope, oneEl, manyEl, touched }
 
-      // One header for the single list.
+      // ===================== Group 1: What things are called =====================
+      body.appendChild(el("h3", "settings-sub", "What things are called"));
+      const g1hint = el("p", "cell-muted"); g1hint.style.cssText = "font-size:12.5px;margin:0 0 10px"; g1hint.innerHTML = "Type the <strong>singular</strong> — the plural fills in for you, and you can edit it for irregulars.";
+      body.appendChild(g1hint);
+      const nounWrap = el("div", "lbl-group");
       const head = el("div", "lbl-row lbl-head");
       head.appendChild(el("div", null, "Singular"));
       head.appendChild(el("div", null, "Plural (auto — editable)"));
-      body.appendChild(head);
-
+      nounWrap.appendChild(head);
+      const rows = []; // { key, scope, oneEl, manyEl, touched }
       function addRow(scope, key, one, many) {
         const r = el("div", "lbl-row");
         const o = el("input", "input"); o.value = one || ""; o.placeholder = "Singular";
         const m = el("input", "input"); m.value = many || ""; m.placeholder = "Plural";
         m.title = "Auto-generated from the singular — edit for irregulars (e.g. Person → People)";
         r.appendChild(o); r.appendChild(m);
-        body.appendChild(r);
-        // If the stored plural already matches the auto-rule, keep auto-tracking;
-        // if it's a custom/irregular plural, treat it as user-set (don't clobber).
+        nounWrap.appendChild(r);
         const row = { key: key, scope: scope, oneEl: o, manyEl: m, touched: !!(many && many !== pluralize(one)) };
         o.addEventListener("input", () => { if (!row.touched) m.value = pluralize(o.value); });
         m.addEventListener("input", () => { row.touched = true; });
         rows.push(row);
       }
-
-      // Record types first (their singular is the type's label), then generic words.
       (types || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((t) => {
         addRow("type", t.key, t.label || "", t.labelPlural || pluralize(t.label || ""));
       });
@@ -1772,23 +1775,103 @@
         const cur = generic[w.key] || {};
         addRow("generic", w.key, cur.one || w.dflt.one, cur.many || w.dflt.many);
       });
+      body.appendChild(nounWrap);
 
-      const saveBtn = el("button", "btn btn-primary btn-sm", "Save labels");
-      saveBtn.style.marginTop = "16px";
+      // ===================== Group 2: Pages & navigation =========================
+      body.appendChild(el("h3", "settings-sub", "Pages & navigation"));
+      const g2hint = el("p", "cell-muted"); g2hint.style.cssText = "font-size:12.5px;margin:0 0 10px"; g2hint.innerHTML = "Rename, drag to reorder, or hide the items in your left-hand menu. <strong>Home Dashboard</strong> always stays so there’s a landing page.";
+      body.appendChild(g2hint);
+      const navListEl = el("div", "nav-edit-list");
+      body.appendChild(navListEl);
+
+      const NAV = (App.PORTAL_NAV || []).slice();
+      const navByHref = {}; NAV.forEach((it) => { navByHref[it[0]] = it; });
+      // Initial display order: saved order first, then any default items not in it
+      // (so a newly-shipped nav item still appears under an older saved order). We
+      // show ALL items here — including hidden ones (greyed) — so hiding is always
+      // recoverable.
+      let navOrder = []; const seen = {};
+      (navCfg.order || []).forEach((h) => { if (navByHref[h] && !seen[h]) { navOrder.push(h); seen[h] = true; } });
+      NAV.forEach((it) => { if (!seen[it[0]]) { navOrder.push(it[0]); seen[it[0]] = true; } });
+      const hiddenSet = new Set((navCfg.hidden || []).filter((h) => h !== "#/dashboard"));
+      const labelInputs = {}; // href -> input (fixed items only)
+      function navDisplay(it) { return it[2] ? App.label(it[2], "many") : (((navCfg.labels || {})[it[0]]) || it[1]); }
+
+      function paintNav() {
+        navListEl.innerHTML = "";
+        navOrder.forEach((href) => {
+          const it = navByHref[href]; if (!it) return;
+          const kind = it[2]; const dflt = it[1];
+          const isHome = href === "#/dashboard";
+          const isHidden = hiddenSet.has(href);
+          const row = el("div", "nav-edit-row" + (isHidden ? " nav-edit-hidden" : ""));
+          row.draggable = true; row.dataset.href = href;
+          row.appendChild(el("span", "mc-drag", "⠿"));
+          if (kind) {
+            const lab = el("div", "nav-edit-label-fixed");
+            lab.appendChild(el("span", null, esc(App.label(kind, "many"))));
+            lab.appendChild(el("span", "nav-edit-note", "set by the “" + esc(App.label(kind, "one")) + "” label above"));
+            row.appendChild(lab);
+          } else {
+            const inp = el("input", "input nav-edit-input");
+            inp.value = ((navCfg.labels || {})[href]) || dflt;
+            inp.placeholder = dflt;
+            row.appendChild(inp);
+            labelInputs[href] = inp;
+          }
+          if (isHome) {
+            row.appendChild(el("span", "nav-edit-pill", "Always shown"));
+          } else {
+            const btn = el("button", "btn btn-ghost btn-sm nav-edit-toggle", isHidden ? "Show" : "Hide");
+            btn.onclick = async () => {
+              if (!isHidden) {
+                const ok = await confirmModal({ title: "Hide this page?", message: "“" + navDisplay(it) + "” will be removed from the left-hand menu. You can restore it any time from Settings → Labels → Pages & navigation.", confirmText: "Hide page" });
+                if (!ok) return;
+                hiddenSet.add(href);
+              } else {
+                hiddenSet.delete(href);
+              }
+              paintNav();
+            };
+            row.appendChild(btn);
+          }
+          row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.setData("text/plain", href); });
+          row.addEventListener("dragend", () => row.classList.remove("dragging"));
+          row.addEventListener("dragover", (e) => { e.preventDefault(); });
+          row.addEventListener("drop", (e) => {
+            e.preventDefault();
+            const from = e.dataTransfer.getData("text/plain"); const to = href;
+            if (from === to) return;
+            navOrder = navOrder.filter((k) => k !== from);
+            const idx = navOrder.indexOf(to);
+            navOrder.splice(idx, 0, from);
+            paintNav();
+          });
+          navListEl.appendChild(row);
+        });
+      }
+      paintNav();
+
+      // ===================== Save (both groups together) =========================
+      const saveBtn = el("button", "btn btn-primary btn-sm", "Save");
+      saveBtn.style.marginTop = "18px";
       saveBtn.onclick = async () => {
-        const payload = { types: {}, generic: {} };
+        const payload = { types: {}, generic: {}, nav: { order: [], hidden: [], labels: {} } };
         for (const row of rows) {
           const one = row.oneEl.value.trim();
           let many = row.manyEl.value.trim();
           if (!one) { toast("Each word needs a singular name", true); return; }
-          if (!many) many = pluralize(one); // derive if the user cleared it
+          if (!many) many = pluralize(one);
           payload[row.scope === "type" ? "types" : "generic"][row.key] = { one: one, many: many };
         }
+        payload.nav.order = navOrder.slice();
+        payload.nav.hidden = Array.from(hiddenSet);
+        Object.keys(labelInputs).forEach((href) => { const v = labelInputs[href].value.trim(); if (v) payload.nav.labels[href] = v; });
         try {
           await App.portalApi("/api/labels", { method: "PATCH", body: JSON.stringify(payload) });
           await App.loadLabels();
-          toast("Labels saved");
-          if (App._route) App._route(); // repaint nav + this section with the new words
+          toast("Saved");
+          if (App._route) App._route(); // repaint nav (order/labels/hidden) + this pane
         } catch (err) { toast(err.message, true); }
       };
       body.appendChild(saveBtn);

@@ -33,6 +33,9 @@
   // FEATURE names, not object nouns, so they stay literal.
   const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"]];
   const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"]];
+  // Exposed so the Settings → Labels → "Pages & navigation" editor builds its rows
+  // from the same canonical list the sidebar uses (no drift, no second definition).
+  App.PORTAL_NAV = PORTAL_NAV;
 
   // ---- Per-portal nav config (single source of truth = App.state.labels.nav) ----
   // Read by the sidebar here and, later, by the per-row nav menu. Order, hide, and
