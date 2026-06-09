@@ -111,7 +111,7 @@
         const name = el("button", "saved-name", esc(t.name));
         name.onclick = () => { if (kind === "email" && subjectInput && t.subject) subjectInput.value = t.subject; api.setBody(t.body || ""); tplMenu.classList.add("hidden"); toast("Loaded \u201c" + t.name + "\u201d"); };
         const del = el("button", "saved-del", "&times;");
-        del.onclick = async (e) => { e.stopPropagation(); if (!confirm("Delete template \u201c" + t.name + "\u201d?")) return; try { await App.portalApi("/api/templates/" + t.id, { method: "DELETE" }); toast("Template deleted"); loadTemplates(); } catch (err) { toast(err.message, true); } };
+        del.onclick = async (e) => { e.stopPropagation(); if (!(await App.ui.confirmModal({ title: "Delete template", message: "Delete template \u201c" + t.name + "\u201d?", confirmText: "Delete template" }))) return; try { await App.portalApi("/api/templates/" + t.id, { method: "DELETE" }); toast("Template deleted"); loadTemplates(); } catch (err) { toast(err.message, true); } };
         row.appendChild(name); row.appendChild(del); tplMenu.appendChild(row);
       });
       tplMenu.appendChild(el("div", "pop-sep"));

@@ -1215,7 +1215,7 @@
     logs.onclick = () => { tab = "runs"; render(host).then(() => filterRuns(a.id)); };
     const del = el("button", "link-danger", "Delete");
     del.onclick = async () => {
-      if (!confirm(`Delete automation “${a.name}”?`)) return;
+      if (!(await App.ui.confirmModal({ title: "Delete automation", message: `Delete automation “${a.name}”?`, confirmText: "Delete" }))) return;
       try { await App.portalApi(`/api/automations/${a.id}`, { method: "DELETE" }); toast("Deleted"); render(host); }
       catch (e) { toast(e.message, true); }
     };
@@ -2074,7 +2074,7 @@
     if (j.status === "pending") {
       const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
       cancel.onclick = async () => {
-        if (!confirm("Cancel this scheduled job?")) return;
+        if (!(await App.ui.confirmModal({ title: "Cancel scheduled job", message: "Cancel this scheduled job?", confirmText: "Cancel job", cancelText: "Keep job" }))) return;
         try { await App.portalApi(`/api/automations/jobs/${j.id}/cancel`, { method: "POST" }); toast("Canceled"); renderScheduled(body); }
         catch (e) { toast(e.message, true); }
       };

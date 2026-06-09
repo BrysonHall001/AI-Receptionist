@@ -93,7 +93,7 @@
     const secBox = el("div", "ib-mono"); secBox.textContent = ep.token;
     const regen = el("button", "btn btn-ghost btn-sm", "Reset key");
     regen.onclick = async () => {
-      if (!confirm("Reset the secret key? The current link stops working right away, and you'll need to give the new link to any tool that uses it.")) return;
+      if (!(await App.ui.confirmModal({ title: "Reset secret key", message: "Reset the secret key? The current link stops working right away, and you'll need to give the new link to any tool that uses it.", confirmText: "Reset key" }))) return;
       try { const r = await App.portalApi(`/api/inbound/${ep.id}/regenerate`, { method: "POST" }); ep.token = r.token; rerender(); toast("New key generated."); }
       catch (e) { toast(e.message, true); }
     };
@@ -151,7 +151,7 @@
     const del = el("button", "btn btn-ghost btn-sm", "Delete link");
     del.style.marginLeft = "auto";
     del.onclick = async () => {
-      if (!confirm("Delete this lead capture link? It will stop working immediately.")) return;
+      if (!(await App.ui.confirmModal({ title: "Delete link", message: "Delete this lead capture link? It will stop working immediately.", confirmText: "Delete link" }))) return;
       try { await App.portalApi(`/api/inbound/${ep.id}`, { method: "DELETE" }); rerender(); toast("Link deleted."); }
       catch (e) { toast(e.message, true); }
     };

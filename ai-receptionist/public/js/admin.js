@@ -140,7 +140,7 @@
         <td class="cell-muted">${u.lastLoginAt ? fmtDate(u.lastLoginAt) : "Never"}</td><td></td>`;
       if (u.id !== App.state.me.id) {
         const del = el("button", "link-danger", "Remove");
-        del.onclick = async () => { if (!confirm(`Remove ${u.email}?`)) return; try { await App.api(`/api/admin/users/${u.id}`, { method: "DELETE" }); toast("User removed"); renderUsers(); } catch (e) { toast(e.message, true); } };
+        del.onclick = async () => { if (!(await App.ui.confirmModal({ title: "Remove user", message: `Remove ${u.email}?`, confirmText: "Remove" }))) return; try { await App.api(`/api/admin/users/${u.id}`, { method: "DELETE" }); toast("User removed"); renderUsers(); } catch (e) { toast(e.message, true); } };
         tr.lastChild.appendChild(del);
       }
       tb.appendChild(tr);

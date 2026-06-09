@@ -237,7 +237,7 @@
     bulkMenu.appendChild(bulkItem("Delete selected", async () => {
       const ids = handle.getSelected(); if (!ids.length) return needSelection();
       bulkMenu.classList.add("hidden");
-      if (!confirm(`Move ${App.countLabel("contact", ids.length).toLowerCase()} to the Recycle Bin?`)) return;
+      if (!(await confirmModal({ title: "Move to Recycle Bin", message: `Move ${App.countLabel("contact", ids.length).toLowerCase()} to the Recycle Bin?`, confirmText: "Move to Recycle Bin" }))) return;
       try { await App.portalApi("/api/contacts/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Moved to Recycle Bin"); renderContacts(); }
       catch (e) { App.util.toast(e.message, true); }
     }));
@@ -462,7 +462,7 @@
     cancel.onclick = () => overlay.remove();
     apply.onclick = async () => {
       const field = pick.value; const value = current.get();
-      if (!confirm(`Set "${field}" on ${App.countLabel("contact", ids.length).toLowerCase()}? This can't be undone in bulk.`)) return;
+      if (!(await confirmModal({ title: "Apply to all selected", message: `Set "${field}" on ${App.countLabel("contact", ids.length).toLowerCase()}? This can't be undone in bulk.`, confirmText: "Apply" }))) return;
       apply.disabled = true; apply.textContent = "Applying…";
       try { const r = await App.portalApi("/api/contacts/bulk-update", { method: "POST", body: JSON.stringify({ ids, field, value }) }); toast(`Updated ${App.countLabel("contact", r.count).toLowerCase()}`); overlay.remove(); renderContacts(); }
       catch (e) { toast(e.message, true); apply.disabled = false; apply.textContent = "Apply to selected"; }
@@ -538,7 +538,7 @@
     go.onclick = async () => {
       const loserIds = rows.map((c) => c.id).filter((id) => id !== survivorId);
       const fieldValues = {}; Object.keys(chosen).forEach((k) => { if (k !== "phone") fieldValues[k] = chosen[k]; });
-      if (!confirm(`Merge ${App.countLabel("contact", loserIds.length).toLowerCase()} into the surviving one? This moves their history and sends them to the Recycle Bin.`)) return;
+      if (!(await confirmModal({ title: "Merge contacts", message: `Merge ${App.countLabel("contact", loserIds.length).toLowerCase()} into the surviving one? This moves their history and sends them to the Recycle Bin.`, confirmText: "Merge" }))) return;
       go.disabled = true; go.textContent = "Merging…";
       try { await App.portalApi("/api/contacts/merge", { method: "POST", body: JSON.stringify({ survivorId, loserIds, fieldValues }) }); toast((App.label("contact","many") + " merged")); overlay.remove(); renderContacts(); }
       catch (e) { toast(e.message, true); go.disabled = false; go.textContent = ("Merge " + App.label("contact","many").toLowerCase()); }
@@ -616,7 +616,7 @@
         name.onclick = () => { handle.applyState(f.definition); menu.classList.add("hidden"); App.util.toast(`Applied “${f.name}”`); };
         const del = el("button", "saved-del", "&times;");
         del.title = "Delete";
-        del.onclick = async (e) => { e.stopPropagation(); if (!confirm(`Delete saved filter “${f.name}”?`)) return; try { await App.portalApi(`/api/saved-filters/${f.id}`, { method: "DELETE" }); App.util.toast("Filter deleted"); load(); } catch (err) { App.util.toast(err.message, true); } };
+        del.onclick = async (e) => { e.stopPropagation(); if (!(await confirmModal({ title: "Delete filter", message: `Delete saved filter “${f.name}”?`, confirmText: "Delete" }))) return; try { await App.portalApi(`/api/saved-filters/${f.id}`, { method: "DELETE" }); App.util.toast("Filter deleted"); load(); } catch (err) { App.util.toast(err.message, true); } };
         row.appendChild(name);
         row.appendChild(del);
         menu.appendChild(row);
@@ -923,7 +923,7 @@
         const ren = el("button", "btn btn-ghost btn-sm", "Rename");
         ren.onclick = async () => { const name = await promptModal({ title: "Rename section", label: "Section name", value: section.label, okText: "Rename" }); if (!name || !name.trim()) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "PATCH", body: JSON.stringify({ label: name.trim() }) }); App.util.toast("Renamed"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
         const del = el("button", "link-danger", "Delete");
-        del.onclick = async () => { if (!confirm(`Delete section “${section.label}”? Its fields move to Ungrouped — no fields are deleted.`)) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "DELETE" }); App.util.toast("Section deleted"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
+        del.onclick = async () => { if (!(await confirmModal({ title: "Delete section", message: `Delete section “${section.label}”? Its fields move to Ungrouped — no fields are deleted.`, confirmText: "Delete section" }))) return; try { await App.portalApi("/api/field-sections/" + section.id, { method: "DELETE" }); App.util.toast("Section deleted"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
         tools.appendChild(up); tools.appendChild(down); tools.appendChild(ren); tools.appendChild(del);
         head.appendChild(tools);
       }
@@ -1002,7 +1002,7 @@
         };
         const sdel = el("button", "link-danger", "Delete type");
         sdel.onclick = async () => {
-          if (!confirm(`Delete ${(((selectedType && selectedType.label) || App.label("job","one")).toLowerCase())} type “${st.label}”? Its pipeline is removed too.`)) return;
+          if (!(await confirmModal({ title: "Delete type", message: `Delete ${(((selectedType && selectedType.label) || App.label("job","one")).toLowerCase())} type “${st.label}”? Its pipeline is removed too.`, confirmText: "Delete type" }))) return;
           try { await App.portalApi("/api/record-subtypes/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: st.key }) }); App.util.toast((((selectedType && selectedType.label) || App.label("job","one"))) + " type deleted"); renderFields(true); }
           catch (e) { App.util.toast(e.message, true); } // blocked while jobs use it
         };
@@ -1034,7 +1034,7 @@
           };
           const del = el("button", "link-danger", "Delete");
           del.onclick = async () => {
-            if (!confirm(`Delete ${App.label("stage","one").toLowerCase()} “${s.label}”?`)) return;
+            if (!(await confirmModal({ title: "Delete stage", message: `Delete ${App.label("stage","one").toLowerCase()} “${s.label}”?`, confirmText: "Delete" }))) return;
             try { await App.portalApi("/api/record-stages/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, subtypeKey: st.key, key: s.key }) }); App.util.toast(App.label("stage","one") + " deleted"); renderFields(true); }
             catch (e) { App.util.toast(e.message, true); } // blocked while candidates occupy it
           };
@@ -1096,7 +1096,7 @@
         };
         const del = el("button", "link-danger", "Delete");
         del.onclick = async () => {
-          if (!confirm("Delete status “" + s.label + "”?")) return;
+          if (!(await confirmModal({ title: "Delete status", message: "Delete status “" + s.label + "”?", confirmText: "Delete status" }))) return;
           try { await App.portalApi("/api/record-statuses/delete", { method: "POST", body: JSON.stringify({ recordType: selectedKey, key: s.key }) }); App.util.toast("Status deleted"); renderFields(true); }
           catch (e) {
             if (e && e.data && e.data.error === "STATUS_IN_USE") statusBlockedModal(e.data.blockers);
@@ -1149,7 +1149,7 @@
       right.appendChild(edit);
       if (!f.system) {
         const del = el("button", "link-danger", "Delete");
-        del.onclick = async () => { if (!confirm(`Delete field “${f.label}”? Existing values will be hidden.`)) return; try { await App.portalApi(`/api/fields/${f.id}`, { method: "DELETE" }); App.util.toast("Field deleted"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
+        del.onclick = async () => { if (!(await confirmModal({ title: "Delete field", message: `Delete field “${f.label}”? Existing values will be hidden.`, confirmText: "Delete field" }))) return; try { await App.portalApi(`/api/fields/${f.id}`, { method: "DELETE" }); App.util.toast("Field deleted"); renderFields(true); } catch (e) { App.util.toast(e.message, true); } };
         right.appendChild(del);
       } else {
         right.appendChild(el("span", "field-locked", "🔒"));
@@ -1375,7 +1375,7 @@
         stageSel.onchange = async () => { try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: stageSel.value || null }) }); toast(App.label("stage","one") + " updated"); } catch (e) { toast(e.message, true); } };
         row.appendChild(stageSel);
         const unlink = el("button", "link-danger", "Unlink");
-        unlink.onclick = async () => { if (!confirm(`Unlink “${title}”?`)) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedJobs(); } catch (e) { toast(e.message, true); } };
+        unlink.onclick = async () => { if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedJobs(); } catch (e) { toast(e.message, true); } };
         row.appendChild(unlink);
         jobsList.appendChild(row);
       });
@@ -1788,7 +1788,7 @@
       const actions = tr.lastChild;
       if (u.id !== App.state.me.id) {
         const del = el("button", "link-danger", "Remove");
-        del.onclick = async () => { if (!confirm(`Remove ${u.email}?`)) return; try { await App.portalApi(`/api/users/${u.id}`, { method: "DELETE" }); toast("User removed"); renderSettings(); } catch (e) { toast(e.message, true); } };
+        del.onclick = async () => { if (!(await confirmModal({ title: "Remove user", message: `Remove ${u.email}?`, confirmText: "Remove" }))) return; try { await App.portalApi(`/api/users/${u.id}`, { method: "DELETE" }); toast("User removed"); renderSettings(); } catch (e) { toast(e.message, true); } };
         actions.appendChild(del);
       }
       tb.appendChild(tr);
@@ -1872,6 +1872,48 @@
   // theme) reuse it instead of native prompt() — no second component invented.
   App.ui = App.ui || {};
   App.ui.promptModal = promptModal;
+
+  // Styled yes/cancel dialog for DESTRUCTIVE/irreversible actions. Safety-matched
+  // to the native confirm() it replaces — and stricter:
+  //  - NOT dismissable by clicking outside (overlay has no close handler).
+  //  - Enter is swallowed (does nothing); Escape = cancel.
+  //  - Default focus is the CANCEL button, never the confirm button.
+  //  - The confirm button names the action ("Delete", "Merge", …), styled danger.
+  // Resolves true only on an explicit click of the confirm button.
+  function confirmModal(opts) {
+    opts = opts || {};
+    return new Promise((resolve) => {
+      const overlay = el("div", "modal-overlay");
+      const box = el("div", "modal");
+      const inner = el("div");
+      inner.innerHTML = `<div class="modal-head"><h2>${esc(opts.title || "Please confirm")}</h2></div>`;
+      const body = el("div", "modal-body");
+      const p = el("p", "confirm-msg");
+      p.textContent = opts.message || "Are you sure?";
+      body.appendChild(p);
+      inner.appendChild(body);
+      const foot = el("div", "modal-foot");
+      const cancelBtn = el("button", "btn btn-ghost btn-sm", opts.cancelText || "Cancel");
+      const okBtn = el("button", "btn btn-sm " + (opts.danger === false ? "btn-primary" : "btn-danger"), opts.confirmText || "Confirm");
+      foot.appendChild(cancelBtn); foot.appendChild(okBtn);
+      inner.appendChild(foot);
+      box.appendChild(inner);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      let done = false;
+      const finish = (val) => { if (done) return; done = true; document.removeEventListener("keydown", onKey, true); overlay.remove(); resolve(val); };
+      cancelBtn.onclick = () => finish(false);
+      okBtn.onclick = () => finish(true);
+      // Intentionally NO click-outside dismissal — clicking the overlay does nothing.
+      function onKey(e) {
+        if (e.key === "Escape") { e.preventDefault(); finish(false); }
+        else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); } // swallow stray Enter: no dismiss, no confirm
+      }
+      document.addEventListener("keydown", onKey, true);
+      setTimeout(() => cancelBtn.focus(), 0); // default focus = Cancel
+    });
+  }
+  App.ui.confirmModal = confirmModal;
 
   // Styled modal shown when a record-level Status delete is BLOCKED. Lists the
   // records holding it (linked to their profiles) and the automations that
@@ -2162,7 +2204,7 @@
     bulkMenu.appendChild(bulkItem("Delete selected", async () => {
       const ids = handle.getSelected(); if (!ids.length) return needSelection();
       bulkMenu.classList.add("hidden");
-      if (!confirm(`Move ${ids.length} ${(ids.length > 1 ? (type.labelPlural || App.label("record","many").toLowerCase()) : (type.label || App.label("record","one").toLowerCase())).toLowerCase()} to the Recycle Bin?`)) return;
+      if (!(await confirmModal({ title: "Move to Recycle Bin", message: `Move ${ids.length} ${(ids.length > 1 ? (type.labelPlural || App.label("record","many").toLowerCase()) : (type.label || App.label("record","one").toLowerCase())).toLowerCase()} to the Recycle Bin?`, confirmText: "Move to Recycle Bin" }))) return;
       try { await App.portalApi("/api/records/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) }); toast("Deleted"); renderRecordList(typeKey); }
       catch (e) { toast(e.message, true); }
     }));
@@ -2596,7 +2638,7 @@
         stageSelL.onchange = async () => { const v = stageSelL.value || null; try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: v }) }); lk.stageKey = v; toast(App.label("stage","one") + " updated"); } catch (e) { toast(e.message, true); } };
         row.appendChild(stageSelL);
         const unlink = el("button", "link-danger", "Unlink");
-        unlink.onclick = async () => { if (!confirm(`Unlink ${who}?`)) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (e) { toast(e.message, true); } };
+        unlink.onclick = async () => { if (!(await confirmModal({ title: "Unlink", message: `Unlink ${who}?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (e) { toast(e.message, true); } };
         row.appendChild(unlink);
         listEl.appendChild(row);
       });
@@ -2613,7 +2655,7 @@
       card.appendChild(nameEl);
       if (sub) card.appendChild(el("div", "kanban-card-sub", esc(sub)));
       const x = el("button", "kanban-card-x", "×"); x.title = "Unlink";
-      x.onclick = async (e) => { e.stopPropagation(); if (!confirm(`Unlink ${who}?`)) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (err) { toast(err.message, true); } };
+      x.onclick = async (e) => { e.stopPropagation(); if (!(await confirmModal({ title: "Unlink", message: `Unlink ${who}?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (err) { toast(err.message, true); } };
       card.appendChild(x);
       card.addEventListener("dragstart", () => { kanbanDropHandled = false; card.classList.add("dragging"); });
       card.addEventListener("dragend", () => { card.classList.remove("dragging"); document.querySelectorAll(".kanban-col--over").forEach((c) => c.classList.remove("kanban-col--over")); if (!kanbanDropHandled) renderCandBoard(); });

@@ -125,6 +125,10 @@ body {
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover { background: var(--accent-strong); }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover { filter: brightness(0.94); }
+.btn-danger:disabled { opacity: 0.6; cursor: default; }
+.confirm-msg { margin: 0; line-height: 1.55; color: var(--ink-soft); }
 .btn-ghost { background: var(--panel); color: var(--ink-soft); border-color: var(--line-strong); }
 .btn-ghost:hover { background: var(--gray-soft); color: var(--ink); }
 
