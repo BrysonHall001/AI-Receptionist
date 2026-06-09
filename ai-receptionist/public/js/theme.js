@@ -1,4 +1,7 @@
-// Per-USER theming on the client (personal preference, portal-independent).
+// Per-PORTAL theming on the client (branding shared by everyone in the portal).
+// The Appearance pane loads/saves the PORTAL's theme via /api/theme; the server
+// resolves it by tenant. Only PORTAL_ADMIN/SUPER_ADMIN see the editing controls
+// (CLIENT_USER gets a read-only notice), and the server enforces the same rule.
 //
 // SECURITY: presets are applied by setting body[data-theme] to a charset-safe
 // id only. Custom values are applied via the CSSOM API (style.setProperty) with
@@ -93,7 +96,20 @@
 
     const presets = data.presets || [];
     const fonts = data.fonts || [];
-    // prefs is the live, editable per-user theme state.
+
+    // Branding is a portal-admin setting. A CLIENT_USER sees the portal's theme
+    // applied to their UI but cannot change it - show a read-only notice and stop
+    // before building any editing controls. (The server also rejects their saves.)
+    const role = App.state.me && App.state.me.role;
+    if (role === "CLIENT_USER") {
+      host.innerHTML =
+        `<div class="cell-muted" style="padding:8px 0">` +
+        `The appearance of this portal is set by an administrator, so the theme isn't editable from your account.` +
+        `</div>`;
+      return;
+    }
+
+    // prefs is the live, editable PORTAL theme state.
     let prefs = data.theme && data.theme.active ? data.theme : { active: { mode: "preset", preset: "light" }, customs: [] };
     // editor working colors (live preview only until saved)
     let editor = activeCustomColors() || { ...DEFAULT_CUSTOM };

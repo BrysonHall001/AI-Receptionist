@@ -74,41 +74,10 @@ export function publicUser(u: any) {
   };
 }
 
-// ---- Per-user theme preferences (stored on User.themePrefs JSON) ----
-import {
-  sanitizeUserTheme,
-  sanitizeLegacyTheme,
-  legacyToUserTheme,
-  UserTheme,
-  DEFAULT_USER_THEME,
-} from "../theme/themes";
-
-function isEmptyPrefs(p: any): boolean {
-  return !p || typeof p !== "object" || (!p.active && !(Array.isArray(p.customs) && p.customs.length));
-}
-
-export async function getUserTheme(userId: string): Promise<UserTheme> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) return { ...DEFAULT_USER_THEME };
-  const prefs = (user as any).themePrefs;
-  if (!isEmptyPrefs(prefs)) return sanitizeUserTheme(prefs);
-
-  // No personal theme yet: fall back to the portal's old per-portal theme so
-  // the existing look isn't lost. Not persisted until the user saves.
-  if (user.tenantId) {
-    const tenant = await prisma.tenant.findUnique({ where: { id: user.tenantId } });
-    if (tenant && (tenant as any).theme) {
-      return legacyToUserTheme(sanitizeLegacyTheme((tenant as any).theme));
-    }
-  }
-  return { ...DEFAULT_USER_THEME };
-}
-
-export async function setUserTheme(userId: string, input: unknown): Promise<UserTheme> {
-  const clean = sanitizeUserTheme(input);
-  await prisma.user.update({ where: { id: userId }, data: { themePrefs: clean as any } });
-  return clean;
-}
+// NOTE: Theme is now PER-PORTAL branding, not a per-user preference. The old
+// getUserTheme/setUserTheme path was removed; theme lives on Tenant.theme and is
+// handled by getPortalTheme/setPortalTheme in portalService.ts. The User.themePrefs
+// column is left in place (dormant) and is no longer read or written.
 
 // ---- Per-user Contacts column layout (stored on User.contactColumns JSON) ----
 const COL_KEY_RE = /^[a-zA-Z0-9_.:-]{1,64}$/;

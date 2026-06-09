@@ -15,9 +15,9 @@ import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listExports, createExport, getExportCsv } from "../services/exportService";
-import { updatePortal, getPortal, setTenantLabels } from "../services/portalService";
+import { updatePortal, getPortal, setTenantLabels, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
 import { PRESETS, FONTS } from "../theme/themes";
-import { createUser, listUsers, deleteUser, setPassword, publicUser, getUserTheme, setUserTheme, getContactColumns, setContactColumns } from "../services/userService";
+import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns } from "../services/userService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
 import { testRunAutomation, runManualAutomation } from "../automation/engine";
 import { listScheduledJobs, cancelScheduledJob, processDueJobs } from "../automation/scheduler";
@@ -760,16 +760,37 @@ apiRouter.post("/simulate", async (req: Request, res: Response) => {
   }
 });
 
-// ---- Per-user theme (Appearance). Personal to each account, independent of
-// portal context. Every authenticated user controls their own theme. ----
+// ---- Per-portal theme (Appearance). Branding belongs to the PORTAL: everyone
+// who enters a portal sees its theme. Resolved by the tenant (via
+// resolveTenantScope), never by user id. The master hub (no portal in context)
+// returns a fixed default and cannot be themed. Only PORTAL_ADMIN/SUPER_ADMIN
+// may save; CLIENT_USER can read but not change (enforced here, not just in UI). ----
 apiRouter.get("/theme", async (req: Request, res: Response) => {
-  res.json({ theme: await getUserTheme(req.user!.id), presets: PRESETS, fonts: FONTS });
+  const tenantId = resolveTenantScope(req);
+  // No portal in context (e.g. super-admin on the master hub): the fixed
+  // default look, with presets/fonts so the picker still renders. Never a 400.
+  if (!tenantId) {
+    res.json({ theme: MASTER_DEFAULT_THEME, presets: PRESETS, fonts: FONTS });
+    return;
+  }
+  res.json({ theme: await getPortalTheme(tenantId), presets: PRESETS, fonts: FONTS });
 });
 
 apiRouter.patch("/theme", async (req: Request, res: Response) => {
-  // sanitizeUserTheme rejects anything that isn't a known preset, a strict-hex
-  // + allow-listed-font custom, or a clean (length-capped, escaped) name.
-  const theme = await setUserTheme(req.user!.id, (req.body ?? {}).theme ?? req.body);
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) {
+    res.status(400).json({ error: "No portal selected" });
+    return;
+  }
+  // Branding is an admin setting - same bar as the rest of portal Settings.
+  if (req.user!.role === "CLIENT_USER") {
+    res.status(403).json({ error: "Not authorized to change the portal theme" });
+    return;
+  }
+  // sanitizeUserTheme (inside setPortalTheme) rejects anything that isn't a known
+  // preset, a strict-hex + allow-listed-font custom, or a clean (length-capped,
+  // escaped) name.
+  const theme = await setPortalTheme(tenantId, (req.body ?? {}).theme ?? req.body);
   res.json({ theme });
 });
 

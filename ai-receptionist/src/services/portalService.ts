@@ -84,3 +84,31 @@ export async function updatePortal(
 ) {
   return prisma.tenant.update({ where: { id }, data: data as any });
 }
+
+// ---- Per-portal theme (branding) -------------------------------------------
+// One theme per portal: everyone who enters the portal sees it. Stored on the
+// existing Tenant.theme JSON column in the modern {active, customs} shape and
+// validated by the shared sanitizer (so only known-good presets/hex/fonts can
+// ever be saved). The master hub (no portal in context) uses a fixed default
+// and has no editable theme. Replaces the old per-user theme path.
+import { sanitizeUserTheme, UserTheme, DEFAULT_USER_THEME } from "../theme/themes";
+
+// What the master hub (no portal selected) renders.
+export const MASTER_DEFAULT_THEME: UserTheme = { ...DEFAULT_USER_THEME };
+
+export async function getPortalTheme(tenantId: string): Promise<UserTheme> {
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!t) return { ...MASTER_DEFAULT_THEME };
+  const raw = (t as any).theme;
+  // Only honor a real saved theme (modern shape); anything else -> default look.
+  if (!raw || typeof raw !== "object" || !(raw as any).active) {
+    return { ...MASTER_DEFAULT_THEME };
+  }
+  return sanitizeUserTheme(raw);
+}
+
+export async function setPortalTheme(tenantId: string, input: unknown): Promise<UserTheme> {
+  const clean = sanitizeUserTheme(input);
+  await prisma.tenant.update({ where: { id: tenantId }, data: { theme: clean as any } });
+  return clean;
+}
