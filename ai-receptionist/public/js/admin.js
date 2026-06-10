@@ -32,7 +32,7 @@
     const wrap = el("div", "fade-in");
     const bar = el("div", "page-actions");
     const create = el("button", "btn btn-primary btn-sm", "+ Create portal");
-    create.onclick = openCreatePortal;
+    create.onclick = () => renderSetupScreen();
     bar.appendChild(create);
     wrap.appendChild(bar);
 
@@ -60,7 +60,7 @@
             <button class="btn btn-ghost btn-sm portal-setup">Set up</button>
             <button class="btn btn-ghost btn-sm portal-toggle">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button></div>`;
         card.querySelector(".portal-enter").onclick = () => enterPortal(p);
-        card.querySelector(".portal-setup").onclick = () => renderSetup(p);
+        card.querySelector(".portal-setup").onclick = () => renderSetupScreen(p);
         const ruleSel = card.querySelector(".portal-rule-sel");
         ruleSel.onclick = (e) => e.stopPropagation();
         ruleSel.onchange = async () => {
@@ -86,64 +86,167 @@
     App.go("#/dashboard");
   }
 
-  // ---------------- Portal setup flow (scaffold) ----------------
-  // After "+ Create Portal" we land here. A checklist of setup steps; for this
-  // batch the live step is "Add users" (invite flow). Labels & theme and Import
-  // are placeholders that later batches fill in.
-  const SETUP_STEPS = [
-    { key: "users", title: "Add users", desc: "Invite teammates and set their roles.", live: true },
-    { key: "brand", title: "Labels & theme", desc: "Rename things and set the portal\u2019s look.", live: false },
-    { key: "import", title: "Import data", desc: "Bring in an existing contact list.", live: false },
-  ];
+  // ===================== Unified portal setup screen =====================
+  // One screen, three sections. Section 1 (basic details) CREATES the portal via
+  // the existing POST /api/admin/portals. Once created, we set
+  // App.state.currentPortalId to the new id — the hinge that makes the reused
+  // users + theme + labels editors target this portal — and unlock sections 2 & 3.
+  // Pass an existing portal to resume setup (section 1 is already done).
+  function renderSetupScreen(existingPortal) {
+    let portal = existingPortal || null;
+    let created = !!existingPortal;
+    // Remember where the app was pointed so backing out doesn't strand the
+    // super-admin inside a half-set-up portal. (In the admin area this is null.)
+    const prior = { id: App.state.currentPortalId, name: App.state.currentPortalName };
+    if (created) { App.state.currentPortalId = portal.id; App.state.currentPortalName = portal.name; }
 
-  function renderSetup(portal) {
-    const wrap = el("div", "fade-in setup-flow");
+    // The labels editor calls App._route() after saving to repaint the in-portal
+    // nav. On this directly-rendered screen that would bounce us to the portal list,
+    // so while the setup screen is open we make that repaint a no-op (the save still
+    // succeeds and the editor already shows what was typed). Real navigation is
+    // unaffected — the app's own hashchange handler uses a separate route fn — and
+    // we restore App._route the moment the admin navigates away or leaves.
+    const realRoute = App._route;
+    let routeShimmed = true;
+    function restoreRoute() {
+      if (!routeShimmed) return;
+      routeShimmed = false;
+      App._route = realRoute;
+      window.removeEventListener("hashchange", restoreRoute);
+    }
+    window.addEventListener("hashchange", restoreRoute);
+    App._route = function () {};
 
-    const head = el("div", "setup-head");
-    head.innerHTML = `<h1 class="page-title">Set up ${esc(portal.name)}</h1>
-      <p class="cell-muted">Get this portal ready. You can do these now or come back any time from the portal list.</p>`;
-    const headActions = el("div", "page-actions");
-    const enterBtn = el("button", "btn btn-ghost btn-sm", "Enter portal");
-    enterBtn.onclick = () => enterPortal(portal);
-    const backBtn = el("button", "btn btn-ghost btn-sm", "Back to portals");
-    backBtn.onclick = () => render("portals");
-    headActions.appendChild(enterBtn); headActions.appendChild(backBtn);
-    head.appendChild(headActions);
-    wrap.appendChild(head);
+    function leave(toList) {
+      restoreRoute();
+      // Restore the prior portal context (don't leave the app scoped to this portal
+      // unless the admin explicitly "enters" it via Finish).
+      App.state.currentPortalId = prior.id;
+      App.state.currentPortalName = prior.name;
+      if (toList) render("portals");
+    }
 
-    const list = el("div", "setup-steps");
-    SETUP_STEPS.forEach((step, i) => {
-      const card = el("div", "card setup-step" + (step.live ? "" : " setup-step-soon"));
-      card.style.cssText = "margin-bottom:14px;padding:18px 20px;";
-      const top = el("div");
-      top.style.cssText = "display:flex;align-items:center;gap:12px;";
-      const num = el("div", null, String(i + 1));
-      num.style.cssText = "flex:0 0 28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;background:" + (step.live ? "var(--accent,#3257d6);color:#fff" : "var(--surface,#eef1f6);color:var(--ink-soft,#5b6678)") + ";";
-      const tt = el("div");
-      tt.innerHTML = `<div style="font-weight:600">${esc(step.title)}</div><div class="cell-muted" style="font-size:13px">${esc(step.desc)}</div>`;
-      top.appendChild(num); top.appendChild(tt);
-      if (!step.live) {
-        const soon = el("span", "pill", "Coming soon");
-        soon.style.cssText = "margin-left:auto;font-size:12px;opacity:.7;";
-        top.appendChild(soon);
+    function sectionCard(n, title, desc, enabled) {
+      const card = el("div", "card");
+      card.style.cssText = "margin-bottom:16px;padding:20px;" + (enabled ? "" : "opacity:.55;");
+      const head = el("div"); head.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:4px;";
+      const num = el("div", null, String(n));
+      num.style.cssText = "flex:0 0 28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;background:" + (enabled ? "var(--accent,#3257d6);color:#fff" : "var(--surface,#eef1f6);color:var(--ink-soft,#5b6678)") + ";";
+      const tt = el("div"); tt.innerHTML = `<div style="font-weight:600">${esc(title)}</div><div class="cell-muted" style="font-size:13px">${esc(desc)}</div>`;
+      head.appendChild(num); head.appendChild(tt);
+      if (!enabled) { const lock = el("span", "pill", "Create portal first"); lock.style.cssText = "margin-left:auto;font-size:12px;opacity:.8;"; head.appendChild(lock); }
+      card.appendChild(head);
+      return card;
+    }
+
+    function draw() {
+      const wrap = el("div", "fade-in");
+      const head = el("div");
+      head.innerHTML = `<h1 class="page-title">${created ? "Set up " + esc(portal.name) : "Create a portal"}</h1>
+        <p class="cell-muted">Enter the basics to create the portal, then add users and set its look — all on this screen. Each section saves as you go.</p>`;
+      wrap.appendChild(head);
+
+      // ---- Section 1: basic details (creates the portal) ----
+      const s1 = sectionCard(1, "Basic details", "Name, contact rule, and how the receptionist greets callers.", true);
+      if (!created) {
+        const f = el("div");
+        f.innerHTML = `
+          <label class="field-label">Business name *</label><input id="sp-name" class="input" placeholder="Acme Plumbing" />
+          <label class="field-label">Business type</label><input id="sp-type" class="input" placeholder="home services company" />
+          <label class="field-label">Phone number</label><input id="sp-phone" class="input" placeholder="+19195551234" />
+          <label class="field-label">Notify email *</label><input id="sp-email" class="input" placeholder="owner@acme.com" />
+          <label class="field-label">Greeting</label><textarea id="sp-greet" class="input" rows="2" placeholder="Thanks for calling Acme. How can I help?"></textarea>
+          <label class="field-label">Contact identity rule</label>
+          <select id="sp-rule" class="input">
+            <option value="email">Require unique email (default)</option>
+            <option value="either">Phone or email</option>
+          </select>`;
+        const go = el("button", "btn btn-primary btn-sm", "Create portal");
+        go.style.marginTop = "14px";
+        go.onclick = async () => {
+          const body = {
+            name: f.querySelector("#sp-name").value.trim(),
+            businessType: f.querySelector("#sp-type").value.trim(),
+            phoneNumber: f.querySelector("#sp-phone").value.trim(),
+            notifyEmail: f.querySelector("#sp-email").value.trim(),
+            greeting: f.querySelector("#sp-greet").value.trim(),
+            requireEmail: f.querySelector("#sp-rule").value === "email",
+          };
+          if (!body.name || !body.notifyEmail) { toast("Name and notify email are required", true); return; }
+          go.disabled = true;
+          try {
+            portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify(body) });
+            created = true;
+            // The hinge: point the reused editors at the brand-new portal.
+            App.state.currentPortalId = portal.id;
+            App.state.currentPortalName = portal.name;
+            toast("Portal created");
+            draw(); // re-render: lock section 1, unlock sections 2 & 3
+          } catch (err) { toast(err.message, true); go.disabled = false; }
+        };
+        f.appendChild(go);
+        s1.appendChild(f);
+      } else {
+        const done = el("div");
+        done.style.cssText = "margin-top:6px;display:flex;align-items:center;gap:8px;color:var(--ink,#1a2230);";
+        done.innerHTML = `<span class="pill" style="background:var(--ok,#e6f4ea);color:#1c7a3f">Created</span>
+          <span><strong>${esc(portal.name)}</strong> is ready. Configure it below, or open it any time later.</span>`;
+        s1.appendChild(done);
       }
-      card.appendChild(top);
-      if (step.live && step.key === "users") {
-        const body = el("div");
-        body.style.cssText = "margin-top:14px;border-top:1px solid var(--border,#e3e8ef);padding-top:14px;";
-        renderUsersStep(body, portal);
-        card.appendChild(body);
-      }
-      list.appendChild(card);
-    });
-    wrap.appendChild(list);
+      wrap.appendChild(s1);
 
-    view().innerHTML = "";
-    view().appendChild(wrap);
+      // ---- Section 2: add users (reuse renderUsersStep verbatim) ----
+      const s2 = sectionCard(2, "Add users", "Invite teammates and set their roles. They get a link to set their own password.", created);
+      if (created) {
+        const host = el("div"); host.style.marginTop = "8px";
+        renderUsersStep(host, portal);
+        s2.appendChild(host);
+      } else {
+        s2.appendChild(elNote("You can invite users once the portal is created."));
+      }
+      wrap.appendChild(s2);
+
+      // ---- Section 3: labels & theme (reuse the existing editors) ----
+      const s3 = sectionCard(3, "Labels & theme", "Rename things and choose the portal's colors. Optional — you can do this later.", created);
+      if (created) {
+        const themeWrap = el("div"); themeWrap.style.marginTop = "8px";
+        themeWrap.appendChild(el("h3", "settings-sub", "Theme"));
+        const themeHost = el("div"); themeWrap.appendChild(themeHost);
+        s3.appendChild(themeWrap);
+        const labelsWrap = el("div"); labelsWrap.style.marginTop = "20px";
+        const labelsHost = el("div"); labelsWrap.appendChild(labelsHost);
+        s3.appendChild(labelsWrap);
+        // Mount AFTER the hosts are in the DOM. Both editors read App.portalApi,
+        // which scopes to currentPortalId (set above) for a super-admin.
+        if (App.theme && App.theme.mountSettings) App.theme.mountSettings(themeHost);
+        if (App.labelsEditor && App.labelsEditor.mount) App.labelsEditor.mount(labelsHost);
+        else labelsHost.appendChild(elNote("Labels editor unavailable."));
+      } else {
+        s3.appendChild(elNote("You can set labels and theme once the portal is created."));
+      }
+      wrap.appendChild(s3);
+
+      // ---- Footer ----
+      const footer = el("div", "page-actions");
+      footer.style.cssText = "margin-top:8px;display:flex;gap:8px;";
+      const finish = el("button", "btn btn-primary btn-sm", "Finish — go to portal");
+      finish.disabled = !created;
+      finish.onclick = () => { if (portal) { restoreRoute(); enterPortal(portal); } }; // enterPortal sets currentPortalId + navigates
+      const back = el("button", "btn btn-ghost btn-sm", "Back to portals");
+      back.onclick = () => leave(true);
+      footer.appendChild(finish); footer.appendChild(back);
+      wrap.appendChild(footer);
+
+      view().innerHTML = "";
+      view().appendChild(wrap);
+    }
+
+    function elNote(text) {
+      const d = el("div", "cell-muted"); d.style.cssText = "margin-top:8px;font-size:13px;"; d.textContent = text; return d;
+    }
+
+    draw();
   }
-
-  // The "Add users" step: invite by email + role. Real plumbing; email is mocked,
-  // so on success we show the invite LINK for the super-admin to copy and test.
   function renderUsersStep(host, portal) {
     host.innerHTML = "";
 
@@ -226,44 +329,6 @@
 
     sendBtn.onclick = () => createInvite(email.value, role.value, false);
     refreshList();
-  }
-
-  function openCreatePortal() {
-    const inner = el("div");
-    inner.innerHTML = `<div class="modal-head"><h2>Create portal</h2><button class="icon-btn" id="cp-close">&times;</button></div>
-      <div class="modal-body">
-        <label class="field-label">Business name *</label><input id="cp-name" class="input" placeholder="Acme Plumbing" />
-        <label class="field-label">Business type</label><input id="cp-type" class="input" placeholder="home services company" />
-        <label class="field-label">Phone number</label><input id="cp-phone" class="input" placeholder="+19195551234" />
-        <label class="field-label">Notify email *</label><input id="cp-email" class="input" placeholder="owner@acme.com" />
-        <label class="field-label">Greeting</label><textarea id="cp-greet" class="input" rows="2" placeholder="Thanks for calling Acme. How can I help?"></textarea>
-        <label class="field-label">Contact identity rule</label>
-        <select id="cp-rule" class="input">
-          <option value="email">Require unique email (default)</option>
-          <option value="either">Phone or email</option>
-        </select>
-        <button id="cp-go" class="btn btn-primary btn-block" style="margin-top:14px">Create portal</button>
-      </div>`;
-    const overlay = modal(inner);
-    inner.querySelector("#cp-close").onclick = () => overlay.remove();
-    inner.querySelector("#cp-go").onclick = async () => {
-      const body = {
-        name: inner.querySelector("#cp-name").value.trim(),
-        businessType: inner.querySelector("#cp-type").value.trim(),
-        phoneNumber: inner.querySelector("#cp-phone").value.trim(),
-        notifyEmail: inner.querySelector("#cp-email").value.trim(),
-        greeting: inner.querySelector("#cp-greet").value.trim(),
-        requireEmail: inner.querySelector("#cp-rule").value === "email",
-      };
-      if (!body.name || !body.notifyEmail) { toast("Name and notify email are required", true); return; }
-      try {
-        const portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify(body) });
-        toast("Portal created");
-        overlay.remove();
-        renderSetup(portal); // drop into the guided setup checklist for the new portal
-      }
-      catch (err) { toast(err.message, true); }
-    };
   }
 
   // ---------------- Users ----------------

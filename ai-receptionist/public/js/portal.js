@@ -1588,143 +1588,11 @@
   }
 
   // ---------------- Settings ----------------
-  async function renderSettings(sub) {
-    const me = App.state.me;
-    const canEditPortal = me.role !== "CLIENT_USER";
 
-    // Section registry. `admin` = needs portal-edit rights (CLIENT_USER sees only
-    // "Your account"). Each builder relocates the EXISTING content + wiring
-    // unchanged; "labels" and "fields" are reserved placeholders for later steps.
-    const SECTIONS = [
-      { key: "general", label: "General", admin: true, build: secGeneral },
-      { key: "appearance", label: "Appearance", admin: true, build: secAppearance },
-      { key: "team", label: "Team", admin: true, build: secTeam },
-      { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
-      { key: "account", label: "Your account", admin: false, build: secAccount },
-      { key: "labels", label: "Labels", admin: true, build: secLabels },
-      { key: "fields", label: "Fields", admin: true, build: secFields },
-    ].filter((s) => canEditPortal || !s.admin);
+  // Labels editor — lifted to module scope so it can be mounted both in the
+  // in-portal Settings > Labels pane (build: secLabels below) AND on the portal
+  // setup screen via App.labelsEditor.mount(host). Same editor, one definition.
 
-    const active = SECTIONS.some((s) => s.key === sub) ? sub : SECTIONS[0].key;
-
-    // Two-pane shell: sub-sidebar (left) + content panel (right). The global app
-    // nav is untouched; this layout lives entirely inside the settings view.
-    const shell = el("div", "fade-in settings-shell");
-    const subnav = el("aside", "settings-subnav");
-    subnav.appendChild(el("div", "settings-subnav-title", "Settings"));
-    SECTIONS.forEach((s) => {
-      const a = el("a", "settings-subnav-item" + (s.key === active ? " active" : ""), esc(s.label));
-      a.href = "#/settings/" + s.key; // hash drives selection -> refresh/back work
-      subnav.appendChild(a);
-    });
-    const panel = el("div", "settings-panel");
-    panel.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
-    shell.appendChild(subnav);
-    shell.appendChild(panel);
-
-    view().innerHTML = "";
-    view().appendChild(shell);
-
-    const def = SECTIONS.find((s) => s.key === active);
-    try { await def.build(panel); }
-    catch (e) { panel.innerHTML = `<div class="cell-muted" style="padding:8px">Couldn’t load this section.</div>`; }
-
-    // ---- Section builders (existing content + behavior, relocated verbatim) ----
-    async function secGeneral(panel) {
-      const portal = await App.portalApi("/api/settings");
-      panel.innerHTML = `<h2 class="settings-h">General</h2>
-        <div class="settings-grid">
-          <label class="field-label">Business name</label><input id="set-name" class="input" value="${esc(portal.name)}" />
-          <label class="field-label">Business type</label><input id="set-type" class="input" value="${esc(portal.businessType)}" />
-          <label class="field-label">Phone number</label><input id="set-phone" class="input" value="${esc(portal.phoneNumber || "")}" />
-          <label class="field-label">Notify email</label><input id="set-email" class="input" value="${esc(portal.notifyEmail)}" />
-          <label class="field-label">Greeting</label><textarea id="set-greet" class="input" rows="2">${esc(portal.greeting)}</textarea>
-        </div>
-        <button id="set-save" class="btn btn-primary btn-sm">Save changes</button>`;
-      App.util.$("#set-save").onclick = async () => {
-        try {
-          await App.portalApi("/api/settings", { method: "PATCH", body: JSON.stringify({
-            name: App.util.$("#set-name").value, businessType: App.util.$("#set-type").value,
-            phoneNumber: App.util.$("#set-phone").value, notifyEmail: App.util.$("#set-email").value,
-            greeting: App.util.$("#set-greet").value }) });
-          toast("Settings saved");
-        } catch (err) { toast(err.message, true); }
-      };
-    }
-
-    async function secAppearance(panel) {
-      panel.innerHTML = `<h2 class="settings-h">Appearance</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:6px">Pick a theme for this portal, or design your own. Applies to everyone in this portal.</p>
-        <div id="theme-host"></div>`;
-      if (App.theme) { const h = App.util.$("#theme-host"); if (h) App.theme.mountSettings(h); }
-    }
-
-    async function secTeam(panel) {
-      const users = await App.portalApi("/api/users");
-      panel.innerHTML = `<h2 class="settings-h">Team members</h2>
-        <table class="mini-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody id="users-tbody"></tbody></table>
-        <div class="add-user">
-          <input id="nu-name" class="input" placeholder="Name" />
-          <input id="nu-email" class="input" placeholder="email@company.com" />
-          <input id="nu-pass" class="input" type="text" placeholder="Temp password (8+)" />
-          <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option></select>
-          <button id="nu-add" class="btn btn-primary btn-sm">Add user</button>
-        </div>`;
-      fillUsers(users);
-      App.util.$("#nu-add").onclick = async () => {
-        try {
-          await App.portalApi("/api/users", { method: "POST", body: JSON.stringify({
-            name: App.util.$("#nu-name").value, email: App.util.$("#nu-email").value,
-            password: App.util.$("#nu-pass").value, role: App.util.$("#nu-role").value }) });
-          toast("User added");
-          secTeam(panel); // refresh the list in place (same as before)
-        } catch (err) { toast(err.message, true); }
-      };
-    }
-
-    async function secLeadCapture(panel) {
-      panel.innerHTML = `<h2 class="settings-h">Lead capture links</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:10px">Create a secure link you can give to a website form, Zapier, or another tool so new leads land directly in this portal.</p>
-        <div id="inbound-host"></div>`;
-      if (App.inbound) { const h = App.util.$("#inbound-host"); if (h) App.inbound.render(h); }
-    }
-
-    async function secAccount(panel) {
-      panel.innerHTML = `<h2 class="settings-h">Your account</h2>
-        <div class="field-grid">
-          ${field("Name", me.name || "—")}
-          ${field("Email", me.email)}
-          ${field("Role", roleLabel(me.role))}
-        </div>
-        <label class="field-label">Change password</label>
-        <div class="add-user"><input id="acct-pass" class="input" type="password" placeholder="New password (8+)" />
-          <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>
-        <label class="field-label" style="margin-top:8px">Email signature</label>
-        <div id="sig-host"></div>
-        <button id="sig-save" class="btn btn-ghost btn-sm" style="margin-top:10px">Save signature</button>`;
-      App.util.$("#acct-save").onclick = async () => {
-        const pass = App.util.$("#acct-pass").value;
-        if (!pass || pass.length < 8) { toast("Password must be at least 8 characters", true); return; }
-        try { await App.portalApi("/api/account/password", { method: "POST", body: JSON.stringify({ password: pass }) }); toast("Password updated"); App.util.$("#acct-pass").value = ""; }
-        catch (err) { toast(err.message, true); }
-      };
-      const sigApi = App.compose.mount(App.util.$("#sig-host"), { kind: "richtext" });
-      App.portalApi("/api/account/signature").then((r) => { sigApi.setBody((r && r.signature) || ""); }).catch(() => {});
-      App.util.$("#sig-save").onclick = async () => {
-        try { await App.portalApi("/api/account/signature", { method: "PATCH", body: JSON.stringify({ signature: sigApi.getHTML() }) }); toast("Signature saved"); }
-        catch (err) { toast(err.message, true); }
-      };
-    }
-
-    // Labels editor — TWO groups:
-    //  1) "What things are called": the concept nouns (record types + record/stage)
-    //     that ripple through the app. Type the SINGULAR; the plural auto-fills and
-    //     stays editable. Record types write label/labelPlural; generic words go to
-    //     Tenant.labels.
-    //  2) "Pages & navigation": the left-nav items — rename the fixed ones, drag to
-    //     reorder, and show/hide. All written to the ONE nav config (Tenant.labels.nav)
-    //     that the sidebar and the later per-row menu both read. Items already named
-    //     by group 1 (e.g. Contacts→Clients) keep that name here — not renamed twice.
     async function secLabels(panel) {
       panel.innerHTML = `<h2 class="settings-h">Labels</h2>
         <p class="cell-muted" style="font-size:13px;margin-bottom:16px">Control what things are called in this portal and how the left-hand menu looks.</p>
@@ -1876,6 +1744,144 @@
       };
       body.appendChild(saveBtn);
     }
+
+  async function renderSettings(sub) {
+    const me = App.state.me;
+    const canEditPortal = me.role !== "CLIENT_USER";
+
+    // Section registry. `admin` = needs portal-edit rights (CLIENT_USER sees only
+    // "Your account"). Each builder relocates the EXISTING content + wiring
+    // unchanged; "labels" and "fields" are reserved placeholders for later steps.
+    const SECTIONS = [
+      { key: "general", label: "General", admin: true, build: secGeneral },
+      { key: "appearance", label: "Appearance", admin: true, build: secAppearance },
+      { key: "team", label: "Team", admin: true, build: secTeam },
+      { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
+      { key: "account", label: "Your account", admin: false, build: secAccount },
+      { key: "labels", label: "Labels", admin: true, build: secLabels },
+      { key: "fields", label: "Fields", admin: true, build: secFields },
+    ].filter((s) => canEditPortal || !s.admin);
+
+    const active = SECTIONS.some((s) => s.key === sub) ? sub : SECTIONS[0].key;
+
+    // Two-pane shell: sub-sidebar (left) + content panel (right). The global app
+    // nav is untouched; this layout lives entirely inside the settings view.
+    const shell = el("div", "fade-in settings-shell");
+    const subnav = el("aside", "settings-subnav");
+    subnav.appendChild(el("div", "settings-subnav-title", "Settings"));
+    SECTIONS.forEach((s) => {
+      const a = el("a", "settings-subnav-item" + (s.key === active ? " active" : ""), esc(s.label));
+      a.href = "#/settings/" + s.key; // hash drives selection -> refresh/back work
+      subnav.appendChild(a);
+    });
+    const panel = el("div", "settings-panel");
+    panel.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    shell.appendChild(subnav);
+    shell.appendChild(panel);
+
+    view().innerHTML = "";
+    view().appendChild(shell);
+
+    const def = SECTIONS.find((s) => s.key === active);
+    try { await def.build(panel); }
+    catch (e) { panel.innerHTML = `<div class="cell-muted" style="padding:8px">Couldn’t load this section.</div>`; }
+
+    // ---- Section builders (existing content + behavior, relocated verbatim) ----
+    async function secGeneral(panel) {
+      const portal = await App.portalApi("/api/settings");
+      panel.innerHTML = `<h2 class="settings-h">General</h2>
+        <div class="settings-grid">
+          <label class="field-label">Business name</label><input id="set-name" class="input" value="${esc(portal.name)}" />
+          <label class="field-label">Business type</label><input id="set-type" class="input" value="${esc(portal.businessType)}" />
+          <label class="field-label">Phone number</label><input id="set-phone" class="input" value="${esc(portal.phoneNumber || "")}" />
+          <label class="field-label">Notify email</label><input id="set-email" class="input" value="${esc(portal.notifyEmail)}" />
+          <label class="field-label">Greeting</label><textarea id="set-greet" class="input" rows="2">${esc(portal.greeting)}</textarea>
+        </div>
+        <button id="set-save" class="btn btn-primary btn-sm">Save changes</button>`;
+      App.util.$("#set-save").onclick = async () => {
+        try {
+          await App.portalApi("/api/settings", { method: "PATCH", body: JSON.stringify({
+            name: App.util.$("#set-name").value, businessType: App.util.$("#set-type").value,
+            phoneNumber: App.util.$("#set-phone").value, notifyEmail: App.util.$("#set-email").value,
+            greeting: App.util.$("#set-greet").value }) });
+          toast("Settings saved");
+        } catch (err) { toast(err.message, true); }
+      };
+    }
+
+    async function secAppearance(panel) {
+      panel.innerHTML = `<h2 class="settings-h">Appearance</h2>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:6px">Pick a theme for this portal, or design your own. Applies to everyone in this portal.</p>
+        <div id="theme-host"></div>`;
+      if (App.theme) { const h = App.util.$("#theme-host"); if (h) App.theme.mountSettings(h); }
+    }
+
+    async function secTeam(panel) {
+      const users = await App.portalApi("/api/users");
+      panel.innerHTML = `<h2 class="settings-h">Team members</h2>
+        <table class="mini-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody id="users-tbody"></tbody></table>
+        <div class="add-user">
+          <input id="nu-name" class="input" placeholder="Name" />
+          <input id="nu-email" class="input" placeholder="email@company.com" />
+          <input id="nu-pass" class="input" type="text" placeholder="Temp password (8+)" />
+          <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option></select>
+          <button id="nu-add" class="btn btn-primary btn-sm">Add user</button>
+        </div>`;
+      fillUsers(users);
+      App.util.$("#nu-add").onclick = async () => {
+        try {
+          await App.portalApi("/api/users", { method: "POST", body: JSON.stringify({
+            name: App.util.$("#nu-name").value, email: App.util.$("#nu-email").value,
+            password: App.util.$("#nu-pass").value, role: App.util.$("#nu-role").value }) });
+          toast("User added");
+          secTeam(panel); // refresh the list in place (same as before)
+        } catch (err) { toast(err.message, true); }
+      };
+    }
+
+    async function secLeadCapture(panel) {
+      panel.innerHTML = `<h2 class="settings-h">Lead capture links</h2>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:10px">Create a secure link you can give to a website form, Zapier, or another tool so new leads land directly in this portal.</p>
+        <div id="inbound-host"></div>`;
+      if (App.inbound) { const h = App.util.$("#inbound-host"); if (h) App.inbound.render(h); }
+    }
+
+    async function secAccount(panel) {
+      panel.innerHTML = `<h2 class="settings-h">Your account</h2>
+        <div class="field-grid">
+          ${field("Name", me.name || "—")}
+          ${field("Email", me.email)}
+          ${field("Role", roleLabel(me.role))}
+        </div>
+        <label class="field-label">Change password</label>
+        <div class="add-user"><input id="acct-pass" class="input" type="password" placeholder="New password (8+)" />
+          <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>
+        <label class="field-label" style="margin-top:8px">Email signature</label>
+        <div id="sig-host"></div>
+        <button id="sig-save" class="btn btn-ghost btn-sm" style="margin-top:10px">Save signature</button>`;
+      App.util.$("#acct-save").onclick = async () => {
+        const pass = App.util.$("#acct-pass").value;
+        if (!pass || pass.length < 8) { toast("Password must be at least 8 characters", true); return; }
+        try { await App.portalApi("/api/account/password", { method: "POST", body: JSON.stringify({ password: pass }) }); toast("Password updated"); App.util.$("#acct-pass").value = ""; }
+        catch (err) { toast(err.message, true); }
+      };
+      const sigApi = App.compose.mount(App.util.$("#sig-host"), { kind: "richtext" });
+      App.portalApi("/api/account/signature").then((r) => { sigApi.setBody((r && r.signature) || ""); }).catch(() => {});
+      App.util.$("#sig-save").onclick = async () => {
+        try { await App.portalApi("/api/account/signature", { method: "PATCH", body: JSON.stringify({ signature: sigApi.getHTML() }) }); toast("Signature saved"); }
+        catch (err) { toast(err.message, true); }
+      };
+    }
+
+    // Labels editor — TWO groups:
+    //  1) "What things are called": the concept nouns (record types + record/stage)
+    //     that ripple through the app. Type the SINGULAR; the plural auto-fills and
+    //     stays editable. Record types write label/labelPlural; generic words go to
+    //     Tenant.labels.
+    //  2) "Pages & navigation": the left-nav items — rename the fixed ones, drag to
+    //     reorder, and show/hide. All written to the ONE nav config (Tenant.labels.nav)
+    //     that the sidebar and the later per-row menu both read. Items already named
+    //     by group 1 (e.g. Contacts→Clients) keep that name here — not renamed twice.
 
     // RESERVED — links out to the existing Fields route (not moved in this step).
     async function secFields(panel) {
@@ -2883,4 +2889,8 @@
   }
 
   App.portal = { render, refresh, simulate, renderContact, renderRecord, current: () => current };
+  // Mountable labels editor (the SAME secLabels used by Settings > Labels), so the
+  // portal setup screen can render it for a just-created portal. It targets whatever
+  // App.state.currentPortalId is set to (via App.portalApi), like the in-portal pane.
+  App.labelsEditor = { mount: (host) => secLabels(host) };
 })(typeof window !== "undefined" ? window : globalThis);
