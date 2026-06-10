@@ -337,7 +337,7 @@
     const banner = el("div", "imp-banner");
     let text;
     if (ov && ov.mode === "view-as-user") {
-      text = "👁 Viewing as " + esc(st.targetName || "another user") + (st.scopeTenantName ? " · " + esc(st.scopeTenantName) : "") + "  (read-only enforced in a later build)";
+      text = "👁 Viewing as " + esc(st.targetName || "another user") + (st.scopeTenantName ? " · " + esc(st.scopeTenantName) : "") + " — read-only";
     } else if (ov && ov.mode === "act-as-type") {
       text = "🛡 Acting as " + esc(roleLabel ? roleLabel(ov.assumedRole) : ov.assumedRole) + (st.scopeTenantName ? " in " + esc(st.scopeTenantName) : "");
     } else {

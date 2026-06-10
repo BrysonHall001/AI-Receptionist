@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { requireAuth, resolveTenantScope } from "../middleware/auth";
 import { setImpersonation, clearImpersonation, SESSION_COOKIE } from "../auth/session";
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
@@ -38,6 +38,24 @@ import { logger } from "../utils/logger";
 // Authenticated, tenant-scoped surface for the portal dashboard.
 export const apiRouter = Router();
 apiRouter.use(requireAuth);
+
+// --- Batch C: VIEW-ONLY enforcement (single chokepoint). ----------------------
+// When the session is in "view-as-user" impersonation, refuse every mutating
+// request server-side; reads (GET/HEAD/OPTIONS) pass. This is the real protection
+// (not UI hiding). It triggers ONLY for view-as-user mode, evaluated on the
+// Batch A/B overlay (which is only ever set for a real super-admin). It does NOT
+// touch act-as-type (Batch D). The impersonation control surface — especially the
+// EXIT endpoint — is always exempt, so exit can never be blocked.
+apiRouter.use((req: Request, res: Response, next: NextFunction) => {
+  const imp = req.impersonation;
+  if (!imp || imp.mode !== "view-as-user") return next();
+  const m = (req.method || "").toUpperCase();
+  if (m === "GET" || m === "HEAD" || m === "OPTIONS") return next(); // reads allowed
+  // Never block the impersonation endpoints (exit MUST always work; start/targets/
+  // state are real-super-admin meta-ops, not tenant-data writes).
+  if (/\/impersonation(\/|$|\?)/.test(req.originalUrl || req.url || "")) return next();
+  res.status(403).json({ error: "Read-only: you’re viewing as another user and can’t make changes. Exit impersonation to act." });
+});
 
 /** Resolve the tenant the request may read/write, or send 400 and return null. */
 function tenantOr400(req: Request, res: Response): string | null {
