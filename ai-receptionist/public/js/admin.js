@@ -57,10 +57,8 @@
             </select>
           </div>
           <div class="portal-actions"><button class="btn btn-primary btn-sm portal-enter">Open portal →</button>
-            <button class="btn btn-ghost btn-sm portal-setup">Set up</button>
             <button class="btn btn-ghost btn-sm portal-toggle">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button></div>`;
         card.querySelector(".portal-enter").onclick = () => enterPortal(p);
-        card.querySelector(".portal-setup").onclick = () => renderSetupScreen(p);
         const ruleSel = card.querySelector(".portal-rule-sel");
         ruleSel.onclick = (e) => e.stopPropagation();
         ruleSel.onchange = async () => {
