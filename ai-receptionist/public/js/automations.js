@@ -1266,6 +1266,7 @@
   // -> ACTIONS — connected by simple connector lines. Same data, same save
   // payload, same API as before; only the presentation changed.
   function openEditor(existing, opts) {
+    _emailEditorFlushers = []; // fresh editor session — drop any stale capture handlers
     const draft = existing
       ? { id: existing.id, name: existing.name, triggerType: existing.triggerType, conditions: (existing.conditions || []).map((r) => ({ ...r })), actions: (existing.actions || []).map((a) => ({ type: a.type, config: { ...(a.config || {}) } })) }
       : { name: "", triggerType: (meta.triggers[0] && meta.triggers[0].type) || "ContactCreated", conditions: [], actions: [] };
@@ -1541,6 +1542,7 @@
     flow.appendChild(actionsWrap);
 
     function redrawActions() {
+      flushEmailEditors(); // capture any open email editor before its DOM is torn down
       actionsWrap.innerHTML = "";
       if (!draft.actions.length) {
         actionsWrap.appendChild(el("div", "wf-empty-actions", "No actions yet — add at least one below."));
@@ -1569,6 +1571,7 @@
     inner.querySelector("#a-close").onclick = () => overlay.remove();
     cancel.onclick = () => overlay.remove();
     save.onclick = async () => {
+      flushEmailEditors(); // make sure the rich-text editor's content is captured first
       if (!draft.name.trim()) { toast("Give it a name", true); return; }
       const payload = { name: draft.name.trim(), triggerType: draft.triggerType, conditions: draft.conditions.filter(rc), actions: draft.actions };
       try {
@@ -1619,6 +1622,32 @@
     buildActionConfig(act, cfg, draft && draft.triggerType);
     row.appendChild(cfg);
     return row;
+  }
+
+  // --- Rich-text email action: capture + template resolution helpers -----------
+  // The "Send email" action now uses the shared compose editor (App.compose.mount,
+  // kind:"email"). Quill doesn't write through to the action config on every change
+  // the way a <textarea>'s oninput did, so we register a "flush" per mounted editor
+  // that copies the editor's subject + body back into the action config. We call
+  // flushEmailEditors() before the action list is rebuilt (redrawActions) and before
+  // saving, so changing the action type or saving can never lose what was typed.
+  // (Editors also flush live on input and on focus-out as a belt-and-suspenders.)
+  let _emailEditorFlushers = [];
+  function flushEmailEditors() {
+    const list = _emailEditorFlushers.slice();
+    _emailEditorFlushers = [];
+    list.forEach(function (fn) { try { fn(); } catch (e) { /* detached editor — ignore */ } });
+  }
+  // meta.templates carries only id/name (no body), so to pre-fill the editor for an
+  // OLDER automation that referenced a template by id we fetch the full templates
+  // once (same source compose uses) and resolve the body/subject from it.
+  let _emailTplCache = null;
+  async function resolveEmailTemplate(id) {
+    if (!id) return null;
+    try {
+      if (!_emailTplCache) _emailTplCache = await App.portalApi("/api/templates?kind=email");
+      return (_emailTplCache || []).find(function (t) { return t.id === id; }) || null;
+    } catch (e) { return null; }
   }
 
   function buildActionConfig(act, cfg, triggerType) {
@@ -1677,10 +1706,38 @@
     };
 
     if (act.type === "send_email") {
-      const tpls = (meta.templates || []).filter((t) => t.kind === "email").map((t) => ({ value: t.id, label: t.name }));
-      if (tpls.length) { cfg.appendChild(small("Template (optional — fills subject/body)")); cfg.appendChild(selectOf("templateId", tpls)); }
-      cfg.appendChild(small("Subject")); cfg.appendChild(text("subject", "Welcome, {{name}}!"));
-      cfg.appendChild(small("Body (HTML, supports {{field}})")); cfg.appendChild(text("html", "Hi {{name}}, thanks for reaching out.", true));
+      // Full parity with bulk email: the compose editor (kind:"email") owns the
+      // Subject, the rich-text toolbar, AND Templates / Insert signature / Header
+      // image — so the action's old separate subject + template controls are gone.
+      // It reads/writes the SAME config keys the engine already uses (c.subject,
+      // c.html), so storage/replay/merge-tags are unchanged (UI-only swap).
+      const host = el("div", "wf-compose-host");
+      host.style.marginTop = "4px";
+      cfg.appendChild(host);
+      const api = App.compose.mount(host, { kind: "email" });
+      // Load existing content. New / inline-HTML automations use c.subject + c.html.
+      // Older automations that referenced a template by id (c.templateId, blank body)
+      // resolve that template's saved HTML into the editor so it opens showing the
+      // real content (and still sends the same thing).
+      api.setSubject(c.subject || "");
+      if (c.html) {
+        api.setBody(c.html);
+      } else if (c.templateId) {
+        resolveEmailTemplate(c.templateId).then(function (t) {
+          if (t) { api.setSubject(c.subject || t.subject || ""); api.setBody(t.body || ""); }
+        });
+      }
+      // Capture the editor back into the action config. Once edited, the body lives
+      // inline in c.html, so the old templateId reference is retired (the engine
+      // sends c.html as HTML and substitutes {{tags}} — both already work).
+      const flush = function () {
+        c.subject = api.getSubject();
+        c.html = api.getHTML();
+        if (c.templateId) delete c.templateId;
+      };
+      host.addEventListener("input", flush);    // live capture while typing
+      host.addEventListener("focusout", flush);  // capture when focus leaves (e.g. clicking Save / changing action type)
+      _emailEditorFlushers.push(flush);          // guaranteed capture before any rebuild/save
       appendBulkGate();
     } else if (act.type === "send_sms") {
       const tpls = (meta.templates || []).filter((t) => t.kind === "sms").map((t) => ({ value: t.id, label: t.name }));
