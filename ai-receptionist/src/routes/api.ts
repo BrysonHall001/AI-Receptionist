@@ -48,6 +48,23 @@ function tenantOr400(req: Request, res: Response): string | null {
   return tenantId;
 }
 
+// --- Impersonation: READ-ONLY state (Batch A). No start/exit/enforcement yet. ---
+// Gated to the REAL super-admin. In Batch A this always reports not-impersonating,
+// because no overlay is ever written. Uses req.realUser (the authoritative real
+// identity) for the gate — it does not touch any existing authorization path.
+apiRouter.get("/impersonation", (req: Request, res: Response) => {
+  if (!req.realUser || req.realUser.role !== "SUPER_ADMIN") {
+    res.status(403).json({ error: "Super-admin only" });
+    return;
+  }
+  const imp = req.impersonation || null;
+  res.json({
+    impersonating: !!imp,
+    real: { id: req.realUser.id, email: req.realUser.email, name: req.realUser.name, role: req.realUser.role },
+    overlay: imp, // null in Batch A
+  });
+});
+
 apiRouter.get("/stats", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;

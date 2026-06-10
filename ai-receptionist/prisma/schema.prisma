@@ -98,6 +98,15 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  // Impersonation overlay (Batch A plumbing). All nullable; NOTHING consumes these
+  // yet. When set later, they describe a SUPER_ADMIN "acting as" another user/role,
+  // bound to this real session so it's server-revocable and dies with the session.
+  impMode          String?   // "view-as-user" | "act-as-type" | null
+  impTargetUserId  String?
+  impAssumedRole   String?
+  impScopeTenantId String?
+  impStartedAt     DateTime?
+
   @@index([userId])
 }
 

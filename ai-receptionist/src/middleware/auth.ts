@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { getUserForToken, SESSION_COOKIE } from "../auth/session";
+import { getUserForToken, getImpersonationForToken, ImpersonationOverlay, SESSION_COOKIE } from "../auth/session";
 
 export type Role = "SUPER_ADMIN" | "PORTAL_ADMIN" | "CLIENT_USER";
 
@@ -16,6 +16,12 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthUser;
+      // Batch A plumbing (additive; nothing consumes these yet):
+      // realUser = the authoritative real identity, never overwritten.
+      // impersonation = the overlay, or null when not impersonating (always null
+      // in Batch A). Effective identity today === real identity (req.user).
+      realUser?: AuthUser;
+      impersonation?: ImpersonationOverlay | null;
     }
   }
 }
@@ -33,6 +39,17 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
         role: user.role as Role,
         tenantId: user.tenantId,
       };
+    }
+    // --- Batch A plumbing: additive only, NOTHING consumes these yet. ---
+    // The real identity is authoritative and never overwritten. req.user is left
+    // EXACTLY as set above, so all existing code is unaffected (effective == real).
+    req.realUser = req.user;
+    req.impersonation = null;
+    // Only a real SUPER_ADMIN can ever have an overlay; for everyone else we skip
+    // the lookup entirely (zero extra work, identical behavior). In Batch A this
+    // returns null regardless, since no overlay is ever written.
+    if (req.user && req.user.role === "SUPER_ADMIN") {
+      req.impersonation = await getImpersonationForToken(token);
     }
   } catch {
     // ignore; treated as unauthenticated
