@@ -5,6 +5,7 @@ import { attachUser } from "./middleware/auth";
 import { twilioRouter } from "./routes/twilioWebhooks";
 import { internalRouter } from "./routes/internal";
 import { inboundRouter } from "./routes/inbound";
+import { inviteRouter } from "./routes/invites";
 import { authRouter } from "./routes/auth";
 import { adminRouter } from "./routes/admin";
 import { apiRouter } from "./routes/api";
@@ -51,6 +52,7 @@ export function createApp(): express.Express {
   app.use("/webhooks/twilio", twilioRouter);
   app.use("/internal", internalRouter);
   app.use("/hooks/in", inboundRouter); // PUBLIC inbound webhook ingest (tenant from token)
+  app.use("/invites", inviteRouter); // PUBLIC account-activation surface (gated by invite token only)
 
   // Auth (login/forgot/reset are open; /me reads the session)
   app.use("/api/auth", authRouter);

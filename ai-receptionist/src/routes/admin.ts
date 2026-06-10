@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal } from "../services/portalService";
 import { createUser, listUsers, deleteUser, publicUser } from "../services/userService";
+import { createInvite, listPendingInvites, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 
@@ -116,4 +117,57 @@ adminRouter.get("/check-phone", async (req: Request, res: Response) => {
   }
   const existing = await prisma.tenant.findUnique({ where: { phoneNumber: phone } });
   res.json({ available: !existing });
+});
+
+// ---- Portal setup invites (super-admin) ------------------------------------
+// The setup flow's "Add users" step. Creating an invite stores a single-use,
+// expiring token and (today) "sends" it by logging the link; the link is returned
+// so the UI can show it for copy/paste. Role/tenant live on the server-side invite.
+
+function requestOrigin(req: Request): string {
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
+  const host = String(req.headers["x-forwarded-host"] || req.get("host") || "").trim();
+  return proto + "://" + host;
+}
+
+// List pending invites for a portal (no tokens exposed).
+adminRouter.get("/portals/:id/invites", async (req: Request, res: Response) => {
+  res.json(await listPendingInvites(req.params.id));
+});
+
+// Create an invite for { email, role } in this portal, then "send" it (mock = log).
+adminRouter.post("/portals/:id/invites", async (req: Request, res: Response) => {
+  const tenantId = req.params.id;
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant) {
+    res.status(404).json({ error: "Portal not found" });
+    return;
+  }
+  const { email, role } = (req.body ?? {}) as { email?: string; role?: string };
+  try {
+    const invite = await createInvite({
+      email: String(email || ""),
+      role: role === "PORTAL_ADMIN" ? "PORTAL_ADMIN" : "CLIENT_USER",
+      tenantId,
+      createdById: req.user?.id ?? null,
+    });
+    const link = inviteLink(requestOrigin(req), invite.token);
+    await sendInvite({ email: invite.email }, link); // mocked send (logs the link)
+    logger.info(`Invite created for ${invite.email} -> portal ${tenantId}`);
+    // `link` is returned ONLY because email is mocked, so the super-admin can copy
+    // it to test. With real email this field would simply stop being returned.
+    res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Revoke a pending invite.
+adminRouter.post("/portals/:id/invites/:inviteId/revoke", async (req: Request, res: Response) => {
+  const ok = await revokeInvite(req.params.id, req.params.inviteId);
+  if (!ok) {
+    res.status(404).json({ error: "Invite not found" });
+    return;
+  }
+  res.json({ ok: true });
 });

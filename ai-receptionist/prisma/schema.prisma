@@ -67,6 +67,7 @@ model Tenant {
   records          Record[]
   recordLinks      RecordLink[]
   stageHistory     StageHistory[]
+  invites          Invite[]
 }
 
 model User {
@@ -108,6 +109,27 @@ model Session {
   impStartedAt     DateTime?
 
   @@index([userId])
+}
+
+// Portal setup invites. A super-admin invites someone (email + role) to a portal;
+// the token is the single-use, expiring key the public "create your account" page
+// uses to activate a real User with THIS role + tenant (server-authoritative —
+// the public page can never choose role/tenant/email). usedAt != null means the
+// invite has been consumed (activated) or revoked, so it can never be reused.
+model Invite {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  email       String
+  role        Role
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([email])
 }
 
 model Contact {

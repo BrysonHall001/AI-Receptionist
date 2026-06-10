@@ -57,8 +57,10 @@
             </select>
           </div>
           <div class="portal-actions"><button class="btn btn-primary btn-sm portal-enter">Open portal →</button>
+            <button class="btn btn-ghost btn-sm portal-setup">Set up</button>
             <button class="btn btn-ghost btn-sm portal-toggle">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button></div>`;
         card.querySelector(".portal-enter").onclick = () => enterPortal(p);
+        card.querySelector(".portal-setup").onclick = () => renderSetup(p);
         const ruleSel = card.querySelector(".portal-rule-sel");
         ruleSel.onclick = (e) => e.stopPropagation();
         ruleSel.onchange = async () => {
@@ -82,6 +84,148 @@
     App.state.currentPortalId = p.id;
     App.state.currentPortalName = p.name;
     App.go("#/dashboard");
+  }
+
+  // ---------------- Portal setup flow (scaffold) ----------------
+  // After "+ Create Portal" we land here. A checklist of setup steps; for this
+  // batch the live step is "Add users" (invite flow). Labels & theme and Import
+  // are placeholders that later batches fill in.
+  const SETUP_STEPS = [
+    { key: "users", title: "Add users", desc: "Invite teammates and set their roles.", live: true },
+    { key: "brand", title: "Labels & theme", desc: "Rename things and set the portal\u2019s look.", live: false },
+    { key: "import", title: "Import data", desc: "Bring in an existing contact list.", live: false },
+  ];
+
+  function renderSetup(portal) {
+    const wrap = el("div", "fade-in setup-flow");
+
+    const head = el("div", "setup-head");
+    head.innerHTML = `<h1 class="page-title">Set up ${esc(portal.name)}</h1>
+      <p class="cell-muted">Get this portal ready. You can do these now or come back any time from the portal list.</p>`;
+    const headActions = el("div", "page-actions");
+    const enterBtn = el("button", "btn btn-ghost btn-sm", "Enter portal");
+    enterBtn.onclick = () => enterPortal(portal);
+    const backBtn = el("button", "btn btn-ghost btn-sm", "Back to portals");
+    backBtn.onclick = () => render("portals");
+    headActions.appendChild(enterBtn); headActions.appendChild(backBtn);
+    head.appendChild(headActions);
+    wrap.appendChild(head);
+
+    const list = el("div", "setup-steps");
+    SETUP_STEPS.forEach((step, i) => {
+      const card = el("div", "card setup-step" + (step.live ? "" : " setup-step-soon"));
+      card.style.cssText = "margin-bottom:14px;padding:18px 20px;";
+      const top = el("div");
+      top.style.cssText = "display:flex;align-items:center;gap:12px;";
+      const num = el("div", null, String(i + 1));
+      num.style.cssText = "flex:0 0 28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;background:" + (step.live ? "var(--accent,#3257d6);color:#fff" : "var(--surface,#eef1f6);color:var(--ink-soft,#5b6678)") + ";";
+      const tt = el("div");
+      tt.innerHTML = `<div style="font-weight:600">${esc(step.title)}</div><div class="cell-muted" style="font-size:13px">${esc(step.desc)}</div>`;
+      top.appendChild(num); top.appendChild(tt);
+      if (!step.live) {
+        const soon = el("span", "pill", "Coming soon");
+        soon.style.cssText = "margin-left:auto;font-size:12px;opacity:.7;";
+        top.appendChild(soon);
+      }
+      card.appendChild(top);
+      if (step.live && step.key === "users") {
+        const body = el("div");
+        body.style.cssText = "margin-top:14px;border-top:1px solid var(--border,#e3e8ef);padding-top:14px;";
+        renderUsersStep(body, portal);
+        card.appendChild(body);
+      }
+      list.appendChild(card);
+    });
+    wrap.appendChild(list);
+
+    view().innerHTML = "";
+    view().appendChild(wrap);
+  }
+
+  // The "Add users" step: invite by email + role. Real plumbing; email is mocked,
+  // so on success we show the invite LINK for the super-admin to copy and test.
+  function renderUsersStep(host, portal) {
+    host.innerHTML = "";
+
+    // Invite form
+    const form = el("div");
+    form.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;";
+    const emailWrap = el("div"); emailWrap.style.cssText = "flex:1 1 220px;";
+    emailWrap.innerHTML = `<label class="field-label">Email</label>`;
+    const email = el("input", "input"); email.type = "email"; email.placeholder = "teammate@company.com"; email.style.marginBottom = "0";
+    emailWrap.appendChild(email);
+    const roleWrap = el("div"); roleWrap.style.cssText = "flex:0 0 170px;";
+    roleWrap.innerHTML = `<label class="field-label">Role</label>`;
+    const role = el("select", "input"); role.style.marginBottom = "0";
+    role.innerHTML = `<option value="CLIENT_USER">Client user</option><option value="PORTAL_ADMIN">Portal admin</option>`;
+    roleWrap.appendChild(role);
+    const sendBtn = el("button", "btn btn-primary btn-sm", "Create invite link");
+    form.appendChild(emailWrap); form.appendChild(roleWrap); form.appendChild(sendBtn);
+    host.appendChild(form);
+
+    // Where the most-recent invite link is shown (mock stand-in for emailing it).
+    const linkBox = el("div"); linkBox.style.marginTop = "12px"; host.appendChild(linkBox);
+
+    // Pending invites list
+    const listHost = el("div"); listHost.style.marginTop = "16px"; host.appendChild(listHost);
+
+    function showLink(inviteEmail, link) {
+      linkBox.innerHTML = "";
+      const box = el("div", "card");
+      box.style.cssText = "padding:12px 14px;background:var(--surface,#f5f7fa);";
+      box.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:6px">Invite link for ${esc(inviteEmail)}</div>
+        <div class="cell-muted" style="font-size:12px;margin-bottom:8px">Email is mocked in this build, so copy this link and open it yourself to test. (Later, this gets emailed automatically.)</div>`;
+      const row = el("div"); row.style.cssText = "display:flex;gap:8px;align-items:center;";
+      const inp = el("input", "input"); inp.value = link; inp.readOnly = true; inp.style.cssText = "margin-bottom:0;font-family:monospace;font-size:12px;";
+      inp.onclick = () => inp.select();
+      const copy = el("button", "btn btn-ghost btn-sm", "Copy");
+      copy.onclick = () => { inp.select(); try { document.execCommand("copy"); } catch (e) {} toast("Link copied"); };
+      row.appendChild(inp); row.appendChild(copy);
+      box.appendChild(row);
+      linkBox.appendChild(box);
+    }
+
+    async function refreshList() {
+      listHost.innerHTML = `<div class="cell-muted" style="font-size:13px">Loading invites…</div>`;
+      let pending = [];
+      try { pending = await App.api(`/api/admin/portals/${portal.id}/invites`); } catch (e) { listHost.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+      listHost.innerHTML = "";
+      const title = el("div"); title.style.cssText = "font-size:12.5px;font-weight:600;color:var(--ink-soft,#5b6678);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;";
+      title.textContent = pending.length ? "Pending invites" : "No pending invites yet";
+      listHost.appendChild(title);
+      pending.forEach((inv) => {
+        const r = el("div");
+        r.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border,#eef1f6);";
+        r.innerHTML = `<div style="flex:1 1 auto"><span class="cell-mono">${esc(inv.email)}</span> <span class="pill" style="font-size:11px">${esc(roleLabel(inv.role))}</span></div>`;
+        const resend = el("button", "btn btn-ghost btn-sm", "Get link");
+        resend.onclick = () => createInvite(inv.email, inv.role, true);
+        const revoke = el("button", "link-danger", "Revoke");
+        revoke.onclick = async () => {
+          if (!(await App.ui.confirmModal({ title: "Revoke invite", message: `Revoke the invite for ${inv.email}?`, confirmText: "Revoke" }))) return;
+          try { await App.api(`/api/admin/portals/${portal.id}/invites/${inv.id}/revoke`, { method: "POST" }); toast("Invite revoked"); refreshList(); }
+          catch (e) { toast(e.message, true); }
+        };
+        r.appendChild(resend); r.appendChild(revoke);
+        listHost.appendChild(r);
+      });
+    }
+
+    async function createInvite(addr, theRole, isResend) {
+      const value = String(addr || "").trim();
+      if (!value) { toast("Enter an email address", true); return; }
+      sendBtn.disabled = true;
+      try {
+        const res = await App.api(`/api/admin/portals/${portal.id}/invites`, { method: "POST", body: JSON.stringify({ email: value, role: theRole }) });
+        toast(isResend ? "New link created" : "Invite created");
+        showLink(res.invite.email, res.link);
+        if (!isResend) email.value = "";
+        refreshList();
+      } catch (e) { toast(e.message, true); }
+      finally { sendBtn.disabled = false; }
+    }
+
+    sendBtn.onclick = () => createInvite(email.value, role.value, false);
+    refreshList();
   }
 
   function openCreatePortal() {
@@ -112,7 +256,12 @@
         requireEmail: inner.querySelector("#cp-rule").value === "email",
       };
       if (!body.name || !body.notifyEmail) { toast("Name and notify email are required", true); return; }
-      try { await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify(body) }); toast("Portal created"); overlay.remove(); renderPortals(); }
+      try {
+        const portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify(body) });
+        toast("Portal created");
+        overlay.remove();
+        renderSetup(portal); // drop into the guided setup checklist for the new portal
+      }
       catch (err) { toast(err.message, true); }
     };
   }
