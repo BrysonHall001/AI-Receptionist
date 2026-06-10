@@ -251,16 +251,32 @@
   function isImpersonating() { return !!(App.state.impersonation && App.state.impersonation.impersonating); }
   function impOverlay() { return (App.state.impersonation && App.state.impersonation.overlay) || null; }
 
-  // Re-pull the effective identity (/api/auth/me now returns the effective role/
-  // tenant during act-as-type) AND the impersonation state, so the whole UI re-renders
-  // as the right role immediately after entering/leaving impersonation.
+  // Re-pull the effective identity (/api/auth/me returns the effective role/tenant
+  // while impersonating) AND the impersonation state, then align the portal/label
+  // context with the impersonated scope so the UI re-renders as the right role for
+  // the right portal immediately after entering/leaving impersonation.
   async function refreshSession() {
     try { const res = await fetch("/api/auth/me", { credentials: "same-origin" }); if (res.ok) App.state.me = (await res.json()).user; } catch (e) {}
     await App.loadImpersonation();
+    const st = App.state.impersonation;
+    if (st && st.impersonating && st.overlay && st.overlay.scopeTenantId) {
+      // Follow the scope of whoever/whatever we're impersonating (the target user's
+      // tenant for view-as, the current portal for act-as-type).
+      App.state.currentPortalId = st.overlay.scopeTenantId;
+      App.state.currentPortalName = st.scopeTenantName || App.state.currentPortalName || null;
+    } else if (App.state._preImpPortal) {
+      // Exited: restore exactly where the super-admin was before impersonating.
+      App.state.currentPortalId = App.state._preImpPortal.id;
+      App.state.currentPortalName = App.state._preImpPortal.name;
+      App.state._preImpPortal = null;
+    }
+    App.state._labelsFor = null; // force a label reload for the (possibly changed) scope
   }
   async function startImpersonation(payload) {
+    // Remember where we were, so Exit can put us back.
+    App.state._preImpPortal = { id: App.state.currentPortalId, name: App.state.currentPortalName };
     try { await App.api("/api/impersonation/start", { method: "POST", body: JSON.stringify(payload) }); }
-    catch (e) { App.util.toast(e.message, true); return; }
+    catch (e) { App.util.toast(e.message, true); App.state._preImpPortal = null; return; }
     await refreshSession();
     App.go("#/dashboard"); // land somewhere valid for the (possibly downgraded) role
   }

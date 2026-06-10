@@ -51,17 +51,21 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
     if (req.user && req.user.role === "SUPER_ADMIN") {
       req.impersonation = await getImpersonationForToken(token);
     }
-    // --- Batch D: ACT-AS-TYPE effective identity. When a real super-admin is
-    // "acting as" a role, req.user becomes the EFFECTIVE principal — effective role
-    // + the pinned tenant — so EVERY downstream authorization decision (and, once
-    // the UI reads it, every rendering decision) is correct BY DEFAULT, with no
-    // per-site special-casing. We keep the REAL super-admin id (so actions stamp
-    // honestly as the super-admin) and leave req.realUser untouched (the authoritative
+    // --- Batch D + view-as re-skin: BOTH impersonation modes render/enforce as the
+    // EFFECTIVE role + pinned tenant, so the UI and server treat the session exactly
+    // like a real user of that role in that one portal. We keep the REAL super-admin
+    // id (role-only re-skin: actions stamp honestly as the super-admin, and personal
+    // data stays the super-admin's), and leave req.realUser untouched (authoritative
     // real identity, used only for exit + the "is a real super-admin impersonating"
-    // check). View-as-user is NOT changed here (it stays read-only via Batch C).
-    if (req.impersonation && req.impersonation.mode === "act-as-type" && req.realUser) {
+    // check). VIEW-AS-USER additionally stays READ-ONLY via the view-only middleware,
+    // which is keyed on the mode and is unaffected by this role swap.
+    if (
+      req.impersonation &&
+      (req.impersonation.mode === "act-as-type" || req.impersonation.mode === "view-as-user") &&
+      req.realUser
+    ) {
       req.user = {
-        id: req.realUser.id, // real id → honest action-stamping
+        id: req.realUser.id, // real id → honest action-stamping; personal data stays yours
         email: req.realUser.email,
         name: req.realUser.name,
         role: (req.impersonation.assumedRole as Role) || req.realUser.role, // effective role
