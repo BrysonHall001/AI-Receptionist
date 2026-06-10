@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal } from "../services/portalService";
 import { createUser, listUsers, deleteUser, publicUser } from "../services/userService";
@@ -8,6 +8,16 @@ import { logger } from "../utils/logger";
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
 export const adminRouter = Router();
 adminRouter.use(requireRole("SUPER_ADMIN"));
+// Batch B lockout: an impersonating super-admin must NOT reach the master hub
+// (no creating portals/users while "acting as" someone). Evaluated on the overlay
+// presence (req.impersonation is only ever set for a real super-admin).
+adminRouter.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.impersonation) {
+    res.status(403).json({ error: "Exit impersonation mode to use the master admin." });
+    return;
+  }
+  next();
+});
 
 adminRouter.get("/portals", async (_req: Request, res: Response) => {
   res.json(await listPortals());

@@ -235,6 +235,121 @@
     await App.persistNav({ order: cfg.order, hidden: hidden, labels: cfg.labels });
   }
 
+  // ---- Impersonation (Batch B): enter/exit + visible state. NO enforcement yet
+  // (view-only blocking = C, role downgrade = D); only the master admin surface is
+  // locked server-side while impersonating. ------------------------------------
+  App.loadImpersonation = async function () {
+    App.state.impersonation = null;
+    const me = App.state.me;
+    if (!me || me.role !== "SUPER_ADMIN") return; // only real super-admins have this
+    try { App.state.impersonation = await App.api("/api/impersonation"); }
+    catch (e) { App.state.impersonation = null; }
+  };
+  function isImpersonating() { return !!(App.state.impersonation && App.state.impersonation.impersonating); }
+  function impOverlay() { return (App.state.impersonation && App.state.impersonation.overlay) || null; }
+
+  async function startImpersonation(payload) {
+    try {
+      await App.api("/api/impersonation/start", { method: "POST", body: JSON.stringify(payload) });
+      await App.loadImpersonation();
+      if (App._route) App._route();
+    } catch (e) { App.util.toast(e.message, true); }
+  }
+  // Guaranteed exit: hits the real-session-authorized exit endpoint, then refreshes
+  // state and repaints — even if the call errored, we still re-read state so the UI
+  // can recover. Exit can never be blocked by impersonation itself.
+  async function exitImpersonation() {
+    try { await App.api("/api/impersonation/exit", { method: "POST" }); }
+    catch (e) { /* swallow; still refresh below so we never get stuck */ }
+    await App.loadImpersonation();
+    if (App._route) App._route();
+  }
+
+  let impMenuEl = null;
+  function closeImpMenu() {
+    if (impMenuEl) { impMenuEl.remove(); impMenuEl = null; }
+    document.removeEventListener("pointerdown", onImpDocDown, true);
+    document.removeEventListener("keydown", onImpKey, true);
+  }
+  function onImpDocDown(e) { if (impMenuEl && !impMenuEl.contains(e.target)) closeImpMenu(); }
+  function onImpKey(e) { if (e.key === "Escape") closeImpMenu(); }
+
+  async function openImpersonateMenu(anchor) {
+    closeImpMenu();
+    let data;
+    try { data = await App.api("/api/impersonation/targets"); }
+    catch (e) { App.util.toast(e.message, true); return; }
+    const menu = el("div", "imp-menu");
+    const portalId = App.state.currentPortalId;
+    const portalName = App.state.currentPortalName;
+    // Act-as-type (needs a portal in context for the pinned scope)
+    menu.appendChild(el("div", "imp-menu-sec", "Act as a user type" + (portalId ? " in " + esc(portalName || "this portal") : "")));
+    (data.roles || []).forEach((role) => {
+      const item = el("button", "imp-menu-item", esc(roleLabel ? roleLabel(role) : role));
+      if (!portalId) { item.disabled = true; item.title = "Open a portal first"; }
+      else item.onclick = async () => {
+        closeImpMenu();
+        const rl = roleLabel ? roleLabel(role) : role;
+        const ok = await App.ui.confirmModal({ title: "Act as " + rl + "?", message: "You’ll act as a " + rl + " in " + (portalName || "this portal") + ". Your actions stay recorded as you. (Permissions aren’t downgraded yet in this build.)", confirmText: "Start" });
+        if (ok) startImpersonation({ mode: "act-as-type", assumedRole: role, scopeTenantId: portalId });
+      };
+      menu.appendChild(item);
+    });
+    // View-as a specific user
+    menu.appendChild(el("div", "imp-menu-sec", "View as a specific user"));
+    const users = data.users || [];
+    if (!users.length) menu.appendChild(el("div", "imp-menu-empty", "No users available"));
+    users.forEach((u) => {
+      const label = (u.name || u.email) + " — " + (roleLabel ? roleLabel(u.role) : u.role) + (u.tenantName ? " · " + u.tenantName : "");
+      const item = el("button", "imp-menu-item", esc(label));
+      item.onclick = async () => {
+        closeImpMenu();
+        const ok = await App.ui.confirmModal({ title: "View as " + (u.name || u.email) + "?", message: "You’ll see what this user sees. (View-only is enforced in a later build; for now nothing is restricted.) You can exit at any time.", confirmText: "View as user" });
+        if (ok) startImpersonation({ mode: "view-as-user", targetUserId: u.id });
+      };
+      menu.appendChild(item);
+    });
+    document.body.appendChild(menu); impMenuEl = menu;
+    const r = anchor.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.top = Math.round(r.bottom + 6) + "px";
+    menu.style.right = Math.round(Math.max(8, window.innerWidth - r.right)) + "px";
+    setTimeout(() => {
+      document.addEventListener("pointerdown", onImpDocDown, true);
+      document.addEventListener("keydown", onImpKey, true);
+    }, 0);
+  }
+
+  function buildImpersonationControl() {
+    if (isImpersonating()) {
+      const btn = el("button", "btn btn-sm imp-exit-btn", "Exit Impersonation Mode");
+      btn.onclick = exitImpersonation;
+      return btn;
+    }
+    const btn = el("button", "btn btn-ghost btn-sm", "Impersonate as…");
+    btn.onclick = (e) => { e.stopPropagation(); openImpersonateMenu(btn); };
+    return btn;
+  }
+
+  function buildImpersonationBanner() {
+    const ov = impOverlay();
+    const st = App.state.impersonation || {};
+    const banner = el("div", "imp-banner");
+    let text;
+    if (ov && ov.mode === "view-as-user") {
+      text = "👁 Viewing as " + esc(st.targetName || "another user") + (st.scopeTenantName ? " · " + esc(st.scopeTenantName) : "") + "  (read-only enforced in a later build)";
+    } else if (ov && ov.mode === "act-as-type") {
+      text = "🛡 Acting as " + esc(roleLabel ? roleLabel(ov.assumedRole) : ov.assumedRole) + (st.scopeTenantName ? " in " + esc(st.scopeTenantName) : "");
+    } else {
+      text = "Impersonation active";
+    }
+    banner.appendChild(el("span", "imp-banner-text", text));
+    const exit = el("button", "btn btn-sm imp-banner-exit", "Exit");
+    exit.onclick = exitImpersonation;
+    banner.appendChild(exit);
+    return banner;
+  }
+
   function buildShell(section, activePath) {
     const me = App.state.me;
     const root = App.util.$("#app");
@@ -287,6 +402,10 @@
 
     // Main
     const main = el("div", "main");
+    // Persistent, unmistakable impersonation banner — present in EVERY section so
+    // the Exit affordance is always reachable. Survives refresh (state is reloaded
+    // from the server in boot()).
+    if (isImpersonating()) main.appendChild(buildImpersonationBanner());
     const topbar = el("header", "topbar");
     const topLeft = el("div", "top-left");
 
@@ -304,6 +423,9 @@
 
     const topRight = el("div", "top-right");
     if (section === "portal") {
+      // Impersonation control — immediately LEFT of Refresh, real super-admin only.
+      if (me.role === "SUPER_ADMIN") topRight.appendChild(buildImpersonationControl());
+
       const refresh = el("button", "btn btn-ghost btn-sm", "Refresh");
       refresh.onclick = () => App.portal.refresh();
       topRight.appendChild(refresh);
@@ -406,6 +528,7 @@
       const res = await fetch("/api/auth/me", { credentials: "same-origin" });
       App.state.me = res.ok ? (await res.json()).user : null;
     } catch (e) { App.state.me = null; }
+    await App.loadImpersonation(); // so the banner/control reflect state on first paint + after refresh
     route();
   }
 

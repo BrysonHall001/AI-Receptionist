@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { requireAuth, resolveTenantScope } from "../middleware/auth";
+import { setImpersonation, clearImpersonation, SESSION_COOKIE } from "../auth/session";
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
 import { runSimulatedCall } from "../services/simulationService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
@@ -48,21 +49,85 @@ function tenantOr400(req: Request, res: Response): string | null {
   return tenantId;
 }
 
-// --- Impersonation: READ-ONLY state (Batch A). No start/exit/enforcement yet. ---
-// Gated to the REAL super-admin. In Batch A this always reports not-impersonating,
-// because no overlay is ever written. Uses req.realUser (the authoritative real
-// identity) for the gate — it does not touch any existing authorization path.
-apiRouter.get("/impersonation", (req: Request, res: Response) => {
+// --- Impersonation: state + targets + start/exit. Real-super-admin gated. ---
+// Enforcement of view-only (Batch C) and role downgrade (Batch D) is NOT here yet;
+// the only behavior change in Batch B is the admin-surface lockout (see admin.ts).
+apiRouter.get("/impersonation", async (req: Request, res: Response) => {
   if (!req.realUser || req.realUser.role !== "SUPER_ADMIN") {
     res.status(403).json({ error: "Super-admin only" });
     return;
   }
   const imp = req.impersonation || null;
+  let targetName: string | null = null;
+  let scopeTenantName: string | null = null;
+  if (imp) {
+    try {
+      if (imp.targetUserId) {
+        const u = await prisma.user.findUnique({ where: { id: imp.targetUserId } });
+        targetName = u ? (u.name || u.email) : null;
+      }
+      if (imp.scopeTenantId) {
+        const t = await prisma.tenant.findUnique({ where: { id: imp.scopeTenantId } });
+        scopeTenantName = t ? (t as any).name : null;
+      }
+    } catch { /* names are cosmetic; ignore lookup errors */ }
+  }
   res.json({
     impersonating: !!imp,
     real: { id: req.realUser.id, email: req.realUser.email, name: req.realUser.name, role: req.realUser.role },
-    overlay: imp, // null in Batch A
+    overlay: imp,
+    targetName,
+    scopeTenantName,
   });
+});
+
+// Targets for the dropdown. Excludes other SUPER_ADMINs from the view-as list —
+// per the audit, we never impersonate another super-admin.
+apiRouter.get("/impersonation/targets", async (req: Request, res: Response) => {
+  if (!req.realUser || req.realUser.role !== "SUPER_ADMIN") { res.status(403).json({ error: "Super-admin only" }); return; }
+  const all = (await listUsers()) as any[]; // all portals (super-admin scope)
+  const users = all.filter((u) => u.role !== "SUPER_ADMIN");
+  res.json({ users, roles: ["PORTAL_ADMIN", "CLIENT_USER"] });
+});
+
+// Start impersonation. Writes the overlay onto the REAL session. Gated to the real
+// super-admin; never to the overlay.
+apiRouter.post("/impersonation/start", async (req: Request, res: Response) => {
+  if (!req.realUser || req.realUser.role !== "SUPER_ADMIN") { res.status(403).json({ error: "Super-admin only" }); return; }
+  const token = req.cookies?.[SESSION_COOKIE];
+  const body = (req.body ?? {}) as any;
+  const mode = body.mode;
+  try {
+    if (mode === "view-as-user") {
+      const targetUserId = String(body.targetUserId || "");
+      if (!targetUserId) { res.status(400).json({ error: "targetUserId required" }); return; }
+      const target = await prisma.user.findUnique({ where: { id: targetUserId } });
+      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      if ((target as any).role === "SUPER_ADMIN") { res.status(400).json({ error: "Cannot impersonate a super-admin" }); return; }
+      await setImpersonation(token, { mode: "view-as-user", targetUserId: target.id, assumedRole: (target as any).role, scopeTenantId: (target as any).tenantId ?? null });
+    } else if (mode === "act-as-type") {
+      const assumedRole = String(body.assumedRole || "");
+      if (assumedRole !== "PORTAL_ADMIN" && assumedRole !== "CLIENT_USER") { res.status(400).json({ error: "assumedRole must be PORTAL_ADMIN or CLIENT_USER" }); return; }
+      const scopeTenantId = String(body.scopeTenantId || "");
+      if (!scopeTenantId) { res.status(400).json({ error: "Open a portal first" }); return; }
+      const tenant = await prisma.tenant.findUnique({ where: { id: scopeTenantId } });
+      if (!tenant) { res.status(404).json({ error: "Portal not found" }); return; }
+      await setImpersonation(token, { mode: "act-as-type", assumedRole, scopeTenantId, targetUserId: null });
+    } else {
+      res.status(400).json({ error: "mode must be view-as-user or act-as-type" }); return;
+    }
+  } catch (e) { res.status(500).json({ error: "Could not start impersonation" }); return; }
+  res.json({ ok: true });
+});
+
+// Exit impersonation. GUARANTEED EXIT: authorized by the REAL super-admin and it
+// IGNORES the overlay entirely, so no impersonation state can block it. (Later
+// batches that block writes MUST whitelist this route.)
+apiRouter.post("/impersonation/exit", async (req: Request, res: Response) => {
+  if (!req.realUser || req.realUser.role !== "SUPER_ADMIN") { res.status(403).json({ error: "Super-admin only" }); return; }
+  const token = req.cookies?.[SESSION_COOKIE];
+  await clearImpersonation(token);
+  res.json({ ok: true, impersonating: false });
 });
 
 apiRouter.get("/stats", async (req: Request, res: Response) => {

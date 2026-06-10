@@ -71,6 +71,39 @@ export async function getImpersonationForToken(token: string | undefined): Promi
   }
 }
 
+/** Write an impersonation overlay onto the real session row. */
+export async function setImpersonation(
+  token: string | undefined,
+  overlay: { mode: "view-as-user" | "act-as-type"; targetUserId?: string | null; assumedRole?: string | null; scopeTenantId?: string | null },
+): Promise<void> {
+  if (!token) throw new Error("No session");
+  await prisma.session.update({
+    where: { token },
+    data: {
+      impMode: overlay.mode,
+      impTargetUserId: overlay.targetUserId ?? null,
+      impAssumedRole: overlay.assumedRole ?? null,
+      impScopeTenantId: overlay.scopeTenantId ?? null,
+      impStartedAt: new Date(),
+    } as any,
+  });
+}
+
+/**
+ * Clear the impersonation overlay from the real session row. This is the
+ * GUARANTEED-EXIT primitive: it is catch-safe (never throws) and only touches the
+ * overlay columns, so exiting can never be blocked by impersonation state.
+ */
+export async function clearImpersonation(token: string | undefined): Promise<void> {
+  if (!token) return;
+  await prisma.session
+    .update({
+      where: { token },
+      data: { impMode: null, impTargetUserId: null, impAssumedRole: null, impScopeTenantId: null, impStartedAt: null } as any,
+    })
+    .catch(() => undefined);
+}
+
 export function setSessionCookie(res: Response, token: string): void {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
