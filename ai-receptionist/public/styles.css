@@ -328,7 +328,7 @@ textarea.input { resize: vertical; }
 
 /* ---------- Table toolbar + search + filters ---------- */
 .table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.toolbar-left { display: flex; align-items: center; gap: 10px; }
+.toolbar-left { display: flex; align-items: center; gap: 10px; padding-left: 18px; }
 .toolbar-right { display: flex; align-items: center; gap: 8px; }
 .search-input { width: 260px; max-width: 46vw; font-family: var(--font-ui); font-size: 13px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--panel); }
 .search-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
