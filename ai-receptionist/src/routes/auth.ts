@@ -55,7 +55,11 @@ authRouter.get("/me", (req: Request, res: Response) => {
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
-  res.json({ user: req.user });
+  // Batch D1 (server stage): the UI keeps showing the REAL identity for now, so we
+  // can confirm the SERVER is enforcing the effective role. req.realUser equals
+  // req.user for everyone who isn't acting-as-type, so this is a no-op for them.
+  // (Batch D2 flips this to the effective identity to make the UI match.)
+  res.json({ user: req.realUser || req.user });
 });
 
 authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => {

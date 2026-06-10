@@ -67,6 +67,17 @@ function tenantOr400(req: Request, res: Response): string | null {
   return tenantId;
 }
 
+// Action attribution. The id is ALWAYS the real user's, so an act-as-type session
+// stamps honestly as the super-admin; the name is annotated "(acting as <ROLE>)"
+// while impersonating. Routes call this instead of building the actor inline.
+function actorOf(req: Request) {
+  const real = req.realUser || req.user;
+  const imp = req.impersonation;
+  let name = (real?.name || real?.email || "") as string;
+  if (imp && imp.mode === "act-as-type") name += " (acting as " + imp.assumedRole + ")";
+  return { id: real!.id, name, type: "user" as const };
+}
+
 // --- Impersonation: state + targets + start/exit. Real-super-admin gated. ---
 // Enforcement of view-only (Batch C) and role downgrade (Batch D) is NOT here yet;
 // the only behavior change in Batch B is the admin-surface lockout (see admin.ts).
@@ -209,7 +220,7 @@ apiRouter.post("/contacts", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const { name, phone, email, intent, customFields } = (req.body ?? {}) as any;
   try {
-    const c = await createContact(tenantId, { name, phone, email, intent, customFields }, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    const c = await createContact(tenantId, { name, phone, email, intent, customFields }, actorOf(req));
     res.json({ ok: true, id: c.id });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -222,7 +233,7 @@ apiRouter.post("/contacts/bulk-update", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const { ids, field, value } = (req.body ?? {}) as any;
   try {
-    const count = await bulkUpdateField(tenantId, Array.isArray(ids) ? ids : [], String(field || ""), value, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    const count = await bulkUpdateField(tenantId, Array.isArray(ids) ? ids : [], String(field || ""), value, actorOf(req));
     res.json({ ok: true, count });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -235,7 +246,7 @@ apiRouter.post("/contacts/merge", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const { survivorId, loserIds, fieldValues } = (req.body ?? {}) as any;
   try {
-    const survivor = await mergeContacts(tenantId, String(survivorId || ""), Array.isArray(loserIds) ? loserIds : [], fieldValues || {}, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    const survivor = await mergeContacts(tenantId, String(survivorId || ""), Array.isArray(loserIds) ? loserIds : [], fieldValues || {}, actorOf(req));
     res.json({ ok: true, id: survivor?.id });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -247,7 +258,7 @@ apiRouter.post("/contacts/dummy", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const c = await generateDummyContact(tenantId, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    const c = await generateDummyContact(tenantId, actorOf(req));
     res.json({ ok: true, id: c.id });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -286,7 +297,7 @@ apiRouter.post("/contacts/import", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const result = await importContacts(tenantId, rows, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    const result = await importContacts(tenantId, rows, actorOf(req));
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -298,7 +309,7 @@ apiRouter.patch("/contacts/:id", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const { name, phone, email, intent, customFields } = (req.body ?? {}) as any;
   try {
-    await updateContact(req.params.id, tenantId, { name, phone, email, intent, customFields }, { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    await updateContact(req.params.id, tenantId, { name, phone, email, intent, customFields }, actorOf(req));
     res.json({ ok: true });
   } catch (err) {
     const msg = (err as Error).message.includes("Unique") ? "That phone number is already used by another contact" : (err as Error).message;
@@ -342,7 +353,7 @@ apiRouter.post("/contacts/:id/email", async (req: Request, res: Response) => {
       type: "email_sent",
       summary: `Email sent: ${subject.trim()}`,
       detail: { subject: subject.trim(), to: contact.email, from: req.user!.email },
-      actor: { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" },
+      actor: actorOf(req),
     });
     await emitEvent({ tenantId, type: EVENT_TYPES.EmailSent, actor: { type: "user", id: req.user!.id, name: req.user!.name || req.user!.email }, subject: { type: "contact", id: req.params.id }, payload: { subject: subject.trim(), to: contact.email } });
     res.json({ ok: true });
@@ -377,7 +388,7 @@ apiRouter.post("/contacts/:id/text", async (req: Request, res: Response) => {
       type: "text_sent",
       summary: "Text message sent",
       detail: { to: contact.phone, body: body.trim() },
-      actor: { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" },
+      actor: actorOf(req),
     });
     await emitEvent({ tenantId, type: EVENT_TYPES.SMSSent, actor: { type: "user", id: req.user!.id, name: req.user!.name || req.user!.email }, subject: { type: "contact", id: req.params.id }, payload: { to: contact.phone } });
     res.json({ ok: true });
@@ -808,7 +819,7 @@ apiRouter.post("/records/:id/notes", async (req: Request, res: Response) => {
   const { text } = (req.body ?? {}) as { text?: string };
   if (!text || !String(text).trim()) { res.status(400).json({ error: "Note text is required" }); return; }
   try {
-    await addRecordNote(tenantId, req.params.id, String(text).trim(), { id: req.user!.id, name: req.user!.name || req.user!.email, type: "user" });
+    await addRecordNote(tenantId, req.params.id, String(text).trim(), actorOf(req));
     res.json(await getRecord(tenantId, req.params.id));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });

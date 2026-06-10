@@ -51,6 +51,23 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
     if (req.user && req.user.role === "SUPER_ADMIN") {
       req.impersonation = await getImpersonationForToken(token);
     }
+    // --- Batch D: ACT-AS-TYPE effective identity. When a real super-admin is
+    // "acting as" a role, req.user becomes the EFFECTIVE principal — effective role
+    // + the pinned tenant — so EVERY downstream authorization decision (and, once
+    // the UI reads it, every rendering decision) is correct BY DEFAULT, with no
+    // per-site special-casing. We keep the REAL super-admin id (so actions stamp
+    // honestly as the super-admin) and leave req.realUser untouched (the authoritative
+    // real identity, used only for exit + the "is a real super-admin impersonating"
+    // check). View-as-user is NOT changed here (it stays read-only via Batch C).
+    if (req.impersonation && req.impersonation.mode === "act-as-type" && req.realUser) {
+      req.user = {
+        id: req.realUser.id, // real id → honest action-stamping
+        email: req.realUser.email,
+        name: req.realUser.name,
+        role: (req.impersonation.assumedRole as Role) || req.realUser.role, // effective role
+        tenantId: req.impersonation.scopeTenantId || null, // pinned tenant (cross-tenant safe)
+      };
+    }
   } catch {
     // ignore; treated as unauthenticated
   }
