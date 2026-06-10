@@ -55,11 +55,12 @@ authRouter.get("/me", (req: Request, res: Response) => {
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
-  // Batch D1 (server stage): the UI keeps showing the REAL identity for now, so we
-  // can confirm the SERVER is enforcing the effective role. req.realUser equals
-  // req.user for everyone who isn't acting-as-type, so this is a no-op for them.
-  // (Batch D2 flips this to the effective identity to make the UI match.)
-  res.json({ user: req.realUser || req.user });
+  // Batch D2 (UI stage): return the EFFECTIVE identity (req.user). For everyone who
+  // isn't acting-as-type, req.user IS the real user, so this is unchanged for them.
+  // During act-as-type it carries the effective role + pinned tenant, so the whole
+  // UI renders as that role. The persistent banner + Exit (driven by the server's
+  // /api/impersonation, which checks the REAL identity) stay on top regardless.
+  res.json({ user: req.user });
 });
 
 authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => {

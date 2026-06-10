@@ -240,29 +240,38 @@
   // locked server-side while impersonating. ------------------------------------
   App.loadImpersonation = async function () {
     App.state.impersonation = null;
-    const me = App.state.me;
-    if (!me || me.role !== "SUPER_ADMIN") return; // only real super-admins have this
+    if (!App.state.me) return;
+    // Always ask the server — it gates on the REAL identity (req.realUser). During
+    // act-as-type our own me.role is the EFFECTIVE (downgraded) role, so we must NOT
+    // gate on it here, or the banner/Exit would vanish exactly when impersonating.
+    // A real non-super-admin just gets a 403 → caught → not impersonating.
     try { App.state.impersonation = await App.api("/api/impersonation"); }
     catch (e) { App.state.impersonation = null; }
   };
   function isImpersonating() { return !!(App.state.impersonation && App.state.impersonation.impersonating); }
   function impOverlay() { return (App.state.impersonation && App.state.impersonation.overlay) || null; }
 
+  // Re-pull the effective identity (/api/auth/me now returns the effective role/
+  // tenant during act-as-type) AND the impersonation state, so the whole UI re-renders
+  // as the right role immediately after entering/leaving impersonation.
+  async function refreshSession() {
+    try { const res = await fetch("/api/auth/me", { credentials: "same-origin" }); if (res.ok) App.state.me = (await res.json()).user; } catch (e) {}
+    await App.loadImpersonation();
+  }
   async function startImpersonation(payload) {
-    try {
-      await App.api("/api/impersonation/start", { method: "POST", body: JSON.stringify(payload) });
-      await App.loadImpersonation();
-      if (App._route) App._route();
-    } catch (e) { App.util.toast(e.message, true); }
+    try { await App.api("/api/impersonation/start", { method: "POST", body: JSON.stringify(payload) }); }
+    catch (e) { App.util.toast(e.message, true); return; }
+    await refreshSession();
+    App.go("#/dashboard"); // land somewhere valid for the (possibly downgraded) role
   }
   // Guaranteed exit: hits the real-session-authorized exit endpoint, then refreshes
-  // state and repaints — even if the call errored, we still re-read state so the UI
-  // can recover. Exit can never be blocked by impersonation itself.
+  // identity + state and lands on the dashboard — even if the call errored, we still
+  // re-read so the UI can recover. Exit can never be blocked by impersonation itself.
   async function exitImpersonation() {
     try { await App.api("/api/impersonation/exit", { method: "POST" }); }
     catch (e) { /* swallow; still refresh below so we never get stuck */ }
-    await App.loadImpersonation();
-    if (App._route) App._route();
+    await refreshSession();
+    App.go("#/dashboard");
   }
 
   let impMenuEl = null;
