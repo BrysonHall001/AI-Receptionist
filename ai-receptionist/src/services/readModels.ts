@@ -39,8 +39,17 @@ function ex(value: unknown): Extracted {
   return (value ?? {}) as Extracted;
 }
 
+// Sentinel tenant id that no real tenant can equal (tenant ids are cuids). Used so
+// a missing tenant filters to NOTHING instead of widening to every tenant.
+const NO_TENANT = "__missing_tenant__";
+
+// Fail safe: a real tenant is returned unchanged (identical to before); a missing/
+// null/undefined tenant yields a filter that matches no rows. This guarantees that
+// any future caller which forgets to pass a tenant gets an empty result, never a
+// cross-tenant leak. (Every current caller passes a real tenant, so behavior is
+// unchanged today.)
 function scope(tenantId?: string | null) {
-  return tenantId ? { tenantId } : {};
+  return { tenantId: tenantId || NO_TENANT };
 }
 
 export async function getStats(tenantId?: string | null) {
@@ -59,6 +68,7 @@ export async function getStats(tenantId?: string | null) {
 }
 
 export async function listCalls(tenantId?: string | null, limit = 500): Promise<CallDTO[]> {
+  if (!tenantId) return []; // fail safe: no tenant -> no data (never all tenants)
   const rows = await prisma.callSession.findMany({
     where: scope(tenantId),
     orderBy: { createdAt: "desc" },
@@ -68,9 +78,10 @@ export async function listCalls(tenantId?: string | null, limit = 500): Promise<
 }
 
 export async function getCall(id: string, tenantId?: string | null): Promise<CallDetailDTO | null> {
+  if (!tenantId) return null; // fail safe: no tenant -> not found (never cross-tenant)
   const r = await prisma.callSession.findUnique({ where: { id }, include: { tenant: true } });
   if (!r) return null;
-  if (tenantId && r.tenantId !== tenantId) return null; // enforce scope
+  if (r.tenantId !== tenantId) return null; // enforce scope
   return {
     ...toCallDTO(r),
     tenantName: r.tenant?.name ?? null,
@@ -96,6 +107,7 @@ function mapContact(c: any) {
 }
 
 export async function listContacts(tenantId?: string | null, limit = 500): Promise<ContactDTO[]> {
+  if (!tenantId) return []; // fail safe: no tenant -> no data (never all tenants)
   const rows = await prisma.contact.findMany({
     where: { ...scope(tenantId), deletedAt: null }, // active only — never show soft-deleted
     orderBy: { updatedAt: "desc" },
@@ -108,6 +120,7 @@ export async function listContacts(tenantId?: string | null, limit = 500): Promi
 // Recycle bin: soft-deleted contacts only, newest-deleted first, with a
 // days-until-permanent-deletion countdown (RETENTION_DAYS from deletion).
 export async function listDeletedContacts(tenantId?: string | null, limit = 500) {
+  if (!tenantId) return []; // fail safe: no tenant -> no data (never all tenants)
   const rows = await prisma.contact.findMany({
     where: { ...scope(tenantId), deletedAt: { not: null } },
     orderBy: { deletedAt: "desc" },
@@ -124,12 +137,13 @@ export async function listDeletedContacts(tenantId?: string | null, limit = 500)
 }
 
 export async function getContact(id: string, tenantId?: string | null) {
+  if (!tenantId) return null; // fail safe: no tenant -> not found (never cross-tenant)
   const c = await prisma.contact.findUnique({
     where: { id },
     include: { callSessions: { orderBy: { createdAt: "desc" } } },
   });
   if (!c) return null;
-  if (tenantId && c.tenantId !== tenantId) return null;
+  if (c.tenantId !== tenantId) return null;
   return {
     id: c.id,
     name: c.name ?? null,
