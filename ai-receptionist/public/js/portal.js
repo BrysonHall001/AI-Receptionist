@@ -45,7 +45,7 @@
     const handle = App.table.mount({
       container, columns, rows: calls, onRowClick: (r) => openCall(r.id),
       defaultSort: "createdAt", defaultSortDir: "desc", highlightId: App._highlightCallId,
-      emptyHtml: emptyCalls().outerHTML,
+      emptyHtml: emptyCalls().outerHTML, pageSize: 6,
     });
     // Always-visible "Simulate call" in the toolbar (next to Search), so it works
     // whether or not any calls exist yet. Same simulate() action as before.
@@ -56,6 +56,58 @@
       handle.toolbarRight.insertBefore(sim, handle.toolbarRight.firstChild);
     }
     App._highlightCallId = null;
+    // AI Instructions editor below the table (visible/editable per server gate).
+    mountAiInstructions(view());
+  }
+
+  // Per-portal AI Instructions box. Visibility/permission is decided by the server
+  // (GET returns `editable`); we only render the box when editing is allowed.
+  async function mountAiInstructions(host) {
+    let data;
+    try { data = await App.portalApi("/api/account/ai-instructions"); }
+    catch { return; }
+    if (!data || !data.editable) return;
+
+    const sec = el("div", "card");
+    sec.style.cssText = "margin-top:18px;padding:18px;";
+    const head = el("div");
+    head.innerHTML =
+      `<h3 style="margin:0 0 6px;">AI Instructions</h3>` +
+      `<p class="cell-muted" style="margin:0 0 4px;">Tell your AI receptionist about your business — services, hours, pricing, anything it should know — and how you'd like it to behave on calls. This guidance is added on top of the receptionist's built-in helpfulness. (The receptionist will still capture caller details for you.)</p>` +
+      `<p class="cell-muted" style="margin:0 0 10px;font-size:12px;">Tip: add information, don't remove the receptionist's core behavior — it's designed to stay helpful and log calls automatically.</p>`;
+    sec.appendChild(head);
+
+    const ta = el("textarea", "input");
+    ta.rows = 8;
+    ta.style.cssText = "width:100%;resize:vertical;min-height:160px;";
+    ta.value = data.aiInstructions || "";
+    ta.placeholder = "e.g. We're a plumbing company open Mon–Sat, 8am–6pm. We service Rheem and Bradford White water heaters. For emergencies, let the caller know we offer same-day visits and ask for the best callback number.";
+    sec.appendChild(ta);
+
+    const bar = el("div");
+    bar.style.cssText = "margin-top:10px;display:flex;gap:10px;align-items:center;";
+    const save = el("button", "btn btn-primary", "Save");
+    const status = el("span", "cell-muted");
+    status.style.fontSize = "13px";
+    save.onclick = async () => {
+      save.disabled = true;
+      status.textContent = "Saving…";
+      try {
+        await App.portalApi("/api/account/ai-instructions", { method: "PATCH", body: JSON.stringify({ aiInstructions: ta.value }) });
+        status.textContent = "Saved.";
+        App.util.toast("AI Instructions saved");
+        setTimeout(() => { if (status.textContent === "Saved.") status.textContent = ""; }, 2500);
+      } catch (e) {
+        status.textContent = "";
+        App.util.toast((e && e.message) || "Save failed", true);
+      } finally {
+        save.disabled = false;
+      }
+    };
+    bar.appendChild(save);
+    bar.appendChild(status);
+    sec.appendChild(bar);
+    host.appendChild(sec);
   }
 
   // ---------------- Contacts ----------------

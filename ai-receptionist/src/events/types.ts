@@ -45,6 +45,9 @@ export const EVENT_TYPES = {
   SMSSent: "SMSSent",
   NoteAdded: "NoteAdded",
   ActivityLogged: "ActivityLogged",
+  // Audit: a portal's AI Instructions were edited. Subject = the portal (tenant).
+  // Not a real automation trigger — recorded for the settings audit trail only.
+  AiInstructionsUpdated: "AiInstructionsUpdated",
   // A candidate's relationship stage on a record changed. Subject = the contact.
   StageChanged: "StageChanged",
   // A record's own field/status changed (e.g. a job's Status). Subject = record.

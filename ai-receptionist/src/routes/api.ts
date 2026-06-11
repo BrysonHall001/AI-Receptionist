@@ -476,6 +476,49 @@ apiRouter.patch("/account/contact-columns", async (req: Request, res: Response) 
   res.json({ layout });
 });
 
+// ---- AI Instructions (per-portal, client-editable; layered onto the AI prompt) ----
+// Capability gate: currently ON for every portal. To later restrict to "AI-enabled"
+// portals, replace `aiEnabled` with a real per-portal flag (e.g. portal.aiEnabled).
+function aiInstructionsEditable(req: Request): boolean {
+  const aiEnabled = true; // <- flip to a per-portal flag later to gate by capability
+  return aiEnabled && req.user!.role !== "CLIENT_USER";
+}
+
+apiRouter.get("/account/ai-instructions", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const portal = await getPortal(tenantId);
+  res.json({
+    aiInstructions: (portal as any)?.aiInstructions ?? "",
+    editable: aiInstructionsEditable(req),
+  });
+});
+
+apiRouter.patch("/account/ai-instructions", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!aiInstructionsEditable(req)) {
+    res.status(403).json({ error: "You don't have permission to edit AI Instructions." });
+    return;
+  }
+  const aiInstructions = String((req.body ?? {}).aiInstructions ?? "");
+  try {
+    await updatePortal(tenantId, { aiInstructions } as any);
+    // Audit trail: record WHO changed it, WHEN, and for WHICH portal. Recorded as a
+    // tenant-scoped domain event (subject = the portal). No automation triggers on it.
+    await emitEvent({
+      tenantId,
+      type: EVENT_TYPES.AiInstructionsUpdated,
+      actor: actorOf(req),
+      subject: { type: "portal", id: tenantId },
+      payload: { length: aiInstructions.length },
+    });
+    res.json({ ok: true, aiInstructions });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
 // ---- Personal email signature ----
 apiRouter.get("/account/signature", async (req: Request, res: Response) => {  const u = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { signature: true } });
   res.json({ signature: u?.signature ?? "" });

@@ -113,7 +113,7 @@ export async function createPortal(input: {
 
 export async function updatePortal(
   id: string,
-  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean }>,
+  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; aiInstructions: string }>,
 ) {
   return prisma.tenant.update({ where: { id }, data: data as any });
 }

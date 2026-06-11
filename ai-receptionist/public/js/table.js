@@ -139,7 +139,7 @@
     const rowId = opts.rowId || ((r) => r.id);
     const selectable = !!opts.selectable;
     const selected = new Set();
-    const state = { search: "", colFilters: {}, rules: [], sortKey: opts.defaultSort || null, sortDir: opts.defaultSortDir || "desc", railOpen: false };
+    const state = { search: "", colFilters: {}, rules: [], sortKey: opts.defaultSort || null, sortDir: opts.defaultSortDir || "desc", railOpen: false, page: 0 };
     const { el, esc, debounce } = App.util;
     function fireSel() { if (opts.onSelectionChange) opts.onSelectionChange(Array.from(selected)); }
 
@@ -201,6 +201,17 @@
 
     function render() {
       const filtered = pipeline(rows, columns, state);
+      // Opt-in pagination: only active when opts.pageSize is set (e.g. Calls page).
+      // Other tables pass no pageSize and are completely unaffected.
+      const pageSize = opts.pageSize || 0;
+      let pageRows = filtered;
+      let totalPages = 1;
+      if (pageSize > 0) {
+        totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        if (state.page >= totalPages) state.page = totalPages - 1;
+        if (state.page < 0) state.page = 0;
+        pageRows = filtered.slice(state.page * pageSize, state.page * pageSize + pageSize);
+      }
       tableWrap.innerHTML = "";
       if (!rows.length && emptyHtml) {
         tableWrap.innerHTML = emptyHtml;
@@ -259,7 +270,7 @@
         tr.appendChild(td);
         tb.appendChild(tr);
       } else {
-        filtered.forEach((row) => {
+        pageRows.forEach((row) => {
           const tr = el("tr");
           if (opts.highlightId && row.id === opts.highlightId) tr.classList.add("row-new");
           const id = rowId(row);
@@ -285,6 +296,15 @@
           if (onRowClick) tr.addEventListener("click", () => onRowClick(row));
           tb.appendChild(tr);
         });
+        // Keep the table a consistent height when a page isn't full.
+        if (pageSize > 0) {
+          for (let i = pageRows.length; i < pageSize; i++) {
+            const tr = el("tr", "row-filler");
+            const td = el("td"); td.colSpan = span; td.innerHTML = "&nbsp;";
+            tr.appendChild(td);
+            tb.appendChild(tr);
+          }
+        }
       }
       table.appendChild(tb);
       tableWrap.appendChild(table);
@@ -297,6 +317,24 @@
 
       const count = el("div", "table-count", `${filtered.length} of ${rows.length}`);
       tableWrap.appendChild(count);
+
+      // Pager controls (only when pagination is active).
+      if (pageSize > 0) {
+        const pager = el("div", "table-pager");
+        pager.style.cssText = "display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 0 2px;";
+        const prev = el("button", "btn btn-ghost btn-sm", "‹ Prev");
+        const next = el("button", "btn btn-ghost btn-sm", "Next ›");
+        const ind = el("span", "table-pager-info", `Page ${state.page + 1} of ${totalPages}`);
+        ind.style.cssText = "color:var(--muted,#6b7280);font-size:13px;";
+        prev.disabled = state.page <= 0;
+        next.disabled = state.page >= totalPages - 1;
+        prev.onclick = () => { if (state.page > 0) { state.page--; render(); } };
+        next.onclick = () => { if (state.page < totalPages - 1) { state.page++; render(); } };
+        pager.appendChild(prev);
+        pager.appendChild(ind);
+        pager.appendChild(next);
+        tableWrap.appendChild(pager);
+      }
       renderChips();
     }
 
@@ -315,7 +353,7 @@
       inp.type = "text";
       inp.placeholder = "Filter " + col.label + "…";
       inp.value = state.colFilters[col.key] || "";
-      inp.oninput = App.util.debounce(() => { state.colFilters[col.key] = inp.value; render(); }, 200);
+      inp.oninput = App.util.debounce(() => { state.colFilters[col.key] = inp.value; state.page = 0; render(); }, 200);
       pop.appendChild(inp);
       document.body.appendChild(pop);
       const rect = anchor.getBoundingClientRect();
@@ -329,7 +367,7 @@
     }
 
     filterToggle.onclick = () => { state.railOpen = !state.railOpen; renderRail(); };
-    search.oninput = App.util.debounce(() => { state.search = search.value; render(); }, 180);
+    search.oninput = App.util.debounce(() => { state.search = search.value; state.page = 0; render(); }, 180);
 
     container.appendChild(toolbar);
     container.appendChild(layout);

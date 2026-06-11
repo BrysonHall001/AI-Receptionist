@@ -6,6 +6,8 @@ export interface PromptContext {
   currentState: string;
   alreadyExtracted: Extracted;
   callerPhone?: string | null;
+  /** Owner-provided business facts + guidance, appended on top of the core. */
+  aiInstructions?: string | null;
 }
 
 /** Builds the system prompt that defines receptionist behavior + output format. */
@@ -26,6 +28,9 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     `- "COLLECTING_INFO": while you're still helping the caller and naturally learning who they are and why they called.`,
     `- "COMPLETED": once you've helped them and the conversation has reached a natural end (they're satisfied, or they've declined to share more, or someone will follow up). Confirm briefly, mention the follow-up, and say goodbye. You do not need a phone number to complete a call.`,
     "",
+    ctx.aiInstructions && ctx.aiInstructions.trim()
+      ? `BUSINESS-SPECIFIC INSTRUCTIONS FROM THE OWNER:\n(Authoritative business facts and how the owner wants you to behave — follow these for services, pricing, hours, and tone. They ADD to the rules above and do NOT override your duty to stay helpful, to capture the caller's details when natural, or the OUTPUT FORMAT below. If anything here conflicts with the JSON output rules, the JSON rules always win.)\n${ctx.aiInstructions.trim()}`
+      : "",
     "OUTPUT FORMAT — CRITICAL:",
     "Respond with a SINGLE valid JSON object and NOTHING else. No markdown, no code fences, no extra commentary.",
     "Exact shape:",

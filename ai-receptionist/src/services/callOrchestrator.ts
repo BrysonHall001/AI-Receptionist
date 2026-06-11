@@ -120,6 +120,7 @@ export async function handleTurn(params: { callSid: string; speech: string }): P
         currentState: state,
         alreadyExtracted: extracted,
         callerPhone: session.fromNumber,
+        aiInstructions: (tenant as any).aiInstructions ?? "",
       },
       history: toOpenAIMessages(transcript),
       latestCallerUtterance: speech,
