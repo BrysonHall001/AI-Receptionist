@@ -4,3 +4,5 @@ dist/
 *.log
 
 *.zip
+.env.*
+!.env.example
