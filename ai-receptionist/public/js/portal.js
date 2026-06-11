@@ -42,11 +42,19 @@
     view().innerHTML = "";
     const container = el("div", "fade-in");
     view().appendChild(container);
-    App.table.mount({
+    const handle = App.table.mount({
       container, columns, rows: calls, onRowClick: (r) => openCall(r.id),
       defaultSort: "createdAt", defaultSortDir: "desc", highlightId: App._highlightCallId,
-      emptyHtml: emptyCalls().outerHTML, onEmptyMount: (w) => { const b = w.querySelector("#empty-sim"); if (b) b.onclick = simulate; },
+      emptyHtml: emptyCalls().outerHTML,
     });
+    // Always-visible "Simulate call" in the toolbar (next to Search), so it works
+    // whether or not any calls exist yet. Same simulate() action as before.
+    if (handle && handle.toolbarRight) {
+      const sim = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#9654;</span> Simulate call`);
+      sim.id = "simulate-btn";
+      sim.onclick = simulate;
+      handle.toolbarRight.insertBefore(sim, handle.toolbarRight.firstChild);
+    }
     App._highlightCallId = null;
   }
 
@@ -713,10 +721,7 @@
   function emptyCalls() {
     const e = el("div", "card");
     e.innerHTML = `<div class="empty"><div class="empty-emoji">&#128222;</div><h3>No calls yet</h3>
-      <p>Use “Simulate call” to generate a sample lead, or take a real call.</p>
-      <button class="btn btn-primary" id="empty-sim"><span class="btn-icon">&#9654;</span> Simulate call</button></div>`;
-    const b = e.querySelector("#empty-sim");
-    if (b) b.onclick = simulate;
+      <p>Use the &ldquo;Simulate call&rdquo; button above to generate a sample lead, or take a real call.</p></div>`;
     return e;
   }
 
