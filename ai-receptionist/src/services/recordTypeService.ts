@@ -58,33 +58,53 @@ const DEFAULT_JOB_SUBTYPES = [
 ];
 
 /** The portal's system "contact" record type id, created if missing. Idempotent. */
-export async function ensureContactRecordType(tenantId: string): Promise<string> {
-  const existing = await db.recordType.findFirst({ where: { tenantId, key: CONTACT_RECORD_TYPE_KEY } });
+/**
+ * Idempotent seeder for a default record type, SAFE under concurrency.
+ *
+ * The setup screen loads several things at once for a brand-new portal (theme,
+ * labels, record types, dashboard), so multiple requests can race to seed the
+ * same default. Two requests both pass the "does it exist?" check, both try to
+ * create, and the unique (tenantId,key) constraint rejects the loser's create
+ * with Prisma error code P2002. That is NOT a real failure — the row now exists —
+ * so we swallow exactly that case and return the existing row. (Previously this
+ * threw and, being an un-awaited rejection in a request handler, crashed the
+ * whole server process.) Any other error is still surfaced.
+ */
+async function ensureRecordType(tenantId: string, key: string, data: Record<string, unknown>): Promise<string> {
+  const existing = await db.recordType.findFirst({ where: { tenantId, key } });
   if (existing) return existing.id;
-  const created = await db.recordType.create({
-    data: { tenantId, key: CONTACT_RECORD_TYPE_KEY, label: "Contact", labelPlural: "Contacts", system: true, stages: [], recordStages: [], order: 0 },
+  try {
+    const created = await db.recordType.create({ data });
+    return created.id;
+  } catch (err: any) {
+    if (err?.code === "P2002") {
+      // Lost a create race with a concurrent request — the row exists now.
+      const row = await db.recordType.findFirst({ where: { tenantId, key } });
+      if (row) return row.id;
+    }
+    throw err;
+  }
+}
+
+export async function ensureContactRecordType(tenantId: string): Promise<string> {
+  return ensureRecordType(tenantId, CONTACT_RECORD_TYPE_KEY, {
+    tenantId, key: CONTACT_RECORD_TYPE_KEY, label: "Contact", labelPlural: "Contacts", system: true, stages: [], recordStages: [], order: 0,
   });
-  return created.id;
 }
 
 /** The portal's "job" record type id (recruiting — the first visible type), created if missing. */
 export async function ensureJobRecordType(tenantId: string): Promise<string> {
-  const existing = await db.recordType.findFirst({ where: { tenantId, key: JOB_RECORD_TYPE_KEY } });
-  if (existing) return existing.id;
-  const created = await db.recordType.create({
-    data: {
-      tenantId,
-      key: JOB_RECORD_TYPE_KEY,
-      label: "Job",
-      labelPlural: "Jobs",
-      system: false,
-      stages: DEFAULT_JOB_STAGES,
-      recordStages: DEFAULT_JOB_RECORD_STAGES,
-      subtypes: DEFAULT_JOB_SUBTYPES,
-      order: 1,
-    },
+  return ensureRecordType(tenantId, JOB_RECORD_TYPE_KEY, {
+    tenantId,
+    key: JOB_RECORD_TYPE_KEY,
+    label: "Job",
+    labelPlural: "Jobs",
+    system: false,
+    stages: DEFAULT_JOB_STAGES,
+    recordStages: DEFAULT_JOB_RECORD_STAGES,
+    subtypes: DEFAULT_JOB_SUBTYPES,
+    order: 1,
   });
-  return created.id;
 }
 
 export function serializeRecordType(rt: any) {
