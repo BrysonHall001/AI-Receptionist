@@ -34,6 +34,7 @@ export async function getPortal(id: string) {
     labels: (t as any).labels ?? {},
     status: t.status,
     requireEmail: (t as any).requireEmail !== false,
+    aiInstructions: (t as any).aiInstructions ?? "",
     createdAt: t.createdAt.toISOString(),
   };
 }
