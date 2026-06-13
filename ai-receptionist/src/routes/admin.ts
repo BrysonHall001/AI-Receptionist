@@ -72,22 +72,27 @@ adminRouter.get("/users", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/users", async (req: Request, res: Response) => {
-  const { email, password, name, role, tenantId } = (req.body ?? {}) as Record<string, string>;
+  const { email, password, name, role } = (req.body ?? {}) as Record<string, string>;
   if (!email || !password || !role) {
     res.status(400).json({ error: "email, password, and role are required" });
     return;
   }
-  if ((role === "PORTAL_ADMIN" || role === "CLIENT_USER") && !tenantId) {
-    res.status(400).json({ error: "This role must be assigned to a portal" });
+  // The master form may ONLY create top-tier, portal-less accounts: a Super Admin
+  // or an Auditor. OWNER is never creatable here (granted only by the make-owner
+  // script). Portal roles are created from each portal's own "Users" button.
+  if (role !== "SUPER_ADMIN" && role !== "AUDITOR") {
+    res.status(400).json({ error: "This form can only create a Super Admin or an Auditor." });
     return;
   }
   try {
+    // tenantId is forced to null — these roles are never assigned to a portal.
+    // (AUDITOR still gets its 3-day expiresAt stamp inside createUser.)
     const user = await createUser({
       email,
       password,
       name: name || null,
       role: role as any,
-      tenantId: role === "SUPER_ADMIN" || role === "AUDITOR" ? null : tenantId,
+      tenantId: null,
     });
     res.json(publicUser(user));
   } catch (err) {

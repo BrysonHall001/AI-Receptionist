@@ -473,13 +473,11 @@
   function openCreateUser(portal) {
     const perPortal = !!portal; // per-portal mode: only portal-admin/client-user, no portal picker
     const inner = el("div");
-    const portalOpts = portalsCache.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+    // Master form creates only top-tier, portal-less accounts (Super Admin / Auditor);
+    // per-portal form creates only portal-admin / client-user for the chosen portal.
     const roleOptions = perPortal
       ? `<option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option>`
-      : `<option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option><option value="SUPER_ADMIN">Super Admin</option><option value="AUDITOR">Auditor (3-day tester)</option>`;
-    const portalPicker = perPortal
-      ? ``
-      : `<div id="cu-portal-wrap"><label class="field-label">Assign to portal *</label><select id="cu-portal" class="input">${portalOpts}</select></div>`;
+      : `<option value="SUPER_ADMIN">Super Admin</option><option value="AUDITOR">Auditor (3-day tester)</option>`;
     inner.innerHTML = `<div class="modal-head"><h2>Create user${perPortal ? " · " + esc(portal.name) : ""}</h2><button class="icon-btn" id="cu-close">&times;</button></div>
       <div class="modal-body">
         <label class="field-label">Name</label><input id="cu-name" class="input" placeholder="Jane Doe" />
@@ -487,15 +485,10 @@
         <label class="field-label">Temporary password *</label><input id="cu-pass" class="input" type="text" placeholder="8+ characters" />
         <label class="field-label">Role *</label>
         <select id="cu-role" class="input">${roleOptions}</select>
-        ${portalPicker}
         <button id="cu-go" class="btn btn-primary btn-block">Create user</button>
       </div>`;
     const overlay = modal(inner);
     const roleSel = inner.querySelector("#cu-role");
-    const portalWrap = inner.querySelector("#cu-portal-wrap");
-    if (!perPortal) {
-      roleSel.onchange = () => { portalWrap.style.display = (roleSel.value === "SUPER_ADMIN" || roleSel.value === "AUDITOR") ? "none" : "block"; };
-    }
     inner.querySelector("#cu-close").onclick = () => overlay.remove();
     inner.querySelector("#cu-go").onclick = async () => {
       const role = roleSel.value;
@@ -505,7 +498,6 @@
         password: inner.querySelector("#cu-pass").value,
         role,
       };
-      if (!perPortal) body.tenantId = role === "SUPER_ADMIN" || role === "AUDITOR" ? null : inner.querySelector("#cu-portal").value;
       if (!body.email || !body.password) { toast("Email and password are required", true); return; }
       if (body.password.length < 8) { toast("Password must be at least 8 characters", true); return; }
       try {
