@@ -435,7 +435,7 @@
     const wrap = el("div", "fade-in");
     const bar = el("div", "page-actions");
     const create = el("button", "btn btn-primary btn-sm", "+ Create user");
-    create.onclick = openCreateUser;
+    create.onclick = () => openCreateUser();
     bar.appendChild(create);
     wrap.appendChild(bar);
 
