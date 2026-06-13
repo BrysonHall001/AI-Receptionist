@@ -8,8 +8,38 @@
   function view() { return App.util.$("#view"); }
   function setView(v) { current = v; }
 
+  // ---- Calls live auto-refresh ----
+  // The Calls page has no server push and previously fetched /api/calls only
+  // once on render. This gently polls while the Calls view is open so a call
+  // shows as "In progress" the moment it starts and flips to "Completed" when it
+  // ends, with NO manual browser refresh — for BOTH the walkie-talkie and the
+  // ConversationRelay paths (both create the call row at call start). It repaints
+  // ONLY when the data actually changed, and never while the user is typing,
+  // selecting text, or viewing a call, so it cannot disrupt anything.
+  let callsPoll = null; // setInterval id while the Calls view is active
+  let callsSig = null;  // signature of the last painted calls (skip no-op repaints)
+
+  function stopCallsPoll() {
+    if (callsPoll) { clearInterval(callsPoll); callsPoll = null; }
+    callsSig = null;
+  }
+  function callsSignature(rows) {
+    return (rows || []).map((r) => r.id + ":" + r.status).join("|");
+  }
+  function callsRefreshBlocked() {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return true;
+    const drawer = App.util.$("#drawer");
+    if (drawer && !drawer.classList.contains("hidden")) return true; // a call detail is open
+    if (document.querySelector(".menu:not(.hidden)")) return true;   // a dropdown menu is open
+    const sel = window.getSelection && window.getSelection();
+    if (sel && String(sel).length > 0) return true;                  // user is selecting text
+    return false;
+  }
+
   async function render(v, sub) {
     setView(v);
+    stopCallsPoll(); // any navigation stops the Calls poll; renderCalls restarts it
     if (v === "calls") return renderCalls();
     if (v === "contacts") return renderContacts();
     if (v === "jobs") return renderRecordList("job");
@@ -48,6 +78,31 @@
       return;
     }
     const calls = await App.portalApi("/api/calls");
+    view().innerHTML = "";
+    const container = el("div", "fade-in");
+    view().appendChild(container);
+    let handle = buildCallsTable(container, calls);
+    callsSig = callsSignature(calls);
+    // AI Instructions editor below the table. Mount it INTO the table's
+    // .table-area column (not the full-width view) so it shares the exact same
+    // width constraint as the Calls panel above and their edges line up. Falls
+    // back to the full view if the area isn't found. It is preserved across live
+    // refreshes (the node is moved, not rebuilt), so in-progress edits survive.
+    const tableArea = container.querySelector(".table-area");
+    await mountAiInstructions(tableArea || view());
+
+    // Start the live auto-refresh for this Calls view (stopped on navigation).
+    callsPoll = setInterval(() => {
+      if (current !== "calls") { stopCallsPoll(); return; }
+      refreshCallsTable(container, () => handle, (h) => { handle = h; });
+    }, 4000);
+  }
+
+  // Build (or rebuild) ONLY the Calls table into `container`, returning the table
+  // handle. Shared by the initial render and the live refresh so the two paint
+  // identically. Does not touch the AI Instructions editor.
+  function buildCallsTable(container, calls) {
+    container.innerHTML = "";
     const columns = [
       { key: "name", label: "Caller", type: "text", get: (r) => r.name, text: (r) => r.name || "Unknown caller", cellClass: "cell-strong", render: (r) => esc(r.name || "Unknown caller") },
       { key: "phone", label: "Phone", type: "text", get: (r) => r.phone || r.fromNumber, cellClass: "cell-mono" },
@@ -55,9 +110,6 @@
       { key: "status", label: "Status", type: "status", get: (r) => r.status, text: (r) => ({ COMPLETED: "Completed", FAILED: "Missed", COLLECTING_INFO: "In progress", GREETING: "In progress", INIT: "New" }[r.status] || r.status), render: (r) => statusBadge(r.status) },
       { key: "createdAt", label: "When", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
     ];
-    view().innerHTML = "";
-    const container = el("div", "fade-in");
-    view().appendChild(container);
     const handle = App.table.mount({
       container, columns, rows: calls, onRowClick: (r) => openCall(r.id),
       defaultSort: "createdAt", defaultSortDir: "desc", highlightId: App._highlightCallId,
@@ -72,12 +124,37 @@
       handle.toolbarRight.insertBefore(sim, handle.toolbarRight.firstChild);
     }
     App._highlightCallId = null;
-    // AI Instructions editor below the table. Mount it INTO the table's
-    // .table-area column (not the full-width view) so it shares the exact same
-    // width constraint as the Calls panel above and their edges line up. Falls
-    // back to the full view if the area isn't found.
-    const tableArea = container.querySelector(".table-area");
-    mountAiInstructions(tableArea || view());
+    return handle;
+  }
+
+  // Live refresh: re-fetch calls; if the data changed and the user isn't mid-
+  // interaction, repaint ONLY the table — preserving the AI Instructions editor
+  // node (and its unsaved text) and the table's sort/search/filter state.
+  async function refreshCallsTable(container, getHandle, setHandle) {
+    let calls;
+    try { calls = await App.portalApi("/api/calls"); } catch { return; }
+    const sig = callsSignature(calls);
+    if (sig === callsSig) return;       // nothing changed -> no repaint
+    if (callsRefreshBlocked()) return;  // don't disrupt the user; catch it next tick
+    callsSig = sig;
+
+    // Detach the AI Instructions card so it survives the table remount untouched.
+    const aiCard = container.querySelector(".ai-instructions-card");
+    if (aiCard && aiCard.parentNode) aiCard.parentNode.removeChild(aiCard);
+
+    // Preserve sort/search/filters across the remount.
+    const prevHandle = getHandle && getHandle();
+    const prevState = prevHandle && prevHandle.getState ? prevHandle.getState() : null;
+
+    const handle = buildCallsTable(container, calls);
+    if (prevState && handle && handle.applyState) handle.applyState(prevState);
+    if (setHandle) setHandle(handle);
+
+    // Re-attach the AI editor into the fresh table area (same node => edits kept).
+    if (aiCard) {
+      const area = container.querySelector(".table-area") || container;
+      area.appendChild(aiCard);
+    }
   }
 
   // Per-portal AI Instructions box. Visibility/permission is decided by the server
@@ -88,7 +165,7 @@
     catch { return; }
     if (!data || !data.editable) return;
 
-    const sec = el("div", "card");
+    const sec = el("div", "card ai-instructions-card");
     sec.style.cssText = "margin-top:18px;padding:18px;";
     const head = el("div");
     head.innerHTML =
