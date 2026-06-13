@@ -447,9 +447,9 @@
     // Item 1: master "invite sender email". Read-only for non-owners; OWNER can save.
     // The server also rejects a save from a non-owner (greying is only the UI half).
     const senderCard = el("div", "card");
-    senderCard.style.marginBottom = "12px";
+    senderCard.style.cssText = "padding:14px 18px;margin-bottom:12px";
     senderCard.innerHTML = `
-      <label class="field-label">Invite sender email</label>
+      <label class="field-label" style="display:block;margin-bottom:6px">Invite sender email</label>
       <div style="display:flex;gap:8px;align-items:center">
         <input id="sender-email" class="input" type="email" style="flex:1" value="${esc(senderEmail)}" placeholder="Not set" ${isOwner ? "" : "disabled"} />
         ${isOwner ? '<button id="sender-save" class="btn btn-primary btn-sm">Save</button>' : ""}
@@ -531,6 +531,14 @@
       try {
         const updated = await App.api(`/api/admin/users/${u.id}/name`, { method: "PATCH", body: JSON.stringify({ name: input.value.trim() }) });
         u.name = updated.name;
+        // If I renamed myself, refresh the cached identity AND the sidebar chip,
+        // which reads App.state.me (otherwise it keeps showing the old name).
+        if (u.id === App.state.me.id) {
+          App.state.me.name = updated.name;
+          const display = updated.name || App.state.me.email;
+          const nm = document.querySelector(".user-name"); if (nm) nm.textContent = display;
+          const av = document.querySelector(".user-avatar"); if (av) av.textContent = display.charAt(0).toUpperCase();
+        }
         toast("Name updated");
         renderNameCell(cell, u, canEdit);
       } catch (e) { toast(e.message, true); }
