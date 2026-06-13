@@ -2,6 +2,8 @@ import crypto from "crypto";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { createUser } from "./userService";
+import { sendRichEmail } from "./notificationService";
+import { env } from "../config/env";
 
 // The Prisma client is regenerated (with the Invite model) by the migration step.
 // Until the person runs that, we reach the table via a cast so the build still
@@ -9,7 +11,17 @@ import { createUser } from "./userService";
 const db = prisma as any;
 
 const INVITE_TTL_DAYS = 7;
-type InviteRole = "PORTAL_ADMIN" | "CLIENT_USER";
+// Roles that may be invited. OWNER is intentionally NOT here — owner is granted
+// only by the make-owner script, never via an invite or any create form.
+type InviteRole = "PORTAL_ADMIN" | "CLIENT_USER" | "SUPER_ADMIN" | "AUDITOR";
+
+// One plain-English sentence per role, used in the invite email.
+const ROLE_BLURB: Record<string, string> = {
+  SUPER_ADMIN: "full administrative access across the whole system",
+  AUDITOR: "temporary reviewer access that expires 3 days after you sign in",
+  PORTAL_ADMIN: "access to manage this business's CRM",
+  CLIENT_USER: "access to this business's CRM",
+};
 
 function normEmail(email: string): string {
   return String(email || "").trim().toLowerCase();
@@ -26,11 +38,37 @@ export function inviteLink(origin: string, token: string): string {
  * send for real later, replace the log line below with your email send — and
  * NOTHING else in the flow changes. This is the only place that "sends".
  */
-export async function sendInvite(invite: { email: string }, link: string): Promise<void> {
-  logger.info(`[mock] invite email would be sent to ${invite.email}: ${link}`);
-  // --- GO LIVE: replace the log above with a real send, e.g. ---
-  // await sendRichEmail({ to: invite.email, subject: "You've been invited",
-  //   html: `<p>Set up your account:</p><p><a href="${link}">${link}</a></p>`, ... });
+/**
+ * Send the invite email via Resend (the same path as other real emails). Returns
+ * true if it was sent, false if delivery failed/was limited. IMPORTANT: it never
+ * throws — a failed send must not break user creation. The caller still returns
+ * the activation link so it can be copied manually. Going live with real delivery
+ * to everyone is a config change only: set RESEND_FROM to a verified domain.
+ */
+export async function sendInvite(invite: { email: string; role?: string }, link: string): Promise<boolean> {
+  const blurb = ROLE_BLURB[invite.role || ""] || "access to the CRM";
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1f2430">
+      <h2 style="margin:0 0 12px">You've been invited to Clarity CRM</h2>
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.5">You've been given ${blurb}.</p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.5">Click below to set your password and finish setting up your account.</p>
+      <p style="margin:0 0 24px">
+        <a href="${link}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:15px">Set your password</a>
+      </p>
+      <p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5">If the button doesn't work, paste this link into your browser:<br>${link}</p>
+    </div>`;
+  try {
+    await sendRichEmail({
+      to: invite.email,
+      subject: "You're invited to Clarity CRM",
+      html,
+      fromEmail: env.RESEND_FROM, // reply-to; the send address itself is RESEND_FROM
+    });
+    return true;
+  } catch (err) {
+    logger.warn(`Invite email to ${invite.email} could not be sent (delivery limited until a domain is verified): ${(err as Error).message}`);
+    return false;
+  }
 }
 
 /**
@@ -41,19 +79,23 @@ export async function sendInvite(invite: { email: string }, link: string): Promi
 export async function createInvite(input: {
   email: string;
   role: InviteRole;
-  tenantId: string;
+  tenantId: string | null;
   createdById?: string | null;
 }) {
   const email = normEmail(input.email);
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("A valid email address is required");
-  if (input.role !== "PORTAL_ADMIN" && input.role !== "CLIENT_USER") {
-    throw new Error("Role must be PORTAL_ADMIN or CLIENT_USER");
+  // Never invitable: OWNER (granted only by the make-owner script). The calling
+  // routes further restrict which roles each form may invite.
+  const allowed = ["PORTAL_ADMIN", "CLIENT_USER", "SUPER_ADMIN", "AUDITOR"];
+  if (!allowed.includes(input.role)) {
+    throw new Error("That role can't be invited");
   }
   // Don't invite an email that already has an account.
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) throw new Error("A user with that email already exists");
 
-  // Supersede any prior still-open invite for this email in this portal.
+  // Supersede any prior still-open invite for this email in this scope (portal, or
+  // the no-portal scope for super-admin/auditor invites).
   await db.invite.updateMany({
     where: { email, tenantId: input.tenantId, usedAt: null },
     data: { usedAt: new Date() },

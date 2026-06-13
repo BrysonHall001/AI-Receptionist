@@ -72,32 +72,28 @@ adminRouter.get("/users", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/users", async (req: Request, res: Response) => {
-  const { email, password, name, role } = (req.body ?? {}) as Record<string, string>;
-  if (!email || !password || !role) {
-    res.status(400).json({ error: "email, password, and role are required" });
+  const { email, role } = (req.body ?? {}) as Record<string, string>;
+  if (!email || !role) {
+    res.status(400).json({ error: "email and role are required" });
     return;
   }
-  // The master form may ONLY create top-tier, portal-less accounts: a Super Admin
+  // The master form may ONLY invite top-tier, portal-less accounts: a Super Admin
   // or an Auditor. OWNER is never creatable here (granted only by the make-owner
-  // script). Portal roles are created from each portal's own "Users" button.
+  // script). Portal roles are invited from each portal's own "Users" button.
   if (role !== "SUPER_ADMIN" && role !== "AUDITOR") {
     res.status(400).json({ error: "This form can only create a Super Admin or an Auditor." });
     return;
   }
   try {
-    // tenantId is forced to null — these roles are never assigned to a portal.
-    // (AUDITOR still gets its 3-day expiresAt stamp inside createUser.)
-    const user = await createUser({
-      email,
-      password,
-      name: name || null,
-      role: role as any,
-      tenantId: null,
-    });
-    res.json(publicUser(user));
+    // Create an invite (no portal). The person sets their own password via the
+    // link; an AUDITOR's 3-day expiry is stamped when they activate (in createUser).
+    const invite = await createInvite({ email, role: role as any, tenantId: null, createdById: req.user?.id ?? null });
+    const link = inviteLink(requestOrigin(req), invite.token);
+    const emailed = await sendInvite({ email: invite.email, role: invite.role }, link);
+    // `link` is always returned so it can be copied while email delivery is limited.
+    res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link, emailed });
   } catch (err) {
-    const msg = (err as Error).message.includes("Unique") ? "That email is already in use" : (err as Error).message;
-    res.status(400).json({ error: msg });
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 
@@ -158,8 +154,8 @@ adminRouter.post("/portals/:id/invites", async (req: Request, res: Response) => 
       createdById: req.user?.id ?? null,
     });
     const link = inviteLink(requestOrigin(req), invite.token);
-    await sendInvite({ email: invite.email }, link); // mocked send (logs the link)
-    logger.info(`Invite created for ${invite.email} -> portal ${tenantId}`);
+    const emailed = await sendInvite({ email: invite.email, role: invite.role }, link);
+    logger.info(`Invite created for ${invite.email} -> portal ${tenantId} (emailed: ${emailed})`);
     // `link` is returned ONLY because email is mocked, so the super-admin can copy
     // it to test. With real email this field would simply stop being returned.
     res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link });

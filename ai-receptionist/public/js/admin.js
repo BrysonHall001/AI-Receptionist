@@ -478,14 +478,14 @@
     const roleOptions = perPortal
       ? `<option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option>`
       : `<option value="SUPER_ADMIN">Super Admin</option><option value="AUDITOR">Auditor (3-day tester)</option>`;
-    inner.innerHTML = `<div class="modal-head"><h2>Create user${perPortal ? " · " + esc(portal.name) : ""}</h2><button class="icon-btn" id="cu-close">&times;</button></div>
+    inner.innerHTML = `<div class="modal-head"><h2>${perPortal ? "Invite user · " + esc(portal.name) : "Invite user"}</h2><button class="icon-btn" id="cu-close">&times;</button></div>
       <div class="modal-body">
         <label class="field-label">Name</label><input id="cu-name" class="input" placeholder="Jane Doe" />
         <label class="field-label">Email *</label><input id="cu-email" class="input" placeholder="jane@acme.com" />
-        <label class="field-label">Temporary password *</label><input id="cu-pass" class="input" type="text" placeholder="8+ characters" />
         <label class="field-label">Role *</label>
         <select id="cu-role" class="input">${roleOptions}</select>
-        <button id="cu-go" class="btn btn-primary btn-block">Create user</button>
+        <p class="sub" style="margin:10px 0 0">They'll get an email with a link to set their own password — no temporary password needed.</p>
+        <button id="cu-go" class="btn btn-primary btn-block" style="margin-top:14px">Send invite</button>
       </div>`;
     const overlay = modal(inner);
     const roleSel = inner.querySelector("#cu-role");
@@ -495,20 +495,46 @@
       const body = {
         name: inner.querySelector("#cu-name").value.trim(),
         email: inner.querySelector("#cu-email").value.trim(),
-        password: inner.querySelector("#cu-pass").value,
         role,
       };
-      if (!body.email || !body.password) { toast("Email and password are required", true); return; }
-      if (body.password.length < 8) { toast("Password must be at least 8 characters", true); return; }
+      if (!body.email) { toast("Email is required", true); return; }
       try {
+        let result;
         if (perPortal) {
-          await App.api("/api/users?tenantId=" + encodeURIComponent(portal.id), { method: "POST", body: JSON.stringify(body) });
-          toast("User created"); overlay.remove(); renderPortalUsers(portal);
+          result = await App.api("/api/users?tenantId=" + encodeURIComponent(portal.id), { method: "POST", body: JSON.stringify(body) });
+          overlay.remove(); renderPortalUsers(portal);
         } else {
-          await App.api("/api/admin/users", { method: "POST", body: JSON.stringify(body) });
-          toast("User created"); overlay.remove(); renderUsers();
+          result = await App.api("/api/admin/users", { method: "POST", body: JSON.stringify(body) });
+          overlay.remove(); renderUsers();
         }
+        showInviteResult(body.email, result && result.link, result && result.emailed);
       } catch (err) { toast(err.message, true); }
+    };
+  }
+
+  // Success popup after an invite is created. Always shows the activation link so it
+  // can be copied while email delivery is limited (no verified sending domain yet).
+  function showInviteResult(email, link, emailed) {
+    const inner = el("div");
+    const note = emailed
+      ? "An invite email was sent to " + esc(email) + " (it may land in spam)."
+      : "Email couldn't be delivered right now, so copy this link and send it to " + esc(email) + " yourself.";
+    inner.innerHTML = `<div class="modal-head"><h2>Invite sent</h2><button class="icon-btn" id="ir-close">&times;</button></div>
+      <div class="modal-body">
+        <p class="sub" style="margin:0 0 12px">${note}</p>
+        <label class="field-label">Activation link</label>
+        <input id="ir-link" class="input" type="text" readonly value="${esc(link || "")}" />
+        <button id="ir-copy" class="btn btn-primary btn-block" style="margin-top:12px">Copy link</button>
+      </div>`;
+    const overlay = modal(inner);
+    inner.querySelector("#ir-close").onclick = () => overlay.remove();
+    const linkInput = inner.querySelector("#ir-link");
+    inner.querySelector("#ir-copy").onclick = () => {
+      try { linkInput.select(); } catch (e) {}
+      const done = () => toast("Link copied");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link || "").then(done).catch(() => { try { document.execCommand("copy"); done(); } catch (e) {} });
+      } else { try { document.execCommand("copy"); done(); } catch (e) {} }
     };
   }
 

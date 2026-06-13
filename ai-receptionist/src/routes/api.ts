@@ -21,6 +21,7 @@ import { listExports, createExport, getExportCsv } from "../services/exportServi
 import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns } from "../services/userService";
+import { createInvite, inviteLink, sendInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
 import { testRunAutomation, runManualAutomation } from "../automation/engine";
 import { listScheduledJobs, cancelScheduledJob, processDueJobs } from "../automation/scheduler";
@@ -1082,19 +1083,22 @@ apiRouter.post("/users", async (req: Request, res: Response) => {
     res.status(403).json({ error: "Not authorized" });
     return;
   }
-  const { email, password, name, role } = (req.body ?? {}) as Record<string, string>;
-  if (!email || !password) {
-    res.status(400).json({ error: "email and password are required" });
+  const { email, role } = (req.body ?? {}) as Record<string, string>;
+  if (!email) {
+    res.status(400).json({ error: "email is required" });
     return;
   }
-  // Portal admins may only create users inside their own portal, never super admins.
+  // Portal admins may only invite users inside their own portal, never super admins.
   const safeRole = role === "PORTAL_ADMIN" ? "PORTAL_ADMIN" : "CLIENT_USER";
   try {
-    const user = await createUser({ email, password, name: name || null, role: safeRole, tenantId });
-    res.json(publicUser(user));
+    const invite = await createInvite({ email, role: safeRole, tenantId, createdById: req.user?.id ?? null });
+    const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
+    const host = String(req.headers["x-forwarded-host"] || req.get("host") || "").trim();
+    const link = inviteLink(proto + "://" + host, invite.token);
+    const emailed = await sendInvite({ email: invite.email, role: invite.role }, link);
+    res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link, emailed });
   } catch (err) {
-    const msg = (err as Error).message.includes("Unique") ? "That email is already in use" : (err as Error).message;
-    res.status(400).json({ error: msg });
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 
