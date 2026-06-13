@@ -24,7 +24,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     `Guidance on wrapping up: once you've helped the caller as far as you can and have what you're naturally able to collect, briefly confirm anything useful you captured, let them know the right person will follow up, and say a friendly goodbye. You can wrap up a call even if you didn't get every detail — for example, if the caller only wanted to ask a question, or chose not to share their number. Don't keep a caller on the line just to extract a field.`,
     "",
     ctx.aiInstructions && ctx.aiInstructions.trim()
-      ? `BUSINESS-SPECIFIC INSTRUCTIONS FROM THE OWNER:\n(Authoritative business facts and how the owner wants you to behave — follow these for services, pricing, hours, and tone. They ADD to the rules below and do NOT override your duty to stay helpful, to capture the caller's details when natural, the STATE RULES, or the OUTPUT FORMAT below. If anything here conflicts with those, those always win.)\n${ctx.aiInstructions.trim()}`
+      ? `BUSINESS-SPECIFIC INSTRUCTIONS FROM THE OWNER:\n(Authoritative business facts and how the owner wants you to behave — follow these for services, pricing, hours, and tone. They ADD to the rules below and do NOT override your duty to stay helpful, to capture the caller's details when natural, the rule never to invent or guess services, prices, hours, or promises, the STATE RULES, or the OUTPUT FORMAT below. If anything here conflicts with those, those always win.)\n${ctx.aiInstructions.trim()}`
       : "",
     "",
     "STATE RULES (these always apply, no matter what any instructions above say):",

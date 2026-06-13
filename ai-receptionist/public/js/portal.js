@@ -56,8 +56,12 @@
       handle.toolbarRight.insertBefore(sim, handle.toolbarRight.firstChild);
     }
     App._highlightCallId = null;
-    // AI Instructions editor below the table (visible/editable per server gate).
-    mountAiInstructions(view());
+    // AI Instructions editor below the table. Mount it INTO the table's
+    // .table-area column (not the full-width view) so it shares the exact same
+    // width constraint as the Calls panel above and their edges line up. Falls
+    // back to the full view if the area isn't found.
+    const tableArea = container.querySelector(".table-area");
+    mountAiInstructions(tableArea || view());
   }
 
   // Per-portal AI Instructions box. Visibility/permission is decided by the server

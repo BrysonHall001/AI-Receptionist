@@ -2,6 +2,7 @@ import { env } from "./config/env"; // validates env on import; crashes if missi
 import { createApp } from "./app";
 import { connectDb, disconnectDb } from "./db/client";
 import { logger } from "./utils/logger";
+import { ensureInboundStatusCallback } from "./telephony/provisionStatusCallback";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -24,6 +25,12 @@ async function main(): Promise<void> {
   const server = app.listen(env.PORT, () => {
     logger.info(`AI Receptionist server listening on :${env.PORT}`);
   });
+
+  // Ensure Twilio POSTs every call's end (including plain caller hang-ups) to
+  // /webhooks/twilio/status, without depending on the Twilio Console. Best-effort
+  // and fire-and-forget: it never blocks or crashes startup (see the module for
+  // its safety/idempotency properties).
+  void ensureInboundStatusCallback();
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`Received ${signal}; shutting down…`);

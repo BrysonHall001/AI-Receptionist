@@ -315,7 +315,23 @@
         selAll.indeterminate = !selAll.checked && ids.some((x) => selected.has(x));
       }
 
-      const count = el("div", "table-count", `${filtered.length} of ${rows.length}`);
+      // Footer count. When pagination is ON (Calls), show the current page's
+      // range ("Showing 1–6 of 17"). When OFF (Contacts, Recycle Bin, Jobs),
+      // keep the existing "filtered of total" behavior unchanged.
+      let countText;
+      if (pageSize > 0) {
+        const total = filtered.length;
+        if (total === 0) {
+          countText = "Showing 0 of 0";
+        } else {
+          const start = state.page * pageSize + 1;
+          const end = state.page * pageSize + pageRows.length;
+          countText = `Showing ${start}\u2013${end} of ${total}`;
+        }
+      } else {
+        countText = `${filtered.length} of ${rows.length}`;
+      }
+      const count = el("div", "table-count", countText);
       tableWrap.appendChild(count);
 
       // Pager controls (only when pagination is active).
