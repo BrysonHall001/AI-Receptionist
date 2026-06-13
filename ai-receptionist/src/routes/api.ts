@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { requireAuth, resolveTenantScope } from "../middleware/auth";
+import { requireAuth, resolveTenantScope, isAdminTier } from "../middleware/auth";
 import { setImpersonation, clearImpersonation, SESSION_COOKIE } from "../auth/session";
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
 import { runSimulatedCall } from "../services/simulationService";
@@ -96,7 +96,7 @@ function actorOf(req: Request) {
 // Enforcement of view-only (Batch C) and role downgrade (Batch D) is NOT here yet;
 // the only behavior change in Batch B is the admin-surface lockout (see admin.ts).
 apiRouter.get("/impersonation", async (req: Request, res: Response) => {
-  if (!req.realUser || req.realUser.role !== "SUPER_ADMIN") {
+  if (!req.realUser || !isAdminTier(req.realUser.role)) {
     res.status(403).json({ error: "Super-admin only" });
     return;
   }
@@ -127,16 +127,16 @@ apiRouter.get("/impersonation", async (req: Request, res: Response) => {
 // Targets for the dropdown. Excludes other SUPER_ADMINs from the view-as list —
 // per the audit, we never impersonate another super-admin.
 apiRouter.get("/impersonation/targets", async (req: Request, res: Response) => {
-  if (!req.realUser || req.realUser.role !== "SUPER_ADMIN") { res.status(403).json({ error: "Super-admin only" }); return; }
+  if (!req.realUser || !isAdminTier(req.realUser.role)) { res.status(403).json({ error: "Super-admin only" }); return; }
   const all = (await listUsers()) as any[]; // all portals (super-admin scope)
-  const users = all.filter((u) => u.role !== "SUPER_ADMIN");
+  const users = all.filter((u) => !isAdminTier(u.role));
   res.json({ users, roles: ["PORTAL_ADMIN", "CLIENT_USER"] });
 });
 
 // Start impersonation. Writes the overlay onto the REAL session. Gated to the real
 // super-admin; never to the overlay.
 apiRouter.post("/impersonation/start", async (req: Request, res: Response) => {
-  if (!req.realUser || req.realUser.role !== "SUPER_ADMIN") { res.status(403).json({ error: "Super-admin only" }); return; }
+  if (!req.realUser || !isAdminTier(req.realUser.role)) { res.status(403).json({ error: "Super-admin only" }); return; }
   const token = req.cookies?.[SESSION_COOKIE];
   const body = (req.body ?? {}) as any;
   const mode = body.mode;
@@ -146,7 +146,7 @@ apiRouter.post("/impersonation/start", async (req: Request, res: Response) => {
       if (!targetUserId) { res.status(400).json({ error: "targetUserId required" }); return; }
       const target = await prisma.user.findUnique({ where: { id: targetUserId } });
       if (!target) { res.status(404).json({ error: "User not found" }); return; }
-      if ((target as any).role === "SUPER_ADMIN") { res.status(400).json({ error: "Cannot impersonate a super-admin" }); return; }
+      if (isAdminTier((target as any).role)) { res.status(400).json({ error: "Cannot impersonate a super-admin or owner" }); return; }
       await setImpersonation(token, { mode: "view-as-user", targetUserId: target.id, assumedRole: (target as any).role, scopeTenantId: (target as any).tenantId ?? null });
     } else if (mode === "act-as-type") {
       const assumedRole = String(body.assumedRole || "");
@@ -167,7 +167,7 @@ apiRouter.post("/impersonation/start", async (req: Request, res: Response) => {
 // IGNORES the overlay entirely, so no impersonation state can block it. (Later
 // batches that block writes MUST whitelist this route.)
 apiRouter.post("/impersonation/exit", async (req: Request, res: Response) => {
-  if (!req.realUser || req.realUser.role !== "SUPER_ADMIN") { res.status(403).json({ error: "Super-admin only" }); return; }
+  if (!req.realUser || !isAdminTier(req.realUser.role)) { res.status(403).json({ error: "Super-admin only" }); return; }
   const token = req.cookies?.[SESSION_COOKIE];
   await clearImpersonation(token);
   res.json({ ok: true, impersonating: false });
@@ -1114,8 +1114,12 @@ apiRouter.delete("/users/:id", async (req: Request, res: Response) => {
     res.status(404).json({ error: "User not found in this portal" });
     return;
   }
-  await deleteUser(req.params.id);
-  res.json({ ok: true });
+  try {
+    await deleteUser(req.params.id, { id: req.user!.id, role: req.user!.role });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 // ---- Saved filters (shared across the portal's users) ----
@@ -1377,7 +1381,7 @@ apiRouter.get("/automations/jobs", async (req: Request, res: Response) => {
 // for the current portal's tenant. This is the stand-in for the deployed host's
 // automatic heartbeat; the same processDueJobs() is what a cron will call later.
 apiRouter.post("/automations/jobs/process", async (req: Request, res: Response) => {
-  if (req.user!.role !== "SUPER_ADMIN") { res.status(403).json({ error: "Super-admin only" }); return; }
+  if (!isAdminTier(req.user!.role)) { res.status(403).json({ error: "Super-admin only" }); return; }
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await processDueJobs(tenantId));

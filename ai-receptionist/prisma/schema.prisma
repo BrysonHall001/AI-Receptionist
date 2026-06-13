@@ -20,6 +20,7 @@ enum CallStatus {
 }
 
 enum Role {
+  OWNER
   SUPER_ADMIN
   PORTAL_ADMIN
   CLIENT_USER

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { getUserForToken, getImpersonationForToken, ImpersonationOverlay, SESSION_COOKIE } from "../auth/session";
 
-export type Role = "SUPER_ADMIN" | "PORTAL_ADMIN" | "CLIENT_USER";
+export type Role = "OWNER" | "SUPER_ADMIN" | "PORTAL_ADMIN" | "CLIENT_USER";
 
 export interface AuthUser {
   id: string;
@@ -48,7 +48,7 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
     // Only a real SUPER_ADMIN can ever have an overlay; for everyone else we skip
     // the lookup entirely (zero extra work, identical behavior). In Batch A this
     // returns null regardless, since no overlay is ever written.
-    if (req.user && req.user.role === "SUPER_ADMIN") {
+    if (req.user && isAdminTier(req.user.role)) {
       req.impersonation = await getImpersonationForToken(token);
     }
     // --- Batch D + view-as re-skin: BOTH impersonation modes render/enforce as the
@@ -103,6 +103,15 @@ export function requireRole(...roles: Role[]) {
 }
 
 /**
+ * The top admin tier: OWNER or SUPER_ADMIN. OWNER sits above SUPER_ADMIN and has
+ * all the same powers, so every place that used to check `role === "SUPER_ADMIN"`
+ * for access should use this instead, so OWNER is never accidentally locked out.
+ */
+export function isAdminTier(role?: string | null): boolean {
+  return role === "OWNER" || role === "SUPER_ADMIN";
+}
+
+/**
  * Determine which tenant's data the request may touch.
  * - SUPER_ADMIN: may target any tenant via ?tenantId / body.tenantId / param.
  * - Others: locked to their own tenantId, ignoring any provided value.
@@ -111,7 +120,7 @@ export function requireRole(...roles: Role[]) {
 export function resolveTenantScope(req: Request, requested?: string | null): string | null {
   const user = req.user;
   if (!user) return null;
-  if (user.role === "SUPER_ADMIN") {
+  if (isAdminTier(user.role)) {
     return (
       requested ||
       (req.query.tenantId as string | undefined) ||

@@ -8,7 +8,7 @@ import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
 export const adminRouter = Router();
-adminRouter.use(requireRole("SUPER_ADMIN"));
+adminRouter.use(requireRole("OWNER", "SUPER_ADMIN"));
 // Batch B lockout: an impersonating super-admin must NOT reach the master hub
 // (no creating portals/users while "acting as" someone). Evaluated on the overlay
 // presence (req.impersonation is only ever set for a real super-admin).
@@ -102,7 +102,7 @@ adminRouter.delete("/users/:id", async (req: Request, res: Response) => {
     return;
   }
   try {
-    await deleteUser(req.params.id);
+    await deleteUser(req.params.id, { id: req.user!.id, role: req.user!.role });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

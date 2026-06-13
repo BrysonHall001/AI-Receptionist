@@ -14,6 +14,7 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "seed": "tsx src/db/seed.ts",
     "set-admin-password": "tsx src/db/setAdminPassword.ts",
+    "make-owner": "tsx src/db/makeOwner.ts",
     "simulate": "tsx scripts/simulate-call.ts",
     "seed:demo": "tsx src/db/seedDemo.ts"
   },

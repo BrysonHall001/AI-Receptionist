@@ -34,7 +34,22 @@ export async function listUsers(tenantId?: string | null) {
   return users.map((u: any) => publicUser(u));
 }
 
-export async function deleteUser(id: string) {
+/**
+ * Delete a user, enforcing tier-protection on the SERVER (so no route can bypass
+ * it). `actor` is who is requesting the deletion (their id + role).
+ *  - An OWNER can never be deleted by anyone.
+ *  - A SUPER_ADMIN can be deleted only by an OWNER.
+ *  - You can't delete your own account.
+ * Rules fail closed: if the actor is unknown, only ordinary users can be removed.
+ */
+export async function deleteUser(id: string, actor?: { id: string; role: string }) {
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target) throw new Error("User not found");
+  if (actor && actor.id === id) throw new Error("You can't delete your own account");
+  if (target.role === "OWNER") throw new Error("An owner account can't be deleted.");
+  if (target.role === "SUPER_ADMIN" && actor?.role !== "OWNER") {
+    throw new Error("Only an owner can delete a super-admin.");
+  }
   return prisma.user.delete({ where: { id } });
 }
 
