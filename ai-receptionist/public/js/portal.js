@@ -18,9 +18,15 @@
   // selecting text, or viewing a call, so it cannot disrupt anything.
   let callsPoll = null; // setInterval id while the Calls view is active
   let callsSig = null;  // signature of the last painted calls (skip no-op repaints)
+  let callsVisHandler = null; // fires an immediate refresh when the tab regains focus
 
   function stopCallsPoll() {
     if (callsPoll) { clearInterval(callsPoll); callsPoll = null; }
+    if (callsVisHandler) {
+      document.removeEventListener("visibilitychange", callsVisHandler);
+      window.removeEventListener("focus", callsVisHandler);
+      callsVisHandler = null;
+    }
     callsSig = null;
   }
   function callsSignature(rows) {
@@ -96,6 +102,19 @@
       if (current !== "calls") { stopCallsPoll(); return; }
       refreshCallsTable(container, () => handle, (h) => { handle = h; });
     }, 4000);
+
+    // Browsers throttle (or pause) setInterval on a backgrounded tab — so if you
+    // were watching your phone during a call, the 4s poll may not have fired and
+    // the row can look stale. This refreshes the moment you return to the tab, so
+    // a finished call (walkie OR smooth) flips In progress -> Completed with no
+    // manual refresh. Reuses the same refreshCallsTable mechanism.
+    callsVisHandler = () => {
+      if (current === "calls" && document.visibilityState !== "hidden") {
+        refreshCallsTable(container, () => handle, (h) => { handle = h; });
+      }
+    };
+    document.addEventListener("visibilitychange", callsVisHandler);
+    window.addEventListener("focus", callsVisHandler);
   }
 
   // Build (or rebuild) ONLY the Calls table into `container`, returning the table

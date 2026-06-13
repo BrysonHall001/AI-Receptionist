@@ -66,7 +66,21 @@ export function attachConversationRelay(server: HttpServer): void {
 
   wss.on("connection", (ws: WebSocket) => {
     const state: RelayConnState = { callSid: null };
+    const connectedAt = Date.now();
+    let setupAt = 0;       // when the setup message arrived
+    let promptCount = 0;   // how many caller prompts (any) we received
     logger.info("[relay] websocket connected");
+
+    // Keepalive: ping Twilio every 5s while the socket is open. This keeps the
+    // connection active through any idle-timeout on the hosting proxy and lets us
+    // notice a half-open socket. We do NOT terminate on a missed pong (that could
+    // kill a working call); we only keep the pipe warm. Cleared on close.
+    const pingTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try { ws.ping(); } catch { /* socket going away; close handler cleans up */ }
+      }
+    }, 5000);
+    ws.on("pong", () => logger.debug(`[relay] pong from Twilio for ${state.callSid ?? "(none)"}`));
 
     ws.on("message", async (data: RawData) => {
       const rawStr = data.toString();
@@ -91,10 +105,17 @@ export function attachConversationRelay(server: HttpServer): void {
       try {
         switch (type) {
           case "setup": {
+            setupAt = Date.now();
             state.callSid = String(msg.callSid ?? "");
             const from = msg.from != null ? String(msg.from) : "unknown";
             const to = msg.to != null ? String(msg.to) : null;
-            logger.info(`[relay] setup for call ${state.callSid} (from ${from} to ${to})`);
+            // Log the key setup fields so we can see call type/direction if a call
+            // later fails with no audio (helps tell a media problem from a logic one).
+            logger.info(
+              `[relay] setup for call ${state.callSid} (from ${from} to ${to}) ` +
+                `callType=${String(msg.callType ?? "?")} direction=${String(msg.direction ?? "?")} ` +
+                `callStatus=${String(msg.callStatus ?? "?")}`,
+            );
 
             // Reuse the EXISTING greeting logic. The returned text is spoken by
             // ElevenLabs as the very first thing the caller hears.
@@ -105,6 +126,7 @@ export function attachConversationRelay(server: HttpServer): void {
           }
 
           case "prompt": {
+            promptCount += 1;
             const speech = msg.voicePrompt != null ? String(msg.voicePrompt) : "";
             // Log every prompt we receive, partial or final, so we can see them.
             logger.info(
@@ -175,16 +197,40 @@ export function attachConversationRelay(server: HttpServer): void {
       }
     });
 
-    ws.on("close", () => {
-      logger.info(`[relay] websocket closed for call ${state.callSid ?? "(unknown)"}`);
+    ws.on("close", (code: number, reason: Buffer) => {
+      clearInterval(pingTimer);
+      const aliveMs = Date.now() - connectedAt;
+      const sinceSetupMs = setupAt ? Date.now() - setupAt : null;
+      const reasonStr = reason && reason.length ? reason.toString() : "";
+      logger.info(
+        `[relay] websocket closed for call ${state.callSid ?? "(unknown)"} ` +
+          `code=${code} reason="${reasonStr}" promptsReceived=${promptCount} ` +
+          `aliveMs=${aliveMs}` +
+          (sinceSetupMs != null ? ` sinceSetupMs=${sinceSetupMs}` : ""),
+      );
+      // The intermittent SMOOTH failure looks exactly like this: setup arrives,
+      // then the socket closes with NO caller prompt. Call it out explicitly so
+      // the cause is unambiguous on the next failed call.
+      if (setupAt && promptCount === 0) {
+        logger.warn(
+          `[relay] CLOSED WITH NO CALLER PROMPT for ${state.callSid ?? "(unknown)"} ` +
+            `(close code=${code}, reason="${reasonStr}", ${sinceSetupMs}ms after setup). ` +
+            `No transcribed caller speech ever arrived. This is almost always a MEDIA/audio ` +
+            `problem (no caller audio reached speech-to-text — e.g. an RTP/media timeout, ` +
+            `a dropped or cold-started connection), NOT the text-handling logic. Compare the ` +
+            `close code: 1000=normal, 1001=going away/restart, 1006=abnormal/no close frame ` +
+            `(network or proxy drop), 1011=server error. Also check for a preceding ` +
+            `"[relay] ConversationRelay error" line (e.g. RTP Timeout 64108).`,
+        );
+      }
       // Note: finalization for a caller hang-up is handled by the existing
       // /webhooks/twilio/status callback (provisioned at startup), and an
       // AI-ended call is finalized inside handleTurn. We deliberately do not
-      // add extra finalization here in Stage 1.
+      // add extra finalization here.
     });
 
     ws.on("error", (err: Error) => {
-      logger.error(`[relay] websocket error: ${err.message}`);
+      logger.error(`[relay] websocket error for ${state.callSid ?? "(unknown)"}: ${err.message}`);
     });
   });
 
