@@ -63,9 +63,11 @@
               <option value="off" ${p.receptionistEnabled !== true ? "selected" : ""}>Off</option>
             </select>
           </div>
+          <div class="portal-actions"><button class="btn btn-ghost btn-sm portal-users">Users</button></div>
           <div class="portal-actions"><button class="btn btn-primary btn-sm portal-enter">Open portal →</button>
             <button class="btn btn-ghost btn-sm portal-toggle">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button></div>`;
         card.querySelector(".portal-enter").onclick = () => enterPortal(p);
+        card.querySelector(".portal-users").onclick = () => renderPortalUsers(p);
         const ruleSel = card.querySelector(".portal-rule-sel");
         ruleSel.onclick = (e) => e.stopPropagation();
         ruleSel.onchange = async () => {
@@ -88,6 +90,61 @@
       });
       wrap.appendChild(grid);
     }
+    view().innerHTML = "";
+    view().appendChild(wrap);
+  }
+
+  // ---------------- Per-portal Users (from a portal card's "Users" button) ----
+  // Lists and creates users for ONE portal, scoped by ?tenantId. Creation uses the
+  // per-portal endpoint POST /api/users, which clamps the role to portal-admin/
+  // client-user server-side, so only those two roles are offered here.
+  async function renderPortalUsers(portal) {
+    loading();
+    let users = [];
+    try { users = await App.api("/api/users?tenantId=" + encodeURIComponent(portal.id)); } catch (e) { toast(e.message, true); }
+
+    const wrap = el("div", "fade-in");
+    const bar = el("div", "page-actions");
+    const back = el("button", "btn btn-ghost btn-sm", "← Portals");
+    back.onclick = () => renderPortals();
+    const title = el("div", "page-title", "Users · " + esc(portal.name));
+    title.style.flex = "1";
+    title.style.fontWeight = "600";
+    const create = el("button", "btn btn-primary btn-sm", "+ Create user");
+    create.onclick = () => openCreateUser(portal);
+    bar.appendChild(back);
+    bar.appendChild(title);
+    bar.appendChild(create);
+    wrap.appendChild(bar);
+
+    const card = el("div", "card");
+    const table = el("table");
+    table.innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last login</th><th></th></tr></thead>`;
+    const tb = el("tbody");
+    if (!users.length) {
+      const tr = el("tr");
+      tr.innerHTML = `<td colspan="5" class="cell-muted">No users in this portal yet.</td>`;
+      tb.appendChild(tr);
+    } else {
+      users.forEach((u) => {
+        const tr = el("tr");
+        tr.innerHTML = `<td class="cell-strong">${esc(u.name || "—")}</td><td class="cell-mono">${esc(u.email)}</td>
+          <td>${esc(roleLabel(u.role))}</td><td class="cell-muted">${u.lastLoginAt ? fmtDate(u.lastLoginAt) : "Never"}</td><td></td>`;
+        if (u.id !== App.state.me.id) {
+          const del = el("button", "link-danger", "Remove");
+          del.onclick = async () => {
+            if (!(await App.ui.confirmModal({ title: "Remove user", message: `Remove ${u.email}?`, confirmText: "Remove" }))) return;
+            try { await App.api("/api/users/" + u.id + "?tenantId=" + encodeURIComponent(portal.id), { method: "DELETE" }); toast("User removed"); renderPortalUsers(portal); }
+            catch (e) { toast(e.message, true); }
+          };
+          tr.lastChild.appendChild(del);
+        }
+        tb.appendChild(tr);
+      });
+    }
+    table.appendChild(tb);
+    card.appendChild(table);
+    wrap.appendChild(card);
     view().innerHTML = "";
     view().appendChild(wrap);
   }
@@ -395,7 +452,11 @@
       tr.innerHTML = `<td class="cell-strong">${esc(u.name || "—")}</td><td class="cell-mono">${esc(u.email)}</td>
         <td>${esc(roleLabel(u.role))}${statusNote}</td><td class="cell-muted">${esc(u.tenantName || "—")}</td>
         <td class="cell-muted">${u.lastLoginAt ? fmtDate(u.lastLoginAt) : "Never"}</td><td></td>`;
-      if (u.id !== App.state.me.id) {
+      const meRole = App.state.me.role;
+      const canRemove = u.id !== App.state.me.id            // never yourself
+        && u.role !== "OWNER"                                // no one can delete an owner
+        && !(u.role === "SUPER_ADMIN" && meRole !== "OWNER"); // super-admins: owner only
+      if (canRemove) {
         const del = el("button", "link-danger", "Remove");
         del.onclick = async () => { if (!(await App.ui.confirmModal({ title: "Remove user", message: `Remove ${u.email}?`, confirmText: "Remove" }))) return; try { await App.api(`/api/admin/users/${u.id}`, { method: "DELETE" }); toast("User removed"); renderUsers(); } catch (e) { toast(e.message, true); } };
         tr.lastChild.appendChild(del);
@@ -409,23 +470,32 @@
     view().appendChild(wrap);
   }
 
-  function openCreateUser() {
+  function openCreateUser(portal) {
+    const perPortal = !!portal; // per-portal mode: only portal-admin/client-user, no portal picker
     const inner = el("div");
     const portalOpts = portalsCache.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
-    inner.innerHTML = `<div class="modal-head"><h2>Create user</h2><button class="icon-btn" id="cu-close">&times;</button></div>
+    const roleOptions = perPortal
+      ? `<option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option>`
+      : `<option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option><option value="SUPER_ADMIN">Super Admin</option><option value="AUDITOR">Auditor (3-day tester)</option>`;
+    const portalPicker = perPortal
+      ? ``
+      : `<div id="cu-portal-wrap"><label class="field-label">Assign to portal *</label><select id="cu-portal" class="input">${portalOpts}</select></div>`;
+    inner.innerHTML = `<div class="modal-head"><h2>Create user${perPortal ? " · " + esc(portal.name) : ""}</h2><button class="icon-btn" id="cu-close">&times;</button></div>
       <div class="modal-body">
         <label class="field-label">Name</label><input id="cu-name" class="input" placeholder="Jane Doe" />
         <label class="field-label">Email *</label><input id="cu-email" class="input" placeholder="jane@acme.com" />
         <label class="field-label">Temporary password *</label><input id="cu-pass" class="input" type="text" placeholder="8+ characters" />
         <label class="field-label">Role *</label>
-        <select id="cu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option><option value="SUPER_ADMIN">Super Admin</option><option value="AUDITOR">Auditor (3-day tester)</option></select>
-        <div id="cu-portal-wrap"><label class="field-label">Assign to portal *</label><select id="cu-portal" class="input">${portalOpts}</select></div>
+        <select id="cu-role" class="input">${roleOptions}</select>
+        ${portalPicker}
         <button id="cu-go" class="btn btn-primary btn-block">Create user</button>
       </div>`;
     const overlay = modal(inner);
     const roleSel = inner.querySelector("#cu-role");
     const portalWrap = inner.querySelector("#cu-portal-wrap");
-    roleSel.onchange = () => { portalWrap.style.display = (roleSel.value === "SUPER_ADMIN" || roleSel.value === "AUDITOR") ? "none" : "block"; };
+    if (!perPortal) {
+      roleSel.onchange = () => { portalWrap.style.display = (roleSel.value === "SUPER_ADMIN" || roleSel.value === "AUDITOR") ? "none" : "block"; };
+    }
     inner.querySelector("#cu-close").onclick = () => overlay.remove();
     inner.querySelector("#cu-go").onclick = async () => {
       const role = roleSel.value;
@@ -434,12 +504,19 @@
         email: inner.querySelector("#cu-email").value.trim(),
         password: inner.querySelector("#cu-pass").value,
         role,
-        tenantId: role === "SUPER_ADMIN" || role === "AUDITOR" ? null : inner.querySelector("#cu-portal").value,
       };
+      if (!perPortal) body.tenantId = role === "SUPER_ADMIN" || role === "AUDITOR" ? null : inner.querySelector("#cu-portal").value;
       if (!body.email || !body.password) { toast("Email and password are required", true); return; }
       if (body.password.length < 8) { toast("Password must be at least 8 characters", true); return; }
-      try { await App.api("/api/admin/users", { method: "POST", body: JSON.stringify(body) }); toast("User created"); overlay.remove(); renderUsers(); }
-      catch (err) { toast(err.message, true); }
+      try {
+        if (perPortal) {
+          await App.api("/api/users?tenantId=" + encodeURIComponent(portal.id), { method: "POST", body: JSON.stringify(body) });
+          toast("User created"); overlay.remove(); renderPortalUsers(portal);
+        } else {
+          await App.api("/api/admin/users", { method: "POST", body: JSON.stringify(body) });
+          toast("User created"); overlay.remove(); renderUsers();
+        }
+      } catch (err) { toast(err.message, true); }
     };
   }
 

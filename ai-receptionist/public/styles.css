@@ -1085,7 +1085,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .toggle-row input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); }
 
 /* ---------- Super-admin: per-portal identity rule ---------- */
-.portal-rule { margin: 4px 0 12px; }
+.portal-rule { margin: 0; }
 .portal-rule .input { padding: 6px 8px; font-size: 13px; }
 
 /* Fields page: object-type selector bar */
