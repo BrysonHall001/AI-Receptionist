@@ -6,6 +6,10 @@
 
   App.state = { me: null, currentPortalId: null, currentPortalName: null, labels: { types: {}, generic: {} } };
 
+  // Top admin tier: OWNER or SUPER_ADMIN. Mirrors the server's isAdminTier so the
+  // UI treats an OWNER exactly like a super-admin (master hub, impersonation, etc.).
+  App.isAdminTier = function (role) { return role === "OWNER" || role === "SUPER_ADMIN"; };
+
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
   const el = (tag, cls, html) => {
@@ -91,7 +95,7 @@
   // Portal-scoped API: a super admin appends ?tenantId of the portal they entered.
   function portalApi(path, opts) {
     let url = path;
-    if (App.state.me && App.state.me.role === "SUPER_ADMIN" && App.state.currentPortalId) {
+    if (App.state.me && App.isAdminTier(App.state.me.role) && App.state.currentPortalId) {
       url += (url.indexOf("?") >= 0 ? "&" : "?") + "tenantId=" + encodeURIComponent(App.state.currentPortalId);
     }
     return api(url, opts);

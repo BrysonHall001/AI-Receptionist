@@ -14,7 +14,7 @@
   App.go = (hash) => { if (location.hash === hash) route(); else location.hash = hash; };
 
   App.afterLogin = () => {
-    if (App.state.me.role === "SUPER_ADMIN") App.go("#/admin/portals");
+    if (App.isAdminTier(App.state.me.role)) App.go("#/admin/portals");
     else App.go("#/dashboard");
   };
 
@@ -394,7 +394,7 @@
 
     const nav = el("nav", "sidebar-nav");
     const isAdmin = section === "admin";
-    const canEditNav = !isAdmin && me && (me.role === "PORTAL_ADMIN" || me.role === "SUPER_ADMIN");
+    const canEditNav = !isAdmin && me && (me.role === "PORTAL_ADMIN" || App.isAdminTier(me.role));
     let items = isAdmin ? ADMIN_NAV : App.applyNavConfig(PORTAL_NAV);
     // Hide the Calls nav item when this portal has the AI Receptionist turned off.
     // Only hide when we KNOW it's off (flag explicitly false); while it's still
@@ -440,7 +440,7 @@
     const topbar = el("header", "topbar");
     const topLeft = el("div", "top-left");
 
-    if (section === "portal" && me.role === "SUPER_ADMIN") {
+    if (section === "portal" && App.isAdminTier(me.role)) {
       const back = el("a", "back-link", "← All portals");
       back.href = "#/admin/portals";
       back.onclick = () => { App.state.currentPortalId = null; App.state.currentPortalName = null; };
@@ -455,7 +455,7 @@
     const topRight = el("div", "top-right");
     if (section === "portal") {
       // Impersonation control — immediately LEFT of Refresh, real super-admin only.
-      if (me.role === "SUPER_ADMIN") topRight.appendChild(buildImpersonationControl());
+      if (App.isAdminTier(me.role)) topRight.appendChild(buildImpersonationControl());
 
       const refresh = el("button", "btn btn-ghost btn-sm", "Refresh");
       refresh.onclick = () => App.portal.refresh();
@@ -489,8 +489,8 @@
     // when there's a portal in context. A SUPER_ADMIN who hasn't picked a portal
     // has no tenant to scope to, so requesting labels then is meaningless (and
     // was causing a 400 on /api/labels).
-    if (me && (me.role !== "SUPER_ADMIN" || App.state.currentPortalId)) App.ensureLabels();
-    if (me && (me.role !== "SUPER_ADMIN" || App.state.currentPortalId)) App.ensureReceptionistFlag();
+    if (me && (!App.isAdminTier(me.role) || App.state.currentPortalId)) App.ensureLabels();
+    if (me && (!App.isAdminTier(me.role) || App.state.currentPortalId)) App.ensureReceptionistFlag();
 
     // Unauthenticated
     if (!me) {
@@ -506,7 +506,7 @@
 
     // Master (admin) section
     if (path.indexOf("/admin") === 0) {
-      if (me.role !== "SUPER_ADMIN") return App.go("#/dashboard");
+      if (!App.isAdminTier(me.role)) return App.go("#/dashboard");
       const sub = path === "/admin/users" ? "users" : "portals";
       buildShell("admin", "#/admin/" + sub);
       return App.admin.render(sub);
@@ -515,7 +515,7 @@
     // Contact profile page
     if (path.indexOf("/contact/") === 0) {
       const id = path.slice("/contact/".length);
-      if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
+      if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       buildShell("portal", "#/contacts");
       return App.portal.renderContact(id);
     }
@@ -523,7 +523,7 @@
     // Record (e.g. Job) detail page
     if (path.indexOf("/record/") === 0) {
       const id = path.slice("/record/".length);
-      if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
+      if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       buildShell("portal", "#/jobs");
       return App.portal.renderRecord(id);
     }
@@ -534,7 +534,7 @@
     // Settings (with optional sub-section, e.g. #/settings/appearance) — the
     // sub-section drives the in-view sub-shell; refresh/back keep their place.
     if (path === "/settings" || path.indexOf("/settings/") === 0) {
-      if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
+      if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       buildShell("portal", "#/settings");
       const sub = path === "/settings" ? "" : path.slice("/settings/".length);
       return App.portal.render("settings", sub);
@@ -543,7 +543,7 @@
     // Portal section
     const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/settings": "settings" };
     if (portalViews[path]) {
-      if (me.role === "SUPER_ADMIN" && !App.state.currentPortalId) return App.go("#/admin/portals");
+      if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       // If this page has been hidden from the nav for this portal, send the user
       // to the always-present Home Dashboard rather than a page with no way back.
       if (App.isNavHidden && App.isNavHidden("#" + path)) return App.go("#/dashboard");

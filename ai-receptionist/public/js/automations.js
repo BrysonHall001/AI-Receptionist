@@ -2093,7 +2093,7 @@
     body.innerHTML = "";
 
     // Super-admin-only manual processor (stand-in for the deployed host heartbeat).
-    const isSuper = App.state && App.state.me && App.state.me.role === "SUPER_ADMIN";
+    const isSuper = App.state && App.state.me && App.isAdminTier(App.state.me.role);
     if (isSuper) {
       const bar = el("div", "wf-process-bar");
       const btn = el("button", "btn btn-primary btn-sm", "Process due jobs now");
