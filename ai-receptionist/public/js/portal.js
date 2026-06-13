@@ -1729,7 +1729,12 @@
       const navListEl = el("div", "nav-edit-list");
       body.appendChild(navListEl);
 
-      const NAV = (App.PORTAL_NAV || []).slice();
+      let NAV = (App.PORTAL_NAV || []).slice();
+      // When the AI Receptionist is off for this portal, the Calls page doesn't
+      // exist for them — so don't list it in the relabel/reorder editor either.
+      if (App.state.receptionistEnabled === false) {
+        NAV = NAV.filter(function (it) { return it[0] !== "#/calls"; });
+      }
       const navByHref = {}; NAV.forEach((it) => { navByHref[it[0]] = it; });
       // Initial display order: saved order first, then any default items not in it
       // (so a newly-shipped nav item still appears under an older saved order). We

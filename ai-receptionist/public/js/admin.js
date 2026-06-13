@@ -95,6 +95,11 @@
   function enterPortal(p) {
     App.state.currentPortalId = p.id;
     App.state.currentPortalName = p.name;
+    // Read the AI Receptionist flag from the just-loaded card data so the left nav
+    // is correct on the FIRST paint of this entry (no stale cached value, no flash),
+    // and clear the cache key so it's re-confirmed fresh from the server on entry.
+    App.state.receptionistEnabled = !!(p && p.receptionistEnabled === true);
+    App.state._recepFor = null;
     App.go("#/dashboard");
   }
 

@@ -296,15 +296,8 @@
           if (onRowClick) tr.addEventListener("click", () => onRowClick(row));
           tb.appendChild(tr);
         });
-        // Keep the table a consistent height when a page isn't full.
-        if (pageSize > 0) {
-          for (let i = pageRows.length; i < pageSize; i++) {
-            const tr = el("tr", "row-filler");
-            const td = el("td"); td.colSpan = span; td.innerHTML = "&nbsp;";
-            tr.appendChild(td);
-            tb.appendChild(tr);
-          }
-        }
+        // Render only as many rows as there are real records on this page — no
+        // empty filler rows. Pagination still caps the page at pageSize.
       }
       table.appendChild(tb);
       tableWrap.appendChild(table);
