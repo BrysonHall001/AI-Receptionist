@@ -1,8 +1,9 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal } from "../services/portalService";
-import { createUser, listUsers, deleteUser, publicUser } from "../services/userService";
+import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
 import { createInvite, listPendingInvites, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
+import { getAppSetting, setAppSetting, INVITE_SENDER_EMAIL_KEY } from "../services/appSettingService";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 
@@ -72,7 +73,7 @@ adminRouter.get("/users", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/users", async (req: Request, res: Response) => {
-  const { email, role } = (req.body ?? {}) as Record<string, string>;
+  const { email, role, name } = (req.body ?? {}) as Record<string, string>;
   if (!email || !role) {
     res.status(400).json({ error: "email and role are required" });
     return;
@@ -86,8 +87,8 @@ adminRouter.post("/users", async (req: Request, res: Response) => {
   }
   try {
     // Create an invite (no portal). The person sets their own password via the
-    // link; an AUDITOR's 3-day expiry is stamped when they activate (in createUser).
-    const invite = await createInvite({ email, role: role as any, tenantId: null, createdById: req.user?.id ?? null });
+    // link; the typed name is carried on the invite and applied at activation.
+    const invite = await createInvite({ email, role: role as any, tenantId: null, name: name || null, createdById: req.user?.id ?? null });
     const link = inviteLink(requestOrigin(req), invite.token);
     const emailed = await sendInvite({ email: invite.email, role: invite.role }, link);
     // `link` is always returned so it can be copied while email delivery is limited.
@@ -108,6 +109,48 @@ adminRouter.delete("/users/:id", async (req: Request, res: Response) => {
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
+});
+
+// ---- Item 2: edit a user's name --------------------------------------------
+// Permission (SERVER-ENFORCED): an OWNER may rename anyone; everyone else may
+// rename ONLY their own account. Hiding the pencil in the UI is not enough.
+adminRouter.patch("/users/:id/name", async (req: Request, res: Response) => {
+  const isOwner = req.user?.role === "OWNER";
+  const isSelf = req.params.id === req.user?.id;
+  if (!isOwner && !isSelf) {
+    res.status(403).json({ error: "You can only edit your own name." });
+    return;
+  }
+  const name = typeof (req.body ?? {}).name === "string" ? (req.body.name as string) : "";
+  try {
+    const user = await updateUserName(req.params.id, name);
+    res.json(publicUser(user));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// ---- Item 1: master "invite sender email" setting --------------------------
+// READ: any master-hub user (this whole router is OWNER/SUPER_ADMIN/AUDITOR).
+adminRouter.get("/settings/invite-sender", async (_req: Request, res: Response) => {
+  const email = (await getAppSetting(INVITE_SENDER_EMAIL_KEY)) || "";
+  res.json({ email });
+});
+
+// SAVE: OWNER ONLY (server-enforced — an Auditor/Super-Admin is refused here even
+// though the rest of the master hub is open to them).
+adminRouter.put("/settings/invite-sender", async (req: Request, res: Response) => {
+  if (req.user?.role !== "OWNER") {
+    res.status(403).json({ error: "Only an owner can change the invite sender email." });
+    return;
+  }
+  const raw = typeof (req.body ?? {}).email === "string" ? (req.body.email as string).trim() : "";
+  if (raw && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(raw)) {
+    res.status(400).json({ error: "Please enter a valid email address." });
+    return;
+  }
+  await setAppSetting(INVITE_SENDER_EMAIL_KEY, raw);
+  res.json({ email: raw });
 });
 
 // Confirm a phone number isn't already attached to another portal.

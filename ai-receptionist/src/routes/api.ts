@@ -1083,7 +1083,7 @@ apiRouter.post("/users", async (req: Request, res: Response) => {
     res.status(403).json({ error: "Not authorized" });
     return;
   }
-  const { email, role } = (req.body ?? {}) as Record<string, string>;
+  const { email, role, name } = (req.body ?? {}) as Record<string, string>;
   if (!email) {
     res.status(400).json({ error: "email is required" });
     return;
@@ -1091,7 +1091,7 @@ apiRouter.post("/users", async (req: Request, res: Response) => {
   // Portal admins may only invite users inside their own portal, never super admins.
   const safeRole = role === "PORTAL_ADMIN" ? "PORTAL_ADMIN" : "CLIENT_USER";
   try {
-    const invite = await createInvite({ email, role: safeRole, tenantId, createdById: req.user?.id ?? null });
+    const invite = await createInvite({ email, role: safeRole, tenantId, name: name || null, createdById: req.user?.id ?? null });
     const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
     const host = String(req.headers["x-forwarded-host"] || req.get("host") || "").trim();
     const link = inviteLink(proto + "://" + host, invite.token);

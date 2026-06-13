@@ -430,14 +430,42 @@
   // ---------------- Users ----------------
   async function renderUsers() {
     loading();
-    const [users] = await Promise.all([App.api("/api/admin/users")]);
+    const [users, senderRes] = await Promise.all([
+      App.api("/api/admin/users"),
+      App.api("/api/admin/settings/invite-sender").catch(() => ({ email: "" })),
+    ]);
     if (!portalsCache.length) { try { portalsCache = await App.api("/api/admin/portals"); } catch (e) {} }
+    const isOwner = App.state.me.role === "OWNER";
+    const senderEmail = (senderRes && senderRes.email) || "";
     const wrap = el("div", "fade-in");
     const bar = el("div", "page-actions");
     const create = el("button", "btn btn-primary btn-sm", "+ Create user");
     create.onclick = () => openCreateUser();
     bar.appendChild(create);
     wrap.appendChild(bar);
+
+    // Item 1: master "invite sender email". Read-only for non-owners; OWNER can save.
+    // The server also rejects a save from a non-owner (greying is only the UI half).
+    const senderCard = el("div", "card");
+    senderCard.style.marginBottom = "12px";
+    senderCard.innerHTML = `
+      <label class="field-label">Invite sender email</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="sender-email" class="input" type="email" style="flex:1" value="${esc(senderEmail)}" placeholder="Not set" ${isOwner ? "" : "disabled"} />
+        ${isOwner ? '<button id="sender-save" class="btn btn-primary btn-sm">Save</button>' : ""}
+      </div>
+      <p class="sub" style="margin:8px 0 0">The from-address used for invite emails.${isOwner ? "" : " Only an owner can change this."}</p>`;
+    if (isOwner) {
+      senderCard.querySelector("#sender-save").onclick = async () => {
+        const email = senderCard.querySelector("#sender-email").value.trim();
+        try {
+          const r = await App.api("/api/admin/settings/invite-sender", { method: "PUT", body: JSON.stringify({ email }) });
+          senderCard.querySelector("#sender-email").value = r.email || "";
+          toast("Sender email saved");
+        } catch (e) { toast(e.message, true); }
+      };
+    }
+    wrap.appendChild(senderCard);
 
     const card = el("div", "card");
     const table = el("table");
@@ -449,10 +477,13 @@
       const statusNote = u.disabled ? ' <span class="cell-muted">(disabled)</span>'
         : expired ? ' <span class="cell-muted">(expired)</span>'
         : (u.expiresAt ? ` <span class="cell-muted">(expires ${esc(fmtDate(u.expiresAt))})</span>` : "");
-      tr.innerHTML = `<td class="cell-strong">${esc(u.name || "—")}</td><td class="cell-mono">${esc(u.email)}</td>
+      tr.innerHTML = `<td class="cell-strong cu-name"></td><td class="cell-mono">${esc(u.email)}</td>
         <td>${esc(roleLabel(u.role))}${statusNote}</td><td class="cell-muted">${esc(u.tenantName || "—")}</td>
         <td class="cell-muted">${u.lastLoginAt ? fmtDate(u.lastLoginAt) : "Never"}</td><td></td>`;
       const meRole = App.state.me.role;
+      // Item 2: an OWNER can edit any name; everyone else only their own row.
+      const canEditName = (meRole === "OWNER") || (u.id === App.state.me.id);
+      renderNameCell(tr.querySelector(".cu-name"), u, canEditName);
       const canRemove = u.id !== App.state.me.id            // never yourself
         && u.role !== "OWNER"                                // no one can delete an owner
         && !(u.role === "SUPER_ADMIN" && meRole !== "OWNER"); // super-admins: owner only
@@ -468,6 +499,42 @@
     wrap.appendChild(card);
     view().innerHTML = "";
     view().appendChild(wrap);
+  }
+
+  // Item 2 helpers: render a name cell, with an edit pencil when allowed.
+  function renderNameCell(cell, u, canEdit) {
+    cell.innerHTML = "";
+    cell.appendChild(el("span", null, u.name || "—"));
+    if (canEdit) {
+      const pencil = el("button", null, "\u270E"); // pencil glyph
+      pencil.title = "Edit name";
+      pencil.setAttribute("aria-label", "Edit name");
+      pencil.style.cssText = "margin-left:6px;background:none;border:none;cursor:pointer;color:var(--ink-soft);font-size:13px;padding:0";
+      pencil.onclick = () => startNameEdit(cell, u, canEdit);
+      cell.appendChild(pencil);
+    }
+  }
+
+  function startNameEdit(cell, u, canEdit) {
+    cell.innerHTML = "";
+    const input = el("input", "input");
+    input.value = u.name || "";
+    input.style.cssText = "display:inline-block;max-width:170px;padding:4px 8px";
+    const save = el("button", "btn btn-primary btn-sm", "Save");
+    save.style.marginLeft = "6px";
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    cancel.style.marginLeft = "4px";
+    cell.appendChild(input); cell.appendChild(save); cell.appendChild(cancel);
+    input.focus();
+    cancel.onclick = () => renderNameCell(cell, u, canEdit);
+    save.onclick = async () => {
+      try {
+        const updated = await App.api(`/api/admin/users/${u.id}/name`, { method: "PATCH", body: JSON.stringify({ name: input.value.trim() }) });
+        u.name = updated.name;
+        toast("Name updated");
+        renderNameCell(cell, u, canEdit);
+      } catch (e) { toast(e.message, true); }
+    };
   }
 
   function openCreateUser(portal) {

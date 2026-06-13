@@ -54,6 +54,11 @@ export async function listUsers(tenantId?: string | null) {
  *  - You can't delete your own account.
  * Rules fail closed: if the actor is unknown, only ordinary users can be removed.
  */
+/** Update a user's display name. Permission is enforced by the caller (route). */
+export async function updateUserName(id: string, name: string | null) {
+  return prisma.user.update({ where: { id }, data: { name: name && name.trim() ? name.trim() : null } });
+}
+
 export async function deleteUser(id: string, actor?: { id: string; role: string }) {
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) throw new Error("User not found");

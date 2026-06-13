@@ -80,6 +80,7 @@ export async function createInvite(input: {
   email: string;
   role: InviteRole;
   tenantId: string | null;
+  name?: string | null;
   createdById?: string | null;
 }) {
   const email = normEmail(input.email);
@@ -104,7 +105,7 @@ export async function createInvite(input: {
   const token = crypto.randomBytes(32).toString("hex"); // 256-bit, unguessable
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 86400000);
   return db.invite.create({
-    data: { token, email, role: input.role, tenantId: input.tenantId, expiresAt, createdById: input.createdById ?? null },
+    data: { token, email, name: input.name ?? null, role: input.role, tenantId: input.tenantId, expiresAt, createdById: input.createdById ?? null },
   });
 }
 
@@ -163,6 +164,6 @@ export async function acceptInvite(token: string, password: string): Promise<Acc
   const consumed = await db.invite.updateMany({ where: { id: inv.id, usedAt: null }, data: { usedAt: new Date() } });
   if (!consumed.count) return { ok: false }; // lost the race — already used
 
-  const user = await createUser({ email: inv.email, password, name: null, role: inv.role, tenantId: inv.tenantId });
+  const user = await createUser({ email: inv.email, password, name: inv.name ?? null, role: inv.role, tenantId: inv.tenantId });
   return { ok: true, user: { id: user.id } };
 }
