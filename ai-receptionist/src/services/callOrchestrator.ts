@@ -23,7 +23,7 @@ export interface TurnResult {
 }
 
 /** Resolve the tenant for a called number, falling back to the first tenant. */
-async function resolveTenantId(toNumber?: string | null): Promise<string | null> {
+export async function resolveTenantId(toNumber?: string | null): Promise<string | null> {
   if (toNumber) {
     const matched = await prisma.tenant.findUnique({ where: { phoneNumber: toNumber } });
     if (matched) return matched.id;

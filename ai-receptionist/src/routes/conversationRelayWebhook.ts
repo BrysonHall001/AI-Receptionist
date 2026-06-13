@@ -26,7 +26,7 @@ export const RELAY_WS_PATH = "/relay";
  * Twilio actually reached us on (so you don't have to configure anything), with
  * an optional explicit override via CONVERSATION_RELAY_WSS_URL.
  */
-function buildWssUrl(req: Request): string {
+export function buildWssUrl(req: Request): string {
   const override = (env.CONVERSATION_RELAY_WSS_URL || "").trim();
   if (override) return override.replace(/\/+$/, "");
   const host = req.get("host"); // e.g. your-app.onrender.com

@@ -15,6 +15,7 @@ export async function listPortals() {
     status: t.status,
     requireEmail: (t as any).requireEmail !== false,
     receptionistEnabled: (t as any).receptionistEnabled === true,
+    voiceMode: ((t as any).voiceMode as string) || ((t as any).receptionistEnabled === true ? "WALKIE" : "OFF"),
     calls: t._count?.callSessions ?? 0,
     contacts: t._count?.contacts ?? 0,
     users: t._count?.users ?? 0,
@@ -36,6 +37,7 @@ export async function getPortal(id: string) {
     status: t.status,
     requireEmail: (t as any).requireEmail !== false,
     receptionistEnabled: (t as any).receptionistEnabled === true,
+    voiceMode: ((t as any).voiceMode as string) || ((t as any).receptionistEnabled === true ? "WALKIE" : "OFF"),
     aiInstructions: (t as any).aiInstructions ?? "",
     createdAt: t.createdAt.toISOString(),
   };
@@ -116,7 +118,7 @@ export async function createPortal(input: {
 
 export async function updatePortal(
   id: string,
-  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; aiInstructions: string }>,
+  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; aiInstructions: string }>,
 ) {
   return prisma.tenant.update({ where: { id }, data: data as any });
 }

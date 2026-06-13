@@ -8,6 +8,25 @@
   function view() { return App.util.$("#view"); }
   function loading() { view().innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`; }
 
+  // ---- Voice mode (AI Receptionist 3-way choice) ----
+  // OFF = decline calls; WALKIE = Standard voice (cheap Say/Gather); SMOOTH =
+  // Premium voice (ElevenLabs ConversationRelay). The server keeps the legacy
+  // receptionistEnabled boolean in sync, so older data still reads correctly.
+  const VOICE_LABELS = { OFF: "Off", WALKIE: "Standard voice", SMOOTH: "Premium voice" };
+  function voiceModeOf(p) {
+    return (p && p.voiceMode) || (p && p.receptionistEnabled === true ? "WALKIE" : "OFF");
+  }
+  function voiceOptionsHtml(selected) {
+    return ["OFF", "WALKIE", "SMOOTH"]
+      .map((m) => `<option value="${m}" ${m === selected ? "selected" : ""}>${VOICE_LABELS[m]}</option>`)
+      .join("");
+  }
+  function voiceToast(mode) {
+    return mode === "OFF"
+      ? "AI Receptionist turned off"
+      : `AI Receptionist set to ${VOICE_LABELS[mode]}`;
+  }
+
   async function render(v) {
     current = v;
     if (v === "users") return renderUsers();
@@ -59,8 +78,7 @@
           <div class="portal-rule">
             <label class="field-label" style="margin:0 0 4px">AI Receptionist</label>
             <select class="input portal-recep-sel">
-              <option value="on" ${p.receptionistEnabled === true ? "selected" : ""}>On</option>
-              <option value="off" ${p.receptionistEnabled !== true ? "selected" : ""}>Off</option>
+              ${voiceOptionsHtml(voiceModeOf(p))}
             </select>
           </div>
           <div class="portal-actions"><button class="btn btn-ghost btn-sm portal-users">Users</button></div>
@@ -78,9 +96,9 @@
         const recepSel = card.querySelector(".portal-recep-sel");
         recepSel.onclick = (e) => e.stopPropagation();
         recepSel.onchange = async () => {
-          const receptionistEnabled = recepSel.value === "on";
-          try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ receptionistEnabled }) }); p.receptionistEnabled = receptionistEnabled; toast(receptionistEnabled ? "AI Receptionist turned on" : "AI Receptionist turned off"); }
-          catch (err) { toast(err.message, true); recepSel.value = p.receptionistEnabled === true ? "on" : "off"; }
+          const voiceMode = recepSel.value;
+          try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ voiceMode }) }); p.voiceMode = voiceMode; p.receptionistEnabled = voiceMode !== "OFF"; toast(voiceToast(voiceMode)); }
+          catch (err) { toast(err.message, true); recepSel.value = voiceModeOf(p); }
         };
         card.querySelector(".portal-toggle").onclick = async () => {
           try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ status: p.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }) }); toast("Portal updated"); renderPortals(); }
@@ -306,14 +324,14 @@
         const fhost = el("div"); fhost.style.marginTop = "8px";
         const lab = el("label", "field-label", "AI Receptionist"); lab.style.cssText = "margin:0 0 4px";
         const sel = el("select", "input");
-        sel.innerHTML = `<option value="on">On</option><option value="off">Off</option>`;
-        sel.value = portal.receptionistEnabled === true ? "on" : "off";
+        sel.innerHTML = voiceOptionsHtml(voiceModeOf(portal));
+        sel.value = voiceModeOf(portal);
         const cap = el("p", "cell-muted"); cap.style.cssText = "margin:8px 0 0;font-size:13px;";
-        cap.textContent = "When on, this portal gets the Calls page and the AI receptionist handles inbound calls. When off, the Calls menu and page are hidden.";
+        cap.textContent = "Off declines inbound calls. Standard voice is the basic back-and-forth receptionist. Premium voice uses the smooth ElevenLabs voice. Standard and Premium both show the Calls page; Off hides it.";
         sel.onchange = async () => {
-          const receptionistEnabled = sel.value === "on";
-          try { await App.api(`/api/admin/portals/${portal.id}`, { method: "PATCH", body: JSON.stringify({ receptionistEnabled }) }); portal.receptionistEnabled = receptionistEnabled; toast(receptionistEnabled ? "AI Receptionist turned on" : "AI Receptionist turned off"); }
-          catch (err) { toast(err.message, true); sel.value = portal.receptionistEnabled === true ? "on" : "off"; }
+          const voiceMode = sel.value;
+          try { await App.api(`/api/admin/portals/${portal.id}`, { method: "PATCH", body: JSON.stringify({ voiceMode }) }); portal.voiceMode = voiceMode; portal.receptionistEnabled = voiceMode !== "OFF"; toast(voiceToast(voiceMode)); }
+          catch (err) { toast(err.message, true); sel.value = voiceModeOf(portal); }
         };
         fhost.appendChild(lab); fhost.appendChild(sel); fhost.appendChild(cap);
         s4.appendChild(fhost);

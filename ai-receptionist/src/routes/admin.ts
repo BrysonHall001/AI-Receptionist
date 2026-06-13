@@ -59,7 +59,21 @@ adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
       if (b[k] !== undefined) data[k] = b[k];
     }
     if (typeof b.requireEmail === "boolean") data.requireEmail = b.requireEmail;
-    if (typeof b.receptionistEnabled === "boolean") data.receptionistEnabled = b.receptionistEnabled;
+    // Voice mode is the authoritative 3-way choice. Validate it server-side and
+    // keep the receptionistEnabled boolean mirror in sync (= mode != OFF). If an
+    // old client sends only the boolean, map it onto a voiceMode for consistency.
+    if (typeof b.voiceMode === "string") {
+      const vm = b.voiceMode.toUpperCase();
+      if (!["OFF", "WALKIE", "SMOOTH"].includes(vm)) {
+        res.status(400).json({ error: "voiceMode must be OFF, WALKIE, or SMOOTH" });
+        return;
+      }
+      data.voiceMode = vm;
+      data.receptionistEnabled = vm !== "OFF";
+    } else if (typeof b.receptionistEnabled === "boolean") {
+      data.receptionistEnabled = b.receptionistEnabled;
+      data.voiceMode = b.receptionistEnabled ? "WALKIE" : "OFF";
+    }
     const portal = await updatePortal(req.params.id, data);
     res.json(portal);
   } catch (err) {

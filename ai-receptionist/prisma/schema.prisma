@@ -53,6 +53,12 @@ model Tenant {
   // Per-portal on/off switch for the AI Receptionist / Calls feature. NEW portals
   // start OFF (default false); existing portals were backfilled ON by migration.
   receptionistEnabled Boolean @default(false)
+  // Per-portal VOICE MODE — the authoritative 3-way choice for the inbound phone
+  // experience: "OFF" (decline calls), "WALKIE" (cheap Say/Gather), or "SMOOTH"
+  // (premium ElevenLabs ConversationRelay). receptionistEnabled above is kept as
+  // an auto-mirror (= voiceMode != "OFF") so existing dashboard/nav gating that
+  // reads the boolean keeps working unchanged.
+  voiceMode    String        @default("OFF")
   status       TenantStatus  @default(ACTIVE)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
