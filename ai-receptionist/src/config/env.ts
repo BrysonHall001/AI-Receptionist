@@ -26,6 +26,14 @@ const envSchema = z.object({
   MAX_EMPTY_TURNS: z.coerce.number().int().positive().default(2),
   AI_MAX_RETRIES: z.coerce.number().int().positive().default(3),
 
+  // ---- CONVERSATIONRELAY (new, parallel voice path) ----
+  // The ElevenLabs voice ID spoken on the ConversationRelay path. Defaulted to
+  // the provided voice so it works out of the box; override via env to change it.
+  ELEVENLABS_VOICE_ID: z.string().default("uIZsnBL0YK1S5j69bAih"),
+  // Optional explicit wss:// URL for ConversationRelay. Normally left blank: the
+  // URL is derived automatically from the host Twilio reaches us on.
+  CONVERSATION_RELAY_WSS_URL: z.string().default(""),
+
   // ---- PROVIDER MODE ----
   // "auto" (default): use the real service if the key looks real, otherwise a
   // local mock so the app works end-to-end with placeholder keys.

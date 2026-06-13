@@ -3,6 +3,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { attachUser } from "./middleware/auth";
 import { twilioRouter } from "./routes/twilioWebhooks";
+import { conversationRelayRouter } from "./routes/conversationRelayWebhook";
 import { internalRouter } from "./routes/internal";
 import { inboundRouter } from "./routes/inbound";
 import { inviteRouter } from "./routes/invites";
@@ -50,6 +51,10 @@ export function createApp(): express.Express {
 
   // Telephony (unauthenticated by nature)
   app.use("/webhooks/twilio", twilioRouter);
+  // SECOND, PARALLEL voice path (ConversationRelay + ElevenLabs). Separate mount
+  // so the existing /webhooks/twilio path is untouched. See the router for how
+  // to point your Twilio number at it for testing.
+  app.use("/webhooks/relay", conversationRelayRouter);
   app.use("/internal", internalRouter);
   app.use("/hooks/in", inboundRouter); // PUBLIC inbound webhook ingest (tenant from token)
   app.use("/invites", inviteRouter); // PUBLIC account-activation surface (gated by invite token only)

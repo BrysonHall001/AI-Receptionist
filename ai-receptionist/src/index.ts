@@ -3,6 +3,7 @@ import { createApp } from "./app";
 import { connectDb, disconnectDb } from "./db/client";
 import { logger } from "./utils/logger";
 import { ensureInboundStatusCallback } from "./telephony/provisionStatusCallback";
+import { attachConversationRelay } from "./telephony/conversationRelayWs";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -25,6 +26,12 @@ async function main(): Promise<void> {
   const server = app.listen(env.PORT, () => {
     logger.info(`AI Receptionist server listening on :${env.PORT}`);
   });
+
+  // Attach the ConversationRelay WebSocket to the SAME HTTP server. This handles
+  // the wss:// upgrade for the new, parallel voice path. It only claims the
+  // /relay path; all other traffic (HTTP routes, the old webhook path) is
+  // unaffected.
+  attachConversationRelay(server);
 
   // Ensure Twilio POSTs every call's end (including plain caller hang-ups) to
   // /webhooks/twilio/status, without depending on the Twilio Console. Best-effort
