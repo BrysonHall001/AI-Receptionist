@@ -27,6 +27,12 @@ export async function getUserForToken(token: string | undefined) {
     await prisma.session.delete({ where: { token } }).catch(() => undefined);
     return null;
   }
+  // Mirror of userService.accountInactive (inlined to avoid an import cycle):
+  // a disabled or past-expiry account is treated as logged out on every request.
+  const u = session.user as any;
+  if (u.disabled || (u.expiresAt && new Date(u.expiresAt).getTime() < Date.now())) {
+    return null;
+  }
   return session.user;
 }
 

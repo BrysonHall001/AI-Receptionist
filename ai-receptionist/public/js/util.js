@@ -6,9 +6,10 @@
 
   App.state = { me: null, currentPortalId: null, currentPortalName: null, labels: { types: {}, generic: {} } };
 
-  // Top admin tier: OWNER or SUPER_ADMIN. Mirrors the server's isAdminTier so the
-  // UI treats an OWNER exactly like a super-admin (master hub, impersonation, etc.).
-  App.isAdminTier = function (role) { return role === "OWNER" || role === "SUPER_ADMIN"; };
+  // Top admin tier: OWNER, SUPER_ADMIN, or AUDITOR (a tester with the same full
+  // reach as super-admin). Mirrors the server's isAdminTier so the UI treats all
+  // three the same (master hub, impersonation, nav-edit, etc.).
+  App.isAdminTier = function (role) { return role === "OWNER" || role === "SUPER_ADMIN" || role === "AUDITOR"; };
 
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
@@ -45,7 +46,7 @@
   }
 
   function roleLabel(role) {
-    return { SUPER_ADMIN: "Super Admin", PORTAL_ADMIN: "Portal Admin", CLIENT_USER: "Client User" }[role] || role;
+    return { OWNER: "Owner", SUPER_ADMIN: "Super Admin", PORTAL_ADMIN: "Portal Admin", CLIENT_USER: "Client User", AUDITOR: "Auditor" }[role] || role;
   }
 
   function toast(message, isError) {

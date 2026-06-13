@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { getUserForToken, getImpersonationForToken, ImpersonationOverlay, SESSION_COOKIE } from "../auth/session";
 
-export type Role = "OWNER" | "SUPER_ADMIN" | "PORTAL_ADMIN" | "CLIENT_USER";
+export type Role = "OWNER" | "SUPER_ADMIN" | "PORTAL_ADMIN" | "CLIENT_USER" | "AUDITOR";
 
 export interface AuthUser {
   id: string;
@@ -103,12 +103,14 @@ export function requireRole(...roles: Role[]) {
 }
 
 /**
- * The top admin tier: OWNER or SUPER_ADMIN. OWNER sits above SUPER_ADMIN and has
- * all the same powers, so every place that used to check `role === "SUPER_ADMIN"`
- * for access should use this instead, so OWNER is never accidentally locked out.
+ * The top admin tier: OWNER, SUPER_ADMIN, or AUDITOR. OWNER sits above
+ * SUPER_ADMIN; AUDITOR is a temporary tester granted the same full reach as a
+ * super-admin (master hub, any tenant, impersonation, jobs). Every place that
+ * used to check `role === "SUPER_ADMIN"` for access should use this, so none of
+ * these roles is ever accidentally locked out.
  */
 export function isAdminTier(role?: string | null): boolean {
-  return role === "OWNER" || role === "SUPER_ADMIN";
+  return role === "OWNER" || role === "SUPER_ADMIN" || role === "AUDITOR";
 }
 
 /**

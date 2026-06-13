@@ -15,6 +15,7 @@
     "seed": "tsx src/db/seed.ts",
     "set-admin-password": "tsx src/db/setAdminPassword.ts",
     "make-owner": "tsx src/db/makeOwner.ts",
+    "expire-user": "tsx src/db/expireUser.ts",
     "simulate": "tsx scripts/simulate-call.ts",
     "seed:demo": "tsx src/db/seedDemo.ts"
   },

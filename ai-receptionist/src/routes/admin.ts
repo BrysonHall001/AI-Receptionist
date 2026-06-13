@@ -8,7 +8,7 @@ import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
 export const adminRouter = Router();
-adminRouter.use(requireRole("OWNER", "SUPER_ADMIN"));
+adminRouter.use(requireRole("OWNER", "SUPER_ADMIN", "AUDITOR"));
 // Batch B lockout: an impersonating super-admin must NOT reach the master hub
 // (no creating portals/users while "acting as" someone). Evaluated on the overlay
 // presence (req.impersonation is only ever set for a real super-admin).
@@ -87,7 +87,7 @@ adminRouter.post("/users", async (req: Request, res: Response) => {
       password,
       name: name || null,
       role: role as any,
-      tenantId: role === "SUPER_ADMIN" ? null : tenantId,
+      tenantId: role === "SUPER_ADMIN" || role === "AUDITOR" ? null : tenantId,
     });
     res.json(publicUser(user));
   } catch (err) {

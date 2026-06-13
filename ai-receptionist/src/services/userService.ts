@@ -11,8 +11,19 @@ export interface CreateUserInput {
   tenantId?: string | null;
 }
 
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** True if the account may not be used: hard-disabled or past its expiry. */
+export function accountInactive(u: { disabled?: boolean | null; expiresAt?: Date | string | null }): boolean {
+  if (u.disabled) return true;
+  if (u.expiresAt && new Date(u.expiresAt).getTime() < Date.now()) return true;
+  return false;
+}
+
 export async function createUser(input: CreateUserInput) {
   const passwordHash = await hashPassword(input.password);
+  // AUDITOR accounts are temporary testers — auto-expire 3 days after creation.
+  const expiresAt = input.role === "AUDITOR" ? new Date(Date.now() + THREE_DAYS_MS) : null;
   return prisma.user.create({
     data: {
       email: input.email.trim().toLowerCase(),
@@ -20,6 +31,7 @@ export async function createUser(input: CreateUserInput) {
       name: input.name ?? null,
       role: input.role,
       tenantId: input.tenantId ?? null,
+      expiresAt,
     },
   });
 }
@@ -85,6 +97,8 @@ export function publicUser(u: any) {
     tenantId: u.tenantId ?? null,
     tenantName: u.tenant?.name ?? null,
     lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
+    expiresAt: u.expiresAt ? new Date(u.expiresAt).toISOString() : null,
+    disabled: !!u.disabled,
     createdAt: u.createdAt.toISOString(),
   };
 }

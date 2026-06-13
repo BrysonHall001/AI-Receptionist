@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../db/client";
 import { verifyPassword } from "../auth/passwords";
 import { createSession, destroySession, setSessionCookie, clearSessionCookie, SESSION_COOKIE } from "../auth/session";
-import { createResetToken, consumeResetToken, publicUser } from "../services/userService";
+import { createResetToken, consumeResetToken, publicUser, accountInactive } from "../services/userService";
 import { sendPlainEmail } from "../services/notificationService";
 import { env } from "../config/env";
 import { logger } from "../utils/logger";
@@ -36,6 +36,10 @@ authRouter.post("/login", loginIpLimiter, loginLimiter, async (req: Request, res
   const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+  if (accountInactive(user)) {
+    res.status(403).json({ error: "This account has expired." });
     return;
   }
   const token = await createSession(user.id);

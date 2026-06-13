@@ -24,6 +24,7 @@ enum Role {
   SUPER_ADMIN
   PORTAL_ADMIN
   CLIENT_USER
+  AUDITOR
 }
 
 enum TenantStatus {
@@ -88,6 +89,8 @@ model User {
   resetToken       String?   @unique
   resetTokenExpiry DateTime?
   lastLoginAt      DateTime?
+  expiresAt        DateTime?
+  disabled         Boolean   @default(false)
   signature        String?
   themePrefs       Json      @default("{}")
   contactColumns   Json      @default("{}")

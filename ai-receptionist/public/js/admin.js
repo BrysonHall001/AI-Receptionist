@@ -388,8 +388,12 @@
     const tb = el("tbody");
     users.forEach((u) => {
       const tr = el("tr");
+      const expired = u.expiresAt && new Date(u.expiresAt).getTime() < Date.now();
+      const statusNote = u.disabled ? ' <span class="cell-muted">(disabled)</span>'
+        : expired ? ' <span class="cell-muted">(expired)</span>'
+        : (u.expiresAt ? ` <span class="cell-muted">(expires ${esc(fmtDate(u.expiresAt))})</span>` : "");
       tr.innerHTML = `<td class="cell-strong">${esc(u.name || "—")}</td><td class="cell-mono">${esc(u.email)}</td>
-        <td>${esc(roleLabel(u.role))}</td><td class="cell-muted">${esc(u.tenantName || "—")}</td>
+        <td>${esc(roleLabel(u.role))}${statusNote}</td><td class="cell-muted">${esc(u.tenantName || "—")}</td>
         <td class="cell-muted">${u.lastLoginAt ? fmtDate(u.lastLoginAt) : "Never"}</td><td></td>`;
       if (u.id !== App.state.me.id) {
         const del = el("button", "link-danger", "Remove");
@@ -414,14 +418,14 @@
         <label class="field-label">Email *</label><input id="cu-email" class="input" placeholder="jane@acme.com" />
         <label class="field-label">Temporary password *</label><input id="cu-pass" class="input" type="text" placeholder="8+ characters" />
         <label class="field-label">Role *</label>
-        <select id="cu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option><option value="SUPER_ADMIN">Super Admin</option></select>
+        <select id="cu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option><option value="SUPER_ADMIN">Super Admin</option><option value="AUDITOR">Auditor (3-day tester)</option></select>
         <div id="cu-portal-wrap"><label class="field-label">Assign to portal *</label><select id="cu-portal" class="input">${portalOpts}</select></div>
         <button id="cu-go" class="btn btn-primary btn-block">Create user</button>
       </div>`;
     const overlay = modal(inner);
     const roleSel = inner.querySelector("#cu-role");
     const portalWrap = inner.querySelector("#cu-portal-wrap");
-    roleSel.onchange = () => { portalWrap.style.display = roleSel.value === "SUPER_ADMIN" ? "none" : "block"; };
+    roleSel.onchange = () => { portalWrap.style.display = (roleSel.value === "SUPER_ADMIN" || roleSel.value === "AUDITOR") ? "none" : "block"; };
     inner.querySelector("#cu-close").onclick = () => overlay.remove();
     inner.querySelector("#cu-go").onclick = async () => {
       const role = roleSel.value;
@@ -430,7 +434,7 @@
         email: inner.querySelector("#cu-email").value.trim(),
         password: inner.querySelector("#cu-pass").value,
         role,
-        tenantId: role === "SUPER_ADMIN" ? null : inner.querySelector("#cu-portal").value,
+        tenantId: role === "SUPER_ADMIN" || role === "AUDITOR" ? null : inner.querySelector("#cu-portal").value,
       };
       if (!body.email || !body.password) { toast("Email and password are required", true); return; }
       if (body.password.length < 8) { toast("Password must be at least 8 characters", true); return; }
