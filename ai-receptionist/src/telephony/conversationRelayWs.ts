@@ -69,15 +69,25 @@ export function attachConversationRelay(server: HttpServer): void {
     logger.info("[relay] websocket connected");
 
     ws.on("message", async (data: RawData) => {
+      const rawStr = data.toString();
       let msg: Record<string, unknown>;
       try {
-        msg = JSON.parse(data.toString());
+        msg = JSON.parse(rawStr);
       } catch {
-        logger.warn("[relay] received non-JSON message; ignoring");
+        logger.warn(`[relay] non-JSON inbound message ignored: ${rawStr.slice(0, 200)}`);
         return;
       }
 
       const type = String(msg.type ?? "");
+      // RAW per-message logging BEFORE any handling, so the logs always show
+      // exactly what Twilio is sending (type + the final-utterance flag). This is
+      // the diagnostic line to watch on a test call.
+      logger.info(
+        `[relay] msg type=${type || "(none)"} ` +
+          `last=${"last" in msg ? String(msg.last) : "n/a"} ` +
+          `callSid=${state.callSid ?? "(none)"}`,
+      );
+
       try {
         switch (type) {
           case "setup": {
@@ -95,19 +105,30 @@ export function attachConversationRelay(server: HttpServer): void {
           }
 
           case "prompt": {
-            // Only act on a completed utterance. With the default config Twilio
-            // sends `last:true` at end-of-turn; ignore any partials.
-            if (msg.last === false) return;
+            const speech = msg.voicePrompt != null ? String(msg.voicePrompt) : "";
+            // Log every prompt we receive, partial or final, so we can see them.
+            logger.info(
+              `[relay] prompt (last=${"last" in msg ? String(msg.last) : "n/a"}) ` +
+                `on ${state.callSid ?? "(none)"}: "${speech}"`,
+            );
+
+            // Only run a turn on a COMPLETED utterance. Twilio sets last=true at
+            // end-of-turn; partials (last=false) are interim results we wait on.
+            if (msg.last === false) {
+              logger.info("[relay] partial prompt; waiting for the final (last=true)");
+              return;
+            }
             if (!state.callSid) {
               logger.warn("[relay] prompt arrived before setup; ignoring");
               return;
             }
-            const speech = msg.voicePrompt != null ? String(msg.voicePrompt) : "";
-            logger.info(`[relay] prompt on ${state.callSid}: "${speech}"`);
 
             // Reuse the EXISTING per-turn logic (AI + state machine + persistence
             // + finalization). Logging/finalization come along for free.
             const result = await handleTurn({ callSid: state.callSid, speech });
+            logger.info(
+              `[relay] reply on ${state.callSid}: "${result.messageToSpeak}" (done=${result.done})`,
+            );
             sendText(ws, result.messageToSpeak);
             if (result.done) endSession(ws);
             break;
@@ -137,7 +158,9 @@ export function attachConversationRelay(server: HttpServer): void {
           }
 
           default:
-            logger.warn(`[relay] unhandled message type: ${type || "(none)"}`);
+            logger.warn(
+              `[relay] unhandled message type: ${type || "(none)"} raw=${rawStr.slice(0, 200)}`,
+            );
         }
       } catch (err) {
         // Never let one bad turn kill the socket without a word to the caller.
