@@ -213,4 +213,19 @@
     App.state._labelsFor = key;
     App.loadLabels().then(function () { if (App._route) App._route(); });
   };
+
+  // Warm the per-portal "AI Receptionist" on/off flag once per portal context,
+  // mirroring ensureLabels. The sidebar uses it to hide the Calls nav item when
+  // the feature is off. This is cosmetic only — the server still enforces access.
+  App.ensureReceptionistFlag = function () {
+    const key = App.state.currentPortalId || "self";
+    if (App.state._recepFor === key) return;
+    App.state._recepFor = key;
+    portalApi("/api/settings")
+      .then(function (p) {
+        App.state.receptionistEnabled = !!(p && p.receptionistEnabled === true);
+        if (App._route) App._route();
+      })
+      .catch(function () { /* leave as-is; nav shows, server still enforces */ });
+  };
 })(typeof window !== "undefined" ? window : globalThis);

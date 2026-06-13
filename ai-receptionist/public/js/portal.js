@@ -31,6 +31,22 @@
   // ---------------- Calls ----------------
   async function renderCalls() {
     loading();
+    // Respect the per-portal AI Receptionist switch. When it's off, don't render
+    // the Calls UI or pull call data — show a simple notice instead. (The server
+    // also returns 403 on /api/calls when off; this is the friendly UI side.)
+    let settings = {};
+    try { settings = await App.portalApi("/api/settings"); } catch (e) {}
+    App.state.receptionistEnabled = !!(settings && settings.receptionistEnabled === true);
+    if (!App.state.receptionistEnabled) {
+      view().innerHTML = "";
+      const off = el("div", "card");
+      off.style.cssText = "margin-top:8px;padding:32px;text-align:center;";
+      off.innerHTML =
+        `<h3 style="margin:0 0 6px;">AI Receptionist is off</h3>` +
+        `<p class="cell-muted" style="margin:0;">This feature isn't enabled for this portal.</p>`;
+      view().appendChild(off);
+      return;
+    }
     const calls = await App.portalApi("/api/calls");
     const columns = [
       { key: "name", label: "Caller", type: "text", get: (r) => r.name, text: (r) => r.name || "Unknown caller", cellClass: "cell-strong", render: (r) => esc(r.name || "Unknown caller") },

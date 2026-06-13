@@ -395,7 +395,13 @@
     const nav = el("nav", "sidebar-nav");
     const isAdmin = section === "admin";
     const canEditNav = !isAdmin && me && (me.role === "PORTAL_ADMIN" || me.role === "SUPER_ADMIN");
-    const items = isAdmin ? ADMIN_NAV : App.applyNavConfig(PORTAL_NAV);
+    let items = isAdmin ? ADMIN_NAV : App.applyNavConfig(PORTAL_NAV);
+    // Hide the Calls nav item when this portal has the AI Receptionist turned off.
+    // Only hide when we KNOW it's off (flag explicitly false); while it's still
+    // loading we show it — the server still blocks the data either way.
+    if (!isAdmin && App.state.receptionistEnabled === false) {
+      items = items.filter(function (it) { return it[0] !== "#/calls"; });
+    }
     items.forEach(([href, label, kind]) => {
       const text = isAdmin ? (kind ? App.label(kind, "many") : label) : App.navLabel(href, label, kind);
       const a = el("a", "nav-item" + (href === activePath ? " active" : "") + (canEditNav ? " nav-item--editable" : ""), esc(text));
@@ -484,6 +490,7 @@
     // has no tenant to scope to, so requesting labels then is meaningless (and
     // was causing a 400 on /api/labels).
     if (me && (me.role !== "SUPER_ADMIN" || App.state.currentPortalId)) App.ensureLabels();
+    if (me && (me.role !== "SUPER_ADMIN" || App.state.currentPortalId)) App.ensureReceptionistFlag();
 
     // Unauthenticated
     if (!me) {

@@ -58,6 +58,7 @@ adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
       if (b[k] !== undefined) data[k] = b[k];
     }
     if (typeof b.requireEmail === "boolean") data.requireEmail = b.requireEmail;
+    if (typeof b.receptionistEnabled === "boolean") data.receptionistEnabled = b.receptionistEnabled;
     const portal = await updatePortal(req.params.id, data);
     res.json(portal);
   } catch (err) {

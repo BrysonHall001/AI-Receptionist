@@ -56,6 +56,13 @@
               <option value="either" ${p.requireEmail === false ? "selected" : ""}>Phone or email</option>
             </select>
           </div>
+          <div class="portal-rule">
+            <label class="field-label" style="margin:0 0 4px">AI Receptionist</label>
+            <select class="input portal-recep-sel">
+              <option value="on" ${p.receptionistEnabled === true ? "selected" : ""}>On</option>
+              <option value="off" ${p.receptionistEnabled !== true ? "selected" : ""}>Off</option>
+            </select>
+          </div>
           <div class="portal-actions"><button class="btn btn-primary btn-sm portal-enter">Open portal →</button>
             <button class="btn btn-ghost btn-sm portal-toggle">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button></div>`;
         card.querySelector(".portal-enter").onclick = () => enterPortal(p);
@@ -65,6 +72,13 @@
           const requireEmail = ruleSel.value === "email";
           try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ requireEmail }) }); p.requireEmail = requireEmail; toast(requireEmail ? "Now requires a unique email" : "Now accepts phone or email"); }
           catch (err) { toast(err.message, true); ruleSel.value = p.requireEmail !== false ? "email" : "either"; }
+        };
+        const recepSel = card.querySelector(".portal-recep-sel");
+        recepSel.onclick = (e) => e.stopPropagation();
+        recepSel.onchange = async () => {
+          const receptionistEnabled = recepSel.value === "on";
+          try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ receptionistEnabled }) }); p.receptionistEnabled = receptionistEnabled; toast(receptionistEnabled ? "AI Receptionist turned on" : "AI Receptionist turned off"); }
+          catch (err) { toast(err.message, true); recepSel.value = p.receptionistEnabled === true ? "on" : "off"; }
         };
         card.querySelector(".portal-toggle").onclick = async () => {
           try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ status: p.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }) }); toast("Portal updated"); renderPortals(); }
@@ -223,6 +237,28 @@
         s3.appendChild(elNote("You can set labels and theme once the portal is created."));
       }
       wrap.appendChild(s3);
+
+      // ---- Section 4: features (AI Receptionist on/off) ----
+      const s4 = sectionCard(4, "Features", "Turn portal features on or off. New portals start with the AI Receptionist off.", created);
+      if (created) {
+        const fhost = el("div"); fhost.style.marginTop = "8px";
+        const lab = el("label", "field-label", "AI Receptionist"); lab.style.cssText = "margin:0 0 4px";
+        const sel = el("select", "input");
+        sel.innerHTML = `<option value="on">On</option><option value="off">Off</option>`;
+        sel.value = portal.receptionistEnabled === true ? "on" : "off";
+        const cap = el("p", "cell-muted"); cap.style.cssText = "margin:8px 0 0;font-size:13px;";
+        cap.textContent = "When on, this portal gets the Calls page and the AI receptionist handles inbound calls. When off, the Calls menu and page are hidden.";
+        sel.onchange = async () => {
+          const receptionistEnabled = sel.value === "on";
+          try { await App.api(`/api/admin/portals/${portal.id}`, { method: "PATCH", body: JSON.stringify({ receptionistEnabled }) }); portal.receptionistEnabled = receptionistEnabled; toast(receptionistEnabled ? "AI Receptionist turned on" : "AI Receptionist turned off"); }
+          catch (err) { toast(err.message, true); sel.value = portal.receptionistEnabled === true ? "on" : "off"; }
+        };
+        fhost.appendChild(lab); fhost.appendChild(sel); fhost.appendChild(cap);
+        s4.appendChild(fhost);
+      } else {
+        s4.appendChild(elNote("You can turn features on once the portal is created."));
+      }
+      wrap.appendChild(s4);
 
       // ---- Footer ----
       const footer = el("div", "page-actions");

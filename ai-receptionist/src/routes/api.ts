@@ -67,6 +67,20 @@ function tenantOr400(req: Request, res: Response): string | null {
   return tenantId;
 }
 
+/**
+ * Gate the AI Receptionist / Calls feature. Returns true only when this portal
+ * has receptionistEnabled = true; otherwise it has already sent a 403 and the
+ * caller should return. This is the real enforcement layer: even if the nav item
+ * is hidden, typing the /calls URL still can't pull call data when the feature
+ * is off.
+ */
+async function receptionistOn(tenantId: string, res: Response): Promise<boolean> {
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if ((t as any)?.receptionistEnabled === true) return true;
+  res.status(403).json({ error: "The AI Receptionist is not enabled for this portal." });
+  return false;
+}
+
 // Action attribution. The id is ALWAYS the real user's, so an act-as-type session
 // stamps honestly as the super-admin; the name is annotated "(acting as <ROLE>)"
 // while impersonating. Routes call this instead of building the actor inline.
@@ -168,12 +182,14 @@ apiRouter.get("/stats", async (req: Request, res: Response) => {
 apiRouter.get("/calls", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
+  if (!(await receptionistOn(tenantId, res))) return;
   res.json(await listCalls(tenantId));
 });
 
 apiRouter.get("/calls/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
+  if (!(await receptionistOn(tenantId, res))) return;
   const call = await getCall(req.params.id, tenantId);
   if (!call) {
     res.status(404).json({ error: "Call not found" });
