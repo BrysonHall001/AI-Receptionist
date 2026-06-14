@@ -19,7 +19,10 @@ const envSchema = z.object({
 
   // ---- OPTIONAL ----
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
-  RESEND_FROM: z.string().default("onboarding@resend.dev"),
+  // The "from" address for ALL outgoing mail (call summaries, invites, etc.).
+  // Defaults to the verified vaala.io domain so mail delivers to any recipient.
+  // Override in Render env if you ever change domains.
+  RESEND_FROM: z.string().default("Clarity <noreply@vaala.io>"),
   PORT: z.coerce.number().int().positive().default(3000),
   TWILIO_VALIDATE_SIGNATURE: z.enum(["true", "false"]).default("false"),
   MAX_TURNS: z.coerce.number().int().positive().default(12),
