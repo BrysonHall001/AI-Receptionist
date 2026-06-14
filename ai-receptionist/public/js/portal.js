@@ -30,7 +30,10 @@
     callsSig = null;
   }
   function callsSignature(rows) {
-    return (rows || []).map((r) => r.id + ":" + r.status).join("|");
+    // Include intent (the "Reason") and name so the table repaints when those get
+    // captured mid-call, not only when status changes — otherwise a reason that
+    // lands while the status is unchanged wouldn't show until a manual refresh.
+    return (rows || []).map((r) => r.id + ":" + r.status + ":" + (r.intent || "") + ":" + (r.name || "")).join("|");
   }
   function callsRefreshBlocked() {
     const ae = document.activeElement;

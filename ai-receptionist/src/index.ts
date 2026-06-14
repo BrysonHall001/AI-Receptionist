@@ -4,6 +4,7 @@ import { connectDb, disconnectDb } from "./db/client";
 import { logger } from "./utils/logger";
 import { ensureInboundStatusCallback } from "./telephony/provisionStatusCallback";
 import { attachConversationRelay } from "./telephony/conversationRelayWs";
+import { sweepStaleCalls } from "./services/callOrchestrator";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -38,6 +39,15 @@ async function main(): Promise<void> {
   // and fire-and-forget: it never blocks or crashes startup (see the module for
   // its safety/idempotency properties).
   void ensureInboundStatusCallback();
+
+  // Safety-net finalizer: every 60s, finalize any call left "in progress" with no
+  // recent activity (e.g. a walkie caller who hung up mid-conversation and whose
+  // Twilio status callback never landed). unref() so it never holds the process
+  // open during shutdown.
+  const sweepTimer = setInterval(() => {
+    void sweepStaleCalls();
+  }, 60_000);
+  sweepTimer.unref();
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`Received ${signal}; shutting down…`);

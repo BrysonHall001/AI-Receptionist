@@ -184,6 +184,13 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
   const transcript = session.transcript as unknown as TranscriptTurn[];
   const phone = phoneFromExtracted(extracted, session.fromNumber || `unknown:${callSid}`);
 
+  // Visibility into exactly what we captured, on BOTH paths, so a missing
+  // "reason" on the Calls page can be traced to extraction vs persistence.
+  logger.info(
+    `Call ${callSid} finalizing — extracted: name=${extracted.name ?? "-"} ` +
+      `intent=${extracted.intent ?? "-"} phone=${extracted.phone ?? "-"} email=${extracted.email ?? "-"}`,
+  );
+
   // Persist the contact (no duplicate per tenant+phone).
   try {
     const contact = await createOrUpdateContact({
@@ -242,4 +249,47 @@ function mergeExtracted(prev: Extracted, next: Extracted, fallbackPhone: string)
     phone: phone ?? usableFallback,
     email: pick(prev.email, next.email),
   };
+}
+
+// How long a call may sit "in progress" with no activity before the safety-net
+// sweep finalizes it. Configurable via env; defaults to 2 minutes.
+const STALE_CALL_MINUTES = Number(process.env.STALE_CALL_MINUTES) || 2;
+
+/**
+ * SAFETY-NET FINALIZER. Any call still in progress (finalizedAt = null) with no
+ * activity for STALE_CALL_MINUTES is finalized as COMPLETED. This guarantees a
+ * call reliably reaches a terminal DB state even when the normal triggers are
+ * missed — notably a WALKIE caller who hangs up mid-conversation, whose only
+ * hangup signal is the Twilio status callback (which can be delayed or absent).
+ *
+ * Idempotent and shared: it calls the SAME finalizeCall as every other path, so
+ * claimFinalization makes it a no-op for any call that already finalized (no
+ * double email, no duplicate contact).
+ */
+export async function sweepStaleCalls(): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_CALL_MINUTES * 60_000);
+  let stale: Array<{ callSid: string }> = [];
+  try {
+    stale = (await prisma.callSession.findMany({
+      where: { finalizedAt: null, updatedAt: { lt: cutoff } },
+      select: { callSid: true },
+      take: 50,
+    })) as Array<{ callSid: string }>;
+  } catch (err) {
+    logger.error(`[sweep] query failed: ${(err as Error).message}`);
+    return 0;
+  }
+  let finalized = 0;
+  for (const s of stale) {
+    try {
+      await finalizeCall(s.callSid, "COMPLETED");
+      finalized += 1;
+    } catch (err) {
+      logger.error(`[sweep] finalize failed for ${s.callSid}: ${(err as Error).message}`);
+    }
+  }
+  if (finalized > 0) {
+    logger.info(`[sweep] finalized ${finalized} stale in-progress call(s) (no activity > ${STALE_CALL_MINUTES}m)`);
+  }
+  return finalized;
 }

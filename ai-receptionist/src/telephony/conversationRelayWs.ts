@@ -2,7 +2,7 @@ import type { Server as HttpServer } from "http";
 import type { Socket } from "net";
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { URL } from "url";
-import { startCall, handleTurn } from "../services/callOrchestrator";
+import { startCall, handleTurn, finalizeCall } from "../services/callOrchestrator";
 import { logger } from "../utils/logger";
 import { RELAY_WS_PATH } from "../routes/conversationRelayWebhook";
 
@@ -197,7 +197,7 @@ export function attachConversationRelay(server: HttpServer): void {
       }
     });
 
-    ws.on("close", (code: number, reason: Buffer) => {
+    ws.on("close", async (code: number, reason: Buffer) => {
       clearInterval(pingTimer);
       const aliveMs = Date.now() - connectedAt;
       const sinceSetupMs = setupAt ? Date.now() - setupAt : null;
@@ -223,10 +223,20 @@ export function attachConversationRelay(server: HttpServer): void {
             `"[relay] ConversationRelay error" line (e.g. RTP Timeout 64108).`,
         );
       }
-      // Note: finalization for a caller hang-up is handled by the existing
-      // /webhooks/twilio/status callback (provisioned at startup), and an
-      // AI-ended call is finalized inside handleTurn. We deliberately do not
-      // add extra finalization here.
+      // Finalize on hangup so a SMOOTH call ALWAYS reaches COMPLETED and persists
+      // the latest extracted (reason/name) to the contact — even if the caller hung
+      // up before the AI reached a terminal turn and before any Twilio status
+      // callback lands. Idempotent: claimFinalization makes this a no-op if the AI
+      // already wrapped the call up, so there's no double email or duplicate contact.
+      if (state.callSid) {
+        try {
+          await finalizeCall(state.callSid, "COMPLETED");
+        } catch (err) {
+          logger.error(
+            `[relay] finalize-on-close failed for ${state.callSid}: ${(err as Error).message}`,
+          );
+        }
+      }
     });
 
     ws.on("error", (err: Error) => {
