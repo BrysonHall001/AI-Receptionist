@@ -26,9 +26,9 @@
           blocks: [
             { p: "After you sign in, the screen has three parts: the left navigation, the top bar, and the main area." },
             { steps: [
-              "The left navigation lists the main sections: Dashboard, Calls, Contacts, Fields, Reports, Automations, Learning Center, and Settings.",
+              "The left navigation lists the main sections: Home Dashboard, Calls, Contacts, Jobs, Fields, Reports, Automations, Learning Center, and Settings.",
               "Near the bottom-left you'll find the Recycle Bin link and your user box with a Sign out button.",
-              "The top bar shows where you are and any context (for example, which portal you're viewing).",
+              "The top bar shows where you are in the app.",
             ] },
             { shot: "Full app with the left navigation and top bar labelled" },
             { tip: "Your theme, column layout, and saved preferences are tied to your own account, so they follow you when you sign in." },
@@ -46,6 +46,62 @@
               "Use 'Open Reports & dashboards' at the bottom for deeper, customizable charts.",
             ] },
             { shot: "Dashboard showing the KPI cards, Recent contacts, and Recent calls" },
+          ],
+        },
+      ],
+    },
+    {
+      cat: "Calls & receptionist",
+      items: [
+        {
+          id: "calls-list",
+          title: "Seeing your calls",
+          blocks: [
+            { p: "The Calls page lists every call your AI receptionist has handled, with the newest at the top." },
+            { steps: [
+              "Click 'Calls' in the left navigation.",
+              "Each row shows the caller's name, the reason for the call, the status, and when it came in.",
+              "The list updates on its own as new calls arrive — you don't need to refresh.",
+            ] },
+            { tip: "Status shows 'In progress' while a call is live and flips to 'Completed' when it wraps up. 'Missed' means the call didn't finish." },
+          ],
+        },
+        {
+          id: "call-detail",
+          title: "Reading a call and its transcript",
+          blocks: [
+            { p: "Open any call to see its details and the full back-and-forth between the caller and your receptionist." },
+            { steps: [
+              "Click a row in the Calls list.",
+              "The panel shows the caller's phone and email, the reason for calling, when it was received, and whether you were notified by email.",
+              "Scroll to the Transcript to read the whole conversation, turn by turn.",
+            ] },
+            { tip: "You also get an email summary of every call, so new leads reach you even when you're not signed in." },
+          ],
+        },
+        {
+          id: "ai-instructions",
+          title: "Telling your receptionist about your business",
+          blocks: [
+            { p: "The 'AI Instructions' box on the Calls page is where you teach your receptionist about your business so it can answer callers accurately." },
+            { steps: [
+              "Go to the Calls page and find the 'AI Instructions' panel below your calls.",
+              "Write your services, hours, pricing, and anything callers commonly ask.",
+              "Click Save.",
+            ] },
+            { tip: "This is added on top of your receptionist's built-in ability to stay helpful and capture caller details — you're adding knowledge, not replacing how it behaves." },
+          ],
+        },
+        {
+          id: "receptionist-voice",
+          title: "Choosing your receptionist's voice",
+          blocks: [
+            { p: "You can choose the voice your AI receptionist speaks with from a short list of options." },
+            { steps: [
+              "On the Calls page, find 'Receptionist voice' at the top-right of the AI Instructions panel.",
+              "Pick a voice from the dropdown — it saves right away.",
+            ] },
+            { tip: "The voice you pick is used on premium voice calls." },
           ],
         },
       ],
@@ -245,6 +301,39 @@
       ],
     },
     {
+      cat: "Jobs",
+      items: [
+        {
+          id: "jobs-overview",
+          title: "Tracking work with Jobs",
+          blocks: [
+            { p: "Jobs let you track pieces of work — quotes, projects, service visits — alongside the contacts they belong to." },
+            { steps: [
+              "Click 'Jobs' in the left navigation.",
+              "Click 'Create Job' to add one, or 'Import' to bring in a list from a spreadsheet.",
+              "Click any job to open it and update its details.",
+              "Use 'Export' to download your jobs as a spreadsheet.",
+            ] },
+            { tip: "Jobs work just like Contacts — searching, filtering, choosing columns, and bulk actions all behave the same way." },
+          ],
+        },
+        {
+          id: "job-pipelines",
+          title: "Job types and pipelines (stages)",
+          blocks: [
+            { p: "Each job moves through a pipeline of stages — for example New, Scheduled, In progress, Done — so you always know where the work stands." },
+            { steps: [
+              "Open the Fields page from the left navigation and choose the Jobs type.",
+              "Under 'types & pipelines', add or rename job types — each type has its own pipeline.",
+              "Add, rename, reorder, or remove the stages in a pipeline.",
+              "On a job, choose its type to set which pipeline it follows, then move it along the stages as the work progresses.",
+            ] },
+            { tip: "A stage or type that still has jobs in it can't be deleted until those jobs are moved first — this protects your data." },
+          ],
+        },
+      ],
+    },
+    {
       cat: "Reports & dashboards",
       items: [
         {
@@ -357,7 +446,7 @@
             { p: "Delays — add a 'Wait / delay' step inside an automation. Actions above the wait run right away; actions below it are queued to run after the wait (you set an amount in minutes, hours, or days)." },
             { p: "Date-based runs — use the 'On a date (relative to a date field)' trigger to run a set number of days/weeks/months before or after a date field." },
             { p: "Anything waiting or scheduled appears on the 'Scheduled' tab, where you can cancel a pending job before it runs." },
-            { tip: "Scheduled and delayed work is evaluated by a daily sweep rather than to the exact second. A super-admin can run 'Process due jobs now' from the Scheduled tab to process anything that's due immediately; on a deployed server this runs automatically." },
+            { tip: "Scheduled and delayed work is evaluated by a daily sweep rather than to the exact second, so a step set for 'in 3 days' runs on the next sweep after that time — not to the minute." },
           ],
         },
         {
@@ -420,6 +509,80 @@
             ] },
             { shot: "Recycle Bin page with the days-until-deletion countdown" },
             { tip: "Deleted contacts are kept for 30 days, then permanently removed. Once permanently removed they can't be recovered." },
+          ],
+        },
+      ],
+    },
+    {
+      cat: "General settings",
+      items: [
+        {
+          id: "business-profile",
+          title: "Your business details",
+          blocks: [
+            { p: "Settings → General is where your business profile lives — the information your receptionist and notifications use." },
+            { steps: [
+              "Open Settings and choose 'General'.",
+              "Update your business name, business type, phone number, the email where call notifications should go, and your receptionist's greeting.",
+              "Click 'Save changes'.",
+            ] },
+            { tip: "'Notify email' is where call summaries are sent — keep it current so new leads don't slip by." },
+          ],
+        },
+      ],
+    },
+    {
+      cat: "Team",
+      items: [
+        {
+          id: "invite-teammates",
+          title: "Inviting teammates",
+          blocks: [
+            { p: "Settings → Team is where you add the people on your team and choose what they can do." },
+            { steps: [
+              "Open Settings and choose 'Team'.",
+              "Enter the person's name and email, and pick a role: Portal Admin or Client User.",
+              "Click 'Send invite'. They get an email with a link to set their own password — no temporary password needed.",
+              "If the email is slow to arrive, copy the activation link shown in the confirmation and send it to them yourself.",
+            ] },
+            { tip: "Portal Admins can manage settings and the team; Client Users work day-to-day with contacts, jobs, and calls. If you're unsure, choose the lower role — you can always invite again." },
+          ],
+        },
+      ],
+    },
+    {
+      cat: "Lead capture",
+      items: [
+        {
+          id: "lead-capture",
+          title: "Capturing leads from your website",
+          blocks: [
+            { p: "Lead capture links let new leads from a website form, Zapier, or another tool land straight in your portal as contacts — automatically." },
+            { steps: [
+              "Open Settings and choose 'Lead capture'.",
+              "Create a secure link.",
+              "Give that link to your website form or automation tool so submissions flow in on their own.",
+            ] },
+            { tip: "Treat the link like a password — anyone who has it can send contacts into your portal." },
+          ],
+        },
+      ],
+    },
+    {
+      cat: "Renaming & navigation",
+      items: [
+        {
+          id: "labels-and-nav",
+          title: "Renaming things and tidying your menu",
+          blocks: [
+            { p: "Settings → Labels lets you rename the words the app uses (like 'Contacts' or 'Jobs') and control your left-hand menu." },
+            { steps: [
+              "Open Settings and choose 'Labels'.",
+              "Rename a word by typing the singular — the plural fills in for you, and you can edit it for irregulars.",
+              "Under 'Pages & navigation', show or hide menu items, reorder them, and rename them to match how your business talks.",
+              "For Jobs, you can also manage the statuses work can be in.",
+            ] },
+            { tip: "Renaming only changes the label you see — your data and history stay exactly the same." },
           ],
         },
       ],
