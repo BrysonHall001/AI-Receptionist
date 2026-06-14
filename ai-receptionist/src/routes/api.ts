@@ -13,6 +13,7 @@ import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDe
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
+import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket } from "../services/feedbackService";
 import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
@@ -1572,4 +1573,75 @@ apiRouter.post("/account/password", async (req: Request, res: Response) => {
   }
   await setPassword(req.user!.id, password);
   res.json({ ok: true });
+});
+
+// ---- Feedback (per-portal / tenant-facing) ---------------------------------
+// Visibility + permissions are enforced inside feedbackService (scope "portal").
+// Submitting is limited to portal users (PORTAL_ADMIN / CLIENT_USER); OWNER and
+// SUPER_ADMIN browsing a portal can view all of its tickets, reply, resolve,
+// restore. A portal user only ever sees their own tickets and can never reach
+// master-hub tickets.
+function feedbackCtxPortal(req: Request): { scope: "portal"; tenantId: string | null; actor: typeof req.user } {
+  return { scope: "portal", tenantId: resolveTenantScope(req), actor: req.user! };
+}
+
+apiRouter.get("/feedback", async (req: Request, res: Response) => {
+  const ctx = feedbackCtxPortal(req);
+  if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  res.json(await listFeedback(ctx as any));
+});
+
+apiRouter.post("/feedback", async (req: Request, res: Response) => {
+  const ctx = feedbackCtxPortal(req);
+  if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  const role = req.user!.role;
+  if (role !== "PORTAL_ADMIN" && role !== "CLIENT_USER") {
+    res.status(403).json({ error: "Only portal users can submit feedback here." });
+    return;
+  }
+  const { problem, description } = (req.body ?? {}) as { problem?: string; description?: string };
+  try {
+    res.json(await createFeedbackTicket(ctx as any, { problem: problem || "", description: description || "" }));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+apiRouter.get("/feedback/:id", async (req: Request, res: Response) => {
+  const ctx = feedbackCtxPortal(req);
+  if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  const t = await getFeedbackTicket(req.params.id, ctx as any);
+  if (!t) { res.status(404).json({ error: "Ticket not found" }); return; }
+  res.json(t);
+});
+
+apiRouter.post("/feedback/:id/messages", async (req: Request, res: Response) => {
+  const ctx = feedbackCtxPortal(req);
+  if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  const { body } = (req.body ?? {}) as { body?: string };
+  try {
+    res.json(await addFeedbackMessage(req.params.id, ctx as any, { body: body || "" }));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+apiRouter.post("/feedback/:id/resolve", async (req: Request, res: Response) => {
+  const ctx = feedbackCtxPortal(req);
+  if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  try {
+    res.json(await resolveFeedbackTicket(req.params.id, ctx as any));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+apiRouter.post("/feedback/:id/restore", async (req: Request, res: Response) => {
+  const ctx = feedbackCtxPortal(req);
+  if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  try {
+    res.json(await restoreFeedbackTicket(req.params.id, ctx as any));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
 });

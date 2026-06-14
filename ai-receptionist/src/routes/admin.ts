@@ -4,6 +4,7 @@ import { listPortals, getPortal, createPortal, updatePortal } from "../services/
 import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
 import { createInvite, listPendingInvites, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
+import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket } from "../services/feedbackService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -205,4 +206,58 @@ adminRouter.post("/portals/:id/invites/:inviteId/revoke", async (req: Request, r
     return;
   }
   res.json({ ok: true });
+});
+
+// ---- Feedback (master-hub / admin-facing) ----------------------------------
+// This whole router is already gated to OWNER / SUPER_ADMIN / AUDITOR and blocks
+// impersonating super-admins. All three roles can submit, view EACH OTHER's
+// tickets, and reply; only the OWNER can resolve or restore. These tickets have
+// no tenantId, so portal users can never see them (and these never show portal
+// tickets). Permission details live in feedbackService (scope "master").
+function feedbackCtxMaster(req: Request): { scope: "master"; actor: typeof req.user } {
+  return { scope: "master", actor: req.user! };
+}
+
+adminRouter.get("/feedback", async (req: Request, res: Response) => {
+  res.json(await listFeedback(feedbackCtxMaster(req) as any));
+});
+
+adminRouter.post("/feedback", async (req: Request, res: Response) => {
+  const { problem, description } = (req.body ?? {}) as { problem?: string; description?: string };
+  try {
+    res.json(await createFeedbackTicket(feedbackCtxMaster(req) as any, { problem: problem || "", description: description || "" }));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+adminRouter.get("/feedback/:id", async (req: Request, res: Response) => {
+  const t = await getFeedbackTicket(req.params.id, feedbackCtxMaster(req) as any);
+  if (!t) { res.status(404).json({ error: "Ticket not found" }); return; }
+  res.json(t);
+});
+
+adminRouter.post("/feedback/:id/messages", async (req: Request, res: Response) => {
+  const { body } = (req.body ?? {}) as { body?: string };
+  try {
+    res.json(await addFeedbackMessage(req.params.id, feedbackCtxMaster(req) as any, { body: body || "" }));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+adminRouter.post("/feedback/:id/resolve", async (req: Request, res: Response) => {
+  try {
+    res.json(await resolveFeedbackTicket(req.params.id, feedbackCtxMaster(req) as any));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+adminRouter.post("/feedback/:id/restore", async (req: Request, res: Response) => {
+  try {
+    res.json(await restoreFeedbackTicket(req.params.id, feedbackCtxMaster(req) as any));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
 });

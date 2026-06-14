@@ -57,6 +57,7 @@
     if (v === "reports") return App.reports.render(view());
     if (v === "automations") return App.automations.render(view());
     if (v === "learn") return App.learn.render(view());
+    if (v === "feedback") return App.feedback.renderPortal(view());
     if (v === "settings") return renderSettings(sub);
     return App.reports.mountHome(view());
   }

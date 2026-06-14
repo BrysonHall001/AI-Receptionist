@@ -30,6 +30,7 @@
   async function render(v) {
     current = v;
     if (v === "users") return renderUsers();
+    if (v === "feedback") return App.feedback.renderMaster(view());
     return renderPortals();
   }
 

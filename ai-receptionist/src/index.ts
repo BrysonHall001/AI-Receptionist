@@ -5,6 +5,7 @@ import { logger } from "./utils/logger";
 import { ensureInboundStatusCallback } from "./telephony/provisionStatusCallback";
 import { attachConversationRelay } from "./telephony/conversationRelayWs";
 import { sweepStaleCalls } from "./services/callOrchestrator";
+import { sweepResolvedFeedback } from "./services/feedbackService";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -48,6 +49,15 @@ async function main(): Promise<void> {
     void sweepStaleCalls();
   }, 60_000);
   sweepTimer.unref();
+
+  // Resolved-feedback auto-delete: same in-process timer mechanism as above, but
+  // a slow cadence (every 6 hours, plus once shortly after boot) since it only
+  // needs to clear tickets resolved 30+ days ago. No new infrastructure.
+  void sweepResolvedFeedback().catch(() => {});
+  const feedbackSweepTimer = setInterval(() => {
+    void sweepResolvedFeedback().catch(() => {});
+  }, 6 * 60 * 60_000);
+  feedbackSweepTimer.unref();
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`Received ${signal}; shutting down…`);
