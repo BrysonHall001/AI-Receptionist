@@ -39,18 +39,31 @@ export async function updateCallSession(
     emptyCount?: number;
   },
 ) {
-  return prisma.callSession.update({
-    where: { callSid },
-    data: {
-      ...(data.status ? { status: data.status } : {}),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(data.transcript ? { transcript: data.transcript as any } : {}),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(data.extracted ? { extracted: data.extracted as any } : {}),
-      ...(typeof data.turnCount === "number" ? { turnCount: data.turnCount } : {}),
-      ...(typeof data.emptyCount === "number" ? { emptyCount: data.emptyCount } : {}),
-    },
-  });
+  // Non-status fields are written unconditionally (they're safe to update at any
+  // time, e.g. appending a transcript turn).
+  const base: Record<string, unknown> = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ...(data.transcript ? { transcript: data.transcript as any } : {}),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ...(data.extracted ? { extracted: data.extracted as any } : {}),
+    ...(typeof data.turnCount === "number" ? { turnCount: data.turnCount } : {}),
+    ...(typeof data.emptyCount === "number" ? { emptyCount: data.emptyCount } : {}),
+  };
+  if (Object.keys(base).length > 0) {
+    await prisma.callSession.update({ where: { callSid }, data: base });
+  }
+
+  // STATUS IS GUARDED: only move a call that has NOT been finalized. This stops a
+  // late or concurrent turn (the walkie call-end race: a turn still in flight when
+  // the hang-up status callback finalizes the call) from reverting a
+  // COMPLETED/FAILED row back to an "in progress" status. Without this, a
+  // finalized walkie call could display as "In progress" even though finalize ran.
+  if (data.status) {
+    await prisma.callSession.updateMany({
+      where: { callSid, finalizedAt: null },
+      data: { status: data.status },
+    });
+  }
 }
 
 /**

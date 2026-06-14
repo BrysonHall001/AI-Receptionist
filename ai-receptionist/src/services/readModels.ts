@@ -159,10 +159,18 @@ export async function getContact(id: string, tenantId?: string | null) {
 
 function toCallDTO(r: any): CallDTO {
   const e = ex(r.extracted);
+  // A finalized call (finalizedAt set) is, by definition, no longer in progress.
+  // If a late/concurrent turn reverted `status` to a non-terminal value AFTER
+  // finalize set it (the walkie call-end race), honor the finalized fact so the
+  // badge always reflects the true terminal state. This also RETROACTIVELY heals
+  // any rows already left in that inconsistent state — no migration needed.
+  const finalized = r.finalizedAt != null;
+  const isTerminal = r.status === "COMPLETED" || r.status === "FAILED";
+  const status = finalized && !isTerminal ? "COMPLETED" : r.status;
   return {
     id: r.id,
     callSid: r.callSid,
-    status: r.status,
+    status,
     fromNumber: r.fromNumber,
     toNumber: r.toNumber ?? null,
     name: e.name ?? null,
