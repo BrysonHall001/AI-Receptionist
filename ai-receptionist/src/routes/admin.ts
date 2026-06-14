@@ -83,7 +83,14 @@ adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
 
 adminRouter.get("/users", async (req: Request, res: Response) => {
   const tenantId = (req.query.tenantId as string | undefined) || undefined;
-  res.json(await listUsers(tenantId));
+  const users = (await listUsers(tenantId)) as any[];
+  // The master Users page manages the operator team only — Owner, Super Admin,
+  // and Auditor (portal-less accounts). Portal-scoped users (Portal Admin /
+  // Client User) belong to each portal's own Users list and must NOT appear in
+  // the master view. (If a specific portal is ever requested here, return that
+  // portal's users unchanged — defensive; the master page never passes one.)
+  const MASTER_ROLES = ["OWNER", "SUPER_ADMIN", "AUDITOR"];
+  res.json(tenantId ? users : users.filter((u) => MASTER_ROLES.includes(u.role)));
 });
 
 adminRouter.post("/users", async (req: Request, res: Response) => {
