@@ -4,6 +4,33 @@
   // Product brand — change this one line to rename the app everywhere in-app.
   App.BRAND = "Clarity CRM";
 
+  // Brand logo as INLINE SVG (no external file needed, so it can't be broken by
+  // static-file serving or caching, and always sizes correctly). Used by the
+  // sidebar header (default branding) and the login page. Sizing is handled in
+  // CSS (.brand-logo--full svg / .brand-logo--icon svg / .auth-logo svg).
+  App.brandLogoSvg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 372 96" role="img" aria-label="Clarity">` +
+    `<g transform="translate(8,12)" fill="#4F4DCA">` +
+    `<path d="M58.06 19.94 A27 27 0 1 0 58.06 60.06 L52.04 53.37 A18 18 0 1 1 52.04 26.63 Z"/>` +
+    `<ellipse cx="55.05" cy="23.28" rx="13" ry="9" transform="rotate(-48 55.05 23.28)"/>` +
+    `<ellipse cx="55.05" cy="56.72" rx="13" ry="9" transform="rotate(48 55.05 56.72)"/>` +
+    `<path d="M58.68 9.76 A14 14 0 0 1 68.36 18.95" fill="none" stroke="#4F4DCA" stroke-width="2.6" stroke-linecap="round"/>` +
+    `<path d="M59.71 5.90 A18 18 0 0 1 72.17 17.72" fill="none" stroke="#4F4DCA" stroke-width="2.6" stroke-linecap="round" opacity="0.6"/>` +
+    `</g>` +
+    `<text x="92" y="78" font-family="'Plus Jakarta Sans', 'Helvetica Neue', Arial, sans-serif" font-size="76" font-weight="700" letter-spacing="-2" fill="#211E5C">larity</text>` +
+    `</svg>`;
+  App.brandIconSvg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="Clarity">` +
+    `<rect width="240" height="240" rx="54" fill="#4F4DCA"/>` +
+    `<g transform="translate(14.7,16) scale(2.6)" fill="#FFFFFF">` +
+    `<path d="M58.06 19.94 A27 27 0 1 0 58.06 60.06 L52.04 53.37 A18 18 0 1 1 52.04 26.63 Z"/>` +
+    `<ellipse cx="55.05" cy="23.28" rx="13" ry="9" transform="rotate(-48 55.05 23.28)"/>` +
+    `<ellipse cx="55.05" cy="56.72" rx="13" ry="9" transform="rotate(48 55.05 56.72)"/>` +
+    `<path d="M58.68 9.76 A14 14 0 0 1 68.36 18.95" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" opacity="0.9"/>` +
+    `<path d="M59.71 5.90 A18 18 0 0 1 72.17 17.72" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" opacity="0.6"/>` +
+    `</g>` +
+    `</svg>`;
+
   App.state = { me: null, currentPortalId: null, currentPortalName: null, labels: { types: {}, generic: {} } };
 
   // Top admin tier: OWNER, SUPER_ADMIN, or AUDITOR (a tester with the same full

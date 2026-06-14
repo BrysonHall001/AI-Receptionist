@@ -38,10 +38,12 @@
       const img = el("img", "brand-logo"); img.src = logo; img.alt = "Logo";
       row.appendChild(img);
     } else {
-      // Default Clarity branding: full wordmark when the sidebar is expanded, the
-      // rounded app-icon when it collapses to the narrow rail (CSS swaps them).
-      const full = el("img", "brand-logo brand-logo--full"); full.src = "/img/clarity-logo.svg"; full.alt = App.BRAND || "Clarity";
-      const icon = el("img", "brand-logo brand-logo--icon"); icon.src = "/img/clarity-icon.svg"; icon.alt = App.BRAND || "Clarity";
+      // Default Clarity branding as INLINE SVG (full wordmark when expanded, the
+      // app icon when the rail collapses). Inline = no external file to break.
+      const full = el("span", "brand-logo brand-logo--full");
+      full.innerHTML = App.brandLogoSvg;
+      const icon = el("span", "brand-logo brand-logo--icon");
+      icon.innerHTML = App.brandIconSvg;
       row.appendChild(full);
       row.appendChild(icon);
     }
