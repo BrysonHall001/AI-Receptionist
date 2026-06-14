@@ -3,7 +3,6 @@ import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal } from "../services/portalService";
 import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
 import { createInvite, listPendingInvites, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
-import { getAppSetting, setAppSetting, INVITE_SENDER_EMAIL_KEY } from "../services/appSettingService";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 
@@ -142,29 +141,6 @@ adminRouter.patch("/users/:id/name", async (req: Request, res: Response) => {
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
-});
-
-// ---- Item 1: master "invite sender email" setting --------------------------
-// READ: any master-hub user (this whole router is OWNER/SUPER_ADMIN/AUDITOR).
-adminRouter.get("/settings/invite-sender", async (_req: Request, res: Response) => {
-  const email = (await getAppSetting(INVITE_SENDER_EMAIL_KEY)) || "";
-  res.json({ email });
-});
-
-// SAVE: OWNER ONLY (server-enforced — an Auditor/Super-Admin is refused here even
-// though the rest of the master hub is open to them).
-adminRouter.put("/settings/invite-sender", async (req: Request, res: Response) => {
-  if (req.user?.role !== "OWNER") {
-    res.status(403).json({ error: "Only an owner can change the invite sender email." });
-    return;
-  }
-  const raw = typeof (req.body ?? {}).email === "string" ? (req.body.email as string).trim() : "";
-  if (raw && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(raw)) {
-    res.status(400).json({ error: "Please enter a valid email address." });
-    return;
-  }
-  await setAppSetting(INVITE_SENDER_EMAIL_KEY, raw);
-  res.json({ email: raw });
 });
 
 // Confirm a phone number isn't already attached to another portal.

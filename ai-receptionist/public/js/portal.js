@@ -2065,19 +2065,56 @@
         <div class="add-user">
           <input id="nu-name" class="input" placeholder="Name" />
           <input id="nu-email" class="input" placeholder="email@company.com" />
-          <input id="nu-pass" class="input" type="text" placeholder="Temp password (8+)" />
           <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option></select>
-          <button id="nu-add" class="btn btn-primary btn-sm">Add user</button>
-        </div>`;
+          <button id="nu-add" class="btn btn-primary btn-sm">Send invite</button>
+        </div>
+        <p class="cell-muted" style="font-size:12px;margin-top:8px">They'll get an email with a link to set their own password — no temporary password needed.</p>`;
       fillUsers(users);
       App.util.$("#nu-add").onclick = async () => {
+        const name = App.util.$("#nu-name").value.trim();
+        const email = App.util.$("#nu-email").value.trim();
+        const role = App.util.$("#nu-role").value;
+        if (!email) { toast("Email is required", true); return; }
         try {
-          await App.portalApi("/api/users", { method: "POST", body: JSON.stringify({
-            name: App.util.$("#nu-name").value, email: App.util.$("#nu-email").value,
-            password: App.util.$("#nu-pass").value, role: App.util.$("#nu-role").value }) });
-          toast("User added");
-          secTeam(panel); // refresh the list in place (same as before)
+          // Same shared invite endpoint the master hub uses: it creates an invite
+          // token, builds the link from THIS request's origin, and emails it.
+          // The server clamps the role and scopes to this portal.
+          const result = await App.portalApi("/api/users", { method: "POST", body: JSON.stringify({ name, email, role }) });
+          showTeamInviteResult(email, result && result.link, result && result.emailed);
+          secTeam(panel); // refresh the list in place
         } catch (err) { toast(err.message, true); }
+      };
+    }
+
+    // Success popup after an invite is sent — mirrors the master hub's result:
+    // confirms the email (may land in spam) and always offers the activation link
+    // as a copyable fallback.
+    function showTeamInviteResult(email, link, emailed) {
+      const overlay = el("div", "modal-overlay");
+      const modal = el("div", "modal");
+      const note = emailed
+        ? "An invite email was sent to " + esc(email) + " (it may land in spam)."
+        : "Email couldn't be delivered right now, so copy this link and send it to " + esc(email) + " yourself.";
+      modal.innerHTML = `<div class="modal-head"><h2>Invite sent</h2><button class="icon-btn" id="tir-close">&times;</button></div>`;
+      const body = el("div", "modal-body");
+      body.innerHTML = `<p class="cell-muted" style="margin:0 0 12px">${note}</p>
+        <label class="field-label">Activation link</label>
+        <input id="tir-link" class="input" type="text" readonly value="${esc(link || "")}" style="font-family:monospace;font-size:12px" />`;
+      const foot = el("div", "modal-foot");
+      const copy = el("button", "btn btn-primary btn-sm", "Copy link");
+      foot.appendChild(copy);
+      modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+      modal.querySelector("#tir-close").onclick = close;
+      copy.onclick = () => {
+        const inp = modal.querySelector("#tir-link");
+        try { inp.select(); } catch (e) {}
+        const done = () => toast("Link copied");
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(link || "").then(done).catch(() => { try { document.execCommand("copy"); done(); } catch (e) {} });
+        } else { try { document.execCommand("copy"); done(); } catch (e) {} }
       };
     }
 

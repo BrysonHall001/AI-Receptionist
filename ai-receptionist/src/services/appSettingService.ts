@@ -19,5 +19,3 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
     create: { key, value },
   });
 }
-
-export const INVITE_SENDER_EMAIL_KEY = "inviteSenderEmail";

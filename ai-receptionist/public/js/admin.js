@@ -448,42 +448,14 @@
   // ---------------- Users ----------------
   async function renderUsers() {
     loading();
-    const [users, senderRes] = await Promise.all([
-      App.api("/api/admin/users"),
-      App.api("/api/admin/settings/invite-sender").catch(() => ({ email: "" })),
-    ]);
+    const users = await App.api("/api/admin/users");
     if (!portalsCache.length) { try { portalsCache = await App.api("/api/admin/portals"); } catch (e) {} }
-    const isOwner = App.state.me.role === "OWNER";
-    const senderEmail = (senderRes && senderRes.email) || "";
     const wrap = el("div", "fade-in");
     const bar = el("div", "page-actions");
     const create = el("button", "btn btn-primary btn-sm", "+ Create user");
     create.onclick = () => openCreateUser();
     bar.appendChild(create);
     wrap.appendChild(bar);
-
-    // Item 1: master "invite sender email". Read-only for non-owners; OWNER can save.
-    // The server also rejects a save from a non-owner (greying is only the UI half).
-    const senderCard = el("div", "card");
-    senderCard.style.cssText = "padding:14px 18px;margin-bottom:12px";
-    senderCard.innerHTML = `
-      <label class="field-label" style="display:block;margin-bottom:6px">Invite sender email</label>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="sender-email" class="input" type="email" style="flex:1" value="${esc(senderEmail)}" placeholder="Not set" ${isOwner ? "" : "disabled"} />
-        ${isOwner ? '<button id="sender-save" class="btn btn-primary btn-sm">Save</button>' : ""}
-      </div>
-      <p class="sub" style="margin:8px 0 0">The from-address used for invite emails.${isOwner ? "" : " Only an owner can change this."}</p>`;
-    if (isOwner) {
-      senderCard.querySelector("#sender-save").onclick = async () => {
-        const email = senderCard.querySelector("#sender-email").value.trim();
-        try {
-          const r = await App.api("/api/admin/settings/invite-sender", { method: "PUT", body: JSON.stringify({ email }) });
-          senderCard.querySelector("#sender-email").value = r.email || "";
-          toast("Sender email saved");
-        } catch (e) { toast(e.message, true); }
-      };
-    }
-    wrap.appendChild(senderCard);
 
     const card = el("div", "card");
     const table = el("table");
