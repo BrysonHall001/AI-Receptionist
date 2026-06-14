@@ -4,6 +4,7 @@ import { sayAndGather, sayAndHangup } from "../telephony/twiml";
 import { startCall, handleTurn, finalizeCall, failCall, resolveTenantId } from "../services/callOrchestrator";
 import { getCallSession } from "../services/callSessionService";
 import { connectConversationRelayTwiml } from "../telephony/conversationRelayTwiml";
+import { isValidVoiceId } from "../config/voices";
 import { buildWssUrl } from "./conversationRelayWebhook";
 import { prisma } from "../db/client";
 import { env } from "../config/env";
@@ -52,8 +53,12 @@ twilioRouter.post("/inbound", async (req: Request, res: Response) => {
       // existing builder + wss-URL helper). The websocket's setup message will
       // call startCall and create the CallSession — so we do NOT create it here.
       const wssUrl = buildWssUrl(req);
-      const xml = connectConversationRelayTwiml({ wssUrl, voiceId: env.ELEVENLABS_VOICE_ID, language: "en-US" });
-      logger.info(`inbound: portal ${tenantId} mode=SMOOTH -> ConversationRelay ${wssUrl}`);
+      // Use THIS portal's chosen voice. Validate against the allowed list so a
+      // bad/absent value (e.g. before the migration runs) safely falls back to
+      // the default voice rather than sending Twilio something invalid.
+      const chosenVoice = isValidVoiceId(t?.voiceId) ? (t.voiceId as string) : env.ELEVENLABS_VOICE_ID;
+      const xml = connectConversationRelayTwiml({ wssUrl, voiceId: chosenVoice, language: "en-US" });
+      logger.info(`inbound: portal ${tenantId} mode=SMOOTH voice=${chosenVoice} -> ConversationRelay ${wssUrl}`);
       res.type("text/xml").send(xml);
       return;
     }

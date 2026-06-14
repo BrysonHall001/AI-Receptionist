@@ -59,6 +59,10 @@ model Tenant {
   // an auto-mirror (= voiceMode != "OFF") so existing dashboard/nav gating that
   // reads the boolean keeps working unchanged.
   voiceMode    String        @default("OFF")
+  // Which ElevenLabs voice this portal's PREMIUM (ConversationRelay) calls use.
+  // One of the five allowed IDs (see src/config/voices.ts); defaults to the
+  // original voice so nothing changes for existing portals.
+  voiceId      String        @default("uIZsnBL0YK1S5j69bAih")
   status       TenantStatus  @default(ACTIVE)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

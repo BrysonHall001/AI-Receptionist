@@ -19,6 +19,7 @@ import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getO
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listExports, createExport, getExportCsv } from "../services/exportService";
 import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
+import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voices";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns } from "../services/userService";
 import { createInvite, inviteLink, sendInvite } from "../services/inviteService";
@@ -508,6 +509,10 @@ apiRouter.get("/account/ai-instructions", async (req: Request, res: Response) =>
   res.json({
     aiInstructions: (portal as any)?.aiInstructions ?? "",
     editable: aiInstructionsEditable(req),
+    // For the Receptionist-voice picker in the same panel:
+    voiceId: (portal as any)?.voiceId ?? DEFAULT_VOICE_ID,
+    voiceMode: (portal as any)?.voiceMode ?? "OFF",
+    voiceOptions: VOICE_OPTIONS,
   });
 });
 
@@ -531,6 +536,29 @@ apiRouter.patch("/account/ai-instructions", async (req: Request, res: Response) 
       payload: { length: aiInstructions.length },
     });
     res.json({ ok: true, aiInstructions });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// ---- Receptionist voice (Premium / ConversationRelay) ----
+// Same editors as AI Instructions. Saves immediately. The value MUST be one of
+// the five allowed voice IDs — anything else is rejected.
+apiRouter.patch("/account/voice", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!aiInstructionsEditable(req)) {
+    res.status(403).json({ error: "You don't have permission to change the receptionist voice." });
+    return;
+  }
+  const voiceId = String((req.body ?? {}).voiceId ?? "");
+  if (!isValidVoiceId(voiceId)) {
+    res.status(400).json({ error: "Pick one of the available voices." });
+    return;
+  }
+  try {
+    await updatePortal(tenantId, { voiceId } as any);
+    res.json({ ok: true, voiceId });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

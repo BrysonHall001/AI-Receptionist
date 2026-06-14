@@ -1,4 +1,5 @@
 import { prisma } from "../db/client";
+import { DEFAULT_VOICE_ID } from "../config/voices";
 
 export async function listPortals() {
   const tenants = await prisma.tenant.findMany({
@@ -38,6 +39,7 @@ export async function getPortal(id: string) {
     requireEmail: (t as any).requireEmail !== false,
     receptionistEnabled: (t as any).receptionistEnabled === true,
     voiceMode: ((t as any).voiceMode as string) || ((t as any).receptionistEnabled === true ? "WALKIE" : "OFF"),
+    voiceId: ((t as any).voiceId as string) || DEFAULT_VOICE_ID,
     aiInstructions: (t as any).aiInstructions ?? "",
     createdAt: t.createdAt.toISOString(),
   };
@@ -118,7 +120,7 @@ export async function createPortal(input: {
 
 export async function updatePortal(
   id: string,
-  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; aiInstructions: string }>,
+  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; voiceId: string; aiInstructions: string }>,
 ) {
   return prisma.tenant.update({ where: { id }, data: data as any });
 }

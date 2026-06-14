@@ -189,11 +189,72 @@
 
     const sec = el("div", "card ai-instructions-card");
     sec.style.cssText = "margin-top:18px;padding:18px;";
+    // Header row splits into two halves: caption on the LEFT, the Receptionist
+    // voice picker top-right. The textarea below stays FULL WIDTH (unchanged).
     const head = el("div");
-    head.innerHTML =
+    head.style.cssText = "display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;margin:0 0 12px;";
+
+    const headLeft = el("div");
+    headLeft.style.cssText = "flex:1 1 340px;min-width:260px;";
+    headLeft.innerHTML =
       `<h3 style="margin:0 0 6px;">AI Instructions</h3>` +
-      `<p class="cell-muted" style="margin:0 0 4px;">Tell your AI receptionist about your business — services, hours, pricing, anything it should know — and how you'd like it to behave on calls. This guidance is added on top of the receptionist's built-in helpfulness. (The receptionist will still capture caller details for you.)</p>` +
-      `<p class="cell-muted" style="margin:0 0 10px;font-size:12px;">Tip: add information, don't remove the receptionist's core behavior — it's designed to stay helpful and log calls automatically.</p>`;
+      `<p class="cell-muted" style="margin:0;">Tell your AI receptionist about your business — services, hours, pricing, anything callers might ask. This is added on top of its built-in ability to stay helpful and capture caller details automatically.</p>`;
+
+    // The 5 allowed voices (kept in sync with src/config/voices.ts); the server
+    // also sends this list, but we keep a fallback so the picker always renders.
+    const VOICE_FALLBACK = [
+      { id: "uIZsnBL0YK1S5j69bAih", label: "Warm & Friendly" },
+      { id: "Gfpl8Yo74Is0W6cPUWWT", label: "Clear & Professional" },
+      { id: "cCYjmrGZaI86GUJ7F2Nn", label: "Deep & Warm" },
+      { id: "WtA85syCrJwasGeHGH2p", label: "Energetic & Upbeat" },
+      { id: "Yg7C1g7suzNt5TisIqkZ", label: "British Conversational" },
+    ];
+    const voiceOptions = (data.voiceOptions && data.voiceOptions.length) ? data.voiceOptions : VOICE_FALLBACK;
+
+    const headRight = el("div");
+    headRight.style.cssText = "flex:0 1 260px;min-width:210px;display:flex;flex-direction:column;gap:5px;";
+    const voiceLabel = el("label", "cell-muted");
+    voiceLabel.style.cssText = "font-size:13px;font-weight:600;";
+    voiceLabel.textContent = "Receptionist voice";
+    const voiceSel = el("select", "input");
+    voiceSel.style.cssText = "width:100%;";
+    voiceOptions.forEach((o) => {
+      const opt = el("option");
+      opt.value = o.id;
+      opt.textContent = o.label;
+      if (o.id === (data.voiceId || "")) opt.selected = true;
+      voiceSel.appendChild(opt);
+    });
+    const voiceNote = el("p", "cell-muted");
+    voiceNote.style.cssText = "margin:0;font-size:12px;";
+    voiceNote.textContent = "Applies on Premium voice.";
+    if ((data.voiceMode || "OFF") === "SMOOTH") voiceNote.style.display = "none";
+    const voiceStatus = el("span", "cell-muted");
+    voiceStatus.style.cssText = "font-size:12px;min-height:14px;";
+
+    voiceSel.onchange = async () => {
+      voiceSel.disabled = true;
+      voiceStatus.textContent = "Saving…";
+      try {
+        await App.portalApi("/api/account/voice", { method: "PATCH", body: JSON.stringify({ voiceId: voiceSel.value }) });
+        voiceStatus.textContent = "Saved.";
+        App.util.toast("Receptionist voice saved");
+        setTimeout(() => { if (voiceStatus.textContent === "Saved.") voiceStatus.textContent = ""; }, 2500);
+      } catch (e) {
+        voiceStatus.textContent = "";
+        App.util.toast((e && e.message) || "Save failed", true);
+      } finally {
+        voiceSel.disabled = false;
+      }
+    };
+
+    headRight.appendChild(voiceLabel);
+    headRight.appendChild(voiceSel);
+    headRight.appendChild(voiceNote);
+    headRight.appendChild(voiceStatus);
+
+    head.appendChild(headLeft);
+    head.appendChild(headRight);
     sec.appendChild(head);
 
     const ta = el("textarea", "input");
