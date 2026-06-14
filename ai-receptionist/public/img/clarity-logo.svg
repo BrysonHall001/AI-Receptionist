@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 372 96" role="img" aria-label="Clarity">
+  <title>Clarity</title>
+  <g transform="translate(8,12)" fill="#4F4DCA">
+    <path d="M58.06 19.94 A27 27 0 1 0 58.06 60.06 L52.04 53.37 A18 18 0 1 1 52.04 26.63 Z"/>
+    <ellipse cx="55.05" cy="23.28" rx="13" ry="9" transform="rotate(-48 55.05 23.28)"/>
+    <ellipse cx="55.05" cy="56.72" rx="13" ry="9" transform="rotate(48 55.05 56.72)"/>
+    <path d="M58.68 9.76 A14 14 0 0 1 68.36 18.95" fill="none" stroke="#4F4DCA" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M59.71 5.90 A18 18 0 0 1 72.17 17.72" fill="none" stroke="#4F4DCA" stroke-width="2.6" stroke-linecap="round" opacity="0.6"/>
+  </g>
+  <text x="92" y="78" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="76" font-weight="700" letter-spacing="-2" fill="#211E5C">larity</text>
+</svg>

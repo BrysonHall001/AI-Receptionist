@@ -38,8 +38,12 @@
       const img = el("img", "brand-logo"); img.src = logo; img.alt = "Logo";
       row.appendChild(img);
     } else {
-      row.appendChild(el("div", "brand-mark", esc((App.BRAND || "C").charAt(0))));
-      row.appendChild(el("div", "brand-name", esc(App.BRAND || "CRM")));
+      // Default Clarity branding: full wordmark when the sidebar is expanded, the
+      // rounded app-icon when it collapses to the narrow rail (CSS swaps them).
+      const full = el("img", "brand-logo brand-logo--full"); full.src = "/img/clarity-logo.svg"; full.alt = App.BRAND || "Clarity";
+      const icon = el("img", "brand-logo brand-logo--icon"); icon.src = "/img/clarity-icon.svg"; icon.alt = App.BRAND || "Clarity";
+      row.appendChild(full);
+      row.appendChild(icon);
     }
     brandEl.appendChild(row);
     brandEl.appendChild(el("div", "brand-attribution", "A Vaala product"));

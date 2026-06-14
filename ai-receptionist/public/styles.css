@@ -270,6 +270,8 @@ tbody tr:hover { background: var(--row-hover); }
 @media (max-width: 860px) {
   .sidebar { width: 64px; padding: 16px 8px; }
   .brand-name, .nav-item span:not(.nav-dot), .mode-badge { display: none; }
+  .brand-logo--full { display: none; }
+  .brand-logo--icon { display: block; }
   .nav-item { justify-content: center; }
   .stats { grid-template-columns: repeat(2, 1fr); }
   .view, .topbar { padding-left: 18px; padding-right: 18px; }
@@ -284,6 +286,8 @@ tbody tr:hover { background: var(--row-hover); }
 .sidebar-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 4px 8px 22px; }
 .brand-row { display: flex; align-items: center; gap: 10px; }
 .brand-logo { max-height: 34px; max-width: 160px; width: auto; height: auto; object-fit: contain; display: block; }
+.brand-logo--icon { display: none; max-height: 30px; max-width: 30px; }
+.auth-logo { max-height: 40px; max-width: 230px; width: auto; height: auto; object-fit: contain; display: block; }
 .brand-logo-preview { max-height: 56px; max-width: 220px; width: auto; height: auto; object-fit: contain; display: block; border-radius: 6px; }
 .brand-attribution { font-size: 10px; line-height: 1.2; color: var(--ink-faint); letter-spacing: 0.02em; }
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; }

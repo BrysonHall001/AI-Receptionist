@@ -8,8 +8,8 @@
     const wrap = el("div", "auth-wrap fade-in");
     const card = el("div", "auth-card");
     const brand = el("div", "auth-brand");
-    brand.appendChild(el("div", "brand-mark", "R"));
-    brand.appendChild(el("div", "brand-name", App.BRAND || "CRM"));
+    const logo = el("img", "auth-logo"); logo.src = "/img/clarity-logo.svg"; logo.alt = App.BRAND || "Clarity";
+    brand.appendChild(logo);
     card.appendChild(brand);
     card.appendChild(inner);
     wrap.appendChild(card);
