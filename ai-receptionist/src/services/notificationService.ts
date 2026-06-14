@@ -103,9 +103,10 @@ export async function sendPlainEmail(to: string, subject: string, body: string):
  * in real mode we send via the verified domain and set reply-to to that user so
  * replies reach them (sending "as" an arbitrary address needs domain verification).
  */
-export async function sendRichEmail(input: { to: string; subject: string; html: string; fromEmail: string; fromName?: string | null }): Promise<void> {
+export async function sendRichEmail(input: { to: string; subject: string; html: string; fromEmail: string; fromName?: string | null; attachments?: Array<{ filename: string; content: Buffer | string }> }): Promise<void> {
   if (useMockEmail()) {
-    logger.info(`[mock email] from ${input.fromEmail} to ${input.to} | subject: "${input.subject}"`);
+    const att = input.attachments && input.attachments.length ? ` | attachments: ${input.attachments.map((a) => a.filename).join(", ")}` : "";
+    logger.info(`[mock email] from ${input.fromEmail} to ${input.to} | subject: "${input.subject}"${att}`);
     return;
   }
   const { error } = await resend.emails.send({
@@ -114,6 +115,7 @@ export async function sendRichEmail(input: { to: string; subject: string; html: 
     replyTo: input.fromEmail,
     subject: input.subject,
     html: input.html,
+    ...(input.attachments && input.attachments.length ? { attachments: input.attachments } : {}),
   });
   if (error) throw new Error(`Resend send failed: ${JSON.stringify(error)}`);
 }

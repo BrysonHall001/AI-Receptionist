@@ -1,9 +1,34 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { createUser } from "./userService";
 import { sendRichEmail } from "./notificationService";
 import { env } from "../config/env";
+
+// Auditor invites carry the Quick-Reference Guide as an email attachment. To swap
+// the guide later, replace this single file in the repo (no code change needed):
+//   ai-receptionist/assets/Clarity_QRG.pdf
+// It is read fresh on each send, so a redeploy with a new file is enough.
+const QRG_PATH = path.resolve(process.cwd(), "assets", "Clarity_QRG.pdf");
+const QRG_FILENAME = "Clarity-Auditor-Quick-Reference-Guide.pdf";
+
+/**
+ * Returns the QRG as a Resend attachment, but ONLY for AUDITOR invites. For every
+ * other role it returns undefined so the invite email is completely unchanged.
+ * If the file is missing/unreadable, it logs and returns undefined so the invite
+ * still sends (just without the attachment) rather than failing.
+ */
+function auditorInviteAttachments(role?: string): Array<{ filename: string; content: Buffer }> | undefined {
+  if (role !== "AUDITOR") return undefined;
+  try {
+    return [{ filename: QRG_FILENAME, content: fs.readFileSync(QRG_PATH) }];
+  } catch (err) {
+    logger.warn(`Auditor QRG attachment unavailable at ${QRG_PATH}; sending invite without it: ${(err as Error).message}`);
+    return undefined;
+  }
+}
 
 // The Prisma client is regenerated (with the Invite model) by the migration step.
 // Until the person runs that, we reach the table via a cast so the build still
@@ -63,6 +88,7 @@ export async function sendInvite(invite: { email: string; role?: string }, link:
       subject: "You're invited to Clarity CRM",
       html,
       fromEmail: env.RESEND_FROM, // reply-to; the send address itself is RESEND_FROM
+      attachments: auditorInviteAttachments(invite.role), // QRG PDF, auditors only
     });
     return true;
   } catch (err) {
