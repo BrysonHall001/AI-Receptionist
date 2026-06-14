@@ -79,9 +79,11 @@
     try {
       const res = await App.portalApi("/api/theme");
       applyUserTheme(res.theme);
+      App.portalLogo = (res.theme && res.theme.logo) || null;
       return res;
     } catch (e) {
       resetToDefault();
+      App.portalLogo = null;
       return null;
     }
   }
@@ -222,6 +224,51 @@
         </div>`;
       wrap.appendChild(designer);
 
+      // ---- Logo / White-label (below the Font row). Applies to this portal for
+      // everyone, regardless of which theme is active. Reuses the same base64
+      // image approach as custom-field images; stored in the portal theme. ----
+      wrap.appendChild(el("div", "theme-group-label", "Logo / White-label"));
+      const logoCard = el("div", "theme-card");
+      logoCard.style.padding = "14px";
+      const logoCap = el("p", "cell-muted");
+      logoCap.style.cssText = "font-size:12.5px;margin:0 0 10px";
+      logoCap.textContent = "Upload a PNG or JPEG (max 500 KB) to replace the name in the top-left corner for everyone in this portal. Leave empty to keep the default branding.";
+      logoCard.appendChild(logoCap);
+      if (prefs.logo) {
+        const prev = el("img", "brand-logo-preview");
+        prev.src = prefs.logo;
+        logoCard.appendChild(prev);
+      }
+      const logoControls = el("div");
+      logoControls.style.cssText = "display:flex;align-items:center;gap:10px;margin-top:" + (prefs.logo ? "10px" : "0") + ";flex-wrap:wrap";
+      const logoFile = el("input"); logoFile.type = "file"; logoFile.accept = "image/png,image/jpeg"; logoFile.className = "input"; logoFile.style.flex = "1";
+      logoFile.onchange = async () => {
+        const f = logoFile.files[0]; if (!f) return;
+        if (f.type !== "image/png" && f.type !== "image/jpeg") { toast("Logo must be a PNG or JPEG image", true); logoFile.value = ""; return; }
+        if (f.size > 500 * 1024) { toast("Logo must be under 500 KB", true); logoFile.value = ""; return; }
+        const r = new FileReader();
+        r.onload = async () => {
+          prefs.logo = String(r.result);
+          try { await persist(); App.portalLogo = (prefs && prefs.logo) || null; if (App.refreshBrand) App.refreshBrand(); toast("Logo saved"); }
+          catch (e) { toast(e.message, true); }
+          render();
+        };
+        r.readAsDataURL(f);
+      };
+      logoControls.appendChild(logoFile);
+      if (prefs.logo) {
+        const rm = el("button", "link-danger", "Remove logo");
+        rm.onclick = async () => {
+          prefs.logo = null;
+          try { await persist(); App.portalLogo = null; if (App.refreshBrand) App.refreshBrand(); toast("Logo removed"); }
+          catch (e) { toast(e.message, true); }
+          render();
+        };
+        logoControls.appendChild(rm);
+      }
+      logoCard.appendChild(logoControls);
+      wrap.appendChild(logoCard);
+
       const saveBar = el("div");
       saveBar.style.marginTop = "14px";
       const saveBtn = el("button", "btn btn-primary btn-sm", "Save as new theme…");
@@ -265,5 +312,5 @@
     render();
   }
 
-  App.theme = { applyResolved, applyUserTheme, resetToDefault, loadAndApply, mountSettings };
+  App.theme = { applyResolved, applyUserTheme, resetToDefault, loadAndApply, mountSettings, getLogo: function () { return App.portalLogo || null; } };
 })(typeof window !== "undefined" ? window : globalThis);

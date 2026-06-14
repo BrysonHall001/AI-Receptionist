@@ -281,7 +281,11 @@ tbody tr:hover { background: var(--row-hover); }
 
 /* ---------- App shell ---------- */
 .app-shell { display: flex; min-height: 100vh; }
-.sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 22px; }
+.sidebar-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 4px 8px 22px; }
+.brand-row { display: flex; align-items: center; gap: 10px; }
+.brand-logo { max-height: 34px; max-width: 160px; width: auto; height: auto; object-fit: contain; display: block; }
+.brand-logo-preview { max-height: 56px; max-width: 220px; width: auto; height: auto; object-fit: contain; display: block; border-radius: 6px; }
+.brand-attribution { font-size: 10px; line-height: 1.2; color: var(--ink-faint); letter-spacing: 0.02em; }
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; }
 .sidebar-user { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
 .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 6px; }

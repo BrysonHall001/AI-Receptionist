@@ -31,6 +31,9 @@ export interface NamedCustom extends CustomTheme {
 export interface UserTheme {
   active: { mode: "preset"; preset: string } | { mode: "custom"; customId: string };
   customs: NamedCustom[];
+  // Optional per-portal white-label logo, stored as a PNG/JPEG data URL (same
+  // base64-in-DB approach the custom-field image type uses). Absent = default branding.
+  logo?: string | null;
 }
 
 // ---- Legacy per-portal shape (kept only to import old Tenant.theme data) ----
@@ -137,7 +140,21 @@ export function sanitizeUserTheme(input: unknown): UserTheme {
   } else {
     active = { mode: "preset", preset: PRESET_IDS.includes(a.preset) ? String(a.preset) : "light" };
   }
-  return { active, customs };
+  const logo = sanitizeLogo(obj.logo);
+  return logo ? { active, customs, logo } : { active, customs };
+}
+
+// White-label logo guardrail (server-enforced): only a PNG or JPEG data URL,
+// capped in size so a portal can't store something huge. Anything else -> dropped.
+// ~500 KB of binary becomes ~685 KB of base64; 740000 chars leaves a little headroom.
+const LOGO_MAX_CHARS = 740000;
+function sanitizeLogo(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+  if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(s)) return null;
+  if (s.length > LOGO_MAX_CHARS) return null;
+  return s;
 }
 
 // Parse a legacy Tenant.theme value (best-effort) so we can import it per-user.

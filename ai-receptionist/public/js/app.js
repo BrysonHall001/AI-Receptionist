@@ -27,6 +27,26 @@
     location.hash = "#/login";
   }
 
+  // Top-left brand. When this portal has a white-label logo, the logo REPLACES the
+  // "C" mark + name entirely; otherwise the default name shows. The small
+  // "A Vaala product" attribution is ALWAYS shown, in both states.
+  function renderBrand(brandEl) {
+    brandEl.innerHTML = "";
+    const row = el("div", "brand-row");
+    const logo = (App.theme && App.theme.getLogo && App.theme.getLogo()) || null;
+    if (logo) {
+      const img = el("img", "brand-logo"); img.src = logo; img.alt = "Logo";
+      row.appendChild(img);
+    } else {
+      row.appendChild(el("div", "brand-mark", esc((App.BRAND || "C").charAt(0))));
+      row.appendChild(el("div", "brand-name", esc(App.BRAND || "CRM")));
+    }
+    brandEl.appendChild(row);
+    brandEl.appendChild(el("div", "brand-attribution", "A Vaala product"));
+  }
+  // Lets the Appearance panel repaint the brand immediately after a logo change.
+  App.refreshBrand = function () { const b = document.querySelector(".sidebar-brand"); if (b) renderBrand(b); };
+
   // The 3rd element (when present) is a label "kind": the nav text is resolved
   // at render time via App.label(kind,"many") so renaming the contact/job record
   // type (or a Tenant.labels override) updates the nav. Other items are app
@@ -382,14 +402,14 @@
 
     // Per-user theming: the signed-in user's personal theme applies everywhere,
     // independent of portal context.
-    if (App.theme) App.theme.loadAndApply();
+    if (App.theme) App.theme.loadAndApply().then(function () { if (App.refreshBrand) App.refreshBrand(); });
 
     const layout = el("div", "app-shell");
 
     // Sidebar
     const side = el("aside", "sidebar");
     const brand = el("div", "sidebar-brand");
-    brand.innerHTML = `<div class="brand-mark">${esc((App.BRAND||"C").charAt(0))}</div><div class="brand-name">${esc(App.BRAND||"CRM")}</div>`;
+    renderBrand(brand);
     side.appendChild(brand);
 
     const nav = el("nav", "sidebar-nav");
