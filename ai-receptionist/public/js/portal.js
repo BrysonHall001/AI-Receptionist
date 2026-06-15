@@ -2517,16 +2517,23 @@
     return s ? s.label : (key || "");
   }
 
-  // Display an appointment timestamp (date + time of day). Reuses fmtDate so it
-  // matches the styling of every other date in the app.
-  function fmtAppt(iso) { return iso ? fmtDate(iso) : ""; }
-  // Convert a stored ISO timestamp to the value a <input type="datetime-local">
-  // expects ("YYYY-MM-DDTHH:MM"), in the viewer's local time.
+  // appointmentAt is a WALL-CLOCK time (the exact digits the owner typed),
+  // stored in the timestamp's UTC slot. We read and show it WITHOUT timezone
+  // conversion — UTC getters / timeZone:"UTC" — so "5:00 PM" saved reads back as
+  // "5:00 PM" on any server zone and any browser zone. (Real moments like
+  // createdAt are different and still use fmtDate, which shows local time.)
+  function fmtAppt(iso) {
+    if (!iso) return "";
+    const d = new Date(iso); if (isNaN(d.getTime())) return "";
+    return d.toLocaleString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  // Fill the <input type="datetime-local"> from the stored wall-clock, reading
+  // the SAME digits back (UTC getters) — never converting to the browser's zone.
   function isoToLocalInput(iso) {
     if (!iso) return "";
     const d = new Date(iso); if (isNaN(d.getTime())) return "";
     const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
   }
 
   function recordColumnDefs(fields, type) {

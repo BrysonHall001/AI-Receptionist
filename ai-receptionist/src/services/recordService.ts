@@ -38,12 +38,23 @@ function serializeRecord(r: any) {
 
 // Parse an incoming appointment value into a real Date (or null to clear).
 // Returns undefined when the caller didn't send the field at all, so an update
-// that omits it leaves the stored value untouched. A full datetime-local string
-// like "2026-06-20T14:30" keeps the time of day.
+// that omits it leaves the stored value untouched.
 function parseAppointmentAt(v: any): Date | null | undefined {
   if (v === undefined) return undefined;       // field not provided — don't touch
   if (v === null || v === "") return null;      // explicitly cleared
-  const d = new Date(v);
+  const s = String(v).trim();
+  // The picker sends a ZONELESS wall-clock string ("2026-06-20T17:00", optional
+  // seconds) — just the digits the owner typed, no timezone. Treat those digits
+  // as the literal appointment time and store them in the timestamp's UTC slot
+  // via Date.UTC, so what's stored does NOT depend on the server's timezone.
+  // (Render runs in UTC, but we deliberately don't rely on that — using new
+  // Date(s) here would re-interpret the digits in the server's zone.) A value
+  // that already carries a zone (ends in Z, or has a +/-hh:mm offset) is a real
+  // instant and is parsed as-is.
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+  const d = m
+    ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0))
+    : new Date(s);
   if (isNaN(d.getTime())) throw new Error("Invalid appointment date/time");
   return d;
 }
