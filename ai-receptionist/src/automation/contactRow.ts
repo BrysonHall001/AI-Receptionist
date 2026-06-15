@@ -12,7 +12,7 @@ export const SYSTEM_FIELDS: FieldMeta[] = [
   { key: "name", label: "Name", type: "text" },
   { key: "phone", label: "Phone", type: "text" },
   { key: "email", label: "Email", type: "text" },
-  { key: "intent", label: "Intent", type: "text" },
+  { key: "intent", label: "Reason", type: "text" },
   { key: "source", label: "Source", type: "text" },
 ];
 
