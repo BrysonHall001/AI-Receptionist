@@ -1289,10 +1289,12 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .lbl-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; margin-bottom: 2px; }
 @media (max-width: 560px) { .lbl-row { grid-template-columns: 1fr 1fr; gap: 6px; } }
 
-/* Feedback page layout — keep the form + tables in one tidy, consistent column
-   with proper padding (a bare .card has no inner padding, which left the form
-   fields flush against the edges). */
-.fb-page { max-width: 980px; }
+/* Feedback page layout — fills the FULL content width like Calls/Contacts/Jobs
+   (which render a plain .fade-in into .content). The earlier fix added inner
+   padding on the form/thread cards because a bare .card has none, which is what
+   left the form fields flush against the edges — that padding is kept here; only
+   the width cap that constrained the page to ~2/3 has been removed. */
+.fb-page { width: 100%; }
 .fb-intro { margin: 2px 0 18px; }
 .fb-intro h1 { margin: 0; }
 .fb-form-card { padding: 20px; margin: 0 0 8px; }
