@@ -550,8 +550,8 @@
     return `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="vertical-align:-1px"><path d="M3 1v3.5C3 6 4 6.5 5.2 6.5H9M3 11V7.5C3 6 4 5.5 5.2 5.5H9M9 4.5L11 6 9 7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   }
 
-  // Two-up entry row. Only the template card is functional; the wizard slot is
-  // a clearly-disabled "coming soon" placeholder (no wizard is built here).
+  // Two-up entry row: "Start from a template" opens the preset library; "Build
+  // with a wizard" opens the guided builder. Both are fully functional.
   function entryRow() {
     const row = el("div", "tpl-entry-row");
 

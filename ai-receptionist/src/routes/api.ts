@@ -1329,6 +1329,7 @@ apiRouter.get("/automations/presets", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const presets = [];
   for (const p of AUTOMATION_PRESETS) {
+    if ((p as any).hidden) continue; // retired/wrong-vertical templates stay in code but off the UI
     const analysis = await analyzeFlowDefinition(tenantId, p.definition);
     presets.push({
       key: p.key,

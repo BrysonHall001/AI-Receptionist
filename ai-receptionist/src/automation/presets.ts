@@ -61,6 +61,7 @@ export interface FlowPreset {
   shape: PresetShape;
   definition: FlowDefinition;
   note?: string;
+  hidden?: boolean; // true = kept in code but not shown in the template library
 }
 
 export const AUTOMATION_PRESETS: FlowPreset[] = [
@@ -174,6 +175,7 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
   },
   {
     key: "inbound_webhook_lead",
+    hidden: true,
     name: "Inbound webhook lead",
     description: "Stamp a source on contacts as they arrive so webhook leads are easy to spot.",
     category: "lead_capture",
@@ -301,6 +303,7 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
   },
   {
     key: "document_application_followup",
+    hidden: true,
     name: "Document / application follow-up",
     description: "When documents are pending, wait a few days and remind yourself to chase them.",
     category: "follow_ups",
@@ -379,6 +382,7 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
   },
   {
     key: "policy_renewal_reminder",
+    hidden: true,
     name: "Renewal reminder",
     description: "A month before a renewal date, remind yourself to reach out and renew.",
     category: "stay_in_touch",
@@ -408,6 +412,7 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
   },
   {
     key: "annual_review_reminder",
+    hidden: true,
     name: "Annual review reminder",
     description: "A year after the last review, remind yourself to schedule the next one.",
     category: "stay_in_touch",
@@ -430,6 +435,7 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
   },
   {
     key: "birthday_milestone_touch",
+    hidden: true,
     name: "Birthday / milestone touch",
     description: "On a contact's birthday (or another set date), send a friendly note.",
     category: "stay_in_touch",
@@ -561,6 +567,7 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
   },
   {
     key: "conditional_routing",
+    hidden: true,
     name: "Conditional routing",
     description: "When a record is updated, run an action only if one of the record's own fields matches a value you set.",
     category: "pipeline",
@@ -583,6 +590,96 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
       ],
     },
     note: "This template demonstrates conditions on a record's OWN fields. On review, choose the field, the value, and the action you want — then turn it on.",
+  },
+  // ===================== New: showcase the New call lead trigger + =========
+  // ===================== the Notify the business action ====================
+  {
+    key: "new_call_lead_alert_email",
+    name: "New call lead → email me",
+    description: "The instant the AI receptionist captures a new phone lead, email YOU the lead's details.",
+    category: "lead_capture",
+    vertical: "home_services",
+    summary: {
+      trigger: "The AI receptionist captures a NEW phone lead (first-time caller)",
+      conditions: ["Runs for every new call lead"],
+      actions: ["Email the business (you) the lead's name, phone and reason"],
+    },
+    shape: { trigger: "New call lead", actions: ["Notify the business"] },
+    definition: {
+      name: "New call lead → email me",
+      triggerType: "CallLeadCreated",
+      conditions: [],
+      actions: [
+        {
+          type: "notify_business",
+          config: {
+            channel: "email",
+            subject: "New call lead: {{name}}",
+            body: "New lead from the receptionist:\n{{name}} — {{phone}}\nReason: {{intent}}",
+          },
+        },
+      ],
+    },
+    note: "Emails your Notify email (Settings → General) by default — add an override address in the action if you want it sent elsewhere. Email won't actually send until Resend is connected; until then it's a harmless draft.",
+  },
+  {
+    key: "urgent_call_lead_text",
+    name: "Urgent call lead → text me",
+    description: "When the receptionist captures a new call lead whose reason looks urgent, text YOU right away.",
+    category: "lead_capture",
+    vertical: "home_services",
+    summary: {
+      trigger: "The AI receptionist captures a NEW phone lead",
+      conditions: ["Only if the Reason contains \"emergency\" (change the keyword on review)"],
+      actions: ["Text the business (you) the urgent lead's details"],
+    },
+    shape: { trigger: "New call lead", actions: ["Notify the business (SMS)"] },
+    definition: {
+      name: "Urgent call lead → text me",
+      triggerType: "CallLeadCreated",
+      conditions: [{ field: "intent", op: "contains", value: "emergency" }],
+      actions: [
+        {
+          type: "notify_business",
+          config: {
+            channel: "sms",
+            toPhone: "",
+            body: "URGENT lead: {{name}} — {{phone}} — {{intent}}",
+          },
+        },
+      ],
+    },
+    note: "On review: (1) put YOUR mobile number in the action's phone field — SMS has no business default; (2) adjust the urgency keyword (e.g. 'no heat', 'leak', 'burst') or add more. SMS won't send until Twilio is connected.",
+  },
+  {
+    key: "new_call_lead_speed_to_lead",
+    name: "New call lead → alert me + reply to the lead",
+    description: "On a new phone lead, email YOU the details AND text the lead a quick acknowledgement.",
+    category: "lead_capture",
+    vertical: "home_services",
+    summary: {
+      trigger: "The AI receptionist captures a NEW phone lead",
+      conditions: ["Runs for every new call lead"],
+      actions: ["Email the business (you) the lead details", "Text the lead a quick acknowledgement"],
+    },
+    shape: { trigger: "New call lead", actions: ["Notify the business", "Text the lead"] },
+    definition: {
+      name: "New call lead → alert me + reply to the lead",
+      triggerType: "CallLeadCreated",
+      conditions: [],
+      actions: [
+        {
+          type: "notify_business",
+          config: {
+            channel: "email",
+            subject: "New call lead: {{name}}",
+            body: "New lead from the receptionist:\n{{name}} — {{phone}}\nReason: {{intent}}",
+          },
+        },
+        { type: "send_sms", config: { body: "Hi {{name}}, thanks for calling! We've got your details and will call you back shortly." } },
+      ],
+    },
+    note: "Emails your Notify email by default and texts the lead. Neither sends until Resend/Twilio are connected; both sit as harmless drafts meanwhile.",
   },
 ];
 
