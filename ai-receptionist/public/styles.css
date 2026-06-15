@@ -1289,6 +1289,20 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .lbl-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; margin-bottom: 2px; }
 @media (max-width: 560px) { .lbl-row { grid-template-columns: 1fr 1fr; gap: 6px; } }
 
+/* Feedback page layout — keep the form + tables in one tidy, consistent column
+   with proper padding (a bare .card has no inner padding, which left the form
+   fields flush against the edges). */
+.fb-page { max-width: 980px; }
+.fb-intro { margin: 2px 0 18px; }
+.fb-intro h1 { margin: 0; }
+.fb-form-card { padding: 20px; margin: 0 0 8px; }
+.fb-form-card .form-row { margin-bottom: 14px; }
+.fb-form-card .form-row:last-of-type { margin-bottom: 0; }
+.fb-form-card .input { margin-bottom: 0; }
+.fb-form-actions { margin-top: 14px; }
+.fb-section-title { font-size: 15px; font-weight: 700; margin: 26px 0 12px; }
+.fb-thread-wrap { padding: 20px; margin-bottom: 8px; }
+
 /* Feedback ticket conversation thread */
 .fb-thread { margin: 14px 0 6px; display: flex; flex-direction: column; gap: 10px; }
 .fb-msg { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; max-width: 80%; align-self: flex-start; }

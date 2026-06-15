@@ -2177,9 +2177,14 @@
     tb.innerHTML = "";
     users.forEach((u) => {
       const tr = el("tr");
-      tr.innerHTML = `<td>${esc(u.name || "—")}</td><td class="cell-muted">${esc(u.email)}</td><td>${esc(roleLabel(u.role))}</td><td></td>`;
+      const roleCell = esc(roleLabel(u.role)) + (u.pending ? ' <span class="badge badge-progress">Pending</span>' : "");
+      tr.innerHTML = `<td>${esc(u.name || "—")}</td><td class="cell-muted">${esc(u.email)}</td><td>${roleCell}</td><td></td>`;
       const actions = tr.lastChild;
-      if (u.id !== App.state.me.id) {
+      if (u.pending) {
+        const rev = el("button", "link-danger", "Revoke");
+        rev.onclick = async () => { if (!(await confirmModal({ title: "Revoke invite", message: `Revoke the pending invite for ${u.email}?`, confirmText: "Revoke" }))) return; try { await App.portalApi(`/api/invites/${u.inviteId}/revoke`, { method: "POST" }); toast("Invite revoked"); renderSettings(); } catch (e) { toast(e.message, true); } };
+        actions.appendChild(rev);
+      } else if (u.id !== App.state.me.id) {
         const del = el("button", "link-danger", "Remove");
         del.onclick = async () => { if (!(await confirmModal({ title: "Remove user", message: `Remove ${u.email}?`, confirmText: "Remove" }))) return; try { await App.portalApi(`/api/users/${u.id}`, { method: "DELETE" }); toast("User removed"); renderSettings(); } catch (e) { toast(e.message, true); } };
         actions.appendChild(del);

@@ -144,10 +144,39 @@ export async function listPendingInvites(tenantId: string) {
   return rows.map((r: any) => ({ id: r.id, email: r.email, role: r.role, expiresAt: r.expiresAt, createdAt: r.createdAt }));
 }
 
+/**
+ * Pending invites (sent, not yet accepted, not expired) shaped like user rows so
+ * they can be merged into the user lists with a "Pending" badge. tenantId null =
+ * master-scope invites (Super Admin / Auditor). When an invite is accepted it is
+ * marked used and a real User row is created, so it automatically stops appearing
+ * here and shows up as a normal (accepted) user instead — the status flips on its
+ * own with no extra step.
+ */
+export async function listPendingInvitesAsUsers(tenantId: string | null) {
+  const rows = await db.invite.findMany({
+    where: { tenantId: tenantId ?? null, usedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: "desc" },
+    include: { tenant: true },
+  });
+  return rows.map((r: any) => ({
+    id: `invite:${r.id}`,
+    inviteId: r.id,
+    email: r.email,
+    name: r.name ?? null,
+    role: r.role,
+    tenantId: r.tenantId ?? null,
+    tenantName: r.tenant?.name ?? null,
+    lastLoginAt: null,
+    expiresAt: r.expiresAt,
+    createdAt: r.createdAt,
+    pending: true,
+  }));
+}
+
 /** Revoke a pending invite (tenant-scoped). Consuming it = it can never be used. */
-export async function revokeInvite(tenantId: string, id: string): Promise<boolean> {
+export async function revokeInvite(tenantId: string | null, id: string): Promise<boolean> {
   const inv = await db.invite.findUnique({ where: { id } });
-  if (!inv || inv.tenantId !== tenantId || inv.usedAt) return false;
+  if (!inv || (inv.tenantId ?? null) !== (tenantId ?? null) || inv.usedAt) return false;
   await db.invite.update({ where: { id }, data: { usedAt: new Date() } });
   return true;
 }

@@ -49,9 +49,9 @@
   async function mount(host, mode) {
     const c = cfg(mode);
     host.innerHTML = "";
-    const wrap = el("div", "fade-in");
+    const wrap = el("div", "fade-in fb-page");
 
-    const intro = el("div", "section-head");
+    const intro = el("div", "fb-intro");
     intro.innerHTML =
       `<h1 class="page-title" style="font-size:22px">Feedback</h1>` +
       `<p class="cell-muted" style="font-size:13px;margin-top:2px">` +
@@ -66,14 +66,12 @@
       wrap.appendChild(submitForm(mode, () => load()));
     }
 
-    const activeHead = el("h2", "settings-h", "Open tickets");
-    activeHead.style.marginTop = "22px";
+    const activeHead = el("h2", "fb-section-title", "Open tickets");
     wrap.appendChild(activeHead);
     const activeHost = el("div");
     wrap.appendChild(activeHost);
 
-    const resolvedHead = el("h2", "settings-h", "Resolved");
-    resolvedHead.style.marginTop = "26px";
+    const resolvedHead = el("h2", "fb-section-title", "Resolved");
     wrap.appendChild(resolvedHead);
     const resolvedHost = el("div");
     wrap.appendChild(resolvedHost);
@@ -93,14 +91,13 @@
 
   function submitForm(mode, onDone) {
     const c = cfg(mode);
-    const card = el("div", "card");
-    card.style.marginTop = "12px";
+    const card = el("div", "card fb-form-card");
     card.innerHTML =
       `<div class="form-row form-row--wide"><label class="form-label">Problem</label>` +
       `<input class="input" id="fb-problem" maxlength="200" placeholder="A short summary of the problem" /></div>` +
       `<div class="form-row form-row--wide"><label class="form-label">Description</label>` +
       `<textarea class="input" id="fb-desc" rows="4" placeholder="Describe what's happening in as much detail as you can"></textarea></div>`;
-    const bar = el("div"); bar.style.marginTop = "10px";
+    const bar = el("div", "fb-form-actions");
     const btn = el("button", "btn btn-primary btn-sm", "Submit");
     bar.appendChild(btn);
     card.appendChild(bar);
@@ -149,13 +146,13 @@
     catch (e) { host.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
 
     host.innerHTML = "";
-    const wrap = el("div", "fade-in");
+    const wrap = el("div", "fade-in fb-page");
 
     const back = el("button", "btn btn-ghost btn-sm", "\u2190 Back to Feedback");
     back.onclick = () => backToList(mode);
     wrap.appendChild(back);
 
-    const head = el("div", "card");
+    const head = el("div", "card fb-thread-wrap");
     head.style.marginTop = "12px";
     const resolved = t.status === "RESOLVED";
     head.innerHTML =
@@ -178,7 +175,7 @@
 
     // reply box
     if (!resolved && canReplyTo(mode, t)) {
-      const rc = el("div", "card");
+      const rc = el("div", "card fb-thread-wrap");
       rc.style.marginTop = "8px";
       const ta = el("textarea", "input"); ta.rows = 3; ta.placeholder = "Write a reply…";
       rc.appendChild(ta);

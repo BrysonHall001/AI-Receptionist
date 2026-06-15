@@ -23,7 +23,7 @@ import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme,
 import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voices";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns } from "../services/userService";
-import { createInvite, inviteLink, sendInvite } from "../services/inviteService";
+import { createInvite, inviteLink, sendInvite, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
 import { testRunAutomation, runManualAutomation } from "../automation/engine";
 import { listScheduledJobs, cancelScheduledJob, processDueJobs } from "../automation/scheduler";
@@ -1102,7 +1102,24 @@ apiRouter.get("/users", async (req: Request, res: Response) => {
     res.status(403).json({ error: "Not authorized" });
     return;
   }
-  res.json(await listUsers(tenantId));
+  const users = (await listUsers(tenantId)) as any[];
+  // Surface pending (invited, not-yet-accepted) teammates immediately, marked
+  // "Pending"; they flip to normal users automatically once they accept.
+  const pending = await listPendingInvitesAsUsers(tenantId);
+  res.json([...pending, ...users]);
+});
+
+// Revoke a pending invite for this portal.
+apiRouter.post("/invites/:inviteId/revoke", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (req.user!.role === "CLIENT_USER") {
+    res.status(403).json({ error: "Not authorized" });
+    return;
+  }
+  const ok = await revokeInvite(tenantId, req.params.inviteId);
+  if (!ok) { res.status(404).json({ error: "Invite not found" }); return; }
+  res.json({ ok: true });
 });
 
 apiRouter.post("/users", async (req: Request, res: Response) => {

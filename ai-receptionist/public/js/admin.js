@@ -147,9 +147,20 @@
     } else {
       users.forEach((u) => {
         const tr = el("tr");
+        const lastCell = u.pending
+          ? '<span class="badge badge-progress">Pending</span>'
+          : (u.lastLoginAt ? fmtDate(u.lastLoginAt) : "Never");
         tr.innerHTML = `<td class="cell-strong">${esc(u.name || "—")}</td><td class="cell-mono">${esc(u.email)}</td>
-          <td>${esc(roleLabel(u.role))}</td><td class="cell-muted">${u.lastLoginAt ? fmtDate(u.lastLoginAt) : "Never"}</td><td></td>`;
-        if (u.id !== App.state.me.id) {
+          <td>${esc(roleLabel(u.role))}</td><td class="cell-muted">${lastCell}</td><td></td>`;
+        if (u.pending) {
+          const rev = el("button", "link-danger", "Revoke");
+          rev.onclick = async () => {
+            if (!(await App.ui.confirmModal({ title: "Revoke invite", message: `Revoke the pending invite for ${u.email}?`, confirmText: "Revoke" }))) return;
+            try { await App.api("/api/invites/" + u.inviteId + "/revoke?tenantId=" + encodeURIComponent(portal.id), { method: "POST" }); toast("Invite revoked"); renderPortalUsers(portal); }
+            catch (e) { toast(e.message, true); }
+          };
+          tr.lastChild.appendChild(rev);
+        } else if (u.id !== App.state.me.id) {
           const del = el("button", "link-danger", "Remove");
           del.onclick = async () => {
             if (!(await App.ui.confirmModal({ title: "Remove user", message: `Remove ${u.email}?`, confirmText: "Remove" }))) return;
@@ -465,23 +476,34 @@
     users.forEach((u) => {
       const tr = el("tr");
       const expired = u.expiresAt && new Date(u.expiresAt).getTime() < Date.now();
-      const statusNote = u.disabled ? ' <span class="cell-muted">(disabled)</span>'
+      const statusNote = u.pending ? ""
+        : u.disabled ? ' <span class="cell-muted">(disabled)</span>'
         : expired ? ' <span class="cell-muted">(expired)</span>'
         : (u.expiresAt ? ` <span class="cell-muted">(expires ${esc(fmtDate(u.expiresAt))})</span>` : "");
+      const lastCell = u.pending
+        ? '<span class="badge badge-progress">Pending</span>'
+        : (u.lastLoginAt ? fmtDate(u.lastLoginAt) : "Never");
       tr.innerHTML = `<td class="cell-strong cu-name"></td><td class="cell-mono">${esc(u.email)}</td>
         <td>${esc(roleLabel(u.role))}${statusNote}</td><td class="cell-muted">${esc(u.tenantName || "—")}</td>
-        <td class="cell-muted">${u.lastLoginAt ? fmtDate(u.lastLoginAt) : "Never"}</td><td></td>`;
+        <td class="cell-muted">${lastCell}</td><td></td>`;
       const meRole = App.state.me.role;
       // Item 2: an OWNER can edit any name; everyone else only their own row.
-      const canEditName = (meRole === "OWNER") || (u.id === App.state.me.id);
+      // Pending invitees have no editable account yet, so never show the pencil.
+      const canEditName = !u.pending && ((meRole === "OWNER") || (u.id === App.state.me.id));
       renderNameCell(tr.querySelector(".cu-name"), u, canEditName);
-      const canRemove = u.id !== App.state.me.id            // never yourself
-        && u.role !== "OWNER"                                // no one can delete an owner
-        && !(u.role === "SUPER_ADMIN" && meRole !== "OWNER"); // super-admins: owner only
-      if (canRemove) {
-        const del = el("button", "link-danger", "Remove");
-        del.onclick = async () => { if (!(await App.ui.confirmModal({ title: "Remove user", message: `Remove ${u.email}?`, confirmText: "Remove" }))) return; try { await App.api(`/api/admin/users/${u.id}`, { method: "DELETE" }); toast("User removed"); renderUsers(); } catch (e) { toast(e.message, true); } };
-        tr.lastChild.appendChild(del);
+      if (u.pending) {
+        const rev = el("button", "link-danger", "Revoke");
+        rev.onclick = async () => { if (!(await App.ui.confirmModal({ title: "Revoke invite", message: `Revoke the pending invite for ${u.email}?`, confirmText: "Revoke" }))) return; try { await App.api(`/api/admin/invites/${u.inviteId}/revoke`, { method: "POST" }); toast("Invite revoked"); renderUsers(); } catch (e) { toast(e.message, true); } };
+        tr.lastChild.appendChild(rev);
+      } else {
+        const canRemove = u.id !== App.state.me.id            // never yourself
+          && u.role !== "OWNER"                                // no one can delete an owner
+          && !(u.role === "SUPER_ADMIN" && meRole !== "OWNER"); // super-admins: owner only
+        if (canRemove) {
+          const del = el("button", "link-danger", "Remove");
+          del.onclick = async () => { if (!(await App.ui.confirmModal({ title: "Remove user", message: `Remove ${u.email}?`, confirmText: "Remove" }))) return; try { await App.api(`/api/admin/users/${u.id}`, { method: "DELETE" }); toast("User removed"); renderUsers(); } catch (e) { toast(e.message, true); } };
+          tr.lastChild.appendChild(del);
+        }
       }
       tb.appendChild(tr);
     });

@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal } from "../services/portalService";
 import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
-import { createInvite, listPendingInvites, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
+import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket } from "../services/feedbackService";
 import { logger } from "../utils/logger";
@@ -90,7 +90,18 @@ adminRouter.get("/users", async (req: Request, res: Response) => {
   // the master view. (If a specific portal is ever requested here, return that
   // portal's users unchanged — defensive; the master page never passes one.)
   const MASTER_ROLES = ["OWNER", "SUPER_ADMIN", "AUDITOR"];
-  res.json(tenantId ? users : users.filter((u) => MASTER_ROLES.includes(u.role)));
+  const accepted = tenantId ? users : users.filter((u) => MASTER_ROLES.includes(u.role));
+  // Also surface pending (invited, not-yet-accepted) accounts immediately, marked
+  // "Pending". Master scope = tenantId null. They flip to normal users on accept.
+  const pending = await listPendingInvitesAsUsers(tenantId ?? null);
+  res.json([...pending, ...accepted]);
+});
+
+// Revoke a pending master invite (Super Admin / Auditor; tenantId null).
+adminRouter.post("/invites/:inviteId/revoke", async (req: Request, res: Response) => {
+  const ok = await revokeInvite(null, req.params.inviteId);
+  if (!ok) { res.status(404).json({ error: "Invite not found" }); return; }
+  res.json({ ok: true });
 });
 
 adminRouter.post("/users", async (req: Request, res: Response) => {
