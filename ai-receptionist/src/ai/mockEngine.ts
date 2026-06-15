@@ -15,8 +15,13 @@ export async function runMockTurn(input: AITurnInput): Promise<AIResponse> {
   const phone = extractPhone(said) ?? prev.phone ?? null;
   const email = extractEmail(said) ?? prev.email ?? null;
   const intent = extractIntent(said, Boolean((prev.name ?? name) && (prev.phone ?? phone))) ?? prev.intent ?? null;
+  // Booking capture (offline): pull a concrete date+time and a service so the
+  // "Simulate call" button can create a Booking with no OpenAI key. Only a real,
+  // parseable date+time produces a value; otherwise null (no junk booking).
+  const appointment_datetime = extractAppointment(said) ?? prev.appointment_datetime ?? null;
+  const service = extractService(said) ?? prev.service ?? null;
 
-  const extracted = { name, phone, email, intent };
+  const extracted = { name, phone, email, intent, appointment_datetime, service };
   const firstName = name ? name.split(/\s+/)[0] : null;
 
   let message: string;
@@ -31,6 +36,18 @@ export async function runMockTurn(input: AITurnInput): Promise<AIResponse> {
   } else if (!intent) {
     message = `Got it. And how can we help you today, ${firstName}?`;
     state = "COLLECTING_INFO";
+  } else if (service && !appointment_datetime) {
+    // A booking is in progress but we don't have a concrete time yet — pin it
+    // down before wrapping up (mirrors the real receptionist's behavior).
+    message = `Sure, I can set up ${service.toLowerCase()} for you. What day and time works best?`;
+    state = "COLLECTING_INFO";
+  } else if (appointment_datetime) {
+    // Read the captured time back, plainly, then complete.
+    const when = new Date(appointment_datetime + ":00").toLocaleString("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+    message =
+      `Perfect, ${firstName}. I've got you down for ${service || "an appointment"} on ${when}. ` +
+      `Someone will confirm shortly. Thanks for calling!`;
+    state = "COMPLETED";
   } else {
     message =
       `Perfect, ${firstName}. I've got your number as ${phone} and noted that you're calling about ` +
@@ -39,6 +56,73 @@ export async function runMockTurn(input: AITurnInput): Promise<AIResponse> {
   }
 
   return { message_to_speak: message, extracted, state_update: state };
+}
+
+// ---- Booking capture helpers (offline / simulator) -----------------------
+// Modest, deterministic parsers. The REAL OpenAI receptionist handles fuzzy
+// language; these just let the simulator and no-key dev path produce a booking
+// from clearly-spoken lines like "June 24th at 2 PM".
+
+const MONTHS: Record<string, number> = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
+
+function pad2(n: number): string { return String(n).padStart(2, "0"); }
+
+/** Parse a clock time like "2pm", "2:30 pm", "10 am" -> {h, m} (24h) or null. */
+function parseClock(s: string): { h: number; m: number } | null {
+  const m = s.match(/\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = m[2] ? parseInt(m[2], 10) : 0;
+  const pm = /p/i.test(m[3]);
+  if (h === 12) h = pm ? 12 : 0;
+  else if (pm) h += 12;
+  if (h > 23 || min > 59) return null;
+  return { h, m: min };
+}
+
+/** Resolve a concrete date+time from a spoken line to "YYYY-MM-DDTHH:MM", or null.
+ *  Supports "<Month> <day> at <time>", "tomorrow at <time>", and "today at <time>".
+ *  Uses the server's current date for relative phrases (read-back confirms it). */
+function extractAppointment(s: string): string | null {
+  const clock = parseClock(s);
+  if (!clock) return null; // no concrete time -> never a booking
+  const now = new Date();
+
+  // Explicit month + day, e.g. "June 24th" / "Jun 24".
+  const md = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+  if (md) {
+    const mon = MONTHS[md[1].slice(0, 3).toLowerCase()];
+    const day = parseInt(md[2], 10);
+    if (mon != null && day >= 1 && day <= 31) {
+      let year = now.getFullYear();
+      // If that date already passed this year, assume next year (keeps it future).
+      const candidate = new Date(year, mon, day);
+      if (candidate.getTime() < new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) year += 1;
+      return `${year}-${pad2(mon + 1)}-${pad2(day)}T${pad2(clock.h)}:${pad2(clock.m)}`;
+    }
+  }
+
+  // Relative: "tomorrow" / "today".
+  if (/\btomorrow\b/i.test(s)) {
+    const d = new Date(now); d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(clock.h)}:${pad2(clock.m)}`;
+  }
+  if (/\btoday\b/i.test(s)) {
+    return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T${pad2(clock.h)}:${pad2(clock.m)}`;
+  }
+  return null; // a time with no resolvable date -> not concrete enough
+}
+
+/** Pull a short service phrase from a booking line, e.g. "furnace tune-up". */
+function extractService(s: string): string | null {
+  const m = s.match(/\b(?:for|book|schedule|need|want)\s+(?:a|an|my)?\s*([a-z][a-z\s-]{2,40}?)(?:\s+(?:on|at|for|next|this|tomorrow|today)\b|[.,!?]|$)/i);
+  if (!m) return null;
+  const phrase = m[1].trim().replace(/\s+/g, " ");
+  if (!phrase || /^(appointment|booking|time|slot)$/i.test(phrase)) return null;
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
 function extractEmail(s: string): string | null {

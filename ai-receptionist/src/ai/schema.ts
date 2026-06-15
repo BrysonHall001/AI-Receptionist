@@ -6,6 +6,13 @@ export const ExtractedSchema = z.object({
   intent: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
+  // Appointment capture (capture-only). A ZONELESS wall-clock string in the
+  // EXACT picker format "YYYY-MM-DDTHH:MM" (24-hour), or null when no concrete
+  // date+time has been confirmed. Stored verbatim as the booking's wall-clock
+  // appointmentAt — never converted. `service` is the caller's words for what
+  // they want booked (mapped to a Booking service later).
+  appointment_datetime: z.string().nullable().optional(),
+  service: z.string().nullable().optional(),
 });
 export type Extracted = z.infer<typeof ExtractedSchema>;
 

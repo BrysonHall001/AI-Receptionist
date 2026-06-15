@@ -8,6 +8,8 @@ export interface PromptContext {
   callerPhone?: string | null;
   /** Owner-provided business facts + guidance, appended on top of the core. */
   aiInstructions?: string | null;
+  /** Today's date (for resolving "next Tuesday" into a concrete calendar date). */
+  currentDate?: string | null;
 }
 
 /** Builds the system prompt that defines receptionist behavior + output format. */
@@ -21,6 +23,15 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       ? `If the network reports the caller's number as ${ctx.callerPhone}, you can offer to use that as their callback number rather than asking them to recite it.`
       : "",
     `Information gathered so far (JSON): ${JSON.stringify(ctx.alreadyExtracted)}. Current call state: ${ctx.currentState}.`,
+    "",
+    "BOOKING AN APPOINTMENT:",
+    ctx.currentDate ? `- For resolving relative dates, today is ${ctx.currentDate}.` : "",
+    `- If the caller wants to book, schedule, or set up an appointment, help them land on ONE specific date and time, and which service it's for. Resolve vague phrases ("next Tuesday afternoon") into a concrete calendar date and clock time by asking a short follow-up if needed (e.g. "Afternoon works — would 2 PM be good?").`,
+    `- ALWAYS read the final date and time back in plain words to confirm before you treat it as set (e.g. "So that's Tuesday, June 24th at 2 PM — is that right?"). Only count it as booked once the caller confirms.`,
+    `- When (and only when) you have a confirmed, specific date AND time, put it in "appointment_datetime" as a zoneless 24-hour string EXACTLY in the format YYYY-MM-DDTHH:MM (for example 2 PM on June 24th 2026 is "2026-06-24T14:00"). Use the caller's local clock time exactly as spoken — do NOT convert time zones.`,
+    `- Put what they're booking in "service" (their own words are fine, e.g. "furnace tune-up").`,
+    `- If you do NOT have a specific confirmed date and time, leave "appointment_datetime" as null. NEVER guess, never invent a time, and never fill it from a vague phrase. No concrete confirmed time means null — the call is just handled like a normal message.`,
+    "",
     `Guidance on wrapping up: once you've helped the caller as far as you can and have what you're naturally able to collect, briefly confirm anything useful you captured, let them know the right person will follow up, and say a friendly goodbye. You can wrap up a call even if you didn't get every detail — for example, if the caller only wanted to ask a question, or chose not to share their number. Don't keep a caller on the line just to extract a field.`,
     "",
     ctx.aiInstructions && ctx.aiInstructions.trim()
@@ -37,10 +48,10 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "Exact shape:",
     "{",
     '  "message_to_speak": string,',
-    '  "extracted": { "name": string|null, "intent": string|null, "phone": string|null, "email": string|null },',
+    '  "extracted": { "name": string|null, "intent": string|null, "phone": string|null, "email": string|null, "appointment_datetime": string|null, "service": string|null },',
     '  "state_update": "GREETING" | "COLLECTING_INFO" | "COMPLETED"',
     "}",
-    "Always include every field inside \"extracted\". Carry forward values you already know; use null for anything still unknown.",
+    "Always include every field inside \"extracted\". Carry forward values you already know; use null for anything still unknown. \"appointment_datetime\" must be null unless you have a confirmed, specific date and time in the exact format YYYY-MM-DDTHH:MM.",
   ];
   return lines.filter((l) => l !== "").join("\n");
 }

@@ -15,6 +15,7 @@ import {
 } from "./callSessionService";
 import { createOrUpdateContact, phoneFromExtracted } from "./contactService";
 import { sendCallSummaryEmail } from "./notificationService";
+import { createBookingFromCall } from "./bookingCaptureService";
 
 export interface TurnResult {
   messageToSpeak: string;
@@ -121,6 +122,7 @@ export async function handleTurn(params: { callSid: string; speech: string }): P
         alreadyExtracted: extracted,
         callerPhone: session.fromNumber,
         aiInstructions: (tenant as any).aiInstructions ?? "",
+        currentDate: new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
       },
       history: toOpenAIMessages(transcript),
       latestCallerUtterance: speech,
@@ -188,10 +190,12 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
   // "reason" on the Calls page can be traced to extraction vs persistence.
   logger.info(
     `Call ${callSid} finalizing — extracted: name=${extracted.name ?? "-"} ` +
-      `intent=${extracted.intent ?? "-"} phone=${extracted.phone ?? "-"} email=${extracted.email ?? "-"}`,
+      `intent=${extracted.intent ?? "-"} phone=${extracted.phone ?? "-"} email=${extracted.email ?? "-"} ` +
+      `appt=${extracted.appointment_datetime ?? "-"} service=${extracted.service ?? "-"}`,
   );
 
   // Persist the contact (no duplicate per tenant+phone).
+  let contactId: string | null = null;
   try {
     const contact = await createOrUpdateContact({
       tenantId: tenant.id,
@@ -201,10 +205,29 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
       intent: extracted.intent ?? null,
       source: "phone",
     });
+    contactId = contact.id;
     await linkContact(callSid, contact.id);
   } catch (err) {
     // Call row is already persisted + finalized; continue to notification.
     logger.error(`Contact upsert failed for ${callSid}: ${(err as Error).message}`);
+  }
+
+  // Create a Booking ONLY when a concrete date+time was captured (capture-only).
+  // Best-effort and fully guarded: a vague/no-time call makes no booking, and any
+  // failure here can never break finalization or the summary email. No calendar
+  // and no availability logic — just records what the caller asked for.
+  if (contactId) {
+    try {
+      await createBookingFromCall({
+        tenantId: tenant.id,
+        contactId,
+        appointmentDatetime: extracted.appointment_datetime ?? null,
+        service: extracted.service ?? null,
+        callSid,
+      });
+    } catch (err) {
+      logger.error(`Booking capture failed for ${callSid}: ${(err as Error).message}`);
+    }
   }
 
   // Notify exactly once (emailSentAt guards against duplicates).
@@ -249,6 +272,10 @@ function mergeExtracted(prev: Extracted, next: Extracted, fallbackPhone: string)
     intent: pick(prev.intent, next.intent),
     phone: phone ?? usableFallback,
     email: pick(prev.email, next.email),
+    // Carry the booking fields forward too. The model is told to send the
+    // confirmed time only once; merging keeps it if a later turn omits it.
+    appointment_datetime: pick(prev.appointment_datetime, next.appointment_datetime),
+    service: pick(prev.service, next.service),
   };
 }
 

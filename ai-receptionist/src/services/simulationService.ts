@@ -33,6 +33,18 @@ const SCENARIOS: Scenario[] = [
     ],
   },
 
+  // --- Books a real appointment with a concrete date + time (capture-only) ---
+  {
+    label: "Booking — concrete appointment",
+    utterances: [
+      "Hi, this is Sarah Chen.",
+      "You can reach me at 919-555-8080.",
+      "I'd like to book a furnace tune-up.",
+      "How about June 24th at 2 PM?",
+      "Yes, that works great — thank you!",
+    ],
+  },
+
   // --- Vague / rambling: doesn't volunteer clear info ---
   {
     label: "Vague — 'something's wrong in the basement'",
