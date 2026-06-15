@@ -1112,6 +1112,7 @@
     const c = a.config || {};
     if (a.type === "send_email") return "Send an email" + (c.subject ? ` (“${c.subject}”)` : "");
     if (a.type === "send_sms") return "Send an SMS";
+    if (a.type === "notify_business") { const ch = c.channel || "email"; const chl = ch === "both" ? "email + SMS" : ch === "sms" ? "SMS" : "email"; return `Notify the business (${chl})`; }
     if (a.type === "update_field") return `Set ${fieldLabel(c.field) || "a field"}` + (c.value ? ` to “${c.value}”` : "");
     if (a.type === "add_tag") return `Add tag “${c.value || ""}”` + (c.field ? ` on ${fieldLabel(c.field)}` : "");
     if (a.type === "remove_tag") return `Remove tag “${c.value || ""}”`;
@@ -1744,6 +1745,31 @@
       if (tpls.length) { cfg.appendChild(small("Template (optional)")); cfg.appendChild(selectOf("templateId", tpls)); }
       cfg.appendChild(small("Message (supports {{field}})")); cfg.appendChild(text("body", "Hi {{name}}!", true));
       appendBulkGate();
+    } else if (act.type === "notify_business") {
+      if (!c.channel) c.channel = "email";
+      cfg.appendChild(small("Send to the business via"));
+      const chSel = el("select", "input");
+      [["email", "Email"], ["sms", "SMS (text)"], ["both", "Email + SMS"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (c.channel === v) o.selected = true; chSel.appendChild(o); });
+      chSel.onchange = () => { c.channel = chSel.value; rebuildNotify(); };
+      cfg.appendChild(chSel);
+      const sub = el("div"); sub.style.marginTop = "8px"; cfg.appendChild(sub);
+      function rebuildNotify() {
+        sub.innerHTML = "";
+        const ch = c.channel || "email";
+        if (ch === "email" || ch === "both") {
+          sub.appendChild(small("Email to (leave blank to use your Notify email from Settings → General)"));
+          sub.appendChild(text("toEmail", "optional override e.g. you@yourbusiness.com"));
+          sub.appendChild(small("Subject (supports {{field}})"));
+          sub.appendChild(text("subject", "New lead: {{name}}"));
+        }
+        if (ch === "sms" || ch === "both") {
+          sub.appendChild(small("Text to (required for SMS — your mobile number)"));
+          sub.appendChild(text("toPhone", "+1 555 123 4567"));
+        }
+        sub.appendChild(small("Message (supports {{name}}, {{phone}}, {{intent}}, {{email}}, {{source}})"));
+        sub.appendChild(text("body", "New lead: {{name}} — {{phone}} — {{intent}}", true));
+      }
+      rebuildNotify();
     } else if (act.type === "update_field") {
       const writable = (meta.fields || []).filter((f) => f.key !== "createdAt" && f.type !== "formula" && f.type !== "image").map((f) => ({ value: f.key, label: f.label }));
       cfg.appendChild(small("Field")); cfg.appendChild(selectOf("field", writable));

@@ -67,6 +67,7 @@ export interface ActionContext {
 export const ACTION_TYPES: { type: string; label: string; description: string }[] = [
   { type: "send_email", label: "Send email", description: "Send an email." },
   { type: "send_sms", label: "Send SMS", description: "Send a text message." },
+  { type: "notify_business", label: "Notify the business (you/your team)", description: "Email and/or text YOUR business about the lead (not the lead). Email defaults to your Notify email; add a phone number for SMS." },
   { type: "update_field", label: "Update contact field", description: "Set a field to a value." },
   { type: "add_tag", label: "Add tag", description: "Add a tag." },
   { type: "remove_tag", label: "Remove tag", description: "Remove a tag." },
@@ -138,6 +139,11 @@ function templateTokens(contact: any, ctx: ActionContext): Record<string, string
   return { ...templateContext(contact, ctx.fieldDefs), ...(ctx.extraTokens || {}) };
 }
 
+// Minimal HTML escaping for plain-text lines we wrap into an email body.
+function escHtml(s: string): string {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 const EXECUTORS: Record<string, Executor> = {
   async send_email(cfg, ctx) {
     const contact = await freshContact(ctx);
@@ -175,6 +181,57 @@ const EXECUTORS: Record<string, Executor> = {
     await logActivity({ tenantId: ctx.tenantId, contactId: contact.id, type: "text_sent", summary: "Text message sent", detail: { to: contact.phone, body, via: "automation" }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
     await emitEvent({ tenantId: ctx.tenantId, type: EVENT_TYPES.SMSSent, actor: ctx.actor, subject: { type: "contact", id: contact.id }, payload: { to: contact.phone } });
     return { type: "send_sms", status: "success", detail: `to ${contact.phone}` };
+  },
+
+  // Notify the BUSINESS (you / your team) — not the lead. Email defaults to the
+  // portal's Notify email (same address call summaries go to); SMS has no portal
+  // default (Tenant.phoneNumber is the receptionist's Twilio line, not an owner
+  // mobile), so the recipient phone is taken from the action's own field. Both
+  // support {{placeholders}} via the same templating as the contact actions.
+  // Deliberately does NOT emit EmailSent/SMSSent or log to the lead's timeline —
+  // this is an internal alert about the lead, not a message to the lead.
+  async notify_business(cfg, ctx) {
+    const contact = await freshContact(ctx);
+    const tmpl = templateTokens(contact, ctx);
+    const ch = cfg.channel === "sms" || cfg.channel === "both" ? cfg.channel : "email";
+    const wantEmail = ch === "email" || ch === "both";
+    const wantSms = ch === "sms" || ch === "both";
+    const body = renderTemplate(String(cfg.body || ""), tmpl);
+    const parts: string[] = [];
+    let anySent = false, anyFail = false;
+
+    if (wantEmail) {
+      const to = String(cfg.toEmail || "").trim() || (ctx.portal.notifyEmail || "");
+      if (!to) {
+        parts.push("email skipped (no Notify email set and no override given)");
+      } else {
+        const subject = renderTemplate(String(cfg.subject || "New lead"), tmpl) || "New lead";
+        const html = body.trim()
+          ? body.split("\n").map((line) => `<p style="margin:0 0 8px">${escHtml(line)}</p>`).join("")
+          : "<p>A new lead just came in.</p>";
+        try {
+          await sendRichEmail({ to, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name });
+          parts.push(`emailed ${to}`); anySent = true;
+        } catch (e) { parts.push(`email failed: ${(e as Error).message}`); anyFail = true; }
+      }
+    }
+    if (wantSms) {
+      const to = String(cfg.toPhone || "").trim();
+      if (!to) {
+        parts.push("SMS skipped (no business phone — add a phone number to this action)");
+      } else if (!body.trim()) {
+        parts.push("SMS skipped (empty message)");
+      } else {
+        try {
+          await sendSms({ to, body, from: ctx.portal.phoneNumber });
+          parts.push(`texted ${to}`); anySent = true;
+        } catch (e) { parts.push(`SMS failed: ${(e as Error).message}`); anyFail = true; }
+      }
+    }
+    const detail = parts.join("; ") || "nothing to send";
+    if (!anySent && anyFail) return { type: "notify_business", status: "failed", error: detail };
+    if (!anySent) return { type: "notify_business", status: "skipped", detail };
+    return { type: "notify_business", status: "success", detail };
   },
 
   async update_field(cfg, ctx) {
