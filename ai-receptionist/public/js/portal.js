@@ -52,6 +52,7 @@
     if (v === "calls") return renderCalls();
     if (v === "contacts") return renderContacts();
     if (v === "jobs") return renderRecordList("job");
+    if (v === "bookings") return renderRecordList("booking");
     if (v === "recycle") return renderRecycleBin();
     if (v === "fields") return renderFields();
     if (v === "reports") return App.reports.render(view());
@@ -2516,9 +2517,26 @@
     return s ? s.label : (key || "");
   }
 
+  // Display an appointment timestamp (date + time of day). Reuses fmtDate so it
+  // matches the styling of every other date in the app.
+  function fmtAppt(iso) { return iso ? fmtDate(iso) : ""; }
+  // Convert a stored ISO timestamp to the value a <input type="datetime-local">
+  // expects ("YYYY-MM-DDTHH:MM"), in the viewer's local time.
+  function isoToLocalInput(iso) {
+    if (!iso) return "";
+    const d = new Date(iso); if (isNaN(d.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   function recordColumnDefs(fields, type) {
     const cols = [];
     cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => esc(r.title || "Untitled") });
+    // Bookings: the typed appointment date+time as a first-class column (it is a
+    // real DB field, not a custom field, so it's added here explicitly).
+    if (type && type.key === "booking") {
+      cols.push({ key: "appointmentAt", label: "Appointment", type: "date", get: (r) => r.appointmentAt, text: (r) => fmtAppt(r.appointmentAt), render: (r) => r.appointmentAt ? esc(fmtAppt(r.appointmentAt)) : `<span class="cell-muted">—</span>` });
+    }
     if (((type && type.subtypes) || []).length) {
       cols.push({ key: "subtypeKey", label: "Type", type: "text", get: (r) => r.subtypeKey, text: (r) => subtypeLabel(type, r.subtypeKey), render: (r) => r.subtypeKey ? `<span class="pill">${esc(subtypeLabel(type, r.subtypeKey))}</span>` : `<span class="cell-muted">—</span>` });
     }
@@ -2650,6 +2668,16 @@
       body.appendChild(stageSel);
     }
 
+    // Bookings: the typed appointment date AND time. A real field (not a custom
+    // field), so it's a first-class input here. Required for bookings.
+    const isBooking = type && type.key === "booking";
+    let apptInp = null;
+    if (isBooking) {
+      body.appendChild(el("label", "field-label", "Appointment date & time *"));
+      apptInp = el("input", "input"); apptInp.type = "datetime-local";
+      body.appendChild(apptInp);
+    }
+
     const values = {};
     const editorHost = el("div", "field-editor");
     body.appendChild(editorHost);
@@ -2661,11 +2689,12 @@
       const title = titleInp.value.trim();
       if (!title) { toast("Title is required", true); titleInp.focus(); return; }
       if (subtypeSel && !subtypeSel.value) { toast("Type is required", true); subtypeSel.focus(); return; }
+      if (apptInp && !apptInp.value) { toast("Appointment date & time is required", true); apptInp.focus(); return; }
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Creating…";
       try {
-        const rec = await App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, customFields: custom }) });
+        const rec = await App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom }) });
         toast(`${type.label || App.label("record","one")} created`);
         overlay.remove();
         App.go("#/record/" + rec.id);
@@ -2858,7 +2887,7 @@
 
     const wrap = el("div", "fade-in contact-page");
     const back = el("a", "back-link", "← " + esc(type.labelPlural || App.label("record","many")));
-    back.href = "#/jobs";
+    back.href = type.key === "booking" ? "#/bookings" : "#/jobs";
     wrap.appendChild(back);
 
     const head = el("div", "contact-head");
@@ -2898,6 +2927,17 @@
       card.appendChild(stageSel);
     }
 
+    // Bookings: the typed appointment date AND time (a real field, not a custom
+    // field). Required for bookings; the picker shows the stored time of day.
+    const isBooking = type && type.key === "booking";
+    let apptInp = null;
+    if (isBooking) {
+      card.appendChild(el("label", "field-label", "Appointment date & time *"));
+      apptInp = el("input", "input"); apptInp.type = "datetime-local";
+      apptInp.value = isoToLocalInput(rec.appointmentAt);
+      card.appendChild(apptInp);
+    }
+
     const values = { ...(rec.customFields || {}) };
     const editorHost = el("div", "field-editor");
     card.appendChild(editorHost);
@@ -2907,11 +2947,12 @@
     const save = el("button", "btn btn-primary btn-sm", "Save changes");
     save.onclick = async () => {
       if (subtypeSel && !subtypeSel.value) { toast("Type is required", true); subtypeSel.focus(); return; }
+      if (apptInp && !apptInp.value) { toast("Appointment date & time is required", true); apptInp.focus(); return; }
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Saving…";
       try {
-        await App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, customFields: custom }) });
+        await App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom }) });
         toast("Saved");
         rec.title = titleInp.value.trim();
         App.util.$(".contact-name", wrap).textContent = rec.title || ("Untitled " + (type.label || App.label("record","one").toLowerCase()));

@@ -308,6 +308,13 @@ model Record {
   title        String?
   stageKey     String?      // OPTIONAL record-level lifecycle status
   subtypeKey   String?      // selected subtype (e.g. job type) — picks which pipeline this record uses
+  // Appointment date AND time for bookings. A REAL, properly-typed, indexed
+  // timestamp (NOT stuffed in the customFields JSON bag) so every future feature
+  // — reminders, no-show detection, finding free slots — can query and compare
+  // against it. Nullable: only Booking records use it; Jobs/etc. leave it null,
+  // so adding the column is harmless to every existing record type. Stored as a
+  // full timestamp (date + time of day), mirroring the ScheduledJob.dueAt pattern.
+  appointmentAt DateTime?
   customFields Json         @default("{}")
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -316,6 +323,8 @@ model Record {
 
   @@index([tenantId, recordTypeId])
   @@index([tenantId, recordTypeId, deletedAt])
+  // Index for date queries/sorting (upcoming bookings, no-show sweeps, free slots).
+  @@index([tenantId, recordTypeId, appointmentAt])
 }
 
 // The many-to-many join between a "parent" and a Record — and the pipeline atom.

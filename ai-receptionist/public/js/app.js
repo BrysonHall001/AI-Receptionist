@@ -57,7 +57,7 @@
   // at render time via App.label(kind,"many") so renaming the contact/job record
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
-  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
+  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
   const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"], ["#/admin/feedback", "Feedback"]];
   // Exposed so the Settings → Labels → "Pages & navigation" editor builds its rows
   // from the same canonical list the sidebar uses (no drift, no second definition).
@@ -567,7 +567,7 @@
     }
 
     // Portal section
-    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
+    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/bookings": "bookings", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
     if (portalViews[path]) {
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       // If this page has been hidden from the nav for this portal, send the user

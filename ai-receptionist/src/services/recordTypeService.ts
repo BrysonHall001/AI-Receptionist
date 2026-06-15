@@ -11,6 +11,27 @@ const db = prisma as any;
 
 export const CONTACT_RECORD_TYPE_KEY = "contact";
 export const JOB_RECORD_TYPE_KEY = "job";
+export const BOOKING_RECORD_TYPE_KEY = "booking";
+
+// Booking lifecycle statuses (Record.stageKey) — the exact pipeline requested:
+// Requested -> Confirmed -> Completed -> No-show. Keys are stable; labels are
+// freely editable/reorderable on the Fields page like any other record status.
+const DEFAULT_BOOKING_RECORD_STAGES = [
+  { key: "requested", label: "Requested", order: 0 },
+  { key: "confirmed", label: "Confirmed", order: 1 },
+  { key: "completed", label: "Completed", order: 2 },
+  { key: "no_show", label: "No-show", order: 3 },
+];
+
+// Sample "services" as subtypes (the Type mechanism). SAMPLE DATA ONLY — seeded
+// once when the booking type is first created, then never re-added; each business
+// can rename or delete these on the Fields page. Stages are intentionally empty:
+// bookings use the record-level status above, not a candidate pipeline.
+const DEFAULT_BOOKING_SUBTYPES = [
+  { key: "consultation", label: "Consultation", order: 0, stages: [] },
+  { key: "standard_appointment", label: "Standard appointment", order: 1, stages: [] },
+  { key: "follow_up", label: "Follow-up", order: 2, stages: [] },
+];
 
 // Sensible recruiting defaults; labels are freely editable later, keys are stable.
 const DEFAULT_JOB_STAGES = [
@@ -107,6 +128,24 @@ export async function ensureJobRecordType(tenantId: string): Promise<string> {
   });
 }
 
+/** The portal's "booking" record type id, created if missing. Seeded ONCE (the
+ *  existence check means renames/deletes of its statuses or sample services are
+ *  never undone on later loads). Bookings carry the typed Record.appointmentAt
+ *  date+time; everything else here reuses the generic record backbone. */
+export async function ensureBookingRecordType(tenantId: string): Promise<string> {
+  return ensureRecordType(tenantId, BOOKING_RECORD_TYPE_KEY, {
+    tenantId,
+    key: BOOKING_RECORD_TYPE_KEY,
+    label: "Booking",
+    labelPlural: "Bookings",
+    system: false,
+    stages: [],
+    recordStages: DEFAULT_BOOKING_RECORD_STAGES,
+    subtypes: DEFAULT_BOOKING_SUBTYPES,
+    order: 2,
+  });
+}
+
 export function serializeRecordType(rt: any) {
   return {
     id: rt.id,
@@ -125,6 +164,7 @@ export function serializeRecordType(rt: any) {
 export async function listRecordTypes(tenantId: string) {
   await ensureContactRecordType(tenantId);
   await ensureJobRecordType(tenantId);
+  await ensureBookingRecordType(tenantId);
   const rows = await db.recordType.findMany({ where: { tenantId }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] });
   return rows.map(serializeRecordType);
 }
@@ -134,6 +174,7 @@ export async function resolveRecordTypeId(tenantId: string, keyOrId?: string | n
   const k = (keyOrId || CONTACT_RECORD_TYPE_KEY).toString().trim();
   if (k === CONTACT_RECORD_TYPE_KEY) return ensureContactRecordType(tenantId);
   if (k === JOB_RECORD_TYPE_KEY) return ensureJobRecordType(tenantId);
+  if (k === BOOKING_RECORD_TYPE_KEY) return ensureBookingRecordType(tenantId);
   const byId = await db.recordType.findFirst({ where: { tenantId, id: k } });
   if (byId) return byId.id;
   const byKey = await db.recordType.findFirst({ where: { tenantId, key: k } });

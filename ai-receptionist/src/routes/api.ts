@@ -841,8 +841,8 @@ apiRouter.post("/records", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { type, title, stageKey, subtypeKey, customFields } = (req.body ?? {}) as any;
-    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, customFields }));
+    const { type, title, stageKey, subtypeKey, appointmentAt, customFields } = (req.body ?? {}) as any;
+    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -895,8 +895,8 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { title, stageKey, subtypeKey, customFields } = (req.body ?? {}) as any;
-    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, customFields }));
+    const { title, stageKey, subtypeKey, appointmentAt, customFields } = (req.body ?? {}) as any;
+    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, customFields }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

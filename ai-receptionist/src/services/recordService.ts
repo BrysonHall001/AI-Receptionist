@@ -27,10 +27,25 @@ function serializeRecord(r: any) {
     title: r.title ?? "",
     stageKey: r.stageKey ?? null,
     subtypeKey: r.subtypeKey ?? null,
+    // Typed date+time as an ISO string (null when unset). The client renders it
+    // with a date-and-time picker; it is NEVER part of customFields.
+    appointmentAt: r.appointmentAt ? new Date(r.appointmentAt).toISOString() : null,
     customFields: r.customFields ?? {},
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
+}
+
+// Parse an incoming appointment value into a real Date (or null to clear).
+// Returns undefined when the caller didn't send the field at all, so an update
+// that omits it leaves the stored value untouched. A full datetime-local string
+// like "2026-06-20T14:30" keeps the time of day.
+function parseAppointmentAt(v: any): Date | null | undefined {
+  if (v === undefined) return undefined;       // field not provided — don't touch
+  if (v === null || v === "") return null;      // explicitly cleared
+  const d = new Date(v);
+  if (isNaN(d.getTime())) throw new Error("Invalid appointment date/time");
+  return d;
 }
 
 /** Active records of one type (defaults handled by resolver). */
@@ -46,17 +61,18 @@ export async function getRecord(tenantId: string, id: string) {
   return serializeRecord(r);
 }
 
-export async function createRecord(tenantId: string, recordType: string | null | undefined, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; customFields?: any }) {
+export async function createRecord(tenantId: string, recordType: string | null | undefined, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any }) {
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
   // Type (subtype) is required for record types that define subtypes (e.g. Jobs).
   const subtypeKey = await validateSubtypeForType(tenantId, recordTypeId, input.subtypeKey, { required: true });
+  const appointmentAt = parseAppointmentAt(input.appointmentAt) ?? null;
   const created = await db.record.create({
-    data: { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, customFields: input.customFields ?? {} },
+    data: { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, customFields: input.customFields ?? {} },
   });
   return serializeRecord(created);
 }
 
-export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; customFields?: any }, actor: EventActor = { type: "user" }, chainDepth = 0) {
+export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any }, actor: EventActor = { type: "user" }, chainDepth = 0) {
   const existing = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Record not found");
   const data: any = {};
@@ -66,6 +82,8 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
     // If this type requires a subtype, a blank value is rejected (can\u0027t clear Type).
     data.subtypeKey = await validateSubtypeForType(tenantId, existing.recordTypeId, input.subtypeKey, { required: true });
   }
+  const parsedAppt = parseAppointmentAt(input.appointmentAt);
+  if (parsedAppt !== undefined) data.appointmentAt = parsedAppt;
   if (input.customFields !== undefined) data.customFields = { ...(existing.customFields || {}), ...(input.customFields || {}) };
   const updated = await db.record.update({ where: { id }, data });
 
@@ -100,6 +118,11 @@ function diffRecordFields(existing: any, data: any, input: any): Array<{ field: 
   }
   if (input.subtypeKey !== undefined && norm(existing.subtypeKey) !== norm(data.subtypeKey)) {
     out.push({ field: "subtype", label: "Type", old: existing.subtypeKey ?? null, new: data.subtypeKey ?? null });
+  }
+  if (data.appointmentAt !== undefined) {
+    const before = existing.appointmentAt ? new Date(existing.appointmentAt).toISOString() : null;
+    const after = data.appointmentAt ? new Date(data.appointmentAt).toISOString() : null;
+    if (before !== after) out.push({ field: "appointmentAt", label: "Appointment", old: before, new: after });
   }
   if (input.customFields !== undefined) {
     const before = existing.customFields || {};
