@@ -6,6 +6,7 @@ import { ensureInboundStatusCallback } from "./telephony/provisionStatusCallback
 import { attachConversationRelay } from "./telephony/conversationRelayWs";
 import { sweepStaleCalls } from "./services/callOrchestrator";
 import { sweepResolvedFeedback } from "./services/feedbackService";
+import { processDueJobs } from "./automation/scheduler";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -58,6 +59,35 @@ async function main(): Promise<void> {
     void sweepResolvedFeedback().catch(() => {});
   }, 6 * 60 * 60_000);
   feedbackSweepTimer.unref();
+
+  // Automation scheduler heartbeat: every 2 minutes, run any DUE time-based
+  // automations (waits/delays, date-based "On a date", and "stalled N days")
+  // across ALL tenants. This is the automatic replacement for the external cron
+  // that used to call processDueJobs() — same in-process timer mechanism as the
+  // two sweeps above. processDueJobs() is already idempotent (it claims each due
+  // job atomically: pending -> running, and only the winner runs it), so nothing
+  // double-runs or double-sends. The `automationSweeping` guard additionally
+  // prevents a slow sweep from overlapping the next tick within this process.
+  // Errors are caught and logged so a bad sweep can never crash the server, and
+  // .unref() lets the process shut down cleanly. The manual super-admin endpoint
+  // (POST /api/automations/jobs/process) still works as a fallback / for testing.
+  let automationSweeping = false;
+  const runAutomationSweep = async () => {
+    if (automationSweeping) return; // previous tick still running — skip this one
+    automationSweeping = true;
+    try {
+      const r = await processDueJobs(); // no scope = all tenants
+      if (r.ran || r.failed || r.swept || r.stalledActed) {
+        logger.info(`[scheduler] heartbeat: swept ${r.swept}, ran ${r.ran}, failed ${r.failed}, stalled acted ${r.stalledActed}`);
+      }
+    } catch (e) {
+      logger.error(`[scheduler] heartbeat sweep failed (will retry next tick): ${(e as Error).message}`);
+    } finally {
+      automationSweeping = false;
+    }
+  };
+  const automationSweepTimer = setInterval(() => { void runAutomationSweep(); }, 2 * 60_000);
+  automationSweepTimer.unref();
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`Received ${signal}; shutting down…`);
