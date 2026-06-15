@@ -13,6 +13,7 @@ export const SYSTEM_FIELDS: FieldMeta[] = [
   { key: "phone", label: "Phone", type: "text" },
   { key: "email", label: "Email", type: "text" },
   { key: "intent", label: "Intent", type: "text" },
+  { key: "source", label: "Source", type: "text" },
 ];
 
 const SYSTEM_KEYS = new Set(SYSTEM_FIELDS.map((f) => f.key));

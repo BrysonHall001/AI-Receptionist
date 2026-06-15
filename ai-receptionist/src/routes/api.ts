@@ -239,7 +239,7 @@ apiRouter.post("/contacts", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const { name, phone, email, intent, customFields } = (req.body ?? {}) as any;
   try {
-    const c = await createContact(tenantId, { name, phone, email, intent, customFields }, actorOf(req));
+    const c = await createContact(tenantId, { name, phone, email, intent, customFields, source: "manual" }, actorOf(req));
     res.json({ ok: true, id: c.id });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

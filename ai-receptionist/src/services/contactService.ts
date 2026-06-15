@@ -10,6 +10,9 @@ export interface ContactInput {
   name?: string | null;
   email?: string | null;
   intent?: string | null;
+  // How this contact first entered the system. Set ONLY on first creation
+  // (never on update), so it stays meaningful for a contact's whole life.
+  source?: string | null;
 }
 
 export interface MutationActor {
@@ -33,8 +36,10 @@ export async function createOrUpdateContact(input: ContactInput, actor?: Mutatio
   });
   const contact = await prisma.contact.upsert({
     where: { tenantId_phone: { tenantId: input.tenantId, phone: input.phone } },
+    // NOTE: `source` is deliberately NOT in the update branch — a repeat caller
+    // (or any later edit) must never relabel where the contact first came from.
     update: pruneEmpty(fields),
-    create: { tenantId: input.tenantId, phone: input.phone, ...fields },
+    create: { tenantId: input.tenantId, phone: input.phone, source: input.source ?? "unknown", ...fields } as any,
   });
   try {
     if (!existing) {
@@ -43,7 +48,9 @@ export async function createOrUpdateContact(input: ContactInput, actor?: Mutatio
         type: EVENT_TYPES.ContactCreated,
         actor: actorOf(actor),
         subject: { type: "contact", id: contact.id },
-        payload: { name: contact.name, phone: contact.phone, email: contact.email, intent: contact.intent },
+        // `source` here is what lets the engine fire the scoped "New call lead"
+        // trigger (it adds CallLeadCreated when source === "phone").
+        payload: { name: contact.name, phone: contact.phone, email: contact.email, intent: contact.intent, source: (contact as any).source },
       });
     } else {
       await emitEvent({
@@ -51,7 +58,7 @@ export async function createOrUpdateContact(input: ContactInput, actor?: Mutatio
         type: EVENT_TYPES.ContactUpdated,
         actor: actorOf(actor),
         subject: { type: "contact", id: contact.id },
-        payload: { source: "upsert" },
+        payload: { via: "upsert" },
       });
     }
   } catch {
@@ -205,11 +212,12 @@ export async function importContacts(
         name: row.name?.trim() || null,
         email,
         intent: row.intent?.trim() || null,
+        source: "import",
       }, actor);
     } else {
       // Email-only: create a new contact with no phone.
-      const c = await prisma.contact.create({ data: { tenantId, phone: null, name: row.name?.trim() || null, email, intent: row.intent?.trim() || null } as any });
-      try { await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: c.id }, payload: { name: c.name, email: c.email } }); } catch { /* non-critical */ }
+      const c = await prisma.contact.create({ data: { tenantId, phone: null, name: row.name?.trim() || null, email, intent: row.intent?.trim() || null, source: "import" } as any });
+      try { await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: c.id }, payload: { name: c.name, email: c.email, source: "import" } }); } catch { /* non-critical */ }
     }
     imported++;
   }
@@ -284,7 +292,7 @@ export async function emailExists(tenantId: string, email: string, exceptId?: st
  *  When the portal's requireEmail toggle is ON, email is required + unique. */
 export async function createContact(
   tenantId: string,
-  data: { name?: string | null; phone?: string | null; email?: string | null; intent?: string | null; customFields?: Record<string, unknown> },
+  data: { name?: string | null; phone?: string | null; email?: string | null; intent?: string | null; customFields?: Record<string, unknown>; source?: string | null },
   actor?: MutationActor,
 ) {
   const phone = (data.phone ?? "").trim() || null;
@@ -307,14 +315,14 @@ export async function createContact(
   let contact;
   try {
     contact = await prisma.contact.create({
-      data: { tenantId, phone, name: data.name?.trim() || null, email, intent: data.intent?.trim() || null, customFields: custom } as any,
+      data: { tenantId, phone, name: data.name?.trim() || null, email, intent: data.intent?.trim() || null, source: data.source ?? "unknown", customFields: custom } as any,
     });
   } catch (e) {
     if (String((e as Error).message).includes("Unique")) throw new Error("A contact with that phone already exists");
     throw e;
   }
   try {
-    await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: contact.id }, payload: { name: contact.name, phone: contact.phone, email: contact.email } });
+    await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: contact.id }, payload: { name: contact.name, phone: contact.phone, email: contact.email, source: (contact as any).source } });
     await logActivity({ tenantId, contactId: contact.id, type: "created", summary: "Contact created", actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
   } catch { /* non-critical */ }
   return contact;
@@ -449,9 +457,9 @@ export async function generateDummyContact(tenantId: string, actor?: MutationAct
     if (f.system) continue; // system fields handled above
     custom[f.key] = randomValueForField(f);
   }
-  const contact = await prisma.contact.create({ data: { tenantId, name, phone, email, intent, customFields: custom } as any });
+  const contact = await prisma.contact.create({ data: { tenantId, name, phone, email, intent, source: "dummy", customFields: custom } as any });
   try {
-    await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: contact.id }, payload: { name, phone, email, dummy: true } });
+    await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: contact.id }, payload: { name, phone, email, source: "dummy", dummy: true } });
     await logActivity({ tenantId, contactId: contact.id, type: "created", summary: "Dummy contact created", actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
   } catch { /* non-critical */ }
   return contact;

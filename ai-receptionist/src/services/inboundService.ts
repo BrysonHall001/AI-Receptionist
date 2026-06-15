@@ -170,7 +170,7 @@ export async function ingest(token: string, body: any, sourceIp: string | null):
       await logCall(tenantId, ep.id, "accepted", "Updated existing contact", existing.id, sourceIp);
       return { status: 200, body: { ok: true, action: "updated", contactId: existing.id } };
     }
-    const c = await createContact(tenantId, data, actor); // enforces identity rule + validation + fires ContactCreated
+    const c = await createContact(tenantId, { ...data, source: "webhook" }, actor); // enforces identity rule + validation + fires ContactCreated
     await logCall(tenantId, ep.id, "accepted", "Created contact", c.id, sourceIp);
     return { status: 200, body: { ok: true, action: "created", contactId: c.id } };
   } catch (e) {

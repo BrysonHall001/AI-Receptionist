@@ -58,6 +58,14 @@ export async function handleEvent(event: DomainEvent): Promise<void> {
   if (event.type === "FieldChanged" && event.payload && event.payload.field) {
     triggerTypes.push("FieldChanged:" + event.payload.field);
   }
+  // Receptionist scope: a brand-new contact created by the AI from a phone call
+  // (source === "phone") ALSO fires "New call lead" automations. This is purely
+  // additive — "Contact created" still fires for every new contact (including
+  // phone); CallLeadCreated is the narrower, phone-only trigger. Repeat callers
+  // fire ContactUpdated (not ContactCreated), so they never match here.
+  if (event.type === "ContactCreated" && event.payload && event.payload.source === "phone") {
+    triggerTypes.push("CallLeadCreated");
+  }
   // Same convention for stage changes: a flow scoped to a specific destination
   // stage is stored as "StageChanged:<stageKey>" and fires only when the NEW
   // stage matches. Plain "StageChanged" fires on any stage change.

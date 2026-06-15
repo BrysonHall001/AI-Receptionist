@@ -199,6 +199,7 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
       name: extracted.name ?? null,
       email: extracted.email ?? null,
       intent: extracted.intent ?? null,
+      source: "phone",
     });
     await linkContact(callSid, contact.id);
   } catch (err) {

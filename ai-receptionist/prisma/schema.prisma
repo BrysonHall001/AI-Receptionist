@@ -165,6 +165,7 @@ model Contact {
   phone        String?
   email        String?
   intent       String?
+  source       String        @default("unknown")
   customFields Json          @default("{}")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

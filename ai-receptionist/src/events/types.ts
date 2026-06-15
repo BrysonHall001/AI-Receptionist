@@ -52,6 +52,11 @@ export const EVENT_TYPES = {
   StageChanged: "StageChanged",
   // A record's own field/status changed (e.g. a job's Status). Subject = record.
   RecordUpdated: "RecordUpdated",
+  // NOT an independently-emitted event — a SCOPED TRIGGER derived from
+  // ContactCreated when the contact's source is "phone" (see the engine's
+  // trigger matching). Named here so the trigger type has one canonical string.
+  // Fires only for first-time phone leads captured by the AI receptionist.
+  CallLeadCreated: "CallLeadCreated",
 } as const;
 
 export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
@@ -60,6 +65,11 @@ export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
 // make sense as workflow entry points.
 export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: string; description: string }[] = [
   { type: EVENT_TYPES.ContactCreated, label: "Contact created", group: "When something changes", description: "Runs once when a new contact is first added." },
+  // The receptionist-specific trigger: a brand-new contact whose source is
+  // "phone" (a first-time caller captured by the AI). It is a scoped match on
+  // top of ContactCreated, so "Contact created" still fires for every new
+  // contact (including phone) — this one fires ONLY for new phone leads.
+  { type: EVENT_TYPES.CallLeadCreated, label: "New call lead", group: "When something changes", description: "Runs when the AI receptionist captures a brand-new lead from a phone call (a first-time caller). Does not run for manual adds, imports, webhooks, or repeat callers." },
   { type: EVENT_TYPES.ContactUpdated, label: "Contact updated", group: "When something changes", description: "Runs when any detail on a contact is edited." },
   { type: EVENT_TYPES.FieldChanged, label: "Field changed", group: "When something changes", description: "Runs when one specific field's value changes." },
   { type: EVENT_TYPES.TagAdded, label: "Tag added", group: "Messaging & tags", description: "Runs when a tag is added." },

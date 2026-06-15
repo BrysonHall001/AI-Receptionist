@@ -99,6 +99,7 @@ function mapContact(c: any) {
     phone: c.phone,
     email: c.email ?? null,
     intent: c.intent ?? null,
+    source: c.source ?? "unknown",
     customFields: (c.customFields as any) ?? {},
     callCount: c._count?.callSessions ?? 0,
     createdAt: c.createdAt.toISOString(),

@@ -307,12 +307,13 @@
         render: f.key === "name" ? (r) => esc(disp(r) || "Unknown") : (r) => esc(disp(r) || "—"),
       };
     });
+    cols.push({ key: "source", label: "Source", type: "text", get: (r) => r.source, text: (r) => r.source || "unknown", render: (r) => esc(r.source || "unknown") });
     cols.push({ key: "callCount", label: "Calls", type: "number", get: (r) => r.callCount, text: (r) => String(r.callCount || 0) });
     cols.push({ key: "createdAt", label: "Time Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` });
     return cols;
   }
 
-  const DEFAULT_COLS = ["name", "phone", "email", "intent", "callCount", "createdAt"];
+  const DEFAULT_COLS = ["name", "phone", "email", "intent", "source", "callCount", "createdAt"];
   function applyColumnLayout(all, layout) {
     const byKey = {}; all.forEach((c) => (byKey[c.key] = c));
     const hasLayout = (layout && ((layout.order || []).length || (layout.hidden || []).length));

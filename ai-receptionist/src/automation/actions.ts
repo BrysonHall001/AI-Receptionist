@@ -541,7 +541,7 @@ const EXECUTORS: Record<string, Executor> = {
     // createContact enforces requireEmail / phone-or-email / uniqueness / required
     // custom fields — it throws on any violation, which runAction turns into a
     // failed result. We do not bypass any of it.
-    const created = await createContact(ctx.tenantId, data, automationActor(ctx));
+    const created = await createContact(ctx.tenantId, { ...data, source: "automation" }, automationActor(ctx));
     return { type: "create_record", status: "success", detail: `created ${created.name || created.phone || created.email || created.id}` };
   },
 
