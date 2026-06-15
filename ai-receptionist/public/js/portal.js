@@ -2596,6 +2596,73 @@
     bar.appendChild(importBtn);
     bar.appendChild(exportBtn);
     container.appendChild(bar);
+
+    // ---- Availability preview (Bookings only) — READ-ONLY. Shows the open slots
+    // the slot-finder computes for a chosen date + service. There is intentionally
+    // NO "book this slot" action here; this is look-only. Booking from a slot
+    // (with the write-time double-booking lock) is a separate later batch. ----
+    if (type.key === "booking") {
+      const av = el("div", "card");
+      av.style.marginBottom = "14px";
+      av.appendChild(el("div", "drawer-section-title", "Availability preview"));
+      av.appendChild(el("p", "cell-muted", "See the open slots for a day. Read-only — this doesn’t create a booking."));
+
+      const avRow = el("div");
+      avRow.style.cssText = "display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-top:8px;";
+
+      const dWrap = el("div");
+      dWrap.appendChild(el("label", "field-label", "Date"));
+      const dateInp = el("input", "input"); dateInp.type = "date";
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      dateInp.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      dateInp.style.marginBottom = "0";
+      dWrap.appendChild(dateInp);
+      avRow.appendChild(dWrap);
+
+      const sWrap = el("div");
+      sWrap.appendChild(el("label", "field-label", "Service"));
+      const svcSel = el("select", "input"); svcSel.style.marginBottom = "0";
+      const anyOpt = el("option", null, "Any (default length)"); anyOpt.value = ""; svcSel.appendChild(anyOpt);
+      ((type.subtypes) || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((st) => {
+        const o = el("option", null, esc(st.label)); o.value = st.key; svcSel.appendChild(o);
+      });
+      sWrap.appendChild(svcSel);
+      avRow.appendChild(sWrap);
+
+      const checkBtn = el("button", "btn btn-ghost btn-sm", "Check availability");
+      avRow.appendChild(checkBtn);
+      av.appendChild(avRow);
+
+      const avOut = el("div"); avOut.style.marginTop = "12px";
+      av.appendChild(avOut);
+
+      async function loadSlots() {
+        avOut.innerHTML = "";
+        avOut.appendChild(el("p", "cell-muted", "Checking…"));
+        try {
+          const q = "/api/availability?date=" + encodeURIComponent(dateInp.value) + (svcSel.value ? "&service=" + encodeURIComponent(svcSel.value) : "");
+          const r = await App.portalApi(q);
+          avOut.innerHTML = "";
+          const meta = el("p", "cell-muted");
+          meta.textContent = `Appointment length ${r.durationMin} min` + (r.bufferMin ? `, ${r.bufferMin} min buffer` : "") + ".";
+          avOut.appendChild(meta);
+          if (r.closed) { avOut.appendChild(el("p", null, "Closed that day — no open hours configured.")); return; }
+          if (!r.slots || !r.slots.length) { avOut.appendChild(el("p", null, "No open slots for this day.")); return; }
+          const grid = el("div");
+          grid.style.cssText = "display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;";
+          r.slots.forEach((s) => grid.appendChild(el("span", "pill", esc(s.label))));
+          avOut.appendChild(grid);
+        } catch (e) {
+          avOut.innerHTML = ""; avOut.appendChild(el("p", "cell-muted", esc(e.message || "Could not load availability.")));
+        }
+      }
+      checkBtn.onclick = loadSlots;
+      loadSlots(); // show today's slots on open
+
+      container.appendChild(av);
+    }
+
     const tableHost = el("div");
     container.appendChild(tableHost);
     view().appendChild(container);

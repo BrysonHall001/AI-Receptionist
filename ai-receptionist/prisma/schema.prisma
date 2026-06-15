@@ -49,6 +49,13 @@ model Tenant {
   // Record-type nouns (Contact/Job/...) are NOT stored here — they live on
   // RecordType.label/labelPlural already.
   labels       Json          @default("{}")
+  // Booking availability config (open hours, appointment durations, buffer).
+  // Stored as JSON like `theme`/`labels`. Empty {} means "use the code defaults"
+  // (Mon–Fri 9–5, 30-minute appointments, no buffer), so availability computes
+  // correctly before a business configures anything. Shape:
+  //   { hours: { mon: [{start:"09:00",end:"17:00"}], ... }, defaultDurationMin,
+  //     bufferMin, serviceDurations: { <subtypeKey>: minutes } }
+  bookingConfig Json         @default("{}")
   requireEmail Boolean       @default(true)
   // Per-portal on/off switch for the AI Receptionist / Calls feature. NEW portals
   // start OFF (default false); existing portals were backfilled ON by migration.

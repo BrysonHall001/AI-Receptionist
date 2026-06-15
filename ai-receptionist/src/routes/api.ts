@@ -3,6 +3,7 @@ import { requireAuth, resolveTenantScope, isAdminTier } from "../middleware/auth
 import { setImpersonation, clearImpersonation, SESSION_COOKIE } from "../auth/session";
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
 import { runSimulatedCall } from "../services/simulationService";
+import { findOpenSlots } from "../services/availabilityService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
@@ -897,6 +898,23 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   try {
     const { title, stageKey, subtypeKey, appointmentAt, customFields } = (req.body ?? {}) as any;
     res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, customFields }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// ---- Availability (READ-ONLY) — computed open slots for a date + service.
+// Look-only: returns the open slots the slot-finder computes from business hours
+// minus busy times (from all calendar sources). No booking/write happens here.
+apiRouter.get("/availability", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const date = String(req.query.date ?? "");
+    const service = req.query.service ? String(req.query.service) : null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: "date must be in YYYY-MM-DD format" });
+      return;
+    }
+    res.json(await findOpenSlots(tenantId, date, service));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
