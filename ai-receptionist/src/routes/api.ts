@@ -3,7 +3,7 @@ import { requireAuth, resolveTenantScope, isAdminTier } from "../middleware/auth
 import { setImpersonation, clearImpersonation, SESSION_COOKIE } from "../auth/session";
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
 import { runSimulatedCall } from "../services/simulationService";
-import { findOpenSlots } from "../services/availabilityService";
+import { findOpenSlots, getCalendarData } from "../services/availabilityService";
 import { loadBookingConfig, saveBookingConfig } from "../services/bookingConfig";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
@@ -942,6 +942,21 @@ apiRouter.patch("/booking-config", async (req: Request, res: Response) => {
   if (!tenantId) return;
   try {
     res.json(await saveBookingConfig(tenantId, req.body ?? {}));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// ---- Calendar feed (READ-ONLY): bookings in [from, to) + open-hours for shading.
+apiRouter.get("/bookings/calendar", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const from = String(req.query.from ?? "");
+    const to = String(req.query.to ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      res.status(400).json({ error: "from and to must be YYYY-MM-DD" });
+      return;
+    }
+    res.json(await getCalendarData(tenantId, from, to));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

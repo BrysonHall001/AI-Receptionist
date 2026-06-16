@@ -2672,6 +2672,165 @@
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
   }
 
+  // Read-only week/day calendar of bookings. Renders existing bookings as blocks
+  // positioned by their WALL-CLOCK time (UTC components, never local conversion),
+  // with open hours shaded from bookingConfig. Click a booking to open it. No
+  // create-from-empty-slot and no write-lock in this batch.
+  function renderBookingCalendar(host, type) {
+    const HOUR_H = 44; // px per hour
+    const STATUS_COLORS = {
+      requested: ["rgba(245,158,11,0.16)", "rgba(245,158,11,0.6)", "#9a6700"],
+      confirmed: ["rgba(16,185,129,0.16)", "rgba(16,185,129,0.6)", "#0f7a5a"],
+      completed: ["rgba(120,120,120,0.16)", "rgba(120,120,120,0.5)", "#555"],
+      no_show: ["rgba(239,68,68,0.14)", "rgba(239,68,68,0.5)", "#a12"],
+    };
+    const colorFor = (k) => STATUS_COLORS[k] || ["var(--accent-soft)", "var(--accent)", "var(--accent)"];
+    const pad = (n) => String(n).padStart(2, "0");
+    const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+    const parseYmd = (ymd) => /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+    const addDays = (ymd, n) => { const m = parseYmd(ymd); const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]) + n * 86400000); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; };
+    const dowKey = (ymd) => { const m = parseYmd(ymd); return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay()]; };
+    const mondayOf = (ymd) => { const m = parseYmd(ymd); const off = (new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay() + 6) % 7; return addDays(ymd, -off); };
+    const hm2min = (hm) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hm); return m ? (+m[1]) * 60 + (+m[2]) : NaN; };
+    const startMin = (iso) => { const m = /T(\d{2}):(\d{2})/.exec(iso); return m ? (+m[1]) * 60 + (+m[2]) : 0; };
+    const dpart = (iso) => iso.slice(0, 10);
+    const label12 = (min) => { let h = Math.floor(min / 60); const ap = h >= 12 ? "PM" : "AM"; let hh = h % 12; if (hh === 0) hh = 12; const m = min % 60; return m ? `${hh}:${pad(m)} ${ap}` : `${hh} ${ap}`; };
+    const fmtUTC = (ymd, opt) => { const m = parseYmd(ymd); return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString("en-US", Object.assign({ timeZone: "UTC" }, opt)); };
+
+    const state = { view: "week", anchor: todayYmd() };
+
+    function visibleDates() {
+      if (state.view === "day") return [state.anchor];
+      const mon = mondayOf(state.anchor);
+      return [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(mon, i));
+    }
+
+    async function load() {
+      host.innerHTML = `<div class="card cal-card"><div class="cal-empty">Loading calendar…</div></div>`;
+      const dates = visibleDates();
+      const from = dates[0];
+      const to = addDays(dates[dates.length - 1], 1);
+      let data;
+      try { data = await App.portalApi(`/api/bookings/calendar?from=${from}&to=${to}`); }
+      catch (e) { host.innerHTML = `<div class="card cal-card"><div class="cal-empty">${esc(e.message || "Could not load calendar.")}</div></div>`; return; }
+      render(dates, data);
+    }
+
+    function render(dates, data) {
+      const hours = data.hours || {};
+      const bookings = data.bookings || [];
+      const today = todayYmd();
+      const dateSet = new Set(dates);
+
+      // Display range = open windows of visible days + booking spans, snapped to the hour.
+      let minS = Infinity, maxE = -Infinity;
+      dates.forEach((d) => (hours[dowKey(d)] || []).forEach((w) => { const s = hm2min(w.start), e = hm2min(w.end); if (s < minS) minS = s; if (e > maxE) maxE = e; }));
+      bookings.forEach((b) => { if (dateSet.has(dpart(b.start))) { const s = startMin(b.start), e = s + b.durationMin; if (s < minS) minS = s; if (e > maxE) maxE = e; } });
+      if (!isFinite(minS)) { minS = 540; maxE = 1020; }
+      const rangeStart = Math.max(0, Math.floor(minS / 60) * 60);
+      let rangeEnd = Math.min(1440, Math.ceil(maxE / 60) * 60);
+      if (rangeEnd - rangeStart < 120) rangeEnd = Math.min(1440, rangeStart + 120);
+      const gridH = (rangeEnd - rangeStart) / 60 * HOUR_H;
+      const cols = `64px repeat(${dates.length}, minmax(0, 1fr))`;
+
+      const card = el("div", "card cal-card");
+
+      // Toolbar
+      const tb = el("div", "cal-toolbar");
+      const rangeLbl = el("div", "cal-range");
+      rangeLbl.textContent = dates.length === 1
+        ? fmtUTC(dates[0], { weekday: "long", month: "long", day: "numeric" })
+        : `${fmtUTC(dates[0], { month: "short", day: "numeric" })} – ${fmtUTC(dates[dates.length - 1], { month: "short", day: "numeric" })}`;
+      tb.appendChild(rangeLbl);
+      const seg = el("div", "cal-seg");
+      const wkBtn = el("button", state.view === "week" ? "active" : "", "Week");
+      const dyBtn = el("button", state.view === "day" ? "active" : "", "Day");
+      wkBtn.onclick = () => { if (state.view !== "week") { state.view = "week"; load(); } };
+      dyBtn.onclick = () => { if (state.view !== "day") { state.view = "day"; load(); } };
+      seg.appendChild(wkBtn); seg.appendChild(dyBtn);
+      tb.appendChild(seg);
+      const todayBtn = el("button", "btn btn-ghost btn-sm", "Today");
+      const prev = el("button", "btn btn-ghost btn-sm", "‹");
+      const next = el("button", "btn btn-ghost btn-sm", "›");
+      todayBtn.onclick = () => { state.anchor = todayYmd(); load(); };
+      prev.onclick = () => { state.anchor = addDays(state.anchor, state.view === "day" ? -1 : -7); load(); };
+      next.onclick = () => { state.anchor = addDays(state.anchor, state.view === "day" ? 1 : 7); load(); };
+      tb.appendChild(todayBtn); tb.appendChild(prev); tb.appendChild(next);
+      card.appendChild(tb);
+
+      const scroll = el("div", "cal-scroll");
+
+      // Header row
+      const head = el("div", "cal-head");
+      head.style.gridTemplateColumns = cols;
+      head.appendChild(el("div", "cal-corner"));
+      dates.forEach((d) => {
+        const h = el("div", "cal-dayhead" + (d === today ? " is-today" : ""));
+        h.appendChild(el("div", "cal-dow", fmtUTC(d, { weekday: "short" })));
+        h.appendChild(el("div", "cal-dom", String(parseInt(d.slice(8, 10), 10))));
+        head.appendChild(h);
+      });
+      scroll.appendChild(head);
+
+      // Body grid
+      const body = el("div", "cal-body");
+      body.style.gridTemplateColumns = cols;
+
+      const gutter = el("div", "cal-gutter");
+      gutter.style.height = gridH + "px";
+      for (let mn = rangeStart; mn < rangeEnd; mn += 60) {
+        const cell = el("div", "cal-hourcell", label12(mn));
+        cell.style.height = HOUR_H + "px";
+        gutter.appendChild(cell);
+      }
+      body.appendChild(gutter);
+
+      dates.forEach((d) => {
+        const col = el("div", "cal-col");
+        col.style.height = gridH + "px";
+        (hours[dowKey(d)] || []).forEach((w) => {
+          const top = Math.max(0, (hm2min(w.start) - rangeStart) / 60 * HOUR_H);
+          const bot = Math.min(gridH, (hm2min(w.end) - rangeStart) / 60 * HOUR_H);
+          if (bot > top) { const o = el("div", "cal-open"); o.style.top = top + "px"; o.style.height = (bot - top) + "px"; col.appendChild(o); }
+        });
+        const lines = el("div", "cal-lines");
+        lines.style.backgroundImage = `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_H - 1}px, var(--line) ${HOUR_H - 1}px, var(--line) ${HOUR_H}px)`;
+        col.appendChild(lines);
+
+        // Lane-pack overlapping bookings so they render side by side.
+        const dayB = bookings.filter((b) => dpart(b.start) === d)
+          .map((b) => ({ b, s: startMin(b.start), e: startMin(b.start) + b.durationMin }))
+          .sort((a, b) => a.s - b.s);
+        const laneEnd = [];
+        dayB.forEach((it) => { let lane = laneEnd.findIndex((en) => en <= it.s); if (lane === -1) { lane = laneEnd.length; laneEnd.push(it.e); } else laneEnd[lane] = it.e; it.lane = lane; });
+        const laneCount = Math.max(1, laneEnd.length);
+        dayB.forEach((it) => {
+          const blk = el("div", "cal-block");
+          blk.style.top = ((it.s - rangeStart) / 60 * HOUR_H) + "px";
+          blk.style.height = Math.max(16, (it.e - it.s) / 60 * HOUR_H - 2) + "px";
+          const wPct = 100 / laneCount;
+          blk.style.left = `calc(${it.lane * wPct}% + 3px)`;
+          blk.style.width = `calc(${wPct}% - 6px)`;
+          const c = colorFor(it.b.stageKey);
+          blk.style.background = c[0]; blk.style.borderColor = c[1]; blk.style.color = c[2];
+          blk.appendChild(el("div", "cal-block-t", it.b.contactName || it.b.title || "Booking"));
+          blk.appendChild(el("div", "cal-block-sub", `${label12(it.s)} · ${it.b.serviceLabel || ""}`.replace(/ · $/, "")));
+          blk.title = `${it.b.title}${it.b.contactName ? " — " + it.b.contactName : ""}\n${label12(it.s)}–${label12(it.e)} · ${it.b.serviceLabel || ""} · ${it.b.stageLabel || ""}`;
+          blk.onclick = () => App.go("#/record/" + it.b.id);
+          col.appendChild(blk);
+        });
+        body.appendChild(col);
+      });
+
+      scroll.appendChild(body);
+      card.appendChild(scroll);
+      host.innerHTML = "";
+      host.appendChild(card);
+    }
+
+    load();
+  }
+
   function recordColumnDefs(fields, type) {
     const cols = [];
     cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => esc(r.title || "Untitled") });
@@ -2733,80 +2892,18 @@
     bar.appendChild(exportBtn);
     container.appendChild(bar);
 
-    // ---- Availability preview (Bookings only) — READ-ONLY. Shows the open slots
-    // the slot-finder computes for a chosen date + service. There is intentionally
-    // NO "book this slot" action here; this is look-only. Booking from a slot
-    // (with the write-time double-booking lock) is a separate later batch. ----
+    // ---- Bookings calendar (replaces the old read-only preview). Week/day grid
+    // of existing bookings + open-hours shading. Wrapped in the table's own layout
+    // wrapper so its edges line up with the list below. Read-only in this batch:
+    // click a booking to open it; creating from an empty slot + the double-booking
+    // lock come in the next batch. ----
     if (type.key === "booking") {
-      const av = el("div", "card");
-      av.style.marginBottom = "14px";
-      av.appendChild(el("div", "drawer-section-title", "Availability preview"));
-      av.appendChild(el("p", "cell-muted", "See the open slots for a day. Read-only — this doesn’t create a booking."));
-
-      const avRow = el("div");
-      avRow.style.cssText = "display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-top:8px;";
-
-      const dWrap = el("div");
-      dWrap.appendChild(el("label", "field-label", "Date"));
-      const dateInp = el("input", "input"); dateInp.type = "date";
-      const now = new Date();
-      const pad = (n) => String(n).padStart(2, "0");
-      dateInp.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-      dateInp.style.marginBottom = "0";
-      dWrap.appendChild(dateInp);
-      avRow.appendChild(dWrap);
-
-      const sWrap = el("div");
-      sWrap.appendChild(el("label", "field-label", "Service"));
-      const svcSel = el("select", "input"); svcSel.style.marginBottom = "0";
-      const anyOpt = el("option", null, "Any (default length)"); anyOpt.value = ""; svcSel.appendChild(anyOpt);
-      ((type.subtypes) || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((st) => {
-        const o = el("option", null, esc(st.label)); o.value = st.key; svcSel.appendChild(o);
-      });
-      sWrap.appendChild(svcSel);
-      avRow.appendChild(sWrap);
-
-      const checkBtn = el("button", "btn btn-ghost btn-sm", "Check availability");
-      avRow.appendChild(checkBtn);
-      av.appendChild(avRow);
-
-      const avOut = el("div"); avOut.style.marginTop = "12px";
-      av.appendChild(avOut);
-
-      async function loadSlots() {
-        avOut.innerHTML = "";
-        avOut.appendChild(el("p", "cell-muted", "Checking…"));
-        try {
-          const q = "/api/availability?date=" + encodeURIComponent(dateInp.value) + (svcSel.value ? "&service=" + encodeURIComponent(svcSel.value) : "");
-          const r = await App.portalApi(q);
-          avOut.innerHTML = "";
-          const meta = el("p", "cell-muted");
-          meta.textContent = `Appointment length ${r.durationMin} min` + (r.bufferMin ? `, ${r.bufferMin} min buffer` : "") + ".";
-          avOut.appendChild(meta);
-          if (r.closed) { avOut.appendChild(el("p", null, "Closed that day — no open hours configured.")); return; }
-          if (!r.slots || !r.slots.length) { avOut.appendChild(el("p", null, "No open slots for this day.")); return; }
-          const grid = el("div");
-          grid.style.cssText = "display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;";
-          r.slots.forEach((s) => grid.appendChild(el("span", "pill", esc(s.label))));
-          avOut.appendChild(grid);
-        } catch (e) {
-          avOut.innerHTML = ""; avOut.appendChild(el("p", "cell-muted", esc(e.message || "Could not load availability.")));
-        }
-      }
-      checkBtn.onclick = loadSlots;
-      loadSlots(); // show today's slots on open
-
-      // Width fix: place the panel inside the SAME layout wrapper the data table
-      // uses (a collapsed filter rail + a flex table-area). That gives the panel
-      // the identical left offset and width as the table below it, so their edges
-      // line up exactly — at full content width, reusing existing classes, with
-      // no new spacing values and no change to shared CSS.
-      const avLayout = el("div", "table-layout");
-      avLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
-      const avArea = el("div", "table-area");
-      avArea.appendChild(av);
-      avLayout.appendChild(avArea);
-      container.appendChild(avLayout);
+      const calLayout = el("div", "table-layout");
+      calLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
+      const calArea = el("div", "table-area");
+      calLayout.appendChild(calArea);
+      container.appendChild(calLayout);
+      renderBookingCalendar(calArea, type);
     }
 
     const tableHost = el("div");

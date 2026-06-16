@@ -16,6 +16,10 @@
 
 import { OpenWindow, loadBookingConfig, durationForService } from "./bookingConfig";
 import { getBusyTimes } from "./calendarSources";
+import { prisma } from "../db/client";
+import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
+
+const db = prisma as any;
 
 export interface OpenSlot {
   start: string; // "YYYY-MM-DDTHH:MM" wall-clock
@@ -151,4 +155,94 @@ export async function findOpenSlots(
 
   const slots = computeOpenSlots({ dateStr, windows, busyMinutes, durationMin, bufferMin });
   return { date: dateStr, serviceKey: serviceKey ?? null, durationMin, bufferMin, closed: false, slots };
+}
+
+// ---- Calendar feed (READ-ONLY) — bookings in a date range as wall-clock blocks,
+// plus the open-hours config for shading. Used by the week/day calendar grid.
+// Wall-clock throughout: appointmentAt's UTC slot digits are read verbatim; no
+// timezone conversion.
+
+function dateToWall(d: Date): string {
+  const dt = new Date(d);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}T${p(dt.getUTCHours())}:${p(dt.getUTCMinutes())}`;
+}
+function addMinutesWallStr(wall: string, mins: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(wall);
+  if (!m) return wall;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + mins * 60000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+
+export interface CalendarBooking {
+  id: string;
+  title: string;
+  start: string; // "YYYY-MM-DDTHH:MM" wall-clock
+  end: string;
+  durationMin: number;
+  serviceKey: string | null;
+  serviceLabel: string;
+  stageKey: string | null;
+  stageLabel: string;
+  contactName: string | null;
+}
+
+export interface WeekCalendar {
+  from: string;
+  to: string; // exclusive
+  hours: Record<string, OpenWindow[]>;
+  bookings: CalendarBooking[];
+}
+
+/** Bookings whose appointmentAt falls in [fromDate, toDate) (YYYY-MM-DD), plus
+ *  the open-hours config. Read-only; no writes, no availability mutation. */
+export async function getCalendarData(tenantId: string, fromDate: string, toDate: string): Promise<WeekCalendar> {
+  const config = await loadBookingConfig(tenantId);
+  const recordTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY);
+  const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
+  const subtypes: any[] = (rt && rt.subtypes) || [];
+  const recStages: any[] = (rt && rt.recordStages) || [];
+  const subLabel = (k: string | null) => { const s = subtypes.find((x) => x.key === k); return s ? s.label : (k || ""); };
+  const stageLabel = (k: string | null) => { const s = recStages.find((x) => x.key === k); return s ? s.label : (k || ""); };
+
+  const from = new Date(`${fromDate}T00:00:00Z`);
+  const to = new Date(`${toDate}T00:00:00Z`);
+  const rows = await db.record.findMany({
+    where: { tenantId, recordTypeId, deletedAt: null, appointmentAt: { gte: from, lt: to } },
+    orderBy: { appointmentAt: "asc" },
+  });
+
+  // Batch the linked contact name per booking (first contact link wins).
+  const ids = rows.map((r: any) => r.id);
+  const links = ids.length
+    ? await db.recordLink.findMany({ where: { tenantId, recordId: { in: ids }, parentType: "contact", deletedAt: null } })
+    : [];
+  const contactIds = Array.from(new Set(links.map((l: any) => l.parentId)));
+  const contacts = contactIds.length ? await db.contact.findMany({ where: { id: { in: contactIds }, tenantId } }) : [];
+  const cById: Record<string, any> = {};
+  contacts.forEach((c: any) => { cById[c.id] = c; });
+  const nameByRecord: Record<string, string> = {};
+  for (const l of links) { if (!nameByRecord[l.recordId] && cById[l.parentId]) nameByRecord[l.recordId] = cById[l.parentId].name; }
+
+  const bookings: CalendarBooking[] = rows
+    .filter((r: any) => r.appointmentAt)
+    .map((r: any) => {
+      const start = dateToWall(r.appointmentAt);
+      const durationMin = durationForService(config, r.subtypeKey);
+      return {
+        id: r.id,
+        title: r.title || "Booking",
+        start,
+        end: addMinutesWallStr(start, durationMin),
+        durationMin,
+        serviceKey: r.subtypeKey || null,
+        serviceLabel: subLabel(r.subtypeKey),
+        stageKey: r.stageKey || null,
+        stageLabel: stageLabel(r.stageKey),
+        contactName: nameByRecord[r.id] || null,
+      };
+    });
+
+  return { from: fromDate, to: toDate, hours: config.hours, bookings };
 }
