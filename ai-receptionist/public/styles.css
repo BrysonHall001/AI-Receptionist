@@ -1315,7 +1315,8 @@ tbody tr.row-selected { background: var(--accent-soft); }
 /* ---------- Bookings calendar (week/day grid) ---------- */
 .cal-card { padding: 0; overflow: hidden; margin-bottom: 14px; }
 .cal-toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.cal-range { font-weight: 700; font-size: 14px; margin-right: auto; }
+.cal-range { font-weight: 700; font-size: 14px; }
+.cal-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 .cal-seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); overflow: hidden; }
 .cal-seg button { background: var(--panel); border: none; padding: 6px 12px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; font-family: var(--font-ui); }
 .cal-seg button.active { background: var(--accent-soft); color: var(--accent); }
@@ -1340,10 +1341,11 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .cal-empty { padding: 20px; text-align: center; color: var(--ink-faint); }
 
 /* calendar polish: legend, status glyph, now-line, closed-day label */
-.cal-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.cal-legend { display: inline-flex; flex-wrap: wrap; gap: 14px; align-items: center; }
 .cal-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); }
 .cal-legend-sw { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; font-size: 11px; font-weight: 700; border: 1px solid currentColor; }
 .cal-legend-lbl { color: var(--ink); }
+.cal-closed-tag { font-size: 9.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
 .cal-glyph { font-size: 10px; margin-right: 3px; vertical-align: 1px; }
 .cal-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--red); z-index: 6; pointer-events: none; }
 .cal-now-dot { position: absolute; left: -1px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }

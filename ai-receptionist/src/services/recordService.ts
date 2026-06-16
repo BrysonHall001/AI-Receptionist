@@ -56,6 +56,8 @@ function parseAppointmentAt(v: any): Date | null | undefined {
     ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0))
     : new Date(s);
   if (isNaN(d.getTime())) throw new Error("Invalid appointment date/time");
+  const yr = d.getUTCFullYear();
+  if (yr < 2000 || yr > 2100) throw new Error("Invalid appointment date/time (year out of range)");
   return d;
 }
 

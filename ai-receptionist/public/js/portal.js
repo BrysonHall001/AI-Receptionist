@@ -2733,6 +2733,9 @@
       let minS = Infinity, maxE = -Infinity;
       dates.forEach((d) => (hours[dowKey(d)] || []).forEach((w) => { const s = hm2min(w.start), e = hm2min(w.end); if (s < minS) minS = s; if (e > maxE) maxE = e; }));
       bookings.forEach((b) => { if (dateSet.has(dpart(b.start))) { const s = startMin(b.start), e = s + b.durationMin; if (s < minS) minS = s; if (e > maxE) maxE = e; } });
+      // When today is in view, make sure the grid covers "now" so the now-line is
+      // always on-screen (otherwise late-day times like 5:17 PM fall below close).
+      if (dateSet.has(today)) { if (nowMin < minS) minS = nowMin; if (nowMin > maxE) maxE = nowMin; }
       if (!isFinite(minS)) { minS = 540; maxE = 1020; }
       const rangeStart = Math.max(0, Math.floor(minS / 60) * 60);
       let rangeEnd = Math.min(1440, Math.ceil(maxE / 60) * 60);
@@ -2742,31 +2745,17 @@
 
       const card = el("div", "card cal-card");
 
-      // Toolbar
+      // Toolbar: range label, then the status legend in the open middle area, then
+      // the view/nav controls pushed to the right.
       const tb = el("div", "cal-toolbar");
       const rangeLbl = el("div", "cal-range");
       rangeLbl.textContent = dates.length === 1
         ? fmtUTC(dates[0], { weekday: "long", month: "long", day: "numeric" })
         : `${fmtUTC(dates[0], { month: "short", day: "numeric" })} – ${fmtUTC(dates[dates.length - 1], { month: "short", day: "numeric" })}`;
       tb.appendChild(rangeLbl);
-      const seg = el("div", "cal-seg");
-      const wkBtn = el("button", state.view === "week" ? "active" : "", "Week");
-      const dyBtn = el("button", state.view === "day" ? "active" : "", "Day");
-      wkBtn.onclick = () => { if (state.view !== "week") { state.view = "week"; load(); } };
-      dyBtn.onclick = () => { if (state.view !== "day") { state.view = "day"; load(); } };
-      seg.appendChild(wkBtn); seg.appendChild(dyBtn);
-      tb.appendChild(seg);
-      const todayBtn = el("button", "btn btn-ghost btn-sm", "Today");
-      const prev = el("button", "btn btn-ghost btn-sm", "‹");
-      const next = el("button", "btn btn-ghost btn-sm", "›");
-      todayBtn.onclick = () => { state.anchor = todayYmd(); load(); };
-      prev.onclick = () => { state.anchor = addDays(state.anchor, state.view === "day" ? -1 : -7); load(); };
-      next.onclick = () => { state.anchor = addDays(state.anchor, state.view === "day" ? 1 : 7); load(); };
-      tb.appendChild(todayBtn); tb.appendChild(prev); tb.appendChild(next);
-      card.appendChild(tb);
 
-      // Legend built from the tenant's REAL statuses — shows BOTH signals (color
-      // swatch AND the shape glyph + word) so status reads without relying on color.
+      // Legend (built from the tenant's REAL statuses) — color swatch + shape glyph
+      // + word, so status reads without relying on color alone.
       const stagesList = ((type && type.recordStages) || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
       if (stagesList.length) {
         const legend = el("div", "cal-legend");
@@ -2778,19 +2767,40 @@
           item.appendChild(el("span", "cal-legend-lbl", s.label));
           legend.appendChild(item);
         });
-        card.appendChild(legend);
+        tb.appendChild(legend);
       }
+
+      const controls = el("div", "cal-controls");
+      const seg = el("div", "cal-seg");
+      const wkBtn = el("button", state.view === "week" ? "active" : "", "Week");
+      const dyBtn = el("button", state.view === "day" ? "active" : "", "Day");
+      wkBtn.onclick = () => { if (state.view !== "week") { state.view = "week"; load(); } };
+      dyBtn.onclick = () => { if (state.view !== "day") { state.view = "day"; load(); } };
+      seg.appendChild(wkBtn); seg.appendChild(dyBtn);
+      controls.appendChild(seg);
+      const todayBtn = el("button", "btn btn-ghost btn-sm", "Today");
+      const prev = el("button", "btn btn-ghost btn-sm", "‹");
+      const next = el("button", "btn btn-ghost btn-sm", "›");
+      todayBtn.onclick = () => { state.anchor = todayYmd(); load(); };
+      prev.onclick = () => { state.anchor = addDays(state.anchor, state.view === "day" ? -1 : -7); load(); };
+      next.onclick = () => { state.anchor = addDays(state.anchor, state.view === "day" ? 1 : 7); load(); };
+      controls.appendChild(todayBtn); controls.appendChild(prev); controls.appendChild(next);
+      tb.appendChild(controls);
+      card.appendChild(tb);
 
       const scroll = el("div", "cal-scroll");
 
-      // Header row
+      // Header row (closed days get a "Closed" tag here, in the STICKY header, so
+      // it stays visible while scrolling instead of an in-grid label).
       const head = el("div", "cal-head");
       head.style.gridTemplateColumns = cols;
       head.appendChild(el("div", "cal-corner"));
       dates.forEach((d) => {
-        const h = el("div", "cal-dayhead" + (d === today ? " is-today" : ""));
+        const closed = !((hours[dowKey(d)] || []).length);
+        const h = el("div", "cal-dayhead" + (d === today ? " is-today" : "") + (closed ? " is-closed" : ""));
         h.appendChild(el("div", "cal-dow", fmtUTC(d, { weekday: "short" })));
         h.appendChild(el("div", "cal-dom", String(parseInt(d.slice(8, 10), 10))));
+        if (closed) h.appendChild(el("div", "cal-closed-tag", "Closed"));
         head.appendChild(h);
       });
       scroll.appendChild(head);
@@ -2820,9 +2830,6 @@
         const lines = el("div", "cal-lines");
         lines.style.backgroundImage = `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_H - 1}px, var(--line) ${HOUR_H - 1}px, var(--line) ${HOUR_H}px)`;
         col.appendChild(lines);
-
-        // Closed-day label so an empty grey column isn't ambiguous.
-        if (!dayWindows.length) col.appendChild(el("div", "cal-closed-lbl", "Closed"));
 
         // Lane-pack overlapping bookings so they render side by side.
         const dayB = bookings.filter((b) => dpart(b.start) === d)
@@ -3055,6 +3062,7 @@
     if (isBooking) {
       body.appendChild(el("label", "field-label", "Appointment date & time *"));
       apptInp = el("input", "input"); apptInp.type = "datetime-local";
+      apptInp.min = "2000-01-01T00:00"; apptInp.max = "2100-12-31T23:59"; // guard impossible years
       body.appendChild(apptInp);
     }
 
@@ -3070,6 +3078,7 @@
       if (!title) { toast("Title is required", true); titleInp.focus(); return; }
       if (subtypeSel && !subtypeSel.value) { toast("Type is required", true); subtypeSel.focus(); return; }
       if (apptInp && !apptInp.value) { toast("Appointment date & time is required", true); apptInp.focus(); return; }
+      if (apptInp && apptInp.value) { const y = parseInt(apptInp.value.slice(0, 4), 10); if (!(y >= 2000 && y <= 2100)) { toast("Please enter a valid appointment year", true); apptInp.focus(); return; } }
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Creating…";
@@ -3077,7 +3086,10 @@
         const rec = await App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom }) });
         toast(`${type.label || App.label("record","one")} created`);
         overlay.remove();
-        App.go("#/record/" + rec.id);
+        // Bookings: stay on the Bookings page (re-render calendar + list in place)
+        // instead of redirecting to the detail page. Other types keep the redirect.
+        if (typeKey === "booking") { renderRecordList("booking"); }
+        else { App.go("#/record/" + rec.id); }
       } catch (e) { toast(e.message, true); save.disabled = false; save.textContent = "Create"; }
     };
     body.appendChild(save);
@@ -3268,6 +3280,13 @@
     const wrap = el("div", "fade-in contact-page");
     const back = el("a", "back-link", "← " + esc(type.labelPlural || App.label("record","many")));
     back.href = type.key === "booking" ? "#/bookings" : "#/jobs";
+    // The /record/:id route highlights "Jobs" by default; now that we know the
+    // record's real type, re-mark the correct sidebar item so a Booking shows
+    // Bookings active (not Jobs).
+    {
+      const navHref = type.key === "booking" ? "#/bookings" : type.key === "contact" ? "#/contacts" : "#/jobs";
+      document.querySelectorAll(".sidebar-nav .nav-item").forEach((a) => a.classList.toggle("active", a.dataset.href === navHref));
+    }
     wrap.appendChild(back);
 
     const head = el("div", "contact-head");
@@ -3314,6 +3333,7 @@
     if (isBooking) {
       card.appendChild(el("label", "field-label", "Appointment date & time *"));
       apptInp = el("input", "input"); apptInp.type = "datetime-local";
+      apptInp.min = "2000-01-01T00:00"; apptInp.max = "2100-12-31T23:59"; // guard impossible years
       apptInp.value = isoToLocalInput(rec.appointmentAt);
       card.appendChild(apptInp);
     }
@@ -3328,6 +3348,7 @@
     save.onclick = async () => {
       if (subtypeSel && !subtypeSel.value) { toast("Type is required", true); subtypeSel.focus(); return; }
       if (apptInp && !apptInp.value) { toast("Appointment date & time is required", true); apptInp.focus(); return; }
+      if (apptInp && apptInp.value) { const y = parseInt(apptInp.value.slice(0, 4), 10); if (!(y >= 2000 && y <= 2100)) { toast("Please enter a valid appointment year", true); apptInp.focus(); return; } }
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Saving…";
