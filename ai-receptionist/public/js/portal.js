@@ -2002,6 +2002,7 @@
       { key: "appearance", label: "Appearance", admin: true, build: secAppearance },
       { key: "team", label: "Team", admin: true, build: secTeam },
       { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
+      { key: "scheduling", label: "Scheduling", admin: true, build: secScheduling },
       { key: "account", label: "Your account", admin: false, build: secAccount },
       { key: "labels", label: "Labels", admin: true, build: secLabels },
       { key: "fields", label: "Fields", admin: true, build: secFields },
@@ -2126,6 +2127,141 @@
         <p class="cell-muted" style="font-size:13px;margin-bottom:10px">Create a secure link you can give to a website form, Zapier, or another tool so new leads land directly in this portal.</p>
         <div id="inbound-host"></div>`;
       if (App.inbound) { const h = App.util.$("#inbound-host"); if (h) App.inbound.render(h); }
+    }
+
+    // Scheduling: per-business open hours (up to two windows/day for split shifts),
+    // per-service durations (keyed to the Booking services defined on Fields), and
+    // a buffer. Writes to the same bookingConfig the slot-finder already reads.
+    async function secScheduling(panel) {
+      panel.innerHTML = `<h2 class="settings-h">Scheduling</h2>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Set your open hours, how long each service takes, and a buffer between appointments. These drive the Availability Preview on the Bookings page. Services themselves are managed on the Fields page.</p>
+        <div id="sched-host"><div class="cell-muted" style="padding:8px">Loading…</div></div>`;
+      const host = App.util.$("#sched-host");
+
+      let data;
+      try { data = await App.portalApi("/api/booking-config"); }
+      catch (e) { host.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; return; }
+      const cfg = data.config || {};
+      const services = data.services || [];
+
+      const DAYS = [["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thursday"],["fri","Friday"],["sat","Saturday"],["sun","Sunday"]];
+      // Working copy of each day's windows (array of {start,end}); [] = closed.
+      const hours = {};
+      DAYS.forEach(([k]) => { hours[k] = Array.isArray(cfg.hours && cfg.hours[k]) ? cfg.hours[k].map((w) => ({ start: w.start, end: w.end })) : []; });
+
+      host.innerHTML = "";
+
+      // ---- Weekly hours ----
+      const hoursCard = el("div", "settings-card card");
+      hoursCard.appendChild(el("div", "settings-h", "Weekly hours"));
+      const dayList = el("div");
+      hoursCard.appendChild(dayList);
+
+      function timeInput(val) { const i = el("input", "input"); i.type = "time"; i.value = val || ""; i.style.cssText = "margin-bottom:0; width:130px;"; return i; }
+
+      function renderDay(k, label) {
+        const row = el("div");
+        row.style.cssText = "display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);";
+        const name = el("div"); name.textContent = label; name.style.cssText = "width:96px; font-weight:600;";
+        row.appendChild(name);
+
+        const openWrap = el("label", "form-check");
+        const openCb = el("input"); openCb.type = "checkbox"; openCb.checked = hours[k].length > 0;
+        openWrap.appendChild(openCb); openWrap.appendChild(el("span", null, "Open"));
+        row.appendChild(openWrap);
+
+        const windowsHost = el("div");
+        windowsHost.style.cssText = "display:flex; flex-wrap:wrap; align-items:center; gap:10px;";
+        row.appendChild(windowsHost);
+
+        function paint() {
+          windowsHost.innerHTML = "";
+          if (!openCb.checked) { hours[k] = []; windowsHost.appendChild(el("span", "cell-muted", "Closed")); return; }
+          if (hours[k].length === 0) hours[k] = [{ start: "09:00", end: "17:00" }];
+          hours[k].forEach((w, idx) => {
+            const s = timeInput(w.start); const e = timeInput(w.end);
+            s.onchange = () => { hours[k][idx].start = s.value; };
+            e.onchange = () => { hours[k][idx].end = e.value; };
+            windowsHost.appendChild(s);
+            windowsHost.appendChild(el("span", "cell-muted", "to"));
+            windowsHost.appendChild(e);
+            if (idx === 1) {
+              const rm = el("button", "btn btn-ghost btn-sm", "Remove");
+              rm.onclick = () => { hours[k].splice(1, 1); paint(); };
+              windowsHost.appendChild(rm);
+            }
+          });
+          if (hours[k].length < 2) {
+            const add = el("button", "btn btn-ghost btn-sm", "+ Add split (lunch break)");
+            add.onclick = () => { hours[k].push({ start: "13:00", end: "17:00" }); paint(); };
+            windowsHost.appendChild(add);
+          }
+        }
+        openCb.onchange = paint;
+        paint();
+        dayList.appendChild(row);
+      }
+      DAYS.forEach(([k, label]) => renderDay(k, label));
+
+      // ---- Durations + buffer ----
+      const durCard = el("div", "settings-card card");
+      durCard.style.marginTop = "16px";
+      durCard.appendChild(el("div", "settings-h", "Appointment lengths"));
+
+      const defWrap = el("div"); defWrap.style.cssText = "display:flex; align-items:center; gap:10px; margin-bottom:12px;";
+      defWrap.appendChild(el("label", "field-label", "Default length (min)"));
+      const defInp = el("input", "input"); defInp.type = "number"; defInp.min = "1"; defInp.value = cfg.defaultDurationMin || 30; defInp.style.cssText = "margin-bottom:0; width:100px;";
+      defWrap.appendChild(defInp);
+      durCard.appendChild(defWrap);
+
+      const bufWrap = el("div"); bufWrap.style.cssText = "display:flex; align-items:center; gap:10px; margin-bottom:14px;";
+      bufWrap.appendChild(el("label", "field-label", "Buffer between appts (min)"));
+      const bufInp = el("input", "input"); bufInp.type = "number"; bufInp.min = "0"; bufInp.value = cfg.bufferMin || 0; bufInp.style.cssText = "margin-bottom:0; width:100px;";
+      bufWrap.appendChild(bufInp);
+      durCard.appendChild(bufWrap);
+
+      const svcDurInputs = {};
+      if (services.length) {
+        durCard.appendChild(el("label", "field-label", "Per-service length (min) — blank uses the default"));
+        services.forEach((s) => {
+          const r = el("div"); r.style.cssText = "display:flex; align-items:center; gap:10px; margin:6px 0;";
+          const nm = el("div"); nm.textContent = s.label; nm.style.cssText = "width:200px;";
+          const inp = el("input", "input"); inp.type = "number"; inp.min = "1";
+          inp.placeholder = String(cfg.defaultDurationMin || 30);
+          const cur = (cfg.serviceDurations || {})[s.key];
+          inp.value = cur ? String(cur) : "";
+          inp.style.cssText = "margin-bottom:0; width:100px;";
+          svcDurInputs[s.key] = inp;
+          r.appendChild(nm); r.appendChild(inp);
+          durCard.appendChild(r);
+        });
+      } else {
+        durCard.appendChild(el("p", "cell-muted", "No services defined yet — add them on the Fields page."));
+      }
+
+      const saveBtn = el("button", "btn btn-primary btn-sm", "Save scheduling");
+      saveBtn.style.marginTop = "16px";
+      saveBtn.onclick = async () => {
+        // Build the hours payload: every day explicit ([] = closed).
+        const hoursOut = {};
+        DAYS.forEach(([k]) => { hoursOut[k] = (hours[k] || []).map((w) => ({ start: w.start, end: w.end })); });
+        const serviceDurations = {};
+        Object.keys(svcDurInputs).forEach((key) => { const v = parseInt(svcDurInputs[key].value, 10); if (Number.isFinite(v) && v > 0) serviceDurations[key] = v; });
+        const payload = {
+          hours: hoursOut,
+          defaultDurationMin: parseInt(defInp.value, 10) || 30,
+          bufferMin: parseInt(bufInp.value, 10) || 0,
+          serviceDurations,
+        };
+        saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+        try { await App.portalApi("/api/booking-config", { method: "PATCH", body: JSON.stringify(payload) }); toast("Scheduling saved"); }
+        catch (e) { toast(e.message, true); }
+        finally { saveBtn.disabled = false; saveBtn.textContent = "Save scheduling"; }
+      };
+
+      host.appendChild(hoursCard);
+      host.appendChild(durCard);
+      host.appendChild(saveBtn);
     }
 
     async function secAccount(panel) {
@@ -2660,7 +2796,17 @@
       checkBtn.onclick = loadSlots;
       loadSlots(); // show today's slots on open
 
-      container.appendChild(av);
+      // Width fix: place the panel inside the SAME layout wrapper the data table
+      // uses (a collapsed filter rail + a flex table-area). That gives the panel
+      // the identical left offset and width as the table below it, so their edges
+      // line up exactly — at full content width, reusing existing classes, with
+      // no new spacing values and no change to shared CSS.
+      const avLayout = el("div", "table-layout");
+      avLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
+      const avArea = el("div", "table-area");
+      avArea.appendChild(av);
+      avLayout.appendChild(avArea);
+      container.appendChild(avLayout);
     }
 
     const tableHost = el("div");

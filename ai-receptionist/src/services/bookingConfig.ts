@@ -7,6 +7,7 @@
 // only defines the shape, the defaults, and how to read them.
 
 import { prisma } from "../db/client";
+import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
 
 export interface OpenWindow {
   start: string; // "HH:MM" (24h, wall-clock)
@@ -80,4 +81,63 @@ export function durationForService(config: BookingConfig, serviceKey?: string | 
     return Math.floor(Number(config.serviceDurations[serviceKey]));
   }
   return config.defaultDurationMin;
+}
+
+// "HH:MM" 24h validator.
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** Validate a single open window; returns a clean {start,end} or null. */
+function validWindow(w: any): OpenWindow | null {
+  if (!w || typeof w.start !== "string" || typeof w.end !== "string") return null;
+  if (!HHMM.test(w.start) || !HHMM.test(w.end)) return null;
+  if (w.start >= w.end) return null; // start must be before end ("HH:MM" sorts correctly)
+  return { start: w.start, end: w.end };
+}
+
+/**
+ * Save a tenant's booking config. Validates everything and writes the cleaned
+ * JSON into Tenant.bookingConfig:
+ *  - hours: all 7 days written explicitly; each day = up to TWO valid open
+ *    windows (split shifts), sorted; an empty array means CLOSED that day.
+ *  - durations: kept ONLY for services that still exist on the Booking type
+ *    (keyed by stable service key), so renamed services keep their duration and
+ *    deleted ones are pruned — no second service list, no orphans.
+ */
+export async function saveBookingConfig(tenantId: string, input: any): Promise<BookingConfig> {
+  const c = input && typeof input === "object" ? input : {};
+
+  const hours: Record<string, OpenWindow[]> = {};
+  for (const k of WEEKDAY_KEYS) {
+    const arr = c.hours && Array.isArray(c.hours[k]) ? c.hours[k] : [];
+    const windows: OpenWindow[] = [];
+    for (const w of arr) {
+      const v = validWindow(w);
+      if (v) windows.push(v);
+      if (windows.length >= 2) break; // up to two windows per day (e.g. before/after lunch)
+    }
+    windows.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+    hours[k] = windows;
+  }
+
+  // Durations: keep only services that still exist on the Booking record type.
+  const recordTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY);
+  const rt = await (prisma as any).recordType.findFirst({ where: { tenantId, id: recordTypeId } });
+  const validKeys = new Set(((rt && rt.subtypes) || []).map((s: any) => String(s.key)));
+  const serviceDurations: Record<string, number> = {};
+  const inDur = c.serviceDurations && typeof c.serviceDurations === "object" ? c.serviceDurations : {};
+  for (const [key, val] of Object.entries(inDur)) {
+    if (!validKeys.has(key)) continue; // prune orphans (deleted services)
+    const n = Number(val);
+    if (Number.isFinite(n) && n > 0) serviceDurations[key] = Math.floor(n);
+  }
+
+  const stored = {
+    hours,
+    defaultDurationMin: posInt(c.defaultDurationMin, DEFAULT_BOOKING_CONFIG.defaultDurationMin),
+    bufferMin: nonNegInt(c.bufferMin, DEFAULT_BOOKING_CONFIG.bufferMin),
+    serviceDurations,
+  };
+
+  await (prisma as any).tenant.update({ where: { id: tenantId }, data: { bookingConfig: stored } });
+  return mergeBookingConfig(stored);
 }

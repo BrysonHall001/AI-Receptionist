@@ -4,6 +4,7 @@ import { setImpersonation, clearImpersonation, SESSION_COOKIE } from "../auth/se
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
 import { runSimulatedCall } from "../services/simulationService";
 import { findOpenSlots } from "../services/availabilityService";
+import { loadBookingConfig, saveBookingConfig } from "../services/bookingConfig";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
@@ -915,6 +916,32 @@ apiRouter.get("/availability", async (req: Request, res: Response) => {
       return;
     }
     res.json(await findOpenSlots(tenantId, date, service));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// ---- Booking scheduling config (hours / durations / buffer). The editor reads
+// the service LIST from the Booking record type (single source of truth on the
+// Fields page) and only attaches a duration to each by stable key.
+apiRouter.get("/booking-config", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const config = await loadBookingConfig(tenantId);
+    const types = await listRecordTypes(tenantId);
+    const booking = (types || []).find((t: any) => t.key === "booking");
+    const services = (((booking && booking.subtypes) || []) as any[])
+      .slice()
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map((s) => ({ key: s.key, label: s.label }));
+    res.json({ config, services });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.patch("/booking-config", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    res.json(await saveBookingConfig(tenantId, req.body ?? {}));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
