@@ -2678,13 +2678,17 @@
   // create-from-empty-slot and no write-lock in this batch.
   function renderBookingCalendar(host, type) {
     const HOUR_H = 44; // px per hour
-    const STATUS_COLORS = {
-      requested: ["rgba(245,158,11,0.16)", "rgba(245,158,11,0.6)", "#9a6700"],
-      confirmed: ["rgba(16,185,129,0.16)", "rgba(16,185,129,0.6)", "#0f7a5a"],
-      completed: ["rgba(120,120,120,0.16)", "rgba(120,120,120,0.5)", "#555"],
-      no_show: ["rgba(239,68,68,0.14)", "rgba(239,68,68,0.5)", "#a12"],
+    // Status styling reuses the app's theme tokens, plus a SECOND, color-independent
+    // signal so status is readable when color is washed out or for colorblind users:
+    // a distinct SHAPE glyph and the spelled-out status word. Keyed by stable stage
+    // keys; unknown/custom statuses fall back to the accent token + a diamond.
+    const STATUS_META = {
+      requested: { bg: "var(--amber-soft)", fg: "var(--amber)", glyph: "○" },
+      confirmed: { bg: "var(--green-soft)", fg: "var(--green)", glyph: "●" },
+      completed: { bg: "var(--gray-soft)", fg: "var(--ink-soft)", glyph: "✓" },
+      no_show: { bg: "var(--red-soft)", fg: "var(--red)", glyph: "✕" },
     };
-    const colorFor = (k) => STATUS_COLORS[k] || ["var(--accent-soft)", "var(--accent)", "var(--accent)"];
+    const metaFor = (k) => STATUS_META[k] || { bg: "var(--accent-soft)", fg: "var(--accent)", glyph: "◆" };
     const pad = (n) => String(n).padStart(2, "0");
     const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
     const parseYmd = (ymd) => /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
@@ -2721,6 +2725,9 @@
       const bookings = data.bookings || [];
       const today = todayYmd();
       const dateSet = new Set(dates);
+      const nowD = new Date();
+      const nowMin = nowD.getHours() * 60 + nowD.getMinutes(); // browser-local wall-clock digits
+      let nowLineEl = null;
 
       // Display range = open windows of visible days + booking spans, snapped to the hour.
       let minS = Infinity, maxE = -Infinity;
@@ -2758,6 +2765,22 @@
       tb.appendChild(todayBtn); tb.appendChild(prev); tb.appendChild(next);
       card.appendChild(tb);
 
+      // Legend built from the tenant's REAL statuses — shows BOTH signals (color
+      // swatch AND the shape glyph + word) so status reads without relying on color.
+      const stagesList = ((type && type.recordStages) || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      if (stagesList.length) {
+        const legend = el("div", "cal-legend");
+        stagesList.forEach((s) => {
+          const m = metaFor(s.key);
+          const item = el("span", "cal-legend-item");
+          const sw = el("span", "cal-legend-sw"); sw.style.background = m.bg; sw.style.color = m.fg; sw.textContent = m.glyph;
+          item.appendChild(sw);
+          item.appendChild(el("span", "cal-legend-lbl", s.label));
+          legend.appendChild(item);
+        });
+        card.appendChild(legend);
+      }
+
       const scroll = el("div", "cal-scroll");
 
       // Header row
@@ -2788,7 +2811,8 @@
       dates.forEach((d) => {
         const col = el("div", "cal-col");
         col.style.height = gridH + "px";
-        (hours[dowKey(d)] || []).forEach((w) => {
+        const dayWindows = hours[dowKey(d)] || [];
+        dayWindows.forEach((w) => {
           const top = Math.max(0, (hm2min(w.start) - rangeStart) / 60 * HOUR_H);
           const bot = Math.min(gridH, (hm2min(w.end) - rangeStart) / 60 * HOUR_H);
           if (bot > top) { const o = el("div", "cal-open"); o.style.top = top + "px"; o.style.height = (bot - top) + "px"; col.appendChild(o); }
@@ -2796,6 +2820,9 @@
         const lines = el("div", "cal-lines");
         lines.style.backgroundImage = `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_H - 1}px, var(--line) ${HOUR_H - 1}px, var(--line) ${HOUR_H}px)`;
         col.appendChild(lines);
+
+        // Closed-day label so an empty grey column isn't ambiguous.
+        if (!dayWindows.length) col.appendChild(el("div", "cal-closed-lbl", "Closed"));
 
         // Lane-pack overlapping bookings so they render side by side.
         const dayB = bookings.filter((b) => dpart(b.start) === d)
@@ -2807,18 +2834,34 @@
         dayB.forEach((it) => {
           const blk = el("div", "cal-block");
           blk.style.top = ((it.s - rangeStart) / 60 * HOUR_H) + "px";
-          blk.style.height = Math.max(16, (it.e - it.s) / 60 * HOUR_H - 2) + "px";
+          const bh = Math.max(16, (it.e - it.s) / 60 * HOUR_H - 2);
+          blk.style.height = bh + "px";
           const wPct = 100 / laneCount;
           blk.style.left = `calc(${it.lane * wPct}% + 3px)`;
           blk.style.width = `calc(${wPct}% - 6px)`;
-          const c = colorFor(it.b.stageKey);
-          blk.style.background = c[0]; blk.style.borderColor = c[1]; blk.style.color = c[2];
-          blk.appendChild(el("div", "cal-block-t", it.b.contactName || it.b.title || "Booking"));
-          blk.appendChild(el("div", "cal-block-sub", `${label12(it.s)} · ${it.b.serviceLabel || ""}`.replace(/ · $/, "")));
+          const m = metaFor(it.b.stageKey);
+          blk.style.background = m.bg; blk.style.borderColor = m.fg; blk.style.color = m.fg; blk.style.borderLeftWidth = "3px";
+          // Title line: shape glyph (color-independent status cue) + name/title.
+          const tline = el("div", "cal-block-t");
+          tline.appendChild(el("span", "cal-glyph", m.glyph));
+          tline.appendChild(document.createTextNode(it.b.contactName || it.b.title || "Booking"));
+          blk.appendChild(tline);
+          // Sub line (when tall enough): time · service · STATUS WORD spelled out.
+          if (bh >= 30) {
+            blk.appendChild(el("div", "cal-block-sub", `${label12(it.s)} · ${[it.b.serviceLabel, it.b.stageLabel].filter(Boolean).join(" · ")}`.replace(/ · $/, "")));
+          }
           blk.title = `${it.b.title}${it.b.contactName ? " — " + it.b.contactName : ""}\n${label12(it.s)}–${label12(it.e)} · ${it.b.serviceLabel || ""} · ${it.b.stageLabel || ""}`;
           blk.onclick = () => App.go("#/record/" + it.b.id);
           col.appendChild(blk);
         });
+
+        // "Now" line — today's column only, browser-local wall-clock, within range.
+        if (d === today && nowMin >= rangeStart && nowMin <= rangeEnd) {
+          nowLineEl = el("div", "cal-now");
+          nowLineEl.style.top = ((nowMin - rangeStart) / 60 * HOUR_H) + "px";
+          nowLineEl.appendChild(el("span", "cal-now-dot"));
+          col.appendChild(nowLineEl);
+        }
         body.appendChild(col);
       });
 
@@ -2826,6 +2869,26 @@
       card.appendChild(scroll);
       host.innerHTML = "";
       host.appendChild(card);
+
+      // Default scroll: open at business start (or ~now if today is visible) so we
+      // don't land on empty early-morning space.
+      let bizStart = Infinity;
+      dates.forEach((d) => (hours[dowKey(d)] || []).forEach((w) => { const s = hm2min(w.start); if (s < bizStart) bizStart = s; }));
+      if (!isFinite(bizStart)) bizStart = rangeStart;
+      const scrollTarget = (dateSet.has(today) && nowMin > bizStart) ? nowMin - 30 : bizStart;
+      scroll.scrollTop = Math.max(0, (scrollTarget - rangeStart) / 60 * HOUR_H - 8);
+
+      // Keep the "now" line current without re-fetching; self-cleans if the
+      // calendar is removed from the page.
+      if (host._calTimer) { clearInterval(host._calTimer); host._calTimer = null; }
+      if (nowLineEl) {
+        host._calTimer = setInterval(() => {
+          if (!document.body.contains(host)) { clearInterval(host._calTimer); host._calTimer = null; return; }
+          const n = new Date(); const nm = n.getHours() * 60 + n.getMinutes();
+          if (nm < rangeStart || nm > rangeEnd) { nowLineEl.style.display = "none"; return; }
+          nowLineEl.style.display = ""; nowLineEl.style.top = ((nm - rangeStart) / 60 * HOUR_H) + "px";
+        }, 60000);
+      }
     }
 
     load();

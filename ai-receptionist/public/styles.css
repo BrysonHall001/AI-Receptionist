@@ -1338,3 +1338,13 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .cal-block-t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-block-sub { font-size: 10.5px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-empty { padding: 20px; text-align: center; color: var(--ink-faint); }
+
+/* calendar polish: legend, status glyph, now-line, closed-day label */
+.cal-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.cal-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); }
+.cal-legend-sw { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; font-size: 11px; font-weight: 700; border: 1px solid currentColor; }
+.cal-legend-lbl { color: var(--ink); }
+.cal-glyph { font-size: 10px; margin-right: 3px; vertical-align: 1px; }
+.cal-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--red); z-index: 6; pointer-events: none; }
+.cal-now-dot { position: absolute; left: -1px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+.cal-closed-lbl { position: absolute; top: 8px; left: 0; right: 0; text-align: center; font-size: 10.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; pointer-events: none; }
