@@ -142,6 +142,7 @@
     job: { one: "Job", many: "Jobs" },
     record: { one: "Record", many: "Records" },
     stage: { one: "Stage", many: "Stages" },
+    resource: { one: "Resource", many: "Resources" },
     candidate: { one: "Candidate", many: "Candidates" },
   };
 

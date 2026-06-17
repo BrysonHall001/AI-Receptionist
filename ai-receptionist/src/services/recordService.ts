@@ -6,6 +6,7 @@
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
+import { resourceExists } from "./resourceService";
 import { randomValueForField } from "./contactService";
 import { emitEvent } from "../events/bus";
 import { EventActor } from "../events/types";
@@ -79,6 +80,7 @@ function serializeRecord(r: any) {
     // Typed date+time as an ISO string (null when unset). The client renders it
     // with a date-and-time picker; it is NEVER part of customFields.
     appointmentAt: r.appointmentAt ? new Date(r.appointmentAt).toISOString() : null,
+    resourceId: r.resourceId ?? null,
     customFields: r.customFields ?? {},
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -123,10 +125,20 @@ export async function getRecord(tenantId: string, id: string) {
   return serializeRecord(r);
 }
 
+/** Resolve & validate an assignment to a bookable resource. Blank/none → null
+ *  (unassigned); a non-empty id must be a real live resource for this tenant. */
+async function resolveResourceId(tenantId: string, value: any): Promise<string | null> {
+  if (value === undefined || value === null) return null;
+  const id = String(value).trim();
+  if (!id) return null;
+  if (!(await resourceExists(tenantId, id))) throw new Error("Assigned resource not found.");
+  return id;
+}
+
 export async function createRecord(
   tenantId: string,
   recordType: string | null | undefined,
-  input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean },
+  input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; resourceId?: string | null },
   opts: { source?: "manual" | "ai" } = {}
 ) {
   const source = opts.source === "ai" ? "ai" : "manual";
@@ -134,12 +146,13 @@ export async function createRecord(
   // Type (subtype) is required for record types that define subtypes (e.g. Jobs).
   const subtypeKey = await validateSubtypeForType(tenantId, recordTypeId, input.subtypeKey, { required: true });
   const appointmentAt = parseAppointmentAt(input.appointmentAt) ?? null;
+  const resourceId = await resolveResourceId(tenantId, input.resourceId);
 
   // Bookings with a time go through the lock + double-booking policy inside a
   // transaction. Everything else uses the plain insert.
   const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId }, select: { key: true } });
   const isBooking = rt && rt.key === BOOKING_RECORD_TYPE_KEY && appointmentAt != null;
-  const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, customFields: input.customFields ?? {} };
+  const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields: input.customFields ?? {} };
 
   if (isBooking) {
     const config = await loadBookingConfig(tenantId);
@@ -162,12 +175,13 @@ export async function createRecord(
   return serializeRecord(created);
 }
 
-export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean }, actor: EventActor = { type: "user" }, chainDepth = 0) {
+export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; resourceId?: string | null }, actor: EventActor = { type: "user" }, chainDepth = 0) {
   const existing = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Record not found");
   const data: any = {};
   if (input.title !== undefined) data.title = (input.title || "").trim() || null;
   if (input.stageKey !== undefined) data.stageKey = input.stageKey ?? null;
+  if (input.resourceId !== undefined) data.resourceId = await resolveResourceId(tenantId, input.resourceId);
   if (input.subtypeKey !== undefined) {
     // If this type requires a subtype, a blank value is rejected (can\u0027t clear Type).
     data.subtypeKey = await validateSubtypeForType(tenantId, existing.recordTypeId, input.subtypeKey, { required: true });

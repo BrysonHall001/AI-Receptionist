@@ -83,6 +83,7 @@ model Tenant {
   templates    EmailTemplate[]
   dashboards   Dashboard[]
   events         Event[]
+  resources    Resource[]
   automations    Automation[]
   automationRuns AutomationRun[]
   scheduledJobs  ScheduledJob[]
@@ -322,6 +323,11 @@ model Record {
   // so adding the column is harmless to every existing record type. Stored as a
   // full timestamp (date + time of day), mirroring the ScheduledJob.dueAt pattern.
   appointmentAt DateTime?
+  // Assigned bookable RESOURCE (staff/stylist/technician). Single-valued typed
+  // attribute of a booking — same shape as subtypeKey (service) and stageKey
+  // (status), NOT a RecordLink. Nullable: only bookings use it; loose id (the
+  // Resource.id) with app-level integrity (delete is blocked while assigned).
+  resourceId   String?
   customFields Json         @default("{}")
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -332,6 +338,8 @@ model Record {
   @@index([tenantId, recordTypeId, deletedAt])
   // Index for date queries/sorting (upcoming bookings, no-show sweeps, free slots).
   @@index([tenantId, recordTypeId, appointmentAt])
+  // Per-resource lookups (assigned-booking counts now; resource calendar/lock later).
+  @@index([tenantId, resourceId])
 }
 
 // The many-to-many join between a "parent" and a Record — and the pipeline atom.
@@ -614,4 +622,25 @@ model FeedbackMessage {
   createdAt DateTime       @default(now())
 
   @@index([ticketId])
+}
+
+// A bookable RESOURCE: a staff member / stylist / technician / provider, scoped
+// per business (tenant). Deliberately a small dedicated table (NOT the records
+// backbone): it's a simple config list (name + color), like services — no
+// pipeline, subtype, appointment, or custom fields. `color` is stored now for
+// the per-resource calendar coloring in a later batch. `order` controls display
+// order. `deletedAt` allows soft-archive later without a schema change; this
+// batch uses a hard delete that is BLOCKED while any booking is assigned.
+model Resource {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  color     String    @default("#6366f1")
+  order     Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId])
 }

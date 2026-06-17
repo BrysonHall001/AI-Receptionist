@@ -5,6 +5,7 @@ import { getStats, listCalls, getCall, listContacts, getContact, listDeletedCont
 import { runSimulatedCall } from "../services/simulationService";
 import { findOpenSlots, getCalendarData } from "../services/availabilityService";
 import { loadBookingConfig, saveBookingConfig } from "../services/bookingConfig";
+import { listResources, createResource, updateResource, deleteResource } from "../services/resourceService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
@@ -843,8 +844,8 @@ apiRouter.post("/records", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { type, title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap } = (req.body ?? {}) as any;
-    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true }, { source: "manual" }));
+    const { type, title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap, resourceId } = (req.body ?? {}) as any;
+    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, resourceId }, { source: "manual" }));
   } catch (err) {
     if ((err as any).code === "overlap") { res.status(409).json({ error: (err as Error).message, code: "overlap" }); return; }
     res.status(400).json({ error: (err as Error).message });
@@ -900,8 +901,8 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap } = (req.body ?? {}) as any;
-    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true }));
+    const { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap, resourceId } = (req.body ?? {}) as any;
+    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, resourceId }));
   } catch (err) {
     if ((err as any).code === "overlap") { res.status(409).json({ error: (err as Error).message, code: "overlap" }); return; }
     res.status(400).json({ error: (err as Error).message });
@@ -949,6 +950,45 @@ apiRouter.patch("/booking-config", async (req: Request, res: Response) => {
   try {
     res.json(await saveBookingConfig(tenantId, req.body ?? {}));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// ---- Bookable RESOURCES (staff/stylist/technician/provider) ---------------
+// Tenant-scoped, mirrors the booking-config scope guard. The configurable
+// display label ("Barbers"/"Providers"/...) lives in the naming layer, not here.
+apiRouter.get("/resources", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try { res.json(await listResources(tenantId)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.post("/resources", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const { name, color } = (req.body ?? {}) as any;
+    res.json(await createResource(tenantId, { name, color }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.patch("/resources/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const { name, color } = (req.body ?? {}) as any;
+    res.json(await updateResource(tenantId, req.params.id, { name, color }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.delete("/resources/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try { res.json(await deleteResource(tenantId, req.params.id)); }
+  catch (err) {
+    // Block-with-count when bookings are still assigned (client shows the message).
+    if ((err as any).code === "resource_in_use") { res.status(409).json({ error: (err as Error).message, code: "resource_in_use", count: (err as any).count }); return; }
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 // ---- Calendar feed (READ-ONLY): bookings in [from, to) + open-hours for shading.

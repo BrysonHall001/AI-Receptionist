@@ -1850,6 +1850,7 @@
       const GENERIC_WORDS = [
         { key: "record", dflt: { one: "Record", many: "Records" } },
         { key: "stage", dflt: { one: "Stage", many: "Stages" } },
+        { key: "resource", dflt: { one: "Resource", many: "Resources" } },
       ];
 
       body.innerHTML = "";
@@ -2003,6 +2004,7 @@
       { key: "team", label: "Team", admin: true, build: secTeam },
       { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
       { key: "scheduling", label: "Scheduling", admin: true, build: secScheduling },
+      { key: "resources", label: App.label("resource", "many"), admin: true, build: secResources },
       { key: "account", label: "Your account", admin: false, build: secAccount },
       { key: "labels", label: "Labels", admin: true, build: secLabels },
       { key: "fields", label: "Fields", admin: true, build: secFields },
@@ -2132,6 +2134,77 @@
     // Scheduling: per-business open hours (up to two windows/day for split shifts),
     // per-service durations (keyed to the Booking services defined on Fields), and
     // a buffer. Writes to the same bookingConfig the slot-finder already reads.
+    async function secResources(panel) {
+      const wOne = App.label("resource", "one");
+      const wMany = App.label("resource", "many");
+      panel.innerHTML = `<h2 class="settings-h">${esc(wMany)}</h2>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Create the ${esc(wMany.toLowerCase())} a booking can be assigned to. Rename this word any time on the Labels page. Colors are saved now for upcoming calendar coloring.</p>
+        <div id="res-host"><div class="cell-muted" style="padding:8px">Loading…</div></div>`;
+      const host = App.util.$("#res-host");
+      let items = [];
+
+      async function load() {
+        try { items = await App.portalApi("/api/resources"); }
+        catch (e) { host.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; return; }
+        render();
+      }
+
+      function render() {
+        host.innerHTML = "";
+        const card = el("div", "card"); card.style.cssText = "padding:18px; max-width:560px;";
+
+        // Add row: name + color + Add
+        const addWrap = el("div"); addWrap.style.cssText = "display:flex; gap:8px; align-items:center; margin-bottom:8px;";
+        const nameInp = el("input", "input"); nameInp.type = "text"; nameInp.placeholder = wOne + " name"; nameInp.style.cssText = "margin-bottom:0; flex:1;";
+        const colorInp = el("input"); colorInp.type = "color"; colorInp.value = "#6366f1"; colorInp.title = "Color"; colorInp.style.cssText = "width:40px; height:34px; padding:2px; border:1px solid var(--line); border-radius:8px; cursor:pointer;";
+        const addBtn = el("button", "btn btn-primary btn-sm", "Add");
+        addBtn.onclick = async () => {
+          const name = nameInp.value.trim();
+          if (!name) { toast("Name is required", true); nameInp.focus(); return; }
+          addBtn.disabled = true;
+          try { await App.portalApi("/api/resources", { method: "POST", body: JSON.stringify({ name, color: colorInp.value }) }); toast(wOne + " added"); nameInp.value = ""; await load(); }
+          catch (e) { toast(e.message, true); addBtn.disabled = false; }
+        };
+        nameInp.onkeydown = (e) => { if (e.key === "Enter") addBtn.click(); };
+        addWrap.appendChild(nameInp); addWrap.appendChild(colorInp); addWrap.appendChild(addBtn);
+        card.appendChild(addWrap);
+
+        // Existing list
+        if (!items.length) {
+          card.appendChild(el("p", "cell-muted", "No " + wMany.toLowerCase() + " yet — add one above."));
+        } else {
+          items.forEach((r) => {
+            const row = el("div"); row.style.cssText = "display:flex; gap:10px; align-items:center; padding:9px 0; border-top:1px solid var(--line);";
+            const sw = el("input"); sw.type = "color"; sw.value = r.color || "#6366f1"; sw.title = "Color"; sw.style.cssText = "width:34px; height:30px; padding:2px; border:1px solid var(--line); border-radius:7px; cursor:pointer; flex:0 0 auto;";
+            sw.onchange = async () => { try { await App.portalApi("/api/resources/" + r.id, { method: "PATCH", body: JSON.stringify({ color: sw.value }) }); r.color = sw.value; toast("Saved"); } catch (e) { toast(e.message, true); sw.value = r.color || "#6366f1"; } };
+            const nm = el("div"); nm.textContent = r.name; nm.style.cssText = "flex:1; font-weight:500;";
+            const ren = el("button", "btn btn-ghost btn-sm", "Rename");
+            ren.onclick = async () => {
+              const v = await promptModal({ title: "Rename " + wOne, label: "Name", value: r.name, okText: "Rename" });
+              if (v === null || !v.trim()) return;
+              try { await App.portalApi("/api/resources/" + r.id, { method: "PATCH", body: JSON.stringify({ name: v.trim() }) }); toast("Renamed"); await load(); }
+              catch (e) { toast(e.message, true); }
+            };
+            const del = el("button", "btn btn-ghost btn-sm", "Delete"); del.style.color = "var(--red)";
+            del.onclick = async () => {
+              if (!(await confirmModal({ title: "Delete " + wOne, message: `Delete “${r.name}”?`, confirmText: "Delete" }))) return;
+              try { await App.portalApi("/api/resources/" + r.id, { method: "DELETE" }); toast("Deleted"); await load(); }
+              catch (e) {
+                // Blocked because bookings are still assigned — explain, don't delete.
+                if (e && e.data && e.data.code === "resource_in_use") { await confirmModal({ title: "Can’t delete yet", message: e.message, confirmText: "OK" }); }
+                else { toast(e.message, true); }
+              }
+            };
+            row.appendChild(sw); row.appendChild(nm); row.appendChild(ren); row.appendChild(del);
+            card.appendChild(row);
+          });
+        }
+        host.appendChild(card);
+      }
+
+      load();
+    }
+
     async function secScheduling(panel) {
       panel.innerHTML = `<h2 class="settings-h">Scheduling</h2>
         <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Set your open hours, how long each service takes, and a buffer between appointments. These drive the Availability Preview on the Bookings page. Services themselves are managed on the Fields page.</p>
@@ -3087,6 +3160,7 @@
     const isBooking = type && type.key === "booking";
     let apptInp = null;
     let contactSel = null;
+    let resourceSel = null;
     if (isBooking) {
       body.appendChild(el("label", "field-label", "Appointment date & time *"));
       apptInp = el("input", "input"); apptInp.type = "datetime-local";
@@ -3104,6 +3178,15 @@
         (cs || []).slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""))).forEach((c) => {
           const o = el("option", null, esc(c.name || c.email || c.phone || "Unnamed")); o.value = c.id; contactSel.appendChild(o);
         });
+      }).catch(() => {});
+
+      // Optional resource assignment at create (saved as resourceId).
+      body.appendChild(el("label", "field-label", "Assigned " + App.label("resource", "one")));
+      resourceSel = el("select", "input");
+      resourceSel.appendChild(el("option", null, "— None —"));
+      body.appendChild(resourceSel);
+      App.portalApi("/api/resources").then((list) => {
+        (list || []).forEach((r) => { const o = el("option", null, esc(r.name)); o.value = r.id; resourceSel.appendChild(o); });
       }).catch(() => {});
     }
 
@@ -3123,7 +3206,7 @@
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Creating…";
-      const basePayload = { type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom };
+      const basePayload = { type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, resourceId: resourceSel ? (resourceSel.value || null) : undefined, customFields: custom };
       const doCreate = (allowOverlap) => App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ ...basePayload, allowOverlap: !!allowOverlap }) });
       try {
         let rec;
@@ -3396,6 +3479,25 @@
       card.appendChild(apptInp);
     }
 
+    // Bookings: the assigned RESOURCE (staff/stylist/...). Single typed attribute,
+    // saved as resourceId. Options load async; the current assignment is preserved
+    // even if the user saves before the list arrives.
+    let resourceSel = null;
+    if (isBooking) {
+      card.appendChild(el("label", "field-label", "Assigned " + App.label("resource", "one")));
+      resourceSel = el("select", "input");
+      const none0 = document.createElement("option"); none0.value = ""; none0.textContent = "— None —"; resourceSel.appendChild(none0);
+      if (rec.resourceId) { const cur = document.createElement("option"); cur.value = rec.resourceId; cur.textContent = "…"; resourceSel.appendChild(cur); resourceSel.value = rec.resourceId; }
+      card.appendChild(resourceSel);
+      App.portalApi("/api/resources").then((list) => {
+        const keep = resourceSel.value;
+        resourceSel.innerHTML = "";
+        const n = document.createElement("option"); n.value = ""; n.textContent = "— None —"; resourceSel.appendChild(n);
+        (list || []).forEach((r) => { const o = document.createElement("option"); o.value = r.id; o.textContent = r.name; resourceSel.appendChild(o); });
+        resourceSel.value = keep;
+      }).catch(() => { /* leave just None on failure */ });
+    }
+
     const values = { ...(rec.customFields || {}) };
     const editorHost = el("div", "field-editor");
     card.appendChild(editorHost);
@@ -3410,7 +3512,7 @@
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Saving…";
-      const patchBody = { title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom };
+      const patchBody = { title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, appointmentAt: apptInp ? (apptInp.value || null) : undefined, resourceId: resourceSel ? (resourceSel.value || null) : undefined, customFields: custom };
       const doPatch = (allowOverlap) => App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ ...patchBody, allowOverlap: !!allowOverlap }) });
       try {
         try {
