@@ -97,7 +97,7 @@ export async function createBookingFromCall(params: {
     subtypeKey,
     stageKey: REQUESTED_STAGE_KEY,
     appointmentAt: appointmentDatetime,
-  });
+  }, { source: "ai" });
 
   // Link the caller's contact using the SAME mechanism as the UI.
   try {

@@ -843,9 +843,12 @@ apiRouter.post("/records", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { type, title, stageKey, subtypeKey, appointmentAt, customFields } = (req.body ?? {}) as any;
-    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields }));
-  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    const { type, title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap } = (req.body ?? {}) as any;
+    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true }, { source: "manual" }));
+  } catch (err) {
+    if ((err as any).code === "overlap") { res.status(409).json({ error: (err as Error).message, code: "overlap" }); return; }
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 apiRouter.post("/records/bulk-delete", async (req: Request, res: Response) => {
@@ -897,9 +900,12 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { title, stageKey, subtypeKey, appointmentAt, customFields } = (req.body ?? {}) as any;
-    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, customFields }));
-  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    const { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap } = (req.body ?? {}) as any;
+    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true }));
+  } catch (err) {
+    if ((err as any).code === "overlap") { res.status(409).json({ error: (err as Error).message, code: "overlap" }); return; }
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 // ---- Availability (READ-ONLY) — computed open slots for a date + service.

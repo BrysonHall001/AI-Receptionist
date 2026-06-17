@@ -2239,6 +2239,17 @@
         durCard.appendChild(el("p", "cell-muted", "No services defined yet — add them on the Fields page."));
       }
 
+      // Policy: allow double-booking on/off (default off = block, with manual override).
+      const dblWrap = el("div"); dblWrap.style.cssText = "margin-top:16px; padding-top:14px; border-top:1px solid var(--line);";
+      const dblL = el("label"); dblL.style.cssText = "display:flex; gap:8px; align-items:flex-start; cursor:pointer;";
+      const dblChk = el("input"); dblChk.type = "checkbox"; dblChk.checked = cfg.allowDoubleBooking === true; dblChk.style.marginTop = "2px";
+      const dblTxt = el("div");
+      dblTxt.appendChild(el("div", "field-label", "Allow double-booking"));
+      dblTxt.appendChild(el("p", "cell-muted", "When off, overlapping bookings are blocked. You can still override a manual booking with a warning; the AI receptionist never double-books."));
+      dblL.appendChild(dblChk); dblL.appendChild(dblTxt);
+      dblWrap.appendChild(dblL);
+      durCard.appendChild(dblWrap);
+
       const saveBtn = el("button", "btn btn-primary btn-sm", "Save scheduling");
       saveBtn.style.marginTop = "16px";
       saveBtn.onclick = async () => {
@@ -2252,6 +2263,7 @@
           defaultDurationMin: parseInt(defInp.value, 10) || 30,
           bufferMin: parseInt(bufInp.value, 10) || 0,
           serviceDurations,
+          allowDoubleBooking: dblChk.checked,
         };
         saveBtn.disabled = true; saveBtn.textContent = "Saving…";
         try { await App.portalApi("/api/booking-config", { method: "PATCH", body: JSON.stringify(payload) }); toast("Scheduling saved"); }
@@ -3111,8 +3123,20 @@
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Creating…";
+      const basePayload = { type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom };
+      const doCreate = (allowOverlap) => App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ ...basePayload, allowOverlap: !!allowOverlap }) });
       try {
-        const rec = await App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom }) });
+        let rec;
+        try {
+          rec = await doCreate(false);
+        } catch (e) {
+          // Toggle OFF + overlap → server offers an override. Ask, then retry.
+          if (e && e.data && e.data.code === "overlap") {
+            const ok = await confirmModal({ title: "Overlapping booking", message: "This overlaps an existing booking. Book anyway?", confirmText: "Book anyway" });
+            if (!ok) { save.disabled = false; save.textContent = "Create"; return; }
+            rec = await doCreate(true);
+          } else { throw e; }
+        }
         // Optional: link the chosen contact (reuses the detail-page link path).
         if (contactSel && contactSel.value) {
           try { await App.portalApi("/api/records/" + rec.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: contactSel.value, stageKey: null }) }); }
@@ -3386,8 +3410,19 @@
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Saving…";
+      const patchBody = { title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom };
+      const doPatch = (allowOverlap) => App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ ...patchBody, allowOverlap: !!allowOverlap }) });
       try {
-        await App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom }) });
+        try {
+          await doPatch(false);
+        } catch (e) {
+          // Toggle OFF + the new time overlaps → offer an override, then retry.
+          if (e && e.data && e.data.code === "overlap") {
+            const ok = await confirmModal({ title: "Overlapping booking", message: "This overlaps an existing booking. Save anyway?", confirmText: "Save anyway" });
+            if (!ok) { save.disabled = false; save.textContent = "Save changes"; return; }
+            await doPatch(true);
+          } else { throw e; }
+        }
         toast("Saved");
         rec.title = titleInp.value.trim();
         App.util.$(".contact-name", wrap).textContent = rec.title || ("Untitled " + (type.label || App.label("record","one").toLowerCase()));

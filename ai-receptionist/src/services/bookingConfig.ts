@@ -19,6 +19,7 @@ export interface BookingConfig {
   defaultDurationMin: number;          // appointment length when a service has none
   bufferMin: number;                   // gap padded around each existing appointment
   serviceDurations: Record<string, number>; // subtypeKey -> minutes (override)
+  allowDoubleBooking: boolean;          // when true, overlapping bookings are permitted
 }
 
 // Weekday keys, indexed to match JavaScript's Date.getUTCDay() (0=Sunday).
@@ -38,6 +39,7 @@ export const DEFAULT_BOOKING_CONFIG: BookingConfig = {
   defaultDurationMin: 30,
   bufferMin: 0,
   serviceDurations: {},
+  allowDoubleBooking: false,
 };
 
 function posInt(v: any, fallback: number): number {
@@ -65,6 +67,7 @@ export function mergeBookingConfig(raw: any): BookingConfig {
     bufferMin: nonNegInt(c.bufferMin, DEFAULT_BOOKING_CONFIG.bufferMin),
     serviceDurations:
       c.serviceDurations && typeof c.serviceDurations === "object" ? c.serviceDurations : {},
+    allowDoubleBooking: c.allowDoubleBooking === true,
   };
 }
 
@@ -136,6 +139,7 @@ export async function saveBookingConfig(tenantId: string, input: any): Promise<B
     defaultDurationMin: posInt(c.defaultDurationMin, DEFAULT_BOOKING_CONFIG.defaultDurationMin),
     bufferMin: nonNegInt(c.bufferMin, DEFAULT_BOOKING_CONFIG.bufferMin),
     serviceDurations,
+    allowDoubleBooking: c.allowDoubleBooking === true,
   };
 
   await (prisma as any).tenant.update({ where: { id: tenantId }, data: { bookingConfig: stored } });

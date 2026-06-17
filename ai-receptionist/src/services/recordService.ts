@@ -20,24 +20,28 @@ function intervalsOverlap(aStart: number, aEnd: number, bStart: number, bEnd: nu
   return aStart < bEnd && bStart < aEnd;
 }
 
-/**
- * DOUBLE-BOOKING GUARD. Call INSIDE an open transaction `tx`. Takes a per-tenant
- * advisory lock (serializes booking writes for this tenant so two simultaneous
- * requests can't both pass the check), then rejects if the new/edited booking's
- * wall-clock span overlaps an existing booking. `excludeId` is the booking being
- * edited (so it doesn't conflict with itself). All comparisons use the stored
- * zoneless timestamps directly — no timezone conversion. Throws a clear error
- * when the slot is taken; the lock releases automatically at transaction end.
- */
-async function assertNoBookingOverlap(
-  tx: any, tenantId: string, recordTypeId: string, startAt: Date, durationMin: number, excludeId: string | null
-): Promise<void> {
-  await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1, hashtext($2))", BOOKING_LOCK_NS, tenantId);
+/** Tagged error so the API can return code:"overlap" and the client can offer an override. */
+function overlapError(): Error {
+  const e: any = new Error("That slot overlaps an existing booking.");
+  e.code = "overlap";
+  return e;
+}
 
+/** Take the per-tenant booking advisory lock (serializes booking writes for this
+ *  tenant; auto-released at transaction end). Call INSIDE an open transaction. */
+async function acquireBookingLock(tx: any, tenantId: string): Promise<void> {
+  await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1, hashtext($2))", BOOKING_LOCK_NS, tenantId);
+}
+
+/** True if [startAt, startAt+durationMin) overlaps any existing booking for this
+ *  tenant (excluding `excludeId`). Wall-clock comparison on the stored zoneless
+ *  timestamps — no timezone conversion. Call INSIDE the locked transaction. */
+async function bookingOverlaps(
+  tx: any, tenantId: string, recordTypeId: string, startAt: Date, durationMin: number, excludeId: string | null
+): Promise<boolean> {
   const config = await loadBookingConfig(tenantId);
   const newStart = startAt.getTime();
   const newEnd = newStart + durationMin * 60000;
-  // Candidates near the slot (generous day window; durations are minutes).
   const winStart = new Date(newStart - 24 * 3600 * 1000);
   const winEnd = new Date(newEnd + 24 * 3600 * 1000);
   const candidates = await tx.record.findMany({
@@ -51,10 +55,9 @@ async function assertNoBookingOverlap(
     if (!c.appointmentAt) continue;
     const exStart = new Date(c.appointmentAt).getTime();
     const exEnd = exStart + durationForService(config, c.subtypeKey) * 60000;
-    if (intervalsOverlap(newStart, newEnd, exStart, exEnd)) {
-      throw new Error("That slot was just taken — it overlaps an existing booking.");
-    }
+    if (intervalsOverlap(newStart, newEnd, exStart, exEnd)) return true;
   }
+  return false;
 }
 
 // Generic placeholder job titles for the dummy generator (original, non-branded).
@@ -120,14 +123,20 @@ export async function getRecord(tenantId: string, id: string) {
   return serializeRecord(r);
 }
 
-export async function createRecord(tenantId: string, recordType: string | null | undefined, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any }) {
+export async function createRecord(
+  tenantId: string,
+  recordType: string | null | undefined,
+  input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean },
+  opts: { source?: "manual" | "ai" } = {}
+) {
+  const source = opts.source === "ai" ? "ai" : "manual";
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
   // Type (subtype) is required for record types that define subtypes (e.g. Jobs).
   const subtypeKey = await validateSubtypeForType(tenantId, recordTypeId, input.subtypeKey, { required: true });
   const appointmentAt = parseAppointmentAt(input.appointmentAt) ?? null;
 
-  // Bookings with a time go through the double-booking guard (lock + overlap
-  // check) inside a transaction. Everything else uses the plain insert.
+  // Bookings with a time go through the lock + double-booking policy inside a
+  // transaction. Everything else uses the plain insert.
   const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId }, select: { key: true } });
   const isBooking = rt && rt.key === BOOKING_RECORD_TYPE_KEY && appointmentAt != null;
   const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, customFields: input.customFields ?? {} };
@@ -136,7 +145,14 @@ export async function createRecord(tenantId: string, recordType: string | null |
     const config = await loadBookingConfig(tenantId);
     const durationMin = durationForService(config, subtypeKey);
     const created = await db.$transaction(async (tx: any) => {
-      await assertNoBookingOverlap(tx, tenantId, recordTypeId, appointmentAt, durationMin, null);
+      await acquireBookingLock(tx, tenantId); // concurrency guard — always
+      if (!config.allowDoubleBooking) {
+        const conflict = await bookingOverlaps(tx, tenantId, recordTypeId, appointmentAt, durationMin, null);
+        // Only a MANUAL booking may override (the owner deliberately confirming).
+        // AI bookings can never override → they hard-block.
+        const canOverride = source === "manual" && input.allowOverlap === true;
+        if (conflict && !canOverride) throw overlapError();
+      }
       return tx.record.create({ data: recData });
     });
     return serializeRecord(created);
@@ -146,7 +162,7 @@ export async function createRecord(tenantId: string, recordType: string | null |
   return serializeRecord(created);
 }
 
-export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any }, actor: EventActor = { type: "user" }, chainDepth = 0) {
+export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean }, actor: EventActor = { type: "user" }, chainDepth = 0) {
   const existing = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Record not found");
   const data: any = {};
@@ -175,7 +191,13 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
     const config = await loadBookingConfig(tenantId);
     const durationMin = durationForService(config, finalSubtype);
     updated = await db.$transaction(async (tx: any) => {
-      await assertNoBookingOverlap(tx, tenantId, existing.recordTypeId, new Date(finalAppt), durationMin, id);
+      await acquireBookingLock(tx, tenantId); // concurrency guard — always
+      if (!config.allowDoubleBooking) {
+        const conflict = await bookingOverlaps(tx, tenantId, existing.recordTypeId, new Date(finalAppt), durationMin, id);
+        // Time-edits are manual (the AI never edits times), so the owner may
+        // override by confirming → allowOverlap. Otherwise block.
+        if (conflict && input.allowOverlap !== true) throw overlapError();
+      }
       return tx.record.update({ where: { id }, data });
     });
   } else {
