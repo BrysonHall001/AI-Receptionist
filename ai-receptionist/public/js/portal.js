@@ -2676,7 +2676,7 @@
   // positioned by their WALL-CLOCK time (UTC components, never local conversion),
   // with open hours shaded from bookingConfig. Click a booking to open it. No
   // create-from-empty-slot and no write-lock in this batch.
-  function renderBookingCalendar(host, type) {
+  function renderBookingCalendar(host, type, fields) {
     const HOUR_H = 44; // px per hour
     // Status styling reuses the app's theme tokens, plus a SECOND, color-independent
     // signal so status is readable when color is washed out or for colorblind users:
@@ -2858,7 +2858,7 @@
             blk.appendChild(el("div", "cal-block-sub", `${label12(it.s)} · ${[it.b.serviceLabel, it.b.stageLabel].filter(Boolean).join(" · ")}`.replace(/ · $/, "")));
           }
           blk.title = `${it.b.title}${it.b.contactName ? " — " + it.b.contactName : ""}\n${label12(it.s)}–${label12(it.e)} · ${it.b.serviceLabel || ""} · ${it.b.stageLabel || ""}`;
-          blk.onclick = () => App.go("#/record/" + it.b.id);
+          blk.onclick = (e) => { e.stopPropagation(); App.go("#/record/" + it.b.id); };
           col.appendChild(blk);
         });
 
@@ -2869,6 +2869,20 @@
           nowLineEl.appendChild(el("span", "cal-now-dot"));
           col.appendChild(nowLineEl);
         }
+        // Click an empty part of the column → create a booking prefilled with that
+        // slot's WALL-CLOCK time (snapped to 15 min). Clicks on a booking block
+        // stopPropagation, so they don't reach here.
+        col.style.cursor = "pointer";
+        col.addEventListener("click", (e) => {
+          const rect = col.getBoundingClientRect();
+          const y = e.clientY - rect.top;
+          let mins = rangeStart + Math.round((y / HOUR_H * 60) / 15) * 15;
+          mins = Math.max(0, Math.min(1439, mins));
+          const hh = Math.floor(mins / 60), mm = mins % 60;
+          const at = `${d}T${pad(hh)}:${pad(mm)}`;
+          openCreateRecord("booking", fields || [], type, { appointmentAt: at });
+        });
+
         body.appendChild(col);
       });
 
@@ -2973,7 +2987,7 @@
       const calArea = el("div", "table-area");
       calLayout.appendChild(calArea);
       container.appendChild(calLayout);
-      renderBookingCalendar(calArea, type);
+      renderBookingCalendar(calArea, type, fields);
     }
 
     const tableHost = el("div");
@@ -3023,7 +3037,8 @@
     if (handle.toolbarRight) handle.toolbarRight.insertBefore(mc, handle.toolbarRight.firstChild);
   }
 
-  function openCreateRecord(typeKey, fields, type) {
+  function openCreateRecord(typeKey, fields, type, opts) {
+    opts = opts || {};
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Create ${esc(type.label || App.label("record","one").toLowerCase())}</h2><button class="icon-btn" id="cr-close">&times;</button></div><div class="modal-body" id="cr-body"></div>`;
     const overlay = modal(inner);
@@ -3059,11 +3074,25 @@
     // field), so it's a first-class input here. Required for bookings.
     const isBooking = type && type.key === "booking";
     let apptInp = null;
+    let contactSel = null;
     if (isBooking) {
       body.appendChild(el("label", "field-label", "Appointment date & time *"));
       apptInp = el("input", "input"); apptInp.type = "datetime-local";
       apptInp.min = "2000-01-01T00:00"; apptInp.max = "2100-12-31T23:59"; // guard impossible years
+      if (opts.appointmentAt) apptInp.value = opts.appointmentAt; // prefill from a clicked calendar slot
       body.appendChild(apptInp);
+
+      // Optional contact assignment at create (reuses the same record↔contact link
+      // the detail page uses). Populated from the contacts list.
+      body.appendChild(el("label", "field-label", "Contact"));
+      contactSel = el("select", "input");
+      contactSel.appendChild(el("option", null, "— none —"));
+      body.appendChild(contactSel);
+      App.portalApi("/api/contacts").then((cs) => {
+        (cs || []).slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""))).forEach((c) => {
+          const o = el("option", null, esc(c.name || c.email || c.phone || "Unnamed")); o.value = c.id; contactSel.appendChild(o);
+        });
+      }).catch(() => {});
     }
 
     const values = {};
@@ -3084,6 +3113,11 @@
       save.disabled = true; save.textContent = "Creating…";
       try {
         const rec = await App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, customFields: custom }) });
+        // Optional: link the chosen contact (reuses the detail-page link path).
+        if (contactSel && contactSel.value) {
+          try { await App.portalApi("/api/records/" + rec.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: contactSel.value, stageKey: null }) }); }
+          catch (e) { /* booking is created; a failed link shouldn't block it */ }
+        }
         toast(`${type.label || App.label("record","one")} created`);
         overlay.remove();
         // Bookings: stay on the Bookings page (re-render calendar + list in place)

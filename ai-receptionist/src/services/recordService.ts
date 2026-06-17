@@ -4,12 +4,58 @@
 // the 1a migration. Records keep their own table; contacts are untouched.
 
 import { prisma } from "../db/client";
-import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype } from "./recordTypeService";
+import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
+import { loadBookingConfig, durationForService } from "./bookingConfig";
 import { randomValueForField } from "./contactService";
 import { emitEvent } from "../events/bus";
 import { EventActor } from "../events/types";
 
 const db = prisma as any;
+
+// Fixed namespace for the per-tenant booking advisory lock (any constant int).
+const BOOKING_LOCK_NS = 4242;
+
+/** [aStart,aEnd) and [bStart,bEnd) overlap (half-open intervals, ms). */
+function intervalsOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+/**
+ * DOUBLE-BOOKING GUARD. Call INSIDE an open transaction `tx`. Takes a per-tenant
+ * advisory lock (serializes booking writes for this tenant so two simultaneous
+ * requests can't both pass the check), then rejects if the new/edited booking's
+ * wall-clock span overlaps an existing booking. `excludeId` is the booking being
+ * edited (so it doesn't conflict with itself). All comparisons use the stored
+ * zoneless timestamps directly — no timezone conversion. Throws a clear error
+ * when the slot is taken; the lock releases automatically at transaction end.
+ */
+async function assertNoBookingOverlap(
+  tx: any, tenantId: string, recordTypeId: string, startAt: Date, durationMin: number, excludeId: string | null
+): Promise<void> {
+  await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1, hashtext($2))", BOOKING_LOCK_NS, tenantId);
+
+  const config = await loadBookingConfig(tenantId);
+  const newStart = startAt.getTime();
+  const newEnd = newStart + durationMin * 60000;
+  // Candidates near the slot (generous day window; durations are minutes).
+  const winStart = new Date(newStart - 24 * 3600 * 1000);
+  const winEnd = new Date(newEnd + 24 * 3600 * 1000);
+  const candidates = await tx.record.findMany({
+    where: {
+      tenantId, recordTypeId, deletedAt: null,
+      appointmentAt: { gte: winStart, lte: winEnd },
+      ...(excludeId ? { NOT: { id: excludeId } } : {}),
+    },
+  });
+  for (const c of candidates) {
+    if (!c.appointmentAt) continue;
+    const exStart = new Date(c.appointmentAt).getTime();
+    const exEnd = exStart + durationForService(config, c.subtypeKey) * 60000;
+    if (intervalsOverlap(newStart, newEnd, exStart, exEnd)) {
+      throw new Error("That slot was just taken — it overlaps an existing booking.");
+    }
+  }
+}
 
 // Generic placeholder job titles for the dummy generator (original, non-branded).
 const D_RECORD_TITLES = [
@@ -79,9 +125,24 @@ export async function createRecord(tenantId: string, recordType: string | null |
   // Type (subtype) is required for record types that define subtypes (e.g. Jobs).
   const subtypeKey = await validateSubtypeForType(tenantId, recordTypeId, input.subtypeKey, { required: true });
   const appointmentAt = parseAppointmentAt(input.appointmentAt) ?? null;
-  const created = await db.record.create({
-    data: { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, customFields: input.customFields ?? {} },
-  });
+
+  // Bookings with a time go through the double-booking guard (lock + overlap
+  // check) inside a transaction. Everything else uses the plain insert.
+  const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId }, select: { key: true } });
+  const isBooking = rt && rt.key === BOOKING_RECORD_TYPE_KEY && appointmentAt != null;
+  const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, customFields: input.customFields ?? {} };
+
+  if (isBooking) {
+    const config = await loadBookingConfig(tenantId);
+    const durationMin = durationForService(config, subtypeKey);
+    const created = await db.$transaction(async (tx: any) => {
+      await assertNoBookingOverlap(tx, tenantId, recordTypeId, appointmentAt, durationMin, null);
+      return tx.record.create({ data: recData });
+    });
+    return serializeRecord(created);
+  }
+
+  const created = await db.record.create({ data: recData });
   return serializeRecord(created);
 }
 
@@ -98,7 +159,28 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   const parsedAppt = parseAppointmentAt(input.appointmentAt);
   if (parsedAppt !== undefined) data.appointmentAt = parsedAppt;
   if (input.customFields !== undefined) data.customFields = { ...(existing.customFields || {}), ...(input.customFields || {}) };
-  const updated = await db.record.update({ where: { id }, data });
+
+  // Double-booking guard for bookings: if a time-edit or service change could
+  // move/resize this booking, re-check overlap under the per-tenant lock,
+  // excluding the booking itself.
+  const rt = await db.recordType.findFirst({ where: { tenantId, id: existing.recordTypeId }, select: { key: true } });
+  const isBooking = !!(rt && rt.key === BOOKING_RECORD_TYPE_KEY);
+  const finalAppt = data.appointmentAt !== undefined ? data.appointmentAt : existing.appointmentAt;
+  const finalSubtype = data.subtypeKey !== undefined ? data.subtypeKey : existing.subtypeKey;
+  const apptChanged = data.appointmentAt !== undefined && (+new Date(data.appointmentAt) !== +new Date(existing.appointmentAt));
+  const subtypeChanged = data.subtypeKey !== undefined && data.subtypeKey !== existing.subtypeKey;
+
+  let updated: any;
+  if (isBooking && finalAppt != null && (apptChanged || subtypeChanged)) {
+    const config = await loadBookingConfig(tenantId);
+    const durationMin = durationForService(config, finalSubtype);
+    updated = await db.$transaction(async (tx: any) => {
+      await assertNoBookingOverlap(tx, tenantId, existing.recordTypeId, new Date(finalAppt), durationMin, id);
+      return tx.record.update({ where: { id }, data });
+    });
+  } else {
+    updated = await db.record.update({ where: { id }, data });
+  }
 
   // ===================== RECORD-UPDATED EVENT (Stage 2a) =====================
   // Additive and isolated: emit a record-subject event ONLY for fields that
