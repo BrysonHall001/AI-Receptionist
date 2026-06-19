@@ -2914,7 +2914,12 @@
     }
 
     async function load() {
-      host.innerHTML = `<div class="card cal-card"><div class="cal-empty">Loading calendar…</div></div>`;
+      // Only blank to "Loading…" on the FIRST load (nothing rendered yet). On later
+      // navigations keep the current calendar on screen during the quick fetch and
+      // let render() swap it in atomically — no flash.
+      if (!host.querySelector(".cal-card")) {
+        host.innerHTML = `<div class="card cal-card"><div class="cal-empty">Loading calendar…</div></div>`;
+      }
       const dates = visibleDates();
       const from = dates[0];
       const to = addDays(dates[dates.length - 1], 1);
@@ -3040,7 +3045,7 @@
       const prev = el("button", "btn btn-ghost btn-sm", "‹");
       const next = el("button", "btn btn-ghost btn-sm", "›");
       const navStep = resourceView ? 1 : (state.view === "day" ? 1 : 7);
-      todayBtn.onclick = () => { state.anchor = todayYmd(); load(); };
+      todayBtn.onclick = () => { const t = todayYmd(); if (state.anchor !== t) { state.anchor = t; load(); } };
       prev.onclick = () => { state.anchor = addDays(state.anchor, -navStep); load(); };
       next.onclick = () => { state.anchor = addDays(state.anchor, navStep); load(); };
       controls.appendChild(todayBtn); controls.appendChild(prev); controls.appendChild(next);
@@ -3091,6 +3096,28 @@
       // Build one grid column from a descriptor (date column OR resource column).
       // Resource name/color lookup for the subtle per-block dot (week/day view).
       const calResById = {}; (resources || []).forEach((r) => { calResById[r.id] = r; });
+
+      // Two-step click-to-create: a single click on empty space highlights a slot;
+      // a deliberate second action (the "+" on it, or a double-click) opens Create.
+      // Only one slot is selected at a time, so a stray click never pops the modal.
+      let selBlock = null;
+      function openSel(at, resourceId) {
+        openCreateRecord("booking", fields || [], type, { appointmentAt: at, resourceId: resourceId || null });
+      }
+      function placeSelection(col, mins, at, resourceId) {
+        if (selBlock && selBlock.parentNode) selBlock.parentNode.removeChild(selBlock);
+        const sel = el("div", "cal-sel");
+        sel.style.top = ((mins - rangeStart) / 60 * HOUR_H) + "px";
+        sel.style.height = Math.max(18, HOUR_H / 2 - 2) + "px"; // ~30-min visual cue
+        sel.appendChild(el("div", "cal-sel-t", label12(mins)));
+        const add = el("button", "cal-sel-add", "+"); add.title = "Create booking here";
+        add.onclick = (e) => { e.stopPropagation(); openSel(at, resourceId); };
+        sel.appendChild(add);
+        sel.ondblclick = (e) => { e.stopPropagation(); openSel(at, resourceId); };
+        sel.onclick = (e) => { e.stopPropagation(); }; // keep it selected; don't re-place
+        col.appendChild(sel);
+        selBlock = sel;
+      }
 
       function buildColumn(c) {
         const d = c.dayYmd;
@@ -3156,8 +3183,9 @@
           col.appendChild(nl);
           nowLineEls.push(nl);
         }
-        // Click empty space → create a booking at that wall-clock time (snapped to
-        // 15 min). In a resource column, pre-assign that column's resource.
+        // Single click on empty space → SELECT/highlight that slot (snapped to 15
+        // min). Creating is a deliberate second action (the "+" or double-click on
+        // the highlight). In a resource column, the slot carries that resource.
         col.style.cursor = "pointer";
         col.addEventListener("click", (e) => {
           const rect = col.getBoundingClientRect();
@@ -3166,7 +3194,7 @@
           mins = Math.max(0, Math.min(1439, mins));
           const hh = Math.floor(mins / 60), mm = mins % 60;
           const at = `${d}T${pad(hh)}:${pad(mm)}`;
-          openCreateRecord("booking", fields || [], type, { appointmentAt: at, resourceId: c.slotResourceId || null });
+          placeSelection(col, mins, at, c.slotResourceId || null);
         });
         body.appendChild(col);
       }

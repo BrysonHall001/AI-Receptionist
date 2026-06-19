@@ -1353,6 +1353,16 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .cal-closed-tag { font-size: 9.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
 /* Small resource color dot, reused in the bookings list cell and on calendar blocks. */
 .res-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; flex: 0 0 auto; }
+/* Two-step click-to-create: highlighted slot + its "+" create affordance. */
+.cal-sel { position: absolute; left: 3px; right: 3px; border-radius: 6px; box-sizing: border-box;
+  background: var(--accent-soft); border: 1.5px dashed var(--accent); color: var(--accent-strong);
+  font-size: 11px; font-weight: 600; padding: 2px 6px; overflow: visible; z-index: 4; }
+.cal-sel-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-sel-add { position: absolute; top: 50%; right: 4px; transform: translateY(-50%);
+  width: 20px; height: 20px; line-height: 1; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--accent); color: var(--on-accent); font-size: 15px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+.cal-sel-add:hover { background: var(--accent-strong); }
 /* In the resource column header the name carries a colored underline bar, so give
    the CLOSED tag a comfortable gap beneath it (rather than sitting tight to the bar). */
 .cal-reshead .cal-closed-tag { margin-top: 7px; }
