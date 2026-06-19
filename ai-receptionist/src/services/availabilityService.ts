@@ -170,6 +170,76 @@ export async function findOpenSlots(
   return { date: dateStr, serviceKey: serviceKey ?? null, durationMin, bufferMin, closed: false, slots };
 }
 
+// ---- Availability lookup wrapper (Batch 1) — a thin, READ-ONLY function over
+// findOpenSlots that answers the two questions a future AI tool needs:
+//   (1) "is this exact time open?"  -> requestedOpen
+//   (2) "what's open that day?"     -> slots
+// It adds NO new date logic: findOpenSlots already resolves the resource's own
+// hours/duration/buffer (business fallback) and is wall-clock-safe. The only new
+// step here — matching a requested time — is done by STRING comparison against
+// the "YYYY-MM-DDTHH:MM" slot starts, never by constructing a Date or using
+// toLocale, so the digits can't drift through a timezone (2:00 PM stays 2:00 PM).
+// Resource scope mirrors findOpenSlots: a resourceId scopes to that resource;
+// null is business-wide. Name->id resolution is intentionally NOT here (it's the
+// AI layer's job in a later batch); this takes an already-resolved resourceId.
+
+export interface SlotAvailability {
+  date: string;                  // the date that was queried ("YYYY-MM-DD")
+  closed: boolean;               // the day has no open hours for this resource/business
+  requestedTime: string | null;  // normalized "YYYY-MM-DDTHH:MM" that was checked, or null
+  requestedOpen: boolean | null;  // true/false when a time was asked; null when none was
+  durationMin: number;           // the appointment length used (resource -> business)
+  slots: OpenSlot[];             // the day's open, offerable slots (for "what's open" / alternatives)
+}
+
+// Two-digit zero-pad for an hour string (pure string op; no Date).
+function pad2(s: string): string { return s.length === 1 ? "0" + s : s; }
+
+/** Normalize a requested time into the SAME "YYYY-MM-DDTHH:MM" wall-clock form
+ *  findOpenSlots emits, using STRING handling only (no Date/toLocale, so nothing
+ *  shifts through a timezone). Accepts "HH:MM" (combined with dateStr) or a full
+ *  "YYYY-MM-DDTHH:MM[:SS]" (seconds dropped). Returns null for empty/malformed
+ *  input, which the caller treats as "no specific time was checked". */
+function normalizeRequestedStart(dateStr: string, timeStr?: string | null): string | null {
+  const t = String(timeStr ?? "").trim();
+  if (!t) return null;
+  const full = /^(\d{4}-\d{2}-\d{2})T(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(t);
+  if (full) return `${full[1]}T${pad2(full[2])}:${full[3]}`;
+  const hm = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(t);
+  if (hm && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return `${dateStr}T${pad2(hm[1])}:${hm[2]}`;
+  return null; // malformed -> "no specific time" (requestedOpen stays null)
+}
+
+/**
+ * Read-only availability lookup. Calls findOpenSlots once and answers both
+ * questions: whether a specific requested time is an open slot, and the full list
+ * of open slots that day. `timeStr` is optional — omit it (or pass null) to ask
+ * only "what's open?". Touches no writes and no lock.
+ */
+export async function checkAvailability(
+  tenantId: string,
+  dateStr: string,
+  timeStr?: string | null,
+  serviceKey?: string | null,
+  resourceId?: string | null,
+): Promise<SlotAvailability> {
+  const result = await findOpenSlots(tenantId, dateStr, serviceKey, resourceId);
+  const requestedTime = normalizeRequestedStart(dateStr, timeStr);
+  // "Open" == the requested time is one of the offerable open slots (single source
+  // of truth: only times findOpenSlots would offer count as open).
+  const requestedOpen = requestedTime == null
+    ? null
+    : result.slots.some((s) => s.start === requestedTime);
+  return {
+    date: result.date,
+    closed: result.closed,
+    requestedTime,
+    requestedOpen,
+    durationMin: result.durationMin,
+    slots: result.slots,
+  };
+}
+
 // ---- Calendar feed (READ-ONLY) — bookings in a date range as wall-clock blocks,
 // plus the open-hours config for shading. Used by the week/day calendar grid.
 // Wall-clock throughout: appointmentAt's UTC slot digits are read verbatim; no
