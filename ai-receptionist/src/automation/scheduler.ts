@@ -3,6 +3,7 @@ import { logger } from "../utils/logger";
 import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
 import { loadFieldDefs, buildColumns, valueOf } from "./contactRow";
 import { evalRules } from "./conditions";
+import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "../services/recordTypeService";
 
 const db = prisma as any;
 
@@ -112,6 +113,119 @@ export function parseScheduleTrigger(triggerType: string): ScheduleTrigger | nul
   const amount = Number(parts[1]);
   if (!isFinite(amount)) return null;
   return { field: parts[0], amount, unit: parts[2] || "days", dir: parts[3] || "before" };
+}
+
+// ===========================================================================
+// APPOINTMENT REMINDER SWEEP (Batch 2)
+// A "AppointmentReminder:<amount>:<unit>:before" trigger. Unlike the daily date
+// sweep (contact date fields, day-granular), this is BOOKING-based and TIME-
+// granular: it queues a reminder once the booking's appointment is within
+// <amount> <unit> from now. Reuses enqueueJob + the same runner.
+//
+// WALL-CLOCK NOTE (honest limitation): appointmentAt is stored as a zoneless
+// wall-clock value in the UTC slot, and there is no per-business timezone yet.
+// dueAt = appointmentAt − offset is therefore measured in the UTC frame, so a
+// business NOT operating in UTC will see the reminder shift by its UTC offset.
+// Exact local-time reminders need the future per-business-timezone setting.
+// ===========================================================================
+interface ReminderTrigger { amount: number; unit: string; }
+export function parseAppointmentReminderTrigger(triggerType: string): ReminderTrigger | null {
+  if (!triggerType || triggerType.indexOf("AppointmentReminder:") !== 0) return null;
+  const parts = triggerType.slice("AppointmentReminder:".length).split(":");
+  const amount = Number(parts[0]);
+  if (!isFinite(amount) || amount <= 0) return null;
+  const unit = parts[1] || "hours";
+  return { amount, unit };
+}
+
+export function reminderOffsetMs(amount: number, unit: string): number {
+  const per = unit === "minutes" ? 60000 : unit === "days" ? 86400000 : 3600000; // default hours
+  return amount * per;
+}
+
+const TERMINAL_BOOKING_STATUSES = new Set(["no_show", "completed", "canceled", "cancelled"]);
+
+// Wall-clock formatter for the appointment (reads UTC-slot digits; NO timezone
+// conversion), matching how the app stores/reads appointmentAt elsewhere.
+function fmtApptWall(d: Date): string {
+  return d.toLocaleString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+// Pre-render the booking-specific tokens into the action body at queue time (we
+// know the booking now); contact tokens like {{name}} are left for run time.
+export function injectBookingTokens(action: ActionConfig, booking: any): ActionConfig {
+  const cfg: any = { ...(action.config || {}) };
+  const appt = booking.appointmentAt ? new Date(booking.appointmentAt) : null;
+  const apptStr = appt ? fmtApptWall(appt) : "";
+  const subst = (s: string) => s
+    .replace(/\{\{\s*appointment\s*\}\}/g, apptStr)
+    .replace(/\{\{\s*appointment_time\s*\}\}/g, apptStr)
+    .replace(/\{\{\s*service\s*\}\}/g, booking.subtypeKey || "")
+    .replace(/\{\{\s*record_title\s*\}\}/g, booking.title || "");
+  for (const k of ["body", "html", "subject", "text"]) {
+    if (typeof cfg[k] === "string") cfg[k] = subst(cfg[k]);
+  }
+  return { ...action, config: cfg };
+}
+
+export async function runAppointmentReminderSweep(scope?: string): Promise<number> {
+  const where: any = { enabled: true };
+  if (scope) where.tenantId = scope;
+  const autos = await db.automation.findMany({ where });
+  const reminders = autos.filter((a: any) => parseAppointmentReminderTrigger(a.triggerType || ""));
+  if (!reminders.length) return 0;
+
+  const now = new Date();
+  let swept = 0;
+
+  // One booking-type lookup + one upcoming-bookings query per tenant.
+  const byTenant: Record<string, any[]> = {};
+  for (const a of reminders) { (byTenant[a.tenantId] = byTenant[a.tenantId] || []).push(a); }
+
+  for (const tenantId of Object.keys(byTenant)) {
+    const bookingTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY).catch(() => null);
+    if (!bookingTypeId) continue;
+    const bookings = await db.record.findMany({
+      where: { tenantId, recordTypeId: bookingTypeId, deletedAt: null, appointmentAt: { gte: now } },
+      take: 2000,
+    });
+    if (!bookings.length) continue;
+
+    for (const auto of byTenant[tenantId]) {
+      const parsed = parseAppointmentReminderTrigger(auto.triggerType)!;
+      const off = reminderOffsetMs(parsed.amount, parsed.unit);
+      const actions: ActionConfig[] = (auto.actions as any) || [];
+
+      for (const b of bookings) {
+        if (b.stageKey && TERMINAL_BOOKING_STATUSES.has(String(b.stageKey))) continue; // canceled/done/no-show
+        const appt = new Date(b.appointmentAt);
+        const dueAt = new Date(appt.getTime() - off);
+        if (dueAt > now) continue;   // reminder window not reached yet
+        if (appt <= now) continue;   // never remind at/after the appointment itself
+
+        // The booking's first linked contact is who we text.
+        const link = await db.recordLink.findFirst({ where: { tenantId, recordId: b.id, parentType: "contact", deletedAt: null }, orderBy: { createdAt: "asc" } });
+        if (!link) continue;
+        const contact = await db.contact.findFirst({ where: { id: link.parentId, tenantId, deletedAt: null } });
+        if (!contact) continue;
+        const contactName = contact.name || contact.phone || contact.email || contact.id;
+
+        for (let i = 0; i < actions.length; i++) {
+          if (actions[i].type === "wait") continue;
+          // Stable dedupeKey per (automation, booking, action) → fires once.
+          const row = await enqueueJob({
+            tenantId, automationId: auto.id, automationName: auto.name,
+            contactId: contact.id, contactName,
+            action: injectBookingTokens(actions[i], b),
+            dueAt, kind: "schedule",
+            dedupeKey: `apptrem:${auto.id}:${b.id}:${i}`,
+          });
+          if (row) swept++;
+        }
+      }
+    }
+  }
+  return swept;
 }
 
 // ---------------------------------------------------------------------------
@@ -301,6 +415,7 @@ async function writeStalledRun(auto: any, status: string, matched: boolean, resu
 // ---------------------------------------------------------------------------
 export async function processDueJobs(scope?: string): Promise<{ swept: number; ran: number; failed: number; stalledMatched: number; stalledActed: number; stalledBlocked: number }> {
   const swept = await runDailySweep(scope);
+  const reminded = await runAppointmentReminderSweep(scope); // Batch 2: appointment reminders
   const stalled = await runStalledSweep(scope); // Stage 3c: time-in-stage nudges
   const now = new Date();
   const where: any = { status: "pending", dueAt: { lte: now } };
@@ -323,8 +438,8 @@ export async function processDueJobs(scope?: string): Promise<{ swept: number; r
       failed++;
     }
   }
-  logger.info(`[scheduler] processed (scope=${scope || "all"}): swept ${swept}, ran ${ran}, failed ${failed}; stalled[matched ${stalled.matched}, acted ${stalled.acted}, blocked ${stalled.blocked}]`);
-  return { swept, ran, failed, stalledMatched: stalled.matched, stalledActed: stalled.acted, stalledBlocked: stalled.blocked };
+  logger.info(`[scheduler] processed (scope=${scope || "all"}): swept ${swept + reminded}, ran ${ran}, failed ${failed}; stalled[matched ${stalled.matched}, acted ${stalled.acted}, blocked ${stalled.blocked}]`);
+  return { swept: swept + reminded, ran, failed, stalledMatched: stalled.matched, stalledActed: stalled.acted, stalledBlocked: stalled.blocked };
 }
 
 async function markFailed(id: string, error: string) {

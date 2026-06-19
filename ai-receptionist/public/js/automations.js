@@ -319,6 +319,7 @@
     if (tt.indexOf("StageChanged:") === 0) return "StageChanged";
     if (tt.indexOf("RecordUpdated:") === 0) return "RecordUpdated";
     if (tt.indexOf("Scheduled:") === 0) return "Scheduled";
+    if (tt.indexOf("AppointmentReminder:") === 0) return "AppointmentReminder";
     if (tt.indexOf("Stalled:") === 0) return "Stalled";
     return tt;
   }
@@ -792,6 +793,7 @@
     if (w.baseTrigger === "StageChanged") return w.triggerStage ? "StageChanged:" + w.triggerStage : "StageChanged";
     if (w.baseTrigger === "RecordUpdated") return w.recField ? (w.recValue ? "RecordUpdated:" + w.recField + "=" + w.recValue : "RecordUpdated:" + w.recField) : "RecordUpdated";
     if (w.baseTrigger === "Scheduled") return `Scheduled:${w.sched.field}:${w.sched.amount || 0}:${w.sched.unit}:${w.sched.dir}`;
+    if (w.baseTrigger === "AppointmentReminder") return `AppointmentReminder:${w.remind.amount || 2}:${w.remind.unit}:before`;
     if (w.baseTrigger === "Stalled") return "Stalled:" + (w.stall.days || 7) + (w.stall.stageKey ? ":" + w.stall.stageKey : "");
     return w.baseTrigger;
   }
@@ -849,6 +851,7 @@
       recField: "",
       recValue: "",
       sched: { field: "", amount: "", unit: "days", dir: "before" },
+      remind: { amount: "2", unit: "hours" },
       stall: { days: "", stageKey: "" },
       filters: [],
       branch: false,
@@ -918,6 +921,7 @@
 
   function validateStep(w) {
     if (w.step === 1 && w.baseTrigger === "Scheduled" && !w.sched.field) { toast("Pick a date field for the schedule", true); return false; }
+    if (w.step === 1 && w.baseTrigger === "AppointmentReminder" && !(Number(w.remind.amount) > 0)) { toast("Enter how long before the appointment to remind", true); return false; }
     if (w.step === 3 && w.branch && !condComplete(w.branchCond)) { toast("Finish the branch condition first", true); return false; }
     if (w.step === 4) {
       if (!w.actionsIf.length) { toast(w.branch ? "Add at least one action to the “If” path" : "Add at least one action", true); return false; }
@@ -995,6 +999,15 @@
         rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(dir); rowEl.appendChild(fs);
         extra.appendChild(rowEl);
         extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”, not instantly."));
+      } else if (w.baseTrigger === "AppointmentReminder") {
+        extra.appendChild(small("Send this long before a booking's appointment:"));
+        const rowEl = el("div", "wiz-cond-row");
+        const amt = el("input", "input"); amt.type = "number"; amt.min = "1"; amt.placeholder = "2"; amt.style.flex = "0 0 70px"; amt.value = w.remind.amount; amt.oninput = () => { w.remind.amount = amt.value; };
+        const unit = el("select", "input"); [["minutes", "minutes"], ["hours", "hours"], ["days", "days"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.remind.unit === v) o.selected = true; unit.appendChild(o); }); unit.onchange = () => { w.remind.unit = unit.value; };
+        const beforeLbl = el("span", "cell-muted", "before the appointment"); beforeLbl.style.cssText = "font-size:12.5px; align-self:center;";
+        rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(beforeLbl);
+        extra.appendChild(rowEl);
+        extra.appendChild(hint("Texts/emails the booking's linked contact. Based on the appointment's clock time; if your business isn't on UTC the send time shifts by your timezone offset."));
       } else if (w.baseTrigger === "Stalled") {
         extra.appendChild(small("Run when something has sat in its current stage, no movement, for at least this many days:"));
         const rowEl = el("div", "wiz-cond-row");
@@ -1363,6 +1376,7 @@
     let recField = "";
     let recValue = "";
     const sched = { field: "", amount: "", unit: "days", dir: "before" };
+    const remind = { amount: "2", unit: "hours" };
     const stall = { days: "", stageKey: "" };
     if (baseTrigger.indexOf("FieldChanged:") === 0) {
       triggerField = baseTrigger.slice("FieldChanged:".length); baseTrigger = "FieldChanged";
@@ -1378,6 +1392,10 @@
       const p = baseTrigger.slice("Scheduled:".length).split(":");
       sched.field = p[0] || ""; sched.amount = p[1] || ""; sched.unit = p[2] || "days"; sched.dir = p[3] || "before";
       baseTrigger = "Scheduled";
+    } else if (baseTrigger.indexOf("AppointmentReminder:") === 0) {
+      const p = baseTrigger.slice("AppointmentReminder:".length).split(":");
+      remind.amount = p[0] || "2"; remind.unit = p[1] || "hours";
+      baseTrigger = "AppointmentReminder";
     } else if (baseTrigger.indexOf("Stalled:") === 0) {
       const p = baseTrigger.slice("Stalled:".length).split(":");
       stall.days = p[0] || ""; stall.stageKey = p[1] || "";
@@ -1388,6 +1406,7 @@
       else if (baseTrigger === "StageChanged" && triggerStage) draft.triggerType = "StageChanged:" + triggerStage;
       else if (baseTrigger === "RecordUpdated" && recField) draft.triggerType = recValue ? ("RecordUpdated:" + recField + "=" + recValue) : ("RecordUpdated:" + recField);
       else if (baseTrigger === "Scheduled") draft.triggerType = `Scheduled:${sched.field}:${sched.amount || 0}:${sched.unit}:${sched.dir}`;
+      else if (baseTrigger === "AppointmentReminder") draft.triggerType = `AppointmentReminder:${remind.amount || 2}:${remind.unit}:before`;
       else if (baseTrigger === "Stalled") draft.triggerType = "Stalled:" + (stall.days || 7) + (stall.stageKey ? ":" + stall.stageKey : "");
       else draft.triggerType = baseTrigger;
     }
@@ -1491,6 +1510,19 @@
         const note2 = el("div", "wf-hint", ""); note2.style.margin = "6px 0 0";
         note2.textContent = "Evaluated by the daily sweep / “Process due jobs now”, not instantly.";
         trigExtra.appendChild(note2);
+      } else if (baseTrigger === "AppointmentReminder") {
+        trigExtra.appendChild(small("Send this long before a booking's appointment:"));
+        const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px"; rowEl.style.flexWrap = "wrap"; rowEl.style.alignItems = "center";
+        const amt = el("input", "input"); amt.type = "number"; amt.min = "1"; amt.style.cssText = "margin-bottom:0;flex:0 0 70px"; amt.placeholder = "2"; amt.value = remind.amount; amt.oninput = () => { remind.amount = amt.value; syncTrigger(); };
+        const unitSel = el("select", "input"); unitSel.style.marginBottom = "0";
+        [["minutes", "minutes"], ["hours", "hours"], ["days", "days"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (remind.unit === v) o.selected = true; unitSel.appendChild(o); });
+        unitSel.onchange = () => { remind.unit = unitSel.value; syncTrigger(); };
+        const lbl = el("span", "cell-muted", "before the appointment"); lbl.style.fontSize = "12.5px";
+        rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(lbl);
+        trigExtra.appendChild(rowEl);
+        const note3 = el("div", "wf-hint", ""); note3.style.margin = "6px 0 0";
+        note3.textContent = "Texts/emails the booking's linked contact. Based on the appointment's clock time; if your business isn't on UTC the send time shifts by your timezone offset.";
+        trigExtra.appendChild(note3);
       } else if (baseTrigger === "Stalled") {
         trigExtra.appendChild(small("Run when something has sat in its current stage, with no movement, for at least this many days:"));
         const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px"; rowEl.style.flexWrap = "wrap"; rowEl.style.alignItems = "center";

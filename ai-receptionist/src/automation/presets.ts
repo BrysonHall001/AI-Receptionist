@@ -739,6 +739,33 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
     },
     note: "Fires only when a booking moves to the No-show status (status key \"no_show\"). Texts the linked contact; won't send until Twilio is connected.",
   },
+  {
+    key: "appointment_reminder",
+    name: "Appointment reminder",
+    description: "A couple of hours before an appointment, text the customer a reminder.",
+    category: "follow_ups",
+    vertical: "general",
+    summary: {
+      trigger: "2 hours before a booking's appointment",
+      conditions: [],
+      actions: ["Text the customer a reminder"],
+    },
+    shape: { trigger: "2h before appointment", actions: ["Text reminder"] },
+    definition: {
+      name: "Appointment reminder",
+      triggerType: "AppointmentReminder:2:hours:before",
+      conditions: [],
+      actions: [
+        {
+          type: "send_sms",
+          config: {
+            body: "Hi {{name}}, a quick reminder about your appointment ({{appointment}}). Reply here if you need to reschedule — see you soon!",
+          },
+        },
+      ],
+    },
+    note: "Texts the booking's linked contact ~2 hours before the appointment (change the timing on the trigger). Won't send until Twilio is connected. Reminders are based on the appointment's clock time; if your business doesn't operate in UTC the send time shifts by your timezone offset — exact local-time reminders need the upcoming per-business timezone setting.",
+  },
 ];
 
 export function getPreset(key: string): FlowPreset | undefined {

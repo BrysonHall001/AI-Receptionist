@@ -113,4 +113,8 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: stri
   // scoping the record triggers use: "BookingStatusChanged:status=<statusKey>".
   { type: EVENT_TYPES.BookingCreated, label: "Booking created", group: "Bookings", description: "Runs when a new booking is made for a contact — whether booked manually or by the AI receptionist." },
   { type: EVENT_TYPES.BookingStatusChanged, label: "Booking status changed", group: "Bookings", description: "Runs when a booking moves to a different status (e.g. Confirmed, Completed, No-show)." },
+  // Time-based booking trigger: queues a reminder a set time BEFORE the
+  // appointment. Stored as "AppointmentReminder:<amount>:<unit>:before". Evaluated
+  // by the scheduler sweep (not an instant event). Hour-precise.
+  { type: "AppointmentReminder", label: "Before an appointment (reminder)", group: "Bookings", description: "Runs a set time before a booking's appointment (e.g. 2 hours before) — for sending reminders. Texts/emails the booking's linked contact." },
 ];
