@@ -6,6 +6,21 @@ import { startCall, handleTurn, finalizeCall } from "../services/callOrchestrato
 import { logger } from "../utils/logger";
 import { RELAY_WS_PATH } from "../routes/conversationRelayWebhook";
 
+// Short spoken "filler" lines, played when a turn does an availability lookup so
+// the caller hears something natural during the brief dead air instead of
+// silence. Fixed VOICE-LAYER text only — never the prompt, so it costs no model
+// call and adds no latency. One is picked at random per lookup so repeated
+// lookups in a call don't sound robotic.
+const LOOKUP_FILLERS = [
+  "Let me check that for you — one moment.",
+  "Sure, let me take a look at the calendar.",
+  "Give me just a second to check that.",
+  "One moment while I check availability.",
+];
+function pickFiller(): string {
+  return LOOKUP_FILLERS[Math.floor(Math.random() * LOOKUP_FILLERS.length)];
+}
+
 /**
  * Twilio ConversationRelay WebSocket endpoint — the transport for the new,
  * PARALLEL voice path. It speaks Twilio's ConversationRelay message protocol and
@@ -147,7 +162,17 @@ export function attachConversationRelay(server: HttpServer): void {
 
             // Reuse the EXISTING per-turn logic (AI + state machine + persistence
             // + finalization). Logging/finalization come along for free.
-            const result = await handleTurn({ callSid: state.callSid, speech });
+            // onLookupStart fires (once) only if THIS turn does a lookup; it
+            // speaks a filler over the dead air, before the real answer below.
+            const result = await handleTurn({
+              callSid: state.callSid,
+              speech,
+              onLookupStart: () => {
+                const filler = pickFiller();
+                logger.info(`[relay] lookup filler on ${state.callSid}: "${filler}"`);
+                sendText(ws, filler);
+              },
+            });
             logger.info(
               `[relay] reply on ${state.callSid}: "${result.messageToSpeak}" (done=${result.done})`,
             );

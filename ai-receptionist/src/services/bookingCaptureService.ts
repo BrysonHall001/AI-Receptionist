@@ -47,7 +47,7 @@ export function isConcreteAppointment(v: unknown): v is string {
  *  whitespace-insensitive contains-match in either direction; falls back to the
  *  first service so the (required-when-present) Type is always valid. Returns
  *  null only when the portal has no services configured at all. */
-function mapServiceToSubtype(subtypes: any[], service?: string | null): string | null {
+export function mapServiceToSubtype(subtypes: any[], service?: string | null): string | null {
   if (!Array.isArray(subtypes) || subtypes.length === 0) return null; // Type optional
   const want = String(service || "").toLowerCase().replace(/\s+/g, " ").trim();
   if (want) {
@@ -70,7 +70,7 @@ function mapServiceToSubtype(subtypes: any[], service?: string | null): string |
  *  resources configured, or no match → null (the booking is left Unassigned). We
  *  never invent or guess an assignment, so a misheard name can't book the wrong
  *  person or break the booking. */
-async function resolveResourceByName(tenantId: string, name?: string | null): Promise<string | null> {
+export async function resolveResourceByName(tenantId: string, name?: string | null): Promise<string | null> {
   const want = String(name || "").toLowerCase().replace(/\s+/g, " ").trim();
   if (!want) return null; // caller named no one
   const resources = await listResources(tenantId);

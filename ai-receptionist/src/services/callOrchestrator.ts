@@ -67,7 +67,7 @@ export async function startCall(params: {
 }
 
 /** LAYER 2/3: process one caller utterance through the AI + state machine. */
-export async function handleTurn(params: { callSid: string; speech: string }): Promise<TurnResult> {
+export async function handleTurn(params: { callSid: string; speech: string; onLookupStart?: () => void }): Promise<TurnResult> {
   const session = await getCallSession(params.callSid);
   if (!session) {
     // Unknown call -> start one so we never drop a caller.
@@ -115,6 +115,7 @@ export async function handleTurn(params: { callSid: string; speech: string }): P
   let nextState: CallState;
   try {
     const ai = await runAITurn({
+      tenantId: tenant.id,
       context: {
         businessName: tenant.name,
         businessType: tenant.businessType,
@@ -126,7 +127,7 @@ export async function handleTurn(params: { callSid: string; speech: string }): P
       },
       history: toOpenAIMessages(transcript),
       latestCallerUtterance: speech,
-    });
+    }, { onLookupStart: params.onLookupStart });
     aiMessage = ai.message_to_speak;
     extracted = mergeExtracted(extracted, ai.extracted, session.fromNumber);
     nextState = resolveNextState(state, ai.state_update as CallState);
