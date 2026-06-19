@@ -10,6 +10,7 @@ import { logger } from "../utils/logger";
 import { createRecord } from "./recordService";
 import { createLink } from "./recordLinkService";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
+import { listResources } from "./resourceService";
 
 const db = prisma as any;
 
@@ -63,6 +64,24 @@ function mapServiceToSubtype(subtypes: any[], service?: string | null): string |
   return subtypes[0].key; // sensible default; raw words are kept as the title
 }
 
+/** Map the caller's spoken staff name to a real configured resource id. Same
+ *  case-/whitespace-insensitive contains-match style as mapServiceToSubtype, but
+ *  FAIL-SAFE: returns a resource id ONLY on a confident match. No name given, no
+ *  resources configured, or no match → null (the booking is left Unassigned). We
+ *  never invent or guess an assignment, so a misheard name can't book the wrong
+ *  person or break the booking. */
+async function resolveResourceByName(tenantId: string, name?: string | null): Promise<string | null> {
+  const want = String(name || "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!want) return null; // caller named no one
+  const resources = await listResources(tenantId);
+  if (!resources.length) return null; // nothing to assign to
+  const hit = resources.find((r) => {
+    const rn = String(r.name || "").toLowerCase().trim();
+    return rn !== "" && (rn === want || want.includes(rn) || rn.includes(want));
+  });
+  return hit ? hit.id : null; // no confident match → Unassigned
+}
+
 /**
  * Create a Booking from a finalized call, if (and only if) a concrete date+time
  * was captured. Best-effort and self-contained: the caller wraps it so a failure
@@ -74,9 +93,10 @@ export async function createBookingFromCall(params: {
   contactId: string;
   appointmentDatetime?: string | null;
   service?: string | null;
+  resource?: string | null;
   callSid?: string;
 }): Promise<string | null> {
-  const { tenantId, contactId, appointmentDatetime, service } = params;
+  const { tenantId, contactId, appointmentDatetime, service, resource } = params;
 
   // GUARD: only proceed on a real, concrete, parseable wall-clock date+time.
   if (!isConcreteAppointment(appointmentDatetime)) return null;
@@ -90,6 +110,12 @@ export async function createBookingFromCall(params: {
   // Title: the caller's own words for the service, else a neutral fallback.
   const title = (service || "").trim() || "Phone booking";
 
+  // Resolve the caller's spoken staff name to a real resource (or null/Unassigned).
+  // createRecord then applies that resource's OWN hours/duration and the per-
+  // resource double-booking lock; AI bookings can never override a conflict, so a
+  // clash hard-blocks (no booking) — the caller is still captured as a contact/lead.
+  const resourceId = await resolveResourceByName(tenantId, resource);
+
   // Reuse createRecord — appointmentDatetime goes through the SAME wall-clock
   // parser as the manual picker, so the stored digits match what the caller said.
   const booking = await createRecord(tenantId, BOOKING_RECORD_TYPE_KEY, {
@@ -97,6 +123,7 @@ export async function createBookingFromCall(params: {
     subtypeKey,
     stageKey: REQUESTED_STAGE_KEY,
     appointmentAt: appointmentDatetime,
+    resourceId,
   }, { source: "ai" });
 
   // Link the caller's contact using the SAME mechanism as the UI.

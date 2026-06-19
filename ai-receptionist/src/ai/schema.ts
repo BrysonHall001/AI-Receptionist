@@ -13,6 +13,11 @@ export const ExtractedSchema = z.object({
   // they want booked (mapped to a Booking service later).
   appointment_datetime: z.string().nullable().optional(),
   service: z.string().nullable().optional(),
+  // Staff/resource the caller asks for BY NAME (e.g. "I'd like Alice"), in the
+  // caller's own words, or null when they don't name one. Fuzzy-matched to a real
+  // configured resource at booking time; an unrecognized name falls back to
+  // Unassigned (never an invented assignment).
+  resource: z.string().nullable().optional(),
 });
 export type Extracted = z.infer<typeof ExtractedSchema>;
 

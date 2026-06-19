@@ -223,6 +223,7 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
         contactId,
         appointmentDatetime: extracted.appointment_datetime ?? null,
         service: extracted.service ?? null,
+        resource: extracted.resource ?? null,
         callSid,
       });
     } catch (err) {
