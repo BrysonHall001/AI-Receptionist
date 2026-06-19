@@ -1351,6 +1351,9 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .cal-legend-sw { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; font-size: 11px; font-weight: 700; border: 1px solid currentColor; }
 .cal-legend-lbl { color: var(--ink); }
 .cal-closed-tag { font-size: 9.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
+/* In the resource column header the name carries a colored underline bar, so give
+   the CLOSED tag a comfortable gap beneath it (rather than sitting tight to the bar). */
+.cal-reshead .cal-closed-tag { margin-top: 7px; }
 .cal-glyph { font-size: 10px; margin-right: 3px; vertical-align: 1px; }
 .cal-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--red); z-index: 6; pointer-events: none; }
 .cal-now-dot { position: absolute; left: -1px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }

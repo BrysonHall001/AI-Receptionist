@@ -2200,6 +2200,10 @@
       const host = App.util.$("#res-host");
       let items = [];
       let bizHours = {};
+      let bizServices = [];     // [{ key, label }]
+      let bizDur = {};          // business per-service durations { key: min }
+      let bizDefaultDur = 30;   // business default duration
+      let bizBuffer = 0;        // business buffer
 
       async function load() {
         try {
@@ -2209,6 +2213,10 @@
           ]);
           items = res || [];
           bizHours = (bc && bc.config && bc.config.hours) || {};
+          bizServices = (bc && bc.services) || [];
+          bizDur = (bc && bc.config && bc.config.serviceDurations) || {};
+          bizDefaultDur = (bc && bc.config && Number(bc.config.defaultDurationMin)) || 30;
+          bizBuffer = (bc && bc.config && Number(bc.config.bufferMin)) || 0;
         } catch (e) { host.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; return; }
         render();
       }
@@ -2276,7 +2284,7 @@
       function openResourceHours(r) {
         const usingBiz = !r.hours;
         const inner = el("div");
-        inner.innerHTML = `<div class="modal-head"><h2>Hours · ${esc(r.name)}</h2><button class="icon-btn" id="rh-close">&times;</button></div>`;
+        inner.innerHTML = `<div class="modal-head"><h2>Hours &amp; lengths · ${esc(r.name)}</h2><button class="icon-btn" id="rh-close">&times;</button></div>`;
         const body = el("div", "modal-body");
 
         const useWrap = el("label"); useWrap.style.cssText = "display:flex; gap:8px; align-items:center; cursor:pointer; margin-bottom:12px;";
@@ -2295,10 +2303,47 @@
         const syncVis = () => { edWrap.style.display = useCb.checked ? "none" : ""; };
         useCb.onchange = syncVis; syncVis();
 
+        // ── Appointment lengths & buffer (optional; blank = use business value) ──
+        const durHead = el("h3", null, "Appointment lengths & buffer");
+        durHead.style.cssText = "font-size:13px; font-weight:600; margin:18px 0 4px; padding-top:14px; border-top:1px solid var(--line);";
+        body.appendChild(durHead);
+        const durHelp = el("p", "cell-muted", "Leave a box blank to use the business default (shown as the placeholder). Set a number to give this " + wOne.toLowerCase() + " their own length for that service.");
+        durHelp.style.cssText = "font-size:12.5px; margin:0 0 12px;";
+        body.appendChild(durHelp);
+
+        const resDur = (r.durations && typeof r.durations === "object") ? r.durations : {};
+        const durInputs = {}; // serviceKey → input
+        const mkRow = (labelText, placeholder, value) => {
+          const row = el("div"); row.style.cssText = "display:flex; align-items:center; gap:10px; margin-bottom:8px;";
+          const lab = el("label", null, labelText); lab.style.cssText = "flex:1; font-size:13px;";
+          const inp = el("input", "input"); inp.type = "number"; inp.min = "1"; inp.step = "1";
+          inp.placeholder = String(placeholder); inp.style.cssText = "width:110px; margin-bottom:0;";
+          if (value != null && value !== "") inp.value = String(value);
+          const unit = el("span", "cell-muted", "min"); unit.style.cssText = "font-size:12px;";
+          row.appendChild(lab); row.appendChild(inp); row.appendChild(unit);
+          return { row, inp };
+        };
+        (bizServices || []).forEach((svc) => {
+          const bizVal = Number(bizDur[svc.key]) > 0 ? Number(bizDur[svc.key]) : bizDefaultDur;
+          const cur = Number(resDur[svc.key]) > 0 ? Number(resDur[svc.key]) : "";
+          const { row, inp } = mkRow(svc.label || svc.key, bizVal, cur);
+          durInputs[svc.key] = inp; body.appendChild(row);
+        });
+        if (!(bizServices || []).length) {
+          const none = el("p", "cell-muted", "No services defined yet — add services on the Fields page to set custom lengths.");
+          none.style.cssText = "font-size:12.5px; margin:0 0 8px;"; body.appendChild(none);
+        }
+        // Buffer row (separated a touch from the per-service rows).
+        const bufWrap = el("div"); bufWrap.style.cssText = "margin-top:10px;";
+        const bufCur = (typeof r.bufferMin === "number") ? r.bufferMin : "";
+        const { row: bufRow, inp: bufInp } = mkRow("Buffer between appointments", bizBuffer, bufCur);
+        bufInp.min = "0";
+        bufWrap.appendChild(bufRow); body.appendChild(bufWrap);
+
         inner.appendChild(body);
         const foot = el("div", "modal-foot");
         const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
-        const save = el("button", "btn btn-primary btn-sm", "Save hours");
+        const save = el("button", "btn btn-primary btn-sm", "Save");
         foot.appendChild(cancel); foot.appendChild(save);
         inner.appendChild(foot);
         const overlay = modal(inner);
@@ -2307,10 +2352,19 @@
         cancel.onclick = close;
         overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
         save.onclick = async () => {
-          const payload = { hours: useCb.checked ? null : ed.getHours() };
+          // Durations: collect only the boxes with a positive number; empty → omit
+          // (that service falls back to business). No filled boxes → null.
+          const durations = {};
+          Object.keys(durInputs).forEach((k) => { const n = parseInt(durInputs[k].value, 10); if (Number.isFinite(n) && n > 0) durations[k] = n; });
+          const durPayload = Object.keys(durations).length ? durations : null;
+          // Buffer: blank → null (use business); a number ≥ 0 → that.
+          const bufRaw = bufInp.value.trim();
+          let bufferMin = null;
+          if (bufRaw !== "") { const bn = parseInt(bufRaw, 10); bufferMin = (Number.isFinite(bn) && bn >= 0) ? bn : null; }
+          const payload = { hours: useCb.checked ? null : ed.getHours(), durations: durPayload, bufferMin };
           save.disabled = true; save.textContent = "Saving…";
-          try { await App.portalApi("/api/resources/" + r.id, { method: "PATCH", body: JSON.stringify(payload) }); toast("Hours saved"); close(); await load(); }
-          catch (e) { toast(e.message, true); save.disabled = false; save.textContent = "Save hours"; }
+          try { await App.portalApi("/api/resources/" + r.id, { method: "PATCH", body: JSON.stringify(payload) }); toast("Saved"); close(); await load(); }
+          catch (e) { toast(e.message, true); save.disabled = false; save.textContent = "Save"; }
         };
       }
 

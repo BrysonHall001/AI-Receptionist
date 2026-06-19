@@ -641,6 +641,11 @@ model Resource {
   // Optional per-resource weekly hours, same shape as bookingConfig.hours
   // (sun..sat → up to 2 {start,end} windows; [] = closed). NULL = use business hours.
   hours     Json?
+  // Optional per-resource per-service durations { subtypeKey: minutes }. NULL/absent
+  // key = use the business duration for that service.
+  durations Json?
+  // Optional per-resource buffer (minutes) between appointments. NULL = use business buffer.
+  bufferMin Int?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?

@@ -969,8 +969,8 @@ apiRouter.post("/resources", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { name, color, hours } = (req.body ?? {}) as any;
-    res.json(await createResource(tenantId, { name, color, hours }));
+    const { name, color, hours, durations, bufferMin } = (req.body ?? {}) as any;
+    res.json(await createResource(tenantId, { name, color, hours, durations, bufferMin }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -978,8 +978,8 @@ apiRouter.patch("/resources/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { name, color, hours } = (req.body ?? {}) as any;
-    res.json(await updateResource(tenantId, req.params.id, { name, color, hours }));
+    const { name, color, hours, durations, bufferMin } = (req.body ?? {}) as any;
+    res.json(await updateResource(tenantId, req.params.id, { name, color, hours, durations, bufferMin }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

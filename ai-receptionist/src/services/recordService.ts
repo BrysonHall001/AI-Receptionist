@@ -6,7 +6,7 @@
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
-import { resourceExists } from "./resourceService";
+import { resourceExists, resolveResourceHours, resolveResourceDuration } from "./resourceService";
 import { randomValueForField } from "./contactService";
 import { emitEvent } from "../events/bus";
 import { EventActor } from "../events/types";
@@ -16,8 +16,8 @@ const db = prisma as any;
 // Fixed namespace for the per-tenant booking advisory lock (any constant int).
 const BOOKING_LOCK_NS = 4242;
 
-/** [aStart,aEnd) and [bStart,bEnd) overlap (half-open intervals, ms). */
-function intervalsOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+/** [aStart,aEnd) and [bStart,bEnd) overlap (half-open intervals, ms). Exported for tests. */
+export function intervalsOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
   return aStart < bEnd && bStart < aEnd;
 }
 
@@ -49,15 +49,12 @@ export function isClosedAt(hours: any, appt: Date): boolean {
   return !windows.some((w: any) => { const s = hmToMinutes(w.start), e = hmToMinutes(w.end); return Number.isFinite(s) && Number.isFinite(e) && m >= s && m < e; });
 }
 
-/** Effective hours + display label for a booking's resource: the resource's own
- *  hours if set, else business hours; label is the resource name (or null when
- *  unassigned). */
-async function resolveHoursAndLabel(tenantId: string, resourceId: string | null, config: any): Promise<{ hours: any; label: string | null }> {
-  if (resourceId) {
-    const r = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null }, select: { name: true, hours: true } });
-    if (r) return { hours: r.hours && typeof r.hours === "object" ? r.hours : config.hours, label: r.name };
-  }
-  return { hours: config.hours, label: null };
+/** Load a booking's resource row (name + hours + durations) once, for the
+ *  closed-hours check (hours + label) and the per-resource duration. Null when
+ *  the booking is unassigned. */
+async function loadBookingResource(tenantId: string, resourceId: string | null): Promise<any | null> {
+  if (!resourceId) return null;
+  return db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null }, select: { name: true, hours: true, durations: true } });
 }
 
 /** Take the per-tenant booking advisory lock (serializes booking writes for this
@@ -76,7 +73,7 @@ async function acquireBookingLock(tx: any, tenantId: string): Promise<void> {
  *  other unassigned bookings. Wall-clock comparison on the stored zoneless
  *  timestamps — no timezone conversion. Call INSIDE the locked transaction. */
 async function bookingOverlaps(
-  tx: any, tenantId: string, recordTypeId: string, startAt: Date, durationMin: number, excludeId: string | null, resourceId: string | null
+  tx: any, tenantId: string, recordTypeId: string, startAt: Date, durationMin: number, excludeId: string | null, resourceId: string | null, resource: any
 ): Promise<boolean> {
   const config = await loadBookingConfig(tenantId);
   const newStart = startAt.getTime();
@@ -95,7 +92,10 @@ async function bookingOverlaps(
   for (const c of candidates) {
     if (!c.appointmentAt) continue;
     const exStart = new Date(c.appointmentAt).getTime();
-    const exEnd = exStart + durationForService(config, c.subtypeKey) * 60000;
+    // All candidates share the new booking's resourceId, so the same resource's
+    // per-service duration applies (resource value → business fallback). This is
+    // what makes the overlap math protect the FULL real length.
+    const exEnd = exStart + resolveResourceDuration(resource, config, c.subtypeKey) * 60000;
     if (intervalsOverlap(newStart, newEnd, exStart, exEnd)) return true;
   }
   return false;
@@ -196,21 +196,23 @@ export async function createRecord(
 
   if (isBooking) {
     const config = await loadBookingConfig(tenantId);
-    const durationMin = durationForService(config, subtypeKey);
+    // Load the resource once (for the closed check + its per-service duration).
+    const resource = await loadBookingResource(tenantId, resourceId);
+    const durationMin = resolveResourceDuration(resource, config, subtypeKey);
 
     // Closed-hours policy (independent of the overlap lock; hours are static so
     // this needs no lock). Manual can override with a warning; AI never auto-books
     // a closed time.
-    const { hours: effHours, label: resLabel } = await resolveHoursAndLabel(tenantId, resourceId, config);
+    const effHours = resolveResourceHours(resource, config.hours);
     if (isClosedAt(effHours, appointmentAt)) {
       const canOverrideClosed = source === "manual" && input.allowClosed === true;
-      if (!canOverrideClosed) throw closedError(resLabel);
+      if (!canOverrideClosed) throw closedError(resource ? resource.name : null);
     }
 
     const created = await db.$transaction(async (tx: any) => {
       await acquireBookingLock(tx, tenantId); // concurrency guard — always
       if (!config.allowDoubleBooking) {
-        const conflict = await bookingOverlaps(tx, tenantId, recordTypeId, appointmentAt, durationMin, null, resourceId);
+        const conflict = await bookingOverlaps(tx, tenantId, recordTypeId, appointmentAt, durationMin, null, resourceId, resource);
         // Only a MANUAL booking may override (the owner deliberately confirming).
         // AI bookings can never override → they hard-block.
         const canOverride = source === "manual" && input.allowOverlap === true;
@@ -257,16 +259,19 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   let updated: any;
   if (isBooking && finalAppt != null && (apptChanged || subtypeChanged || resourceChanged)) {
     const config = await loadBookingConfig(tenantId);
-    const durationMin = durationForService(config, finalSubtype);
+    // Load the resource once (closed check + per-service duration), based on the
+    // booking's FINAL resource (covers reassignment).
+    const resource = await loadBookingResource(tenantId, finalResourceId);
+    const durationMin = resolveResourceDuration(resource, config, finalSubtype);
 
     // Closed-hours policy for edits (manual): warn-with-override.
-    const { hours: effHours, label: resLabel } = await resolveHoursAndLabel(tenantId, finalResourceId, config);
-    if (isClosedAt(effHours, new Date(finalAppt)) && input.allowClosed !== true) throw closedError(resLabel);
+    const effHours = resolveResourceHours(resource, config.hours);
+    if (isClosedAt(effHours, new Date(finalAppt)) && input.allowClosed !== true) throw closedError(resource ? resource.name : null);
 
     updated = await db.$transaction(async (tx: any) => {
       await acquireBookingLock(tx, tenantId); // concurrency guard — always
       if (!config.allowDoubleBooking) {
-        const conflict = await bookingOverlaps(tx, tenantId, existing.recordTypeId, new Date(finalAppt), durationMin, id, finalResourceId);
+        const conflict = await bookingOverlaps(tx, tenantId, existing.recordTypeId, new Date(finalAppt), durationMin, id, finalResourceId, resource);
         // Time-edits are manual (the AI never edits times), so the owner may
         // override by confirming → allowOverlap. Otherwise block.
         if (conflict && input.allowOverlap !== true) throw overlapError();

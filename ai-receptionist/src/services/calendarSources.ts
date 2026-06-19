@@ -19,6 +19,7 @@ import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
+import { resolveResourceDuration } from "./resourceService";
 
 const db = prisma as any;
 
@@ -73,6 +74,13 @@ export const clarityBookingsSource: CalendarSource = {
       select: { appointmentAt: true, subtypeKey: true, stageKey: true },
     });
 
+    // When scoped to a resource, size that resource's busy blocks by ITS duration
+    // (all rows share that resource). With no resource (shop-wide preview), use
+    // business durations — same rule as hours.
+    const resource = resourceId
+      ? await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null }, select: { durations: true } })
+      : null;
+
     const out: BusyInterval[] = [];
     for (const r of rows) {
       if (!r.appointmentAt) continue;
@@ -80,7 +88,7 @@ export const clarityBookingsSource: CalendarSource = {
       // occupies it.
       if (r.stageKey === "no_show") continue;
       const start = dateToWall(r.appointmentAt);
-      const end = addMinutesWall(start, durationForService(config, r.subtypeKey));
+      const end = addMinutesWall(start, resolveResourceDuration(resource, config, r.subtypeKey));
       out.push({ start, end, sourceName: clarityBookingsSource.name });
     }
     return out;

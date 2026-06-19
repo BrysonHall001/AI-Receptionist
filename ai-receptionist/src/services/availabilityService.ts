@@ -18,7 +18,7 @@ import { OpenWindow, loadBookingConfig, durationForService } from "./bookingConf
 import { getBusyTimes } from "./calendarSources";
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
-import { listResources, ResourceDTO, resolveResourceHours } from "./resourceService";
+import { listResources, ResourceDTO, resolveResourceHours, resolveResourceDuration, resolveResourceBuffer } from "./resourceService";
 
 const db = prisma as any;
 
@@ -141,16 +141,17 @@ export async function findOpenSlots(
   resourceId?: string | null,
 ): Promise<AvailabilityResult> {
   const config = await loadBookingConfig(tenantId);
-  const durationMin = durationForService(config, serviceKey);
-  const bufferMin = config.bufferMin;
 
-  // Hours: a specific resource uses ITS hours (falling back to business hours);
-  // with no resource in context we use the business hours (the "any staff" view).
-  let hoursSource = config.hours;
+  // Resolve hours, duration AND buffer for the resource in context (its own
+  // values, falling back to business). With no resource (business preview /
+  // unassigned) all three use the business values.
+  let resource: any = null;
   if (resourceId) {
-    const resource = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null } });
-    hoursSource = resolveResourceHours(resource, config.hours);
+    resource = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null } });
   }
+  const durationMin = resolveResourceDuration(resource, config, serviceKey);
+  const bufferMin = resolveResourceBuffer(resource, config);
+  const hoursSource = resolveResourceHours(resource, config.hours);
 
   const wk = weekdayKey(dateStr);
   const windows = (wk && hoursSource[wk]) || [];
@@ -239,11 +240,17 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
   const nameByRecord: Record<string, string> = {};
   for (const l of links) { if (!nameByRecord[l.recordId] && cById[l.parentId]) nameByRecord[l.recordId] = cById[l.parentId].name; }
 
+  const resources = await listResources(tenantId);
+  const resById: Record<string, ResourceDTO> = {};
+  resources.forEach((r) => { resById[r.id] = r; });
+
   const bookings: CalendarBooking[] = rows
     .filter((r: any) => r.appointmentAt)
     .map((r: any) => {
       const start = dateToWall(r.appointmentAt);
-      const durationMin = durationForService(config, r.subtypeKey);
+      // Block height uses the booking's resolved per-resource duration (resource's
+      // own value → business fallback), so a 60-min booking renders as 60 min.
+      const durationMin = resolveResourceDuration(r.resourceId ? resById[r.resourceId] : null, config, r.subtypeKey);
       return {
         id: r.id,
         title: r.title || "Booking",
@@ -259,6 +266,5 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
       };
     });
 
-  const resources = await listResources(tenantId);
   return { from: fromDate, to: toDate, hours: config.hours, bookings, resources };
 }
