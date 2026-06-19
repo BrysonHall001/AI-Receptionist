@@ -18,7 +18,7 @@ import { OpenWindow, loadBookingConfig, durationForService } from "./bookingConf
 import { getBusyTimes } from "./calendarSources";
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
-import { listResources, ResourceDTO } from "./resourceService";
+import { listResources, ResourceDTO, resolveResourceHours } from "./resourceService";
 
 const db = prisma as any;
 
@@ -138,18 +138,29 @@ export async function findOpenSlots(
   tenantId: string,
   dateStr: string,
   serviceKey?: string | null,
+  resourceId?: string | null,
 ): Promise<AvailabilityResult> {
   const config = await loadBookingConfig(tenantId);
   const durationMin = durationForService(config, serviceKey);
   const bufferMin = config.bufferMin;
 
+  // Hours: a specific resource uses ITS hours (falling back to business hours);
+  // with no resource in context we use the business hours (the "any staff" view).
+  let hoursSource = config.hours;
+  if (resourceId) {
+    const resource = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null } });
+    hoursSource = resolveResourceHours(resource, config.hours);
+  }
+
   const wk = weekdayKey(dateStr);
-  const windows = (wk && config.hours[wk]) || [];
+  const windows = (wk && hoursSource[wk]) || [];
   if (!windows.length) {
     return { date: dateStr, serviceKey: serviceKey ?? null, durationMin, bufferMin, closed: true, slots: [] };
   }
 
-  const busyRaw = await getBusyTimes(tenantId, `${dateStr}T00:00`, `${nextDay(dateStr)}T00:00`);
+  // Busy times: scope to this resource when one is given (so a resource's open
+  // slots aren't blocked by other people's bookings); otherwise shop-wide.
+  const busyRaw = await getBusyTimes(tenantId, `${dateStr}T00:00`, `${nextDay(dateStr)}T00:00`, resourceId ?? null);
   const busyMinutes = busyRaw
     .map((b) => busyToDayMinutes(b, dateStr))
     .filter((x): x is { s: number; e: number } => x != null);

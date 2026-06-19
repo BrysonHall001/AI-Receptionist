@@ -6,6 +6,7 @@
 // next deploy — this keeps the build green locally with a stale client.
 
 import { prisma } from "../db/client";
+import { sanitizeHours } from "./bookingConfig";
 
 const db = prisma as any;
 
@@ -22,10 +23,21 @@ export interface ResourceDTO {
   name: string;
   color: string;
   order: number;
+  hours: Record<string, { start: string; end: string }[]> | null; // null = uses business hours
 }
 
 function serialize(r: any): ResourceDTO {
-  return { id: r.id, name: r.name, color: r.color, order: r.order };
+  return { id: r.id, name: r.name, color: r.color, order: r.order, hours: r.hours ?? null };
+}
+
+/** The effective weekly hours for a resource: its own custom hours if set,
+ *  otherwise the business hours (the fallback). */
+export function resolveResourceHours(
+  resource: { hours?: any } | null | undefined,
+  businessHours: Record<string, { start: string; end: string }[]>
+): Record<string, { start: string; end: string }[]> {
+  const h = resource && (resource as any).hours;
+  return h && typeof h === "object" ? h : businessHours;
 }
 
 /** All live (non-deleted) resources for a tenant, in display order. */
@@ -38,7 +50,7 @@ export async function listResources(tenantId: string): Promise<ResourceDTO[]> {
 }
 
 /** Create a resource. Name required; color optional (defaults). New rows sort last. */
-export async function createResource(tenantId: string, input: { name?: string; color?: string }): Promise<ResourceDTO> {
+export async function createResource(tenantId: string, input: { name?: string; color?: string; hours?: any }): Promise<ResourceDTO> {
   const name = (input.name || "").trim();
   if (!name) throw new Error("Name is required.");
   const last = await db.resource.findFirst({
@@ -47,14 +59,14 @@ export async function createResource(tenantId: string, input: { name?: string; c
     select: { order: true },
   });
   const order = (last && typeof last.order === "number" ? last.order : -1) + 1;
-  const row = await db.resource.create({
-    data: { tenantId, name, color: cleanColor(input.color), order },
-  });
+  const data: any = { tenantId, name, color: cleanColor(input.color), order };
+  if (input.hours !== undefined && input.hours !== null) data.hours = sanitizeHours(input.hours);
+  const row = await db.resource.create({ data });
   return serialize(row);
 }
 
 /** Rename / recolor a resource (tenant-scoped). */
-export async function updateResource(tenantId: string, id: string, input: { name?: string; color?: string }): Promise<ResourceDTO> {
+export async function updateResource(tenantId: string, id: string, input: { name?: string; color?: string; hours?: any }): Promise<ResourceDTO> {
   const existing = await db.resource.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Resource not found.");
   const data: any = {};
@@ -64,6 +76,9 @@ export async function updateResource(tenantId: string, id: string, input: { name
     data.name = name;
   }
   if (typeof input.color === "string") data.color = cleanColor(input.color);
+  // hours: null → clear to "uses business hours"; object → custom (sanitized);
+  // undefined → leave unchanged.
+  if (input.hours !== undefined) data.hours = input.hours === null ? null : sanitizeHours(input.hours);
   const row = await db.resource.update({ where: { id }, data });
   return serialize(row);
 }

@@ -2134,6 +2134,63 @@
     // Scheduling: per-business open hours (up to two windows/day for split shifts),
     // per-service durations (keyed to the Booking services defined on Fields), and
     // a buffer. Writes to the same bookingConfig the slot-finder already reads.
+    // Reusable weekly-hours editor (per-day Open toggle + up to two windows for
+    // split shifts). Used by business Scheduling AND per-resource hours. Returns
+    // { root, getHours() }.
+    function buildHoursEditor(initialHours) {
+      const DAYS = [["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thursday"],["fri","Friday"],["sat","Saturday"],["sun","Sunday"]];
+      const hours = {};
+      DAYS.forEach(([k]) => { hours[k] = Array.isArray(initialHours && initialHours[k]) ? initialHours[k].map((w) => ({ start: w.start, end: w.end })) : []; });
+      const root = el("div");
+      const dayList = el("div");
+      root.appendChild(dayList);
+      function timeInput(val) { const i = el("input", "input"); i.type = "time"; i.value = val || ""; i.style.cssText = "margin-bottom:0; width:130px;"; return i; }
+      function renderDay(k, label) {
+        const row = el("div");
+        row.style.cssText = "display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);";
+        const name = el("div"); name.textContent = label; name.style.cssText = "width:96px; font-weight:600;";
+        row.appendChild(name);
+        const openWrap = el("label", "form-check");
+        const openCb = el("input"); openCb.type = "checkbox"; openCb.checked = hours[k].length > 0;
+        openWrap.appendChild(openCb); openWrap.appendChild(el("span", null, "Open"));
+        row.appendChild(openWrap);
+        const windowsHost = el("div");
+        windowsHost.style.cssText = "display:flex; flex-wrap:wrap; align-items:center; gap:10px;";
+        row.appendChild(windowsHost);
+        function paint() {
+          windowsHost.innerHTML = "";
+          if (!openCb.checked) { hours[k] = []; windowsHost.appendChild(el("span", "cell-muted", "Closed")); return; }
+          if (hours[k].length === 0) hours[k] = [{ start: "09:00", end: "17:00" }];
+          hours[k].forEach((w, idx) => {
+            const s = timeInput(w.start); const e = timeInput(w.end);
+            s.onchange = () => { hours[k][idx].start = s.value; };
+            e.onchange = () => { hours[k][idx].end = e.value; };
+            windowsHost.appendChild(s);
+            windowsHost.appendChild(el("span", "cell-muted", "to"));
+            windowsHost.appendChild(e);
+            if (idx === 1) {
+              const rm = el("button", "btn btn-ghost btn-sm", "Remove");
+              rm.onclick = () => { hours[k].splice(1, 1); paint(); };
+              windowsHost.appendChild(rm);
+            }
+          });
+          if (hours[k].length < 2) {
+            const add = el("button", "btn btn-ghost btn-sm", "+ Add split (lunch break)");
+            add.onclick = () => { hours[k].push({ start: "13:00", end: "17:00" }); paint(); };
+            windowsHost.appendChild(add);
+          }
+        }
+        openCb.onchange = paint;
+        paint();
+        dayList.appendChild(row);
+      }
+      DAYS.forEach(([k, label]) => renderDay(k, label));
+      return {
+        root,
+        getHours() { const out = {}; DAYS.forEach(([k]) => { out[k] = (hours[k] || []).map((w) => ({ start: w.start, end: w.end })); }); return out; },
+      };
+    }
+
     async function secResources(panel) {
       const wOne = App.label("resource", "one");
       const wMany = App.label("resource", "many");
@@ -2142,10 +2199,17 @@
         <div id="res-host"><div class="cell-muted" style="padding:8px">Loading…</div></div>`;
       const host = App.util.$("#res-host");
       let items = [];
+      let bizHours = {};
 
       async function load() {
-        try { items = await App.portalApi("/api/resources"); }
-        catch (e) { host.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; return; }
+        try {
+          const [res, bc] = await Promise.all([
+            App.portalApi("/api/resources"),
+            App.portalApi("/api/booking-config").catch(() => null),
+          ]);
+          items = res || [];
+          bizHours = (bc && bc.config && bc.config.hours) || {};
+        } catch (e) { host.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; return; }
         render();
       }
 
@@ -2177,7 +2241,11 @@
             const row = el("div"); row.style.cssText = "display:flex; gap:10px; align-items:center; padding:9px 0; border-top:1px solid var(--line);";
             const sw = el("input"); sw.type = "color"; sw.value = r.color || "#6366f1"; sw.title = "Color"; sw.style.cssText = "width:34px; height:30px; padding:2px; border:1px solid var(--line); border-radius:7px; cursor:pointer; flex:0 0 auto;";
             sw.onchange = async () => { try { await App.portalApi("/api/resources/" + r.id, { method: "PATCH", body: JSON.stringify({ color: sw.value }) }); r.color = sw.value; toast("Saved"); } catch (e) { toast(e.message, true); sw.value = r.color || "#6366f1"; } };
-            const nm = el("div"); nm.textContent = r.name; nm.style.cssText = "flex:1; font-weight:500;";
+            const nm = el("div"); nm.style.cssText = "flex:1; font-weight:500;";
+            nm.appendChild(document.createTextNode(r.name));
+            if (r.hours) { const tag = el("span", "cell-muted"); tag.textContent = " · custom hours"; tag.style.fontWeight = "400"; nm.appendChild(tag); }
+            const hrs = el("button", "btn btn-ghost btn-sm", "Hours");
+            hrs.onclick = () => openResourceHours(r);
             const ren = el("button", "btn btn-ghost btn-sm", "Rename");
             ren.onclick = async () => {
               const v = await promptModal({ title: "Rename " + wOne, label: "Name", value: r.name, okText: "Rename" });
@@ -2195,11 +2263,55 @@
                 else { toast(e.message, true); }
               }
             };
-            row.appendChild(sw); row.appendChild(nm); row.appendChild(ren); row.appendChild(del);
+            row.appendChild(sw); row.appendChild(nm); row.appendChild(hrs); row.appendChild(ren); row.appendChild(del);
             card.appendChild(row);
           });
         }
         host.appendChild(card);
+      }
+
+      // Per-resource hours modal: "Use business hours" toggle + the shared weekly
+      // editor. Saving with the box checked stores null (fallback); unchecked
+      // stores the custom object (even if some days are closed).
+      function openResourceHours(r) {
+        const usingBiz = !r.hours;
+        const inner = el("div");
+        inner.innerHTML = `<div class="modal-head"><h2>Hours · ${esc(r.name)}</h2><button class="icon-btn" id="rh-close">&times;</button></div>`;
+        const body = el("div", "modal-body");
+
+        const useWrap = el("label"); useWrap.style.cssText = "display:flex; gap:8px; align-items:center; cursor:pointer; margin-bottom:12px;";
+        const useCb = el("input"); useCb.type = "checkbox"; useCb.checked = usingBiz;
+        useWrap.appendChild(useCb); useWrap.appendChild(el("span", null, "Use business hours"));
+        body.appendChild(useWrap);
+
+        const help = el("p", "cell-muted", "When on, this " + wOne.toLowerCase() + " follows the business hours. Turn off to set their own weekly hours.");
+        help.style.cssText = "font-size:12.5px; margin:-6px 0 12px;";
+        body.appendChild(help);
+
+        // Seed the editor with the resource's custom hours, or the business hours
+        // as a starting point when they have none yet.
+        const ed = buildHoursEditor(r.hours || bizHours);
+        const edWrap = el("div"); edWrap.appendChild(ed.root); body.appendChild(edWrap);
+        const syncVis = () => { edWrap.style.display = useCb.checked ? "none" : ""; };
+        useCb.onchange = syncVis; syncVis();
+
+        inner.appendChild(body);
+        const foot = el("div", "modal-foot");
+        const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+        const save = el("button", "btn btn-primary btn-sm", "Save hours");
+        foot.appendChild(cancel); foot.appendChild(save);
+        inner.appendChild(foot);
+        const overlay = modal(inner);
+        const close = () => overlay.remove();
+        inner.querySelector("#rh-close").onclick = close;
+        cancel.onclick = close;
+        overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+        save.onclick = async () => {
+          const payload = { hours: useCb.checked ? null : ed.getHours() };
+          save.disabled = true; save.textContent = "Saving…";
+          try { await App.portalApi("/api/resources/" + r.id, { method: "PATCH", body: JSON.stringify(payload) }); toast("Hours saved"); close(); await load(); }
+          catch (e) { toast(e.message, true); save.disabled = false; save.textContent = "Save hours"; }
+        };
       }
 
       load();
@@ -2217,64 +2329,13 @@
       const cfg = data.config || {};
       const services = data.services || [];
 
-      const DAYS = [["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thursday"],["fri","Friday"],["sat","Saturday"],["sun","Sunday"]];
-      // Working copy of each day's windows (array of {start,end}); [] = closed.
-      const hours = {};
-      DAYS.forEach(([k]) => { hours[k] = Array.isArray(cfg.hours && cfg.hours[k]) ? cfg.hours[k].map((w) => ({ start: w.start, end: w.end })) : []; });
-
       host.innerHTML = "";
 
-      // ---- Weekly hours ----
+      // ---- Weekly hours (shared editor) ----
       const hoursCard = el("div", "settings-card card");
       hoursCard.appendChild(el("div", "settings-h", "Weekly hours"));
-      const dayList = el("div");
-      hoursCard.appendChild(dayList);
-
-      function timeInput(val) { const i = el("input", "input"); i.type = "time"; i.value = val || ""; i.style.cssText = "margin-bottom:0; width:130px;"; return i; }
-
-      function renderDay(k, label) {
-        const row = el("div");
-        row.style.cssText = "display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);";
-        const name = el("div"); name.textContent = label; name.style.cssText = "width:96px; font-weight:600;";
-        row.appendChild(name);
-
-        const openWrap = el("label", "form-check");
-        const openCb = el("input"); openCb.type = "checkbox"; openCb.checked = hours[k].length > 0;
-        openWrap.appendChild(openCb); openWrap.appendChild(el("span", null, "Open"));
-        row.appendChild(openWrap);
-
-        const windowsHost = el("div");
-        windowsHost.style.cssText = "display:flex; flex-wrap:wrap; align-items:center; gap:10px;";
-        row.appendChild(windowsHost);
-
-        function paint() {
-          windowsHost.innerHTML = "";
-          if (!openCb.checked) { hours[k] = []; windowsHost.appendChild(el("span", "cell-muted", "Closed")); return; }
-          if (hours[k].length === 0) hours[k] = [{ start: "09:00", end: "17:00" }];
-          hours[k].forEach((w, idx) => {
-            const s = timeInput(w.start); const e = timeInput(w.end);
-            s.onchange = () => { hours[k][idx].start = s.value; };
-            e.onchange = () => { hours[k][idx].end = e.value; };
-            windowsHost.appendChild(s);
-            windowsHost.appendChild(el("span", "cell-muted", "to"));
-            windowsHost.appendChild(e);
-            if (idx === 1) {
-              const rm = el("button", "btn btn-ghost btn-sm", "Remove");
-              rm.onclick = () => { hours[k].splice(1, 1); paint(); };
-              windowsHost.appendChild(rm);
-            }
-          });
-          if (hours[k].length < 2) {
-            const add = el("button", "btn btn-ghost btn-sm", "+ Add split (lunch break)");
-            add.onclick = () => { hours[k].push({ start: "13:00", end: "17:00" }); paint(); };
-            windowsHost.appendChild(add);
-          }
-        }
-        openCb.onchange = paint;
-        paint();
-        dayList.appendChild(row);
-      }
-      DAYS.forEach(([k, label]) => renderDay(k, label));
+      const hoursEd = buildHoursEditor(cfg.hours);
+      hoursCard.appendChild(hoursEd.root);
 
       // ---- Durations + buffer ----
       const durCard = el("div", "settings-card card");
@@ -2327,8 +2388,7 @@
       saveBtn.style.marginTop = "16px";
       saveBtn.onclick = async () => {
         // Build the hours payload: every day explicit ([] = closed).
-        const hoursOut = {};
-        DAYS.forEach(([k]) => { hoursOut[k] = (hours[k] || []).map((w) => ({ start: w.start, end: w.end })); });
+        const hoursOut = hoursEd.getHours();
         const serviceDurations = {};
         Object.keys(svcDurInputs).forEach((key) => { const v = parseInt(svcDurInputs[key].value, 10); if (Number.isFinite(v) && v > 0) serviceDurations[key] = v; });
         const payload = {
@@ -2827,21 +2887,27 @@
 
       // COLUMN descriptors. Resource view → one column per resource (+ Unassigned)
       // for the anchor day. Normal → one per visible date, optionally filtered to
-      // the selected resource.
+      // the selected resource. Each column carries its resolved hours (the
+      // resource's own hours, or the business hours as fallback) for shading.
+      const resolveHours = (rh) => (rh && typeof rh === "object") ? rh : hours;
+      const selResource = selResId ? resources.find((r) => r.id === selResId) : null;
       const columns = [];
       if (resourceView) {
         const day = state.anchor;
         resources.forEach((r) => columns.push({
           dayYmd: day, kind: "resource", headMain: r.name, color: r.color, slotResourceId: r.id,
+          colHours: resolveHours(r.hours),
           items: bookings.filter((b) => dpart(b.start) === day && (b.resourceId || null) === r.id),
         }));
         columns.push({
           dayYmd: day, kind: "unassigned", headMain: "Unassigned", color: null, slotResourceId: null,
+          colHours: hours,
           items: bookings.filter((b) => dpart(b.start) === day && !b.resourceId),
         });
       } else {
+        const colHours = resolveHours(selResource && selResource.hours);
         dates.forEach((d) => columns.push({
-          dayYmd: d, kind: "date", color: null, slotResourceId: selResId,
+          dayYmd: d, kind: "date", color: null, slotResourceId: selResId, colHours,
           items: bookings.filter((b) => dpart(b.start) === d && (state.resource === "all" || (b.resourceId || null) === selResId)),
         }));
       }
@@ -2849,9 +2915,9 @@
       const dayKeys = resourceView ? [state.anchor] : dates;
       const daySet = new Set(dayKeys);
 
-      // Display range = open windows of shown days + booking spans, snapped to hour.
+      // Display range = open windows (per-column resolved hours) + booking spans.
       let minS = Infinity, maxE = -Infinity;
-      dayKeys.forEach((d) => (hours[dowKey(d)] || []).forEach((w) => { const s = hm2min(w.start), e = hm2min(w.end); if (s < minS) minS = s; if (e > maxE) maxE = e; }));
+      columns.forEach((c) => (c.colHours[dowKey(c.dayYmd)] || []).forEach((w) => { const s = hm2min(w.start), e = hm2min(w.end); if (s < minS) minS = s; if (e > maxE) maxE = e; }));
       bookings.forEach((b) => { if (daySet.has(dpart(b.start))) { const s = startMin(b.start), e = s + b.durationMin; if (s < minS) minS = s; if (e > maxE) maxE = e; } });
       if (daySet.has(today)) { if (nowMin < minS) minS = nowMin; if (nowMin > maxE) maxE = nowMin; }
       if (!isFinite(minS)) { minS = 540; maxE = 1020; }
@@ -2868,8 +2934,8 @@
       const tb = el("div", "cal-toolbar");
       const rangeLbl = el("div", "cal-range");
       if (resourceView) {
-        const closed = !((hours[dowKey(state.anchor)] || []).length);
-        rangeLbl.textContent = fmtUTC(state.anchor, { weekday: "long", month: "long", day: "numeric" }) + (closed ? " · Closed" : "");
+        const allClosed = columns.every((c) => !((c.colHours[dowKey(c.dayYmd)] || []).length));
+        rangeLbl.textContent = fmtUTC(state.anchor, { weekday: "long", month: "long", day: "numeric" }) + (allClosed ? " · Closed" : "");
       } else {
         rangeLbl.textContent = dates.length === 1
           ? fmtUTC(dates[0], { weekday: "long", month: "long", day: "numeric" })
@@ -2935,20 +3001,21 @@
       head.style.gridTemplateColumns = cols;
       head.appendChild(el("div", "cal-corner"));
       columns.forEach((c) => {
+        const colClosed = !((c.colHours[dowKey(c.dayYmd)] || []).length);
         if (c.kind === "date") {
-          const closed = !((hours[dowKey(c.dayYmd)] || []).length);
-          const h = el("div", "cal-dayhead" + (c.dayYmd === today ? " is-today" : "") + (closed ? " is-closed" : ""));
+          const h = el("div", "cal-dayhead" + (c.dayYmd === today ? " is-today" : "") + (colClosed ? " is-closed" : ""));
           h.appendChild(el("div", "cal-dow", fmtUTC(c.dayYmd, { weekday: "short" })));
           h.appendChild(el("div", "cal-dom", String(parseInt(c.dayYmd.slice(8, 10), 10))));
-          if (closed) h.appendChild(el("div", "cal-closed-tag", "Closed"));
+          if (colClosed) h.appendChild(el("div", "cal-closed-tag", "Closed"));
           head.appendChild(h);
         } else {
           // Resource / Unassigned column header — name with a color accent underline.
-          const h = el("div", "cal-dayhead cal-reshead");
+          const h = el("div", "cal-dayhead cal-reshead" + (colClosed ? " is-closed" : ""));
           const nm = el("div", "cal-resname", c.headMain);
           nm.style.borderBottom = "3px solid " + (c.color || "var(--line)");
           if (!c.color) nm.classList.add("is-unassigned");
           h.appendChild(nm);
+          if (colClosed) h.appendChild(el("div", "cal-closed-tag", "Closed"));
           head.appendChild(h);
         }
       });
@@ -2972,7 +3039,7 @@
         const d = c.dayYmd;
         const col = el("div", "cal-col");
         col.style.height = gridH + "px";
-        (hours[dowKey(d)] || []).forEach((w) => {
+        (c.colHours[dowKey(d)] || []).forEach((w) => {
           const top = Math.max(0, (hm2min(w.start) - rangeStart) / 60 * HOUR_H);
           const bot = Math.min(gridH, (hm2min(w.end) - rangeStart) / 60 * HOUR_H);
           if (bot > top) { const o = el("div", "cal-open"); o.style.top = top + "px"; o.style.height = (bot - top) + "px"; col.appendChild(o); }
@@ -3049,7 +3116,7 @@
       // Default scroll: open at business start (or ~now if today is visible) so we
       // don't land on empty early-morning space.
       let bizStart = Infinity;
-      dayKeys.forEach((d) => (hours[dowKey(d)] || []).forEach((w) => { const s = hm2min(w.start); if (s < bizStart) bizStart = s; }));
+      columns.forEach((c) => (c.colHours[dowKey(c.dayYmd)] || []).forEach((w) => { const s = hm2min(w.start); if (s < bizStart) bizStart = s; }));
       if (!isFinite(bizStart)) bizStart = rangeStart;
       const scrollTarget = (daySet.has(today) && nowMin > bizStart) ? nowMin - 30 : bizStart;
       scroll.scrollTop = Math.max(0, (scrollTarget - rangeStart) / 60 * HOUR_H - 8);

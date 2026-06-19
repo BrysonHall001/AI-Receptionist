@@ -918,11 +918,12 @@ apiRouter.get("/availability", async (req: Request, res: Response) => {
   try {
     const date = String(req.query.date ?? "");
     const service = req.query.service ? String(req.query.service) : null;
+    const resource = req.query.resource ? String(req.query.resource) : null;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       res.status(400).json({ error: "date must be in YYYY-MM-DD format" });
       return;
     }
-    res.json(await findOpenSlots(tenantId, date, service));
+    res.json(await findOpenSlots(tenantId, date, service, resource));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -966,8 +967,8 @@ apiRouter.post("/resources", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { name, color } = (req.body ?? {}) as any;
-    res.json(await createResource(tenantId, { name, color }));
+    const { name, color, hours } = (req.body ?? {}) as any;
+    res.json(await createResource(tenantId, { name, color, hours }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -975,8 +976,8 @@ apiRouter.patch("/resources/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { name, color } = (req.body ?? {}) as any;
-    res.json(await updateResource(tenantId, req.params.id, { name, color }));
+    const { name, color, hours } = (req.body ?? {}) as any;
+    res.json(await updateResource(tenantId, req.params.id, { name, color, hours }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

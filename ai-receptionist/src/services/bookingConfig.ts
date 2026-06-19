@@ -98,6 +98,28 @@ function validWindow(w: any): OpenWindow | null {
 }
 
 /**
+ * Clean a weekly-hours input into all 7 days written explicitly: each day = up to
+ * TWO valid open windows (split shifts), sorted; an empty array means CLOSED.
+ * Shared by the business booking config and per-resource hours.
+ */
+export function sanitizeHours(input: any): Record<string, OpenWindow[]> {
+  const src = input && typeof input === "object" ? input : {};
+  const hours: Record<string, OpenWindow[]> = {};
+  for (const k of WEEKDAY_KEYS) {
+    const arr = Array.isArray(src[k]) ? src[k] : [];
+    const windows: OpenWindow[] = [];
+    for (const w of arr) {
+      const v = validWindow(w);
+      if (v) windows.push(v);
+      if (windows.length >= 2) break; // up to two windows per day (e.g. before/after lunch)
+    }
+    windows.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+    hours[k] = windows;
+  }
+  return hours;
+}
+
+/**
  * Save a tenant's booking config. Validates everything and writes the cleaned
  * JSON into Tenant.bookingConfig:
  *  - hours: all 7 days written explicitly; each day = up to TWO valid open
@@ -109,18 +131,7 @@ function validWindow(w: any): OpenWindow | null {
 export async function saveBookingConfig(tenantId: string, input: any): Promise<BookingConfig> {
   const c = input && typeof input === "object" ? input : {};
 
-  const hours: Record<string, OpenWindow[]> = {};
-  for (const k of WEEKDAY_KEYS) {
-    const arr = c.hours && Array.isArray(c.hours[k]) ? c.hours[k] : [];
-    const windows: OpenWindow[] = [];
-    for (const w of arr) {
-      const v = validWindow(w);
-      if (v) windows.push(v);
-      if (windows.length >= 2) break; // up to two windows per day (e.g. before/after lunch)
-    }
-    windows.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
-    hours[k] = windows;
-  }
+  const hours = sanitizeHours(c.hours);
 
   // Durations: keep only services that still exist on the Booking record type.
   const recordTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY);

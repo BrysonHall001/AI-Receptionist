@@ -32,7 +32,7 @@ export interface BusyInterval {
 /** The seam every calendar source implements. One method, nothing else. */
 export interface CalendarSource {
   name: string;
-  getBusyTimes(tenantId: string, fromISO: string, toISO: string): Promise<BusyInterval[]>;
+  getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null): Promise<BusyInterval[]>;
 }
 
 // ---- wall-clock helpers (zoneless; mirror the appointmentAt storage model) ----
@@ -59,7 +59,7 @@ function addMinutesWall(wall: string, mins: number): string {
 
 export const clarityBookingsSource: CalendarSource = {
   name: "clarity-bookings",
-  async getBusyTimes(tenantId: string, fromISO: string, toISO: string): Promise<BusyInterval[]> {
+  async getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null): Promise<BusyInterval[]> {
     const recordTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY);
     const config = await loadBookingConfig(tenantId);
 
@@ -69,7 +69,7 @@ export const clarityBookingsSource: CalendarSource = {
     const to = new Date(toISO.length === 16 ? toISO + ":00Z" : toISO);
 
     const rows = await db.record.findMany({
-      where: { tenantId, recordTypeId, deletedAt: null, appointmentAt: { gte: from, lt: to } },
+      where: { tenantId, recordTypeId, deletedAt: null, appointmentAt: { gte: from, lt: to }, ...(resourceId ? { resourceId } : {}) },
       select: { appointmentAt: true, subtypeKey: true, stageKey: true },
     });
 
@@ -95,11 +95,11 @@ const SOURCES: CalendarSource[] = [clarityBookingsSource];
  * list. Slot-finding calls this and never needs to know how many sources exist
  * or what they are. A failing source is logged and skipped, never fatal.
  */
-export async function getBusyTimes(tenantId: string, fromISO: string, toISO: string): Promise<BusyInterval[]> {
+export async function getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null): Promise<BusyInterval[]> {
   const merged: BusyInterval[] = [];
   for (const s of SOURCES) {
     try {
-      merged.push(...(await s.getBusyTimes(tenantId, fromISO, toISO)));
+      merged.push(...(await s.getBusyTimes(tenantId, fromISO, toISO, resourceId)));
     } catch (e) {
       logger.error(`[availability] source "${s.name}" failed: ${(e as Error).message}`);
     }

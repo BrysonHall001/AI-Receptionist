@@ -638,6 +638,9 @@ model Resource {
   name      String
   color     String    @default("#6366f1")
   order     Int       @default(0)
+  // Optional per-resource weekly hours, same shape as bookingConfig.hours
+  // (sun..sat → up to 2 {start,end} windows; [] = closed). NULL = use business hours.
+  hours     Json?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
