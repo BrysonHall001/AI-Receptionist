@@ -3089,6 +3089,9 @@
       body.appendChild(gutter);
 
       // Build one grid column from a descriptor (date column OR resource column).
+      // Resource name/color lookup for the subtle per-block dot (week/day view).
+      const calResById = {}; (resources || []).forEach((r) => { calResById[r.id] = r; });
+
       function buildColumn(c) {
         const d = c.dayYmd;
         const col = el("div", "cal-col");
@@ -3127,12 +3130,20 @@
           }
           const tline = el("div", "cal-block-t");
           const gl = el("span", "cal-glyph", m.glyph); if (c.color) gl.style.color = m.fg; tline.appendChild(gl);
+          // Subtle resource indicator: only in the week/day view (no column color),
+          // where the resource isn't already conveyed by the column tint. In the
+          // resource-column ("All") view we skip it to avoid doubling up.
+          let resForTip = null;
+          if (!c.color && it.b.resourceId) {
+            resForTip = calResById[it.b.resourceId] || null;
+            if (resForTip) { const rd = el("span", "res-dot"); rd.style.background = resForTip.color || "#6366f1"; tline.appendChild(rd); }
+          }
           tline.appendChild(document.createTextNode(it.b.contactName || it.b.title || "Booking"));
           blk.appendChild(tline);
           if (bh >= 30) {
             blk.appendChild(el("div", "cal-block-sub", `${label12(it.s)} · ${[it.b.serviceLabel, it.b.stageLabel].filter(Boolean).join(" · ")}`.replace(/ · $/, "")));
           }
-          blk.title = `${it.b.title}${it.b.contactName ? " — " + it.b.contactName : ""}\n${label12(it.s)}–${label12(it.e)} · ${it.b.serviceLabel || ""} · ${it.b.stageLabel || ""}`;
+          blk.title = `${it.b.title}${it.b.contactName ? " — " + it.b.contactName : ""}\n${label12(it.s)}–${label12(it.e)} · ${it.b.serviceLabel || ""} · ${it.b.stageLabel || ""}${resForTip ? " · " + resForTip.name : ""}`;
           blk.onclick = (e) => { e.stopPropagation(); App.go("#/record/" + it.b.id); };
           col.appendChild(blk);
         });
@@ -3194,13 +3205,28 @@
     load();
   }
 
-  function recordColumnDefs(fields, type) {
+  function recordColumnDefs(fields, type, resById) {
+    resById = resById || {};
     const cols = [];
     cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => esc(r.title || "Untitled") });
     // Bookings: the typed appointment date+time as a first-class column (it is a
     // real DB field, not a custom field, so it's added here explicitly).
     if (type && type.key === "booking") {
       cols.push({ key: "appointmentAt", label: "Appointment", type: "date", get: (r) => r.appointmentAt, text: (r) => fmtAppt(r.appointmentAt), render: (r) => r.appointmentAt ? esc(fmtAppt(r.appointmentAt)) : `<span class="cell-muted">—</span>` });
+      // Assigned resource (display-only surfacing of the existing resourceId).
+      // Labeled with the configurable resource word; shows a color dot + name, or
+      // a muted "Unassigned" when none. text() returns the name for sort/search.
+      const resName = (r) => { const x = r.resourceId ? resById[r.resourceId] : null; return x ? x.name : ""; };
+      cols.push({
+        key: "resourceId", label: App.label("resource", "one"), type: "text",
+        get: (r) => r.resourceId || null,
+        text: (r) => resName(r),
+        render: (r) => {
+          const x = r.resourceId ? resById[r.resourceId] : null;
+          if (!x) return `<span class="cell-muted">Unassigned</span>`;
+          return `<span class="res-dot" style="background:${esc(x.color || "#6366f1")}"></span>${esc(x.name)}`;
+        },
+      });
     }
     if (((type && type.subtypes) || []).length) {
       cols.push({ key: "subtypeKey", label: "Type", type: "text", get: (r) => r.subtypeKey, text: (r) => subtypeLabel(type, r.subtypeKey), render: (r) => r.subtypeKey ? `<span class="pill">${esc(subtypeLabel(type, r.subtypeKey))}</span>` : `<span class="cell-muted">—</span>` });
@@ -3219,18 +3245,21 @@
 
   async function renderRecordList(typeKey) {
     loading();
-    let records, fields, types;
+    let records, fields, types, resources;
     try {
-      [records, fields, types] = await Promise.all([
+      [records, fields, types, resources] = await Promise.all([
         App.portalApi("/api/records?type=" + encodeURIComponent(typeKey)),
         App.portalApi("/api/fields?recordType=" + encodeURIComponent(typeKey)).catch(() => []),
         App.portalApi("/api/record-types").catch(() => []),
+        // Resource names/colors for the bookings list column (display-only).
+        typeKey === "booking" ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
       ]);
     } catch (e) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
     const type = (types || []).find((t) => t.key === typeKey) || { key: typeKey, label: App.label("record","one"), labelPlural: "Records", stages: [], recordStages: [] };
     const titleEl = document.querySelector(".page-title"); if (titleEl) titleEl.textContent = type.labelPlural || type.label;
 
-    const allColumns = recordColumnDefs(fields, type);
+    const resById = {}; (resources || []).forEach((r) => { resById[r.id] = r; });
+    const allColumns = recordColumnDefs(fields, type, resById);
     let layout = loadRecordLayout(typeKey);
     let columns = applyRecordLayout(allColumns, layout);
 

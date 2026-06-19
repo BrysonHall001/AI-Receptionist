@@ -1351,6 +1351,8 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .cal-legend-sw { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; font-size: 11px; font-weight: 700; border: 1px solid currentColor; }
 .cal-legend-lbl { color: var(--ink); }
 .cal-closed-tag { font-size: 9.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
+/* Small resource color dot, reused in the bookings list cell and on calendar blocks. */
+.res-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; flex: 0 0 auto; }
 /* In the resource column header the name carries a colored underline bar, so give
    the CLOSED tag a comfortable gap beneath it (rather than sitting tight to the bar). */
 .cal-reshead .cal-closed-tag { margin-top: 7px; }
