@@ -6,7 +6,7 @@ import { evalRules, ruleComplete, Rule } from "./conditions";
 import { buildColumns, loadFieldDefs } from "./contactRow";
 import { loadRecordFieldDefs, buildRecordColumns } from "./recordRow";
 import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
-import { enqueueJob } from "./scheduler";
+import { enqueueJob, fmtApptWall } from "./scheduler";
 
 const db = prisma as any;
 
@@ -164,6 +164,13 @@ async function runRecordOne(auto: AutomationRow, event: DomainEvent, record: any
   const extraTokens: Record<string, string> = {};
   if (p.record_title != null) extraTokens.record_title = String(p.record_title);
   if (p.record_type != null) extraTokens.record_type = String(p.record_type);
+  // {{appointment}} in the EVENT-DRIVEN path (e.g. booking confirmation / no-show).
+  // Source the time from the record we already loaded above — no payload change,
+  // no extra query — and format it through the SAME wall-clock formatter the
+  // time-based reminder uses (fmtApptWall: reads the UTC-slot digits verbatim, NO
+  // timezone conversion). Only set when a real appointment exists, so a booking
+  // with no time — or a non-booking record — renders BLANK, never "Invalid Date".
+  if (record.appointmentAt) extraTokens.appointment = fmtApptWall(new Date(record.appointmentAt));
   if (firstChange) {
     if (firstChange.label != null) extraTokens.changed_field = String(firstChange.label);
     if (firstChange.new != null) extraTokens.new_value = String(firstChange.new);

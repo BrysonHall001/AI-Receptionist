@@ -704,7 +704,7 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
           type: "act_on_linked",
           config: {
             subAction: "sms",
-            body: "Hi {{name}}, your booking for {{record_title}} is confirmed. Reply here if you need to make any changes — see you soon!",
+            body: "Hi {{name}}, your booking for {{record_title}} on {{appointment}} is confirmed. Reply here if you need to make any changes — see you soon!",
           },
         },
       ],
@@ -732,7 +732,7 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
           type: "act_on_linked",
           config: {
             subAction: "sms",
-            body: "Hi {{name}}, we missed you for {{record_title}}. Reply here and we'll help you find a new time.",
+            body: "Hi {{name}}, we missed you for {{record_title}} on {{appointment}}. Reply here and we'll help you find a new time.",
           },
         },
       ],

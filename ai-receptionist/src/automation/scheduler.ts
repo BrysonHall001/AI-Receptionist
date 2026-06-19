@@ -147,7 +147,9 @@ const TERMINAL_BOOKING_STATUSES = new Set(["no_show", "completed", "canceled", "
 
 // Wall-clock formatter for the appointment (reads UTC-slot digits; NO timezone
 // conversion), matching how the app stores/reads appointmentAt elsewhere.
-function fmtApptWall(d: Date): string {
+// Exported so the event-driven path (engine.runRecordOne) renders {{appointment}}
+// through this SAME formatter — one source of truth, no second time-formatter.
+export function fmtApptWall(d: Date): string {
   return d.toLocaleString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
