@@ -18,6 +18,7 @@ import { OpenWindow, loadBookingConfig, durationForService } from "./bookingConf
 import { getBusyTimes } from "./calendarSources";
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
+import { listResources, ResourceDTO } from "./resourceService";
 
 const db = prisma as any;
 
@@ -186,6 +187,7 @@ export interface CalendarBooking {
   stageKey: string | null;
   stageLabel: string;
   contactName: string | null;
+  resourceId: string | null; // assigned bookable resource (Batch 1), null = unassigned
 }
 
 export interface WeekCalendar {
@@ -193,6 +195,7 @@ export interface WeekCalendar {
   to: string; // exclusive
   hours: Record<string, OpenWindow[]>;
   bookings: CalendarBooking[];
+  resources: ResourceDTO[]; // the tenant's resources (for resource-view columns + selector)
 }
 
 /** Bookings whose appointmentAt falls in [fromDate, toDate) (YYYY-MM-DD), plus
@@ -241,8 +244,10 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
         stageKey: r.stageKey || null,
         stageLabel: stageLabel(r.stageKey),
         contactName: nameByRecord[r.id] || null,
+        resourceId: r.resourceId || null,
       };
     });
 
-  return { from: fromDate, to: toDate, hours: config.hours, bookings };
+  const resources = await listResources(tenantId);
+  return { from: fromDate, to: toDate, hours: config.hours, bookings, resources };
 }

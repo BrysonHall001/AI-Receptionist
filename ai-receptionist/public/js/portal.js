@@ -2786,10 +2786,15 @@
     const label12 = (min) => { let h = Math.floor(min / 60); const ap = h >= 12 ? "PM" : "AM"; let hh = h % 12; if (hh === 0) hh = 12; const m = min % 60; return m ? `${hh}:${pad(m)} ${ap}` : `${hh} ${ap}`; };
     const fmtUTC = (ymd, opt) => { const m = parseYmd(ymd); return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString("en-US", Object.assign({ timeZone: "UTC" }, opt)); };
 
-    const state = { view: "week", anchor: todayYmd() };
+    const state = { view: "week", anchor: todayYmd(), resource: "all" };
+    let lastResources = []; // refreshed each load so handlers know if resources exist
+
+    // Resource view = "All" is selected AND the business has resources → columns
+    // become one-per-resource for a SINGLE day. Otherwise it's the normal date grid.
+    function inResourceView() { return state.resource === "all" && lastResources.length > 0; }
 
     function visibleDates() {
-      if (state.view === "day") return [state.anchor];
+      if (inResourceView() || state.view === "day") return [state.anchor];
       const mon = mondayOf(state.anchor);
       return [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(mon, i));
     }
@@ -2808,25 +2813,53 @@
     function render(dates, data) {
       const hours = data.hours || {};
       const bookings = data.bookings || [];
+      const resources = data.resources || [];
+      lastResources = resources;
+      // If the selected resource was deleted, fall back to All (avoid an empty view).
+      if (state.resource !== "all" && !resources.some((r) => r.id === state.resource)) state.resource = "all";
       const today = todayYmd();
-      const dateSet = new Set(dates);
       const nowD = new Date();
       const nowMin = nowD.getHours() * 60 + nowD.getMinutes(); // browser-local wall-clock digits
-      let nowLineEl = null;
+      const nowLineEls = [];
 
-      // Display range = open windows of visible days + booking spans, snapped to the hour.
+      const resourceView = state.resource === "all" && resources.length > 0;
+      const selResId = (!resourceView && state.resource !== "all") ? state.resource : null;
+
+      // COLUMN descriptors. Resource view → one column per resource (+ Unassigned)
+      // for the anchor day. Normal → one per visible date, optionally filtered to
+      // the selected resource.
+      const columns = [];
+      if (resourceView) {
+        const day = state.anchor;
+        resources.forEach((r) => columns.push({
+          dayYmd: day, kind: "resource", headMain: r.name, color: r.color, slotResourceId: r.id,
+          items: bookings.filter((b) => dpart(b.start) === day && (b.resourceId || null) === r.id),
+        }));
+        columns.push({
+          dayYmd: day, kind: "unassigned", headMain: "Unassigned", color: null, slotResourceId: null,
+          items: bookings.filter((b) => dpart(b.start) === day && !b.resourceId),
+        });
+      } else {
+        dates.forEach((d) => columns.push({
+          dayYmd: d, kind: "date", color: null, slotResourceId: selResId,
+          items: bookings.filter((b) => dpart(b.start) === d && (state.resource === "all" || (b.resourceId || null) === selResId)),
+        }));
+      }
+
+      const dayKeys = resourceView ? [state.anchor] : dates;
+      const daySet = new Set(dayKeys);
+
+      // Display range = open windows of shown days + booking spans, snapped to hour.
       let minS = Infinity, maxE = -Infinity;
-      dates.forEach((d) => (hours[dowKey(d)] || []).forEach((w) => { const s = hm2min(w.start), e = hm2min(w.end); if (s < minS) minS = s; if (e > maxE) maxE = e; }));
-      bookings.forEach((b) => { if (dateSet.has(dpart(b.start))) { const s = startMin(b.start), e = s + b.durationMin; if (s < minS) minS = s; if (e > maxE) maxE = e; } });
-      // When today is in view, make sure the grid covers "now" so the now-line is
-      // always on-screen (otherwise late-day times like 5:17 PM fall below close).
-      if (dateSet.has(today)) { if (nowMin < minS) minS = nowMin; if (nowMin > maxE) maxE = nowMin; }
+      dayKeys.forEach((d) => (hours[dowKey(d)] || []).forEach((w) => { const s = hm2min(w.start), e = hm2min(w.end); if (s < minS) minS = s; if (e > maxE) maxE = e; }));
+      bookings.forEach((b) => { if (daySet.has(dpart(b.start))) { const s = startMin(b.start), e = s + b.durationMin; if (s < minS) minS = s; if (e > maxE) maxE = e; } });
+      if (daySet.has(today)) { if (nowMin < minS) minS = nowMin; if (nowMin > maxE) maxE = nowMin; }
       if (!isFinite(minS)) { minS = 540; maxE = 1020; }
       const rangeStart = Math.max(0, Math.floor(minS / 60) * 60);
       let rangeEnd = Math.min(1440, Math.ceil(maxE / 60) * 60);
       if (rangeEnd - rangeStart < 120) rangeEnd = Math.min(1440, rangeStart + 120);
       const gridH = (rangeEnd - rangeStart) / 60 * HOUR_H;
-      const cols = `64px repeat(${dates.length}, minmax(0, 1fr))`;
+      const cols = `64px repeat(${columns.length}, minmax(0, 1fr))`;
 
       const card = el("div", "card cal-card");
 
@@ -2834,9 +2867,14 @@
       // the view/nav controls pushed to the right.
       const tb = el("div", "cal-toolbar");
       const rangeLbl = el("div", "cal-range");
-      rangeLbl.textContent = dates.length === 1
-        ? fmtUTC(dates[0], { weekday: "long", month: "long", day: "numeric" })
-        : `${fmtUTC(dates[0], { month: "short", day: "numeric" })} – ${fmtUTC(dates[dates.length - 1], { month: "short", day: "numeric" })}`;
+      if (resourceView) {
+        const closed = !((hours[dowKey(state.anchor)] || []).length);
+        rangeLbl.textContent = fmtUTC(state.anchor, { weekday: "long", month: "long", day: "numeric" }) + (closed ? " · Closed" : "");
+      } else {
+        rangeLbl.textContent = dates.length === 1
+          ? fmtUTC(dates[0], { weekday: "long", month: "long", day: "numeric" })
+          : `${fmtUTC(dates[0], { month: "short", day: "numeric" })} – ${fmtUTC(dates[dates.length - 1], { month: "short", day: "numeric" })}`;
+      }
       tb.appendChild(rangeLbl);
 
       // Legend (built from the tenant's REAL statuses) — color swatch + shape glyph
@@ -2856,19 +2894,35 @@
       }
 
       const controls = el("div", "cal-controls");
-      const seg = el("div", "cal-seg");
-      const wkBtn = el("button", state.view === "week" ? "active" : "", "Week");
-      const dyBtn = el("button", state.view === "day" ? "active" : "", "Day");
-      wkBtn.onclick = () => { if (state.view !== "week") { state.view = "week"; load(); } };
-      dyBtn.onclick = () => { if (state.view !== "day") { state.view = "day"; load(); } };
-      seg.appendChild(wkBtn); seg.appendChild(dyBtn);
-      controls.appendChild(seg);
+
+      // Resource selector (view-only) — sits with the view controls. Shown only
+      // when the business has resources; otherwise the calendar is unchanged.
+      if (resources.length) {
+        const rsel = el("select", "input cal-resource-sel");
+        const optAll = el("option", null, "All"); optAll.value = "all"; rsel.appendChild(optAll);
+        resources.forEach((r) => { const o = el("option", null, r.name); o.value = r.id; rsel.appendChild(o); });
+        rsel.value = state.resource;
+        rsel.onchange = () => { state.resource = rsel.value; load(); };
+        controls.appendChild(rsel);
+      }
+
+      // Week/Day toggle — hidden in resource view (it's inherently one day).
+      if (!resourceView) {
+        const seg = el("div", "cal-seg");
+        const wkBtn = el("button", state.view === "week" ? "active" : "", "Week");
+        const dyBtn = el("button", state.view === "day" ? "active" : "", "Day");
+        wkBtn.onclick = () => { if (state.view !== "week") { state.view = "week"; load(); } };
+        dyBtn.onclick = () => { if (state.view !== "day") { state.view = "day"; load(); } };
+        seg.appendChild(wkBtn); seg.appendChild(dyBtn);
+        controls.appendChild(seg);
+      }
       const todayBtn = el("button", "btn btn-ghost btn-sm", "Today");
       const prev = el("button", "btn btn-ghost btn-sm", "‹");
       const next = el("button", "btn btn-ghost btn-sm", "›");
+      const navStep = resourceView ? 1 : (state.view === "day" ? 1 : 7);
       todayBtn.onclick = () => { state.anchor = todayYmd(); load(); };
-      prev.onclick = () => { state.anchor = addDays(state.anchor, state.view === "day" ? -1 : -7); load(); };
-      next.onclick = () => { state.anchor = addDays(state.anchor, state.view === "day" ? 1 : 7); load(); };
+      prev.onclick = () => { state.anchor = addDays(state.anchor, -navStep); load(); };
+      next.onclick = () => { state.anchor = addDays(state.anchor, navStep); load(); };
       controls.appendChild(todayBtn); controls.appendChild(prev); controls.appendChild(next);
       tb.appendChild(controls);
       card.appendChild(tb);
@@ -2880,13 +2934,23 @@
       const head = el("div", "cal-head");
       head.style.gridTemplateColumns = cols;
       head.appendChild(el("div", "cal-corner"));
-      dates.forEach((d) => {
-        const closed = !((hours[dowKey(d)] || []).length);
-        const h = el("div", "cal-dayhead" + (d === today ? " is-today" : "") + (closed ? " is-closed" : ""));
-        h.appendChild(el("div", "cal-dow", fmtUTC(d, { weekday: "short" })));
-        h.appendChild(el("div", "cal-dom", String(parseInt(d.slice(8, 10), 10))));
-        if (closed) h.appendChild(el("div", "cal-closed-tag", "Closed"));
-        head.appendChild(h);
+      columns.forEach((c) => {
+        if (c.kind === "date") {
+          const closed = !((hours[dowKey(c.dayYmd)] || []).length);
+          const h = el("div", "cal-dayhead" + (c.dayYmd === today ? " is-today" : "") + (closed ? " is-closed" : ""));
+          h.appendChild(el("div", "cal-dow", fmtUTC(c.dayYmd, { weekday: "short" })));
+          h.appendChild(el("div", "cal-dom", String(parseInt(c.dayYmd.slice(8, 10), 10))));
+          if (closed) h.appendChild(el("div", "cal-closed-tag", "Closed"));
+          head.appendChild(h);
+        } else {
+          // Resource / Unassigned column header — name with a color accent underline.
+          const h = el("div", "cal-dayhead cal-reshead");
+          const nm = el("div", "cal-resname", c.headMain);
+          nm.style.borderBottom = "3px solid " + (c.color || "var(--line)");
+          if (!c.color) nm.classList.add("is-unassigned");
+          h.appendChild(nm);
+          head.appendChild(h);
+        }
       });
       scroll.appendChild(head);
 
@@ -2903,11 +2967,12 @@
       }
       body.appendChild(gutter);
 
-      dates.forEach((d) => {
+      // Build one grid column from a descriptor (date column OR resource column).
+      function buildColumn(c) {
+        const d = c.dayYmd;
         const col = el("div", "cal-col");
         col.style.height = gridH + "px";
-        const dayWindows = hours[dowKey(d)] || [];
-        dayWindows.forEach((w) => {
+        (hours[dowKey(d)] || []).forEach((w) => {
           const top = Math.max(0, (hm2min(w.start) - rangeStart) / 60 * HOUR_H);
           const bot = Math.min(gridH, (hm2min(w.end) - rangeStart) / 60 * HOUR_H);
           if (bot > top) { const o = el("div", "cal-open"); o.style.top = top + "px"; o.style.height = (bot - top) + "px"; col.appendChild(o); }
@@ -2917,7 +2982,7 @@
         col.appendChild(lines);
 
         // Lane-pack overlapping bookings so they render side by side.
-        const dayB = bookings.filter((b) => dpart(b.start) === d)
+        const dayB = c.items
           .map((b) => ({ b, s: startMin(b.start), e: startMin(b.start) + b.durationMin }))
           .sort((a, b) => a.s - b.s);
         const laneEnd = [];
@@ -2932,13 +2997,17 @@
           blk.style.left = `calc(${it.lane * wPct}% + 3px)`;
           blk.style.width = `calc(${wPct}% - 6px)`;
           const m = metaFor(it.b.stageKey);
-          blk.style.background = m.bg; blk.style.borderColor = m.fg; blk.style.color = m.fg; blk.style.borderLeftWidth = "3px";
-          // Title line: shape glyph (color-independent status cue) + name/title.
+          if (c.color) {
+            // Resource view: tint the block with the resource's color; the status
+            // glyph keeps its own color so status still reads.
+            blk.style.background = c.color + "22"; blk.style.borderColor = c.color; blk.style.color = "var(--ink)"; blk.style.borderLeftWidth = "3px";
+          } else {
+            blk.style.background = m.bg; blk.style.borderColor = m.fg; blk.style.color = m.fg; blk.style.borderLeftWidth = "3px";
+          }
           const tline = el("div", "cal-block-t");
-          tline.appendChild(el("span", "cal-glyph", m.glyph));
+          const gl = el("span", "cal-glyph", m.glyph); if (c.color) gl.style.color = m.fg; tline.appendChild(gl);
           tline.appendChild(document.createTextNode(it.b.contactName || it.b.title || "Booking"));
           blk.appendChild(tline);
-          // Sub line (when tall enough): time · service · STATUS WORD spelled out.
           if (bh >= 30) {
             blk.appendChild(el("div", "cal-block-sub", `${label12(it.s)} · ${[it.b.serviceLabel, it.b.stageLabel].filter(Boolean).join(" · ")}`.replace(/ · $/, "")));
           }
@@ -2947,16 +3016,16 @@
           col.appendChild(blk);
         });
 
-        // "Now" line — today's column only, browser-local wall-clock, within range.
+        // "Now" line — any column whose day is today, browser-local wall-clock.
         if (d === today && nowMin >= rangeStart && nowMin <= rangeEnd) {
-          nowLineEl = el("div", "cal-now");
-          nowLineEl.style.top = ((nowMin - rangeStart) / 60 * HOUR_H) + "px";
-          nowLineEl.appendChild(el("span", "cal-now-dot"));
-          col.appendChild(nowLineEl);
+          const nl = el("div", "cal-now");
+          nl.style.top = ((nowMin - rangeStart) / 60 * HOUR_H) + "px";
+          nl.appendChild(el("span", "cal-now-dot"));
+          col.appendChild(nl);
+          nowLineEls.push(nl);
         }
-        // Click an empty part of the column → create a booking prefilled with that
-        // slot's WALL-CLOCK time (snapped to 15 min). Clicks on a booking block
-        // stopPropagation, so they don't reach here.
+        // Click empty space → create a booking at that wall-clock time (snapped to
+        // 15 min). In a resource column, pre-assign that column's resource.
         col.style.cursor = "pointer";
         col.addEventListener("click", (e) => {
           const rect = col.getBoundingClientRect();
@@ -2965,11 +3034,12 @@
           mins = Math.max(0, Math.min(1439, mins));
           const hh = Math.floor(mins / 60), mm = mins % 60;
           const at = `${d}T${pad(hh)}:${pad(mm)}`;
-          openCreateRecord("booking", fields || [], type, { appointmentAt: at });
+          openCreateRecord("booking", fields || [], type, { appointmentAt: at, resourceId: c.slotResourceId || null });
         });
-
         body.appendChild(col);
-      });
+      }
+
+      columns.forEach(buildColumn);
 
       scroll.appendChild(body);
       card.appendChild(scroll);
@@ -2979,20 +3049,23 @@
       // Default scroll: open at business start (or ~now if today is visible) so we
       // don't land on empty early-morning space.
       let bizStart = Infinity;
-      dates.forEach((d) => (hours[dowKey(d)] || []).forEach((w) => { const s = hm2min(w.start); if (s < bizStart) bizStart = s; }));
+      dayKeys.forEach((d) => (hours[dowKey(d)] || []).forEach((w) => { const s = hm2min(w.start); if (s < bizStart) bizStart = s; }));
       if (!isFinite(bizStart)) bizStart = rangeStart;
-      const scrollTarget = (dateSet.has(today) && nowMin > bizStart) ? nowMin - 30 : bizStart;
+      const scrollTarget = (daySet.has(today) && nowMin > bizStart) ? nowMin - 30 : bizStart;
       scroll.scrollTop = Math.max(0, (scrollTarget - rangeStart) / 60 * HOUR_H - 8);
 
-      // Keep the "now" line current without re-fetching; self-cleans if the
-      // calendar is removed from the page.
+      // Keep the "now" line(s) current without re-fetching; self-cleans if the
+      // calendar is removed from the page. Resource view can have several columns
+      // sharing today, so update them all.
       if (host._calTimer) { clearInterval(host._calTimer); host._calTimer = null; }
-      if (nowLineEl) {
+      if (nowLineEls.length) {
         host._calTimer = setInterval(() => {
           if (!document.body.contains(host)) { clearInterval(host._calTimer); host._calTimer = null; return; }
           const n = new Date(); const nm = n.getHours() * 60 + n.getMinutes();
-          if (nm < rangeStart || nm > rangeEnd) { nowLineEl.style.display = "none"; return; }
-          nowLineEl.style.display = ""; nowLineEl.style.top = ((nm - rangeStart) / 60 * HOUR_H) + "px";
+          nowLineEls.forEach((nl) => {
+            if (nm < rangeStart || nm > rangeEnd) { nl.style.display = "none"; return; }
+            nl.style.display = ""; nl.style.top = ((nm - rangeStart) / 60 * HOUR_H) + "px";
+          });
         }, 60000);
       }
     }
@@ -3187,6 +3260,7 @@
       body.appendChild(resourceSel);
       App.portalApi("/api/resources").then((list) => {
         (list || []).forEach((r) => { const o = el("option", null, esc(r.name)); o.value = r.id; resourceSel.appendChild(o); });
+        if (opts.resourceId) resourceSel.value = opts.resourceId; // pre-assign from a resource-column click
       }).catch(() => {});
     }
 

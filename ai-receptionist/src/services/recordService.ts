@@ -35,10 +35,13 @@ async function acquireBookingLock(tx: any, tenantId: string): Promise<void> {
 }
 
 /** True if [startAt, startAt+durationMin) overlaps any existing booking for this
- *  tenant (excluding `excludeId`). Wall-clock comparison on the stored zoneless
+ *  tenant FOR THE SAME RESOURCE (excluding `excludeId`). Per-resource: an assigned
+ *  booking only clashes with bookings for the same resourceId; an UNASSIGNED
+ *  booking (resourceId null) shares one "Unassigned" lane and only clashes with
+ *  other unassigned bookings. Wall-clock comparison on the stored zoneless
  *  timestamps — no timezone conversion. Call INSIDE the locked transaction. */
 async function bookingOverlaps(
-  tx: any, tenantId: string, recordTypeId: string, startAt: Date, durationMin: number, excludeId: string | null
+  tx: any, tenantId: string, recordTypeId: string, startAt: Date, durationMin: number, excludeId: string | null, resourceId: string | null
 ): Promise<boolean> {
   const config = await loadBookingConfig(tenantId);
   const newStart = startAt.getTime();
@@ -49,6 +52,8 @@ async function bookingOverlaps(
     where: {
       tenantId, recordTypeId, deletedAt: null,
       appointmentAt: { gte: winStart, lte: winEnd },
+      // Same-resource scoping: a specific resource, or the shared null lane.
+      resourceId: resourceId ?? null,
       ...(excludeId ? { NOT: { id: excludeId } } : {}),
     },
   });
@@ -160,7 +165,7 @@ export async function createRecord(
     const created = await db.$transaction(async (tx: any) => {
       await acquireBookingLock(tx, tenantId); // concurrency guard — always
       if (!config.allowDoubleBooking) {
-        const conflict = await bookingOverlaps(tx, tenantId, recordTypeId, appointmentAt, durationMin, null);
+        const conflict = await bookingOverlaps(tx, tenantId, recordTypeId, appointmentAt, durationMin, null, resourceId);
         // Only a MANUAL booking may override (the owner deliberately confirming).
         // AI bookings can never override → they hard-block.
         const canOverride = source === "manual" && input.allowOverlap === true;
@@ -197,17 +202,21 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   const isBooking = !!(rt && rt.key === BOOKING_RECORD_TYPE_KEY);
   const finalAppt = data.appointmentAt !== undefined ? data.appointmentAt : existing.appointmentAt;
   const finalSubtype = data.subtypeKey !== undefined ? data.subtypeKey : existing.subtypeKey;
+  const finalResourceId = data.resourceId !== undefined ? data.resourceId : (existing.resourceId ?? null);
   const apptChanged = data.appointmentAt !== undefined && (+new Date(data.appointmentAt) !== +new Date(existing.appointmentAt));
   const subtypeChanged = data.subtypeKey !== undefined && data.subtypeKey !== existing.subtypeKey;
+  // Reassigning to a different resource must also re-check (the new resource may
+  // be busy at this time, even if the time itself didn't change).
+  const resourceChanged = data.resourceId !== undefined && (data.resourceId || null) !== (existing.resourceId || null);
 
   let updated: any;
-  if (isBooking && finalAppt != null && (apptChanged || subtypeChanged)) {
+  if (isBooking && finalAppt != null && (apptChanged || subtypeChanged || resourceChanged)) {
     const config = await loadBookingConfig(tenantId);
     const durationMin = durationForService(config, finalSubtype);
     updated = await db.$transaction(async (tx: any) => {
       await acquireBookingLock(tx, tenantId); // concurrency guard — always
       if (!config.allowDoubleBooking) {
-        const conflict = await bookingOverlaps(tx, tenantId, existing.recordTypeId, new Date(finalAppt), durationMin, id);
+        const conflict = await bookingOverlaps(tx, tenantId, existing.recordTypeId, new Date(finalAppt), durationMin, id, finalResourceId);
         // Time-edits are manual (the AI never edits times), so the owner may
         // override by confirming → allowOverlap. Otherwise block.
         if (conflict && input.allowOverlap !== true) throw overlapError();

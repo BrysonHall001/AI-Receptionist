@@ -1328,6 +1328,11 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .cal-dow { color: var(--ink-faint); text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.05em; }
 .cal-dom { font-weight: 700; font-size: 15px; line-height: 1.2; }
 .cal-dayhead.is-today .cal-dom { color: var(--accent); }
+/* Resource view: compact selector in the controls + per-resource column headers. */
+.cal-resource-sel { height: 30px; padding: 2px 26px 2px 9px; margin-bottom: 0; width: auto; min-width: 110px; font-size: 13px; }
+.cal-reshead { display: flex; align-items: flex-end; justify-content: center; }
+.cal-resname { font-weight: 600; font-size: 12.5px; line-height: 1.25; padding-bottom: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-resname.is-unassigned { color: var(--ink-soft); }
 .cal-body { display: grid; }
 .cal-gutter { border-right: 1px solid var(--line); position: relative; }
 .cal-hourcell { font-size: 10.5px; color: var(--ink-faint); text-align: right; padding-right: 6px; box-sizing: border-box; }
