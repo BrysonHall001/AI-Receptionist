@@ -3323,7 +3323,7 @@
       // Optional resource assignment at create (saved as resourceId).
       body.appendChild(el("label", "field-label", "Assigned " + App.label("resource", "one")));
       resourceSel = el("select", "input");
-      resourceSel.appendChild(el("option", null, "— None —"));
+      const resNone = el("option", null, "— None —"); resNone.value = ""; resourceSel.appendChild(resNone);
       body.appendChild(resourceSel);
       App.portalApi("/api/resources").then((list) => {
         (list || []).forEach((r) => { const o = el("option", null, esc(r.name)); o.value = r.id; resourceSel.appendChild(o); });
@@ -3348,18 +3348,26 @@
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Creating…";
       const basePayload = { type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, resourceId: resourceSel ? (resourceSel.value || null) : undefined, customFields: custom };
-      const doCreate = (allowOverlap) => App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ ...basePayload, allowOverlap: !!allowOverlap }) });
+      const ov = { allowOverlap: false, allowClosed: false };
+      const doCreate = () => App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ ...basePayload, ...ov }) });
       try {
         let rec;
-        try {
-          rec = await doCreate(false);
-        } catch (e) {
-          // Toggle OFF + overlap → server offers an override. Ask, then retry.
-          if (e && e.data && e.data.code === "overlap") {
-            const ok = await confirmModal({ title: "Overlapping booking", message: "This overlaps an existing booking. Book anyway?", confirmText: "Book anyway" });
-            if (!ok) { save.disabled = false; save.textContent = "Create"; return; }
-            rec = await doCreate(true);
-          } else { throw e; }
+        for (;;) {
+          try { rec = await doCreate(); break; }
+          catch (e) {
+            const code = e && e.data && e.data.code;
+            if (code === "overlap" && !ov.allowOverlap) {
+              const ok = await confirmModal({ title: "Overlapping booking", message: "This overlaps an existing booking. Book anyway?", confirmText: "Book anyway" });
+              if (!ok) { save.disabled = false; save.textContent = "Create"; return; }
+              ov.allowOverlap = true; continue;
+            }
+            if (code === "closed" && !ov.allowClosed) {
+              const ok = await confirmModal({ title: "Outside open hours", message: (e.message || "This is outside the open hours.") + " Book anyway?", confirmText: "Book anyway" });
+              if (!ok) { save.disabled = false; save.textContent = "Create"; return; }
+              ov.allowClosed = true; continue;
+            }
+            throw e;
+          }
         }
         // Optional: link the chosen contact (reuses the detail-page link path).
         if (contactSel && contactSel.value) {
@@ -3654,17 +3662,25 @@
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Saving…";
       const patchBody = { title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, appointmentAt: apptInp ? (apptInp.value || null) : undefined, resourceId: resourceSel ? (resourceSel.value || null) : undefined, customFields: custom };
-      const doPatch = (allowOverlap) => App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ ...patchBody, allowOverlap: !!allowOverlap }) });
+      const ov = { allowOverlap: false, allowClosed: false };
+      const doPatch = () => App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ ...patchBody, ...ov }) });
       try {
-        try {
-          await doPatch(false);
-        } catch (e) {
-          // Toggle OFF + the new time overlaps → offer an override, then retry.
-          if (e && e.data && e.data.code === "overlap") {
-            const ok = await confirmModal({ title: "Overlapping booking", message: "This overlaps an existing booking. Save anyway?", confirmText: "Save anyway" });
-            if (!ok) { save.disabled = false; save.textContent = "Save changes"; return; }
-            await doPatch(true);
-          } else { throw e; }
+        for (;;) {
+          try { await doPatch(); break; }
+          catch (e) {
+            const code = e && e.data && e.data.code;
+            if (code === "overlap" && !ov.allowOverlap) {
+              const ok = await confirmModal({ title: "Overlapping booking", message: "This overlaps an existing booking. Save anyway?", confirmText: "Save anyway" });
+              if (!ok) { save.disabled = false; save.textContent = "Save changes"; return; }
+              ov.allowOverlap = true; continue;
+            }
+            if (code === "closed" && !ov.allowClosed) {
+              const ok = await confirmModal({ title: "Outside open hours", message: (e.message || "This is outside the open hours.") + " Save anyway?", confirmText: "Save anyway" });
+              if (!ok) { save.disabled = false; save.textContent = "Save changes"; return; }
+              ov.allowClosed = true; continue;
+            }
+            throw e;
+          }
         }
         toast("Saved");
         rec.title = titleInp.value.trim();

@@ -28,10 +28,45 @@ function overlapError(): Error {
   return e;
 }
 
+/** Tagged error for booking a CLOSED time. Manual bookings can override with a
+ *  warning; the AI never auto-books a closed time. */
+function closedError(label: string | null): Error {
+  const e: any = new Error(label ? `${label} is closed at this time.` : "This is outside the open hours.");
+  e.code = "closed";
+  return e;
+}
+
+const WK_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+function hmToMinutes(hm: string): number { const m = /^(\d{1,2}):(\d{2})$/.exec(hm); return m ? (+m[1]) * 60 + (+m[2]) : NaN; }
+
+/** True if the booking's wall-clock START isn't inside any open window that day.
+ *  Wall-clock: reads the stored UTC-slot digits directly (no timezone math).
+ *  Exported for tests. */
+export function isClosedAt(hours: any, appt: Date): boolean {
+  const wk = WK_KEYS[appt.getUTCDay()];
+  const windows = hours && Array.isArray(hours[wk]) ? hours[wk] : [];
+  const m = appt.getUTCHours() * 60 + appt.getUTCMinutes();
+  return !windows.some((w: any) => { const s = hmToMinutes(w.start), e = hmToMinutes(w.end); return Number.isFinite(s) && Number.isFinite(e) && m >= s && m < e; });
+}
+
+/** Effective hours + display label for a booking's resource: the resource's own
+ *  hours if set, else business hours; label is the resource name (or null when
+ *  unassigned). */
+async function resolveHoursAndLabel(tenantId: string, resourceId: string | null, config: any): Promise<{ hours: any; label: string | null }> {
+  if (resourceId) {
+    const r = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null }, select: { name: true, hours: true } });
+    if (r) return { hours: r.hours && typeof r.hours === "object" ? r.hours : config.hours, label: r.name };
+  }
+  return { hours: config.hours, label: null };
+}
+
 /** Take the per-tenant booking advisory lock (serializes booking writes for this
  *  tenant; auto-released at transaction end). Call INSIDE an open transaction. */
 async function acquireBookingLock(tx: any, tenantId: string): Promise<void> {
-  await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1, hashtext($2))", BOOKING_LOCK_NS, tenantId);
+  // $1::int forces a plain integer so the pair is (int, int) — matching the real
+  // two-arg pg_advisory_xact_lock(int, int). Without the cast Prisma binds 4242
+  // as bigint, giving (bigint, integer) which matches NO function (error 42883).
+  await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1::int, hashtext($2))", BOOKING_LOCK_NS, tenantId);
 }
 
 /** True if [startAt, startAt+durationMin) overlaps any existing booking for this
@@ -143,7 +178,7 @@ async function resolveResourceId(tenantId: string, value: any): Promise<string |
 export async function createRecord(
   tenantId: string,
   recordType: string | null | undefined,
-  input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; resourceId?: string | null },
+  input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null },
   opts: { source?: "manual" | "ai" } = {}
 ) {
   const source = opts.source === "ai" ? "ai" : "manual";
@@ -162,6 +197,16 @@ export async function createRecord(
   if (isBooking) {
     const config = await loadBookingConfig(tenantId);
     const durationMin = durationForService(config, subtypeKey);
+
+    // Closed-hours policy (independent of the overlap lock; hours are static so
+    // this needs no lock). Manual can override with a warning; AI never auto-books
+    // a closed time.
+    const { hours: effHours, label: resLabel } = await resolveHoursAndLabel(tenantId, resourceId, config);
+    if (isClosedAt(effHours, appointmentAt)) {
+      const canOverrideClosed = source === "manual" && input.allowClosed === true;
+      if (!canOverrideClosed) throw closedError(resLabel);
+    }
+
     const created = await db.$transaction(async (tx: any) => {
       await acquireBookingLock(tx, tenantId); // concurrency guard — always
       if (!config.allowDoubleBooking) {
@@ -180,7 +225,7 @@ export async function createRecord(
   return serializeRecord(created);
 }
 
-export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; resourceId?: string | null }, actor: EventActor = { type: "user" }, chainDepth = 0) {
+export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null }, actor: EventActor = { type: "user" }, chainDepth = 0) {
   const existing = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Record not found");
   const data: any = {};
@@ -213,6 +258,11 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   if (isBooking && finalAppt != null && (apptChanged || subtypeChanged || resourceChanged)) {
     const config = await loadBookingConfig(tenantId);
     const durationMin = durationForService(config, finalSubtype);
+
+    // Closed-hours policy for edits (manual): warn-with-override.
+    const { hours: effHours, label: resLabel } = await resolveHoursAndLabel(tenantId, finalResourceId, config);
+    if (isClosedAt(effHours, new Date(finalAppt)) && input.allowClosed !== true) throw closedError(resLabel);
+
     updated = await db.$transaction(async (tx: any) => {
       await acquireBookingLock(tx, tenantId); // concurrency guard — always
       if (!config.allowDoubleBooking) {

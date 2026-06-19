@@ -844,10 +844,11 @@ apiRouter.post("/records", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { type, title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap, resourceId } = (req.body ?? {}) as any;
-    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, resourceId }, { source: "manual" }));
+    const { type, title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap, allowClosed, resourceId } = (req.body ?? {}) as any;
+    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }, { source: "manual" }));
   } catch (err) {
-    if ((err as any).code === "overlap") { res.status(409).json({ error: (err as Error).message, code: "overlap" }); return; }
+    const code = (err as any).code;
+    if (code === "overlap" || code === "closed") { res.status(409).json({ error: (err as Error).message, code }); return; }
     res.status(400).json({ error: (err as Error).message });
   }
 });
@@ -901,10 +902,11 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap, resourceId } = (req.body ?? {}) as any;
-    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, resourceId }));
+    const { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap, allowClosed, resourceId } = (req.body ?? {}) as any;
+    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }));
   } catch (err) {
-    if ((err as any).code === "overlap") { res.status(409).json({ error: (err as Error).message, code: "overlap" }); return; }
+    const code = (err as any).code;
+    if (code === "overlap" || code === "closed") { res.status(409).json({ error: (err as Error).message, code }); return; }
     res.status(400).json({ error: (err as Error).message });
   }
 });
