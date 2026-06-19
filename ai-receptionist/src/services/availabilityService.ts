@@ -14,7 +14,7 @@
 // it just doesn't enumerate every possible off-grid start (a deliberate, simple,
 // predictable choice for a preview).
 
-import { OpenWindow, loadBookingConfig, durationForService } from "./bookingConfig";
+import { OpenWindow, loadBookingConfig, durationForService, WEEKDAY_KEYS } from "./bookingConfig";
 import { getBusyTimes } from "./calendarSources";
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
@@ -337,4 +337,59 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
     });
 
   return { from: fromDate, to: toDate, hours: config.hours, bookings, resources };
+}
+
+// ---------------------------------------------------------------------------
+// HOURS CONTEXT (read-only) — a short, wall-clock-correct, human-readable hours
+// summary injected into the AI prompt every call so the receptionist can STATE
+// hours (business + per resource) instead of disclaiming them. Reuses the SAME
+// config/resource helpers and the SAME formatters (hmToMin + min12) that produce
+// slot labels — NO new Date/toLocale, so the digits can't drift.
+// ---------------------------------------------------------------------------
+const DAY_LABEL: Record<string, string> = {
+  sun: "Sunday", mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday",
+};
+
+/** One day's windows as wall-clock text: "7:00 AM – 10:30 PM", a split shift
+ *  "9:00 AM – 12:00 PM, 1:00 PM – 5:00 PM", or "closed". */
+function formatDayWindows(windows: OpenWindow[] | undefined): string {
+  if (!windows || windows.length === 0) return "closed";
+  const parts = windows
+    .map((w) => {
+      const s = hmToMin(w.start), e = hmToMin(w.end);
+      if (Number.isNaN(s) || Number.isNaN(e)) return null;
+      return `${min12(s)} – ${min12(e)}`;
+    })
+    .filter((x): x is string => x != null);
+  return parts.length ? parts.join(", ") : "closed";
+}
+
+/** A full week as "Sunday: closed · Monday: 7:00 AM – 10:30 PM · …". */
+function formatWeek(hours: Record<string, OpenWindow[]>): string {
+  return WEEKDAY_KEYS.map((k) => `${DAY_LABEL[k]}: ${formatDayWindows(hours[k])}`).join(" · ");
+}
+
+/**
+ * Build the hours block for the AI prompt. Read-only. Business weekly hours plus,
+ * for each resource, either its custom hours (stated) or "follows the business's
+ * hours" when it inherits — using the SAME resolveResourceHours fallback the
+ * availability code uses (null hours = inherit).
+ */
+export async function buildHoursContext(tenantId: string): Promise<string> {
+  const config = await loadBookingConfig(tenantId);
+  const resources = await listResources(tenantId);
+
+  const lines: string[] = [];
+  lines.push(`Business hours — ${formatWeek(config.hours)}`);
+
+  if (resources.length) {
+    const staff = resources.map((r) => {
+      if (r.hours == null) return `${r.name}: follows the business's hours`;
+      const eff = resolveResourceHours(r, config.hours);
+      return `${r.name}: ${formatWeek(eff)}`;
+    });
+    lines.push(`Staff hours — ${staff.join(" | ")}`);
+  }
+
+  return lines.join("\n");
 }

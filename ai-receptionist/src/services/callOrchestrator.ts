@@ -16,6 +16,7 @@ import {
 import { createOrUpdateContact, phoneFromExtracted } from "./contactService";
 import { sendCallSummaryEmail } from "./notificationService";
 import { createBookingFromCall } from "./bookingCaptureService";
+import { buildHoursContext } from "./availabilityService";
 
 export interface TurnResult {
   messageToSpeak: string;
@@ -114,6 +115,14 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
   let aiMessage: string;
   let nextState: CallState;
   try {
+    // Static, wall-clock-correct hours injected so the AI can STATE hours rather
+    // than disclaim them. Best-effort: never block a turn if it can't be built.
+    let hoursSummary = "";
+    try {
+      hoursSummary = await buildHoursContext(tenant.id);
+    } catch (e) {
+      logger.warn(`[orchestrator] buildHoursContext failed: ${(e as Error).message}`);
+    }
     const ai = await runAITurn({
       tenantId: tenant.id,
       context: {
@@ -124,6 +133,7 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
         callerPhone: session.fromNumber,
         aiInstructions: (tenant as any).aiInstructions ?? "",
         currentDate: new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+        hoursSummary,
       },
       history: toOpenAIMessages(transcript),
       latestCallerUtterance: speech,
