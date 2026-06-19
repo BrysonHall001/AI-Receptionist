@@ -4,7 +4,7 @@
 // later without rework. Unlinking is a soft-delete. Tenant-scoped throughout.
 
 import { prisma } from "../db/client";
-import { resolveRecordTypeId } from "./recordTypeService";
+import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
 import { emitEvent } from "../events/bus";
 import { EventActor } from "../events/types";
 import { logger } from "../utils/logger";
@@ -103,6 +103,37 @@ export async function createLink(tenantId: string, input: { recordId: string; pa
     try { await writeStageHistory(tenantId, created.id, null, initialStage); }
     catch (e) { logger.error(`stage history write failed (link ${created.id}): ${(e as Error).message}`); }
   }
+
+  // BookingCreated: fire ONCE when a booking first gets a contact (manual + AI both
+  // land here right after createRecord), so an automation's act_on_linked always
+  // has someone to reach. Guarded to the FIRST contact link on a booking. Best-
+  // effort — a link must never fail because of event emission.
+  if (parentType === "contact") {
+    try {
+      const bookingTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY).catch(() => null);
+      if (bookingTypeId && rec.recordTypeId === bookingTypeId) {
+        const priorContacts = await db.recordLink.count({ where: { tenantId, recordId: input.recordId, parentType: "contact", deletedAt: null, NOT: { id: created.id } } });
+        if (priorContacts === 0) {
+          await emitEvent({
+            tenantId,
+            type: "BookingCreated",
+            actor: { type: "system" },
+            subject: { type: "record", id: rec.id },
+            payload: {
+              record_id: rec.id,
+              record_title: rec.title ?? null,
+              appointment_at: rec.appointmentAt ? new Date(rec.appointmentAt).toISOString() : null,
+              service: rec.subtypeKey ?? null,
+              status: rec.stageKey ?? null,
+              resource_id: rec.resourceId ?? null,
+              contact_id: input.parentId,
+            },
+          });
+        }
+      }
+    } catch (e) { logger.error(`BookingCreated emit failed (record ${input.recordId}): ${(e as Error).message}`); }
+  }
+
   return created;
 }
 

@@ -57,6 +57,14 @@ export const EVENT_TYPES = {
   // trigger matching). Named here so the trigger type has one canonical string.
   // Fires only for first-time phone leads captured by the AI receptionist.
   CallLeadCreated: "CallLeadCreated",
+  // Bookings as first-class automation citizens. BookingCreated fires once when a
+  // new booking gets its linked contact (manual OR AI — both go through the same
+  // link step), so an automation's act_on_linked always has a contact to reach.
+  // BookingStatusChanged fires when a booking's status moves (subject = the
+  // booking record); the engine derives scoped "BookingStatusChanged:status=<v>"
+  // triggers from its changes[] just like RecordUpdated.
+  BookingCreated: "BookingCreated",
+  BookingStatusChanged: "BookingStatusChanged",
 } as const;
 
 export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
@@ -100,4 +108,9 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: stri
   // (no schema change). Like Scheduled, it does not fire on instant events — the
   // sweep evaluates it. Generic label (no "job"/"candidate").
   { type: "Stalled", label: "Stalled in a stage for N days (no movement)", group: "Time-based", description: "Runs when an item sits in the same stage with no movement for N days." },
+  // Booking lifecycle triggers (subject = the booking). "Booking status changed"
+  // can be narrowed to a specific status (e.g. → No-show) via the same field=value
+  // scoping the record triggers use: "BookingStatusChanged:status=<statusKey>".
+  { type: EVENT_TYPES.BookingCreated, label: "Booking created", group: "Bookings", description: "Runs when a new booking is made for a contact — whether booked manually or by the AI receptionist." },
+  { type: EVENT_TYPES.BookingStatusChanged, label: "Booking status changed", group: "Bookings", description: "Runs when a booking moves to a different status (e.g. Confirmed, Completed, No-show)." },
 ];

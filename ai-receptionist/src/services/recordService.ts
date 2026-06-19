@@ -291,6 +291,11 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   try {
     const changes = diffRecordFields(existing, data, input);
     if (changes.length) await emitRecordUpdated(tenantId, updated, existing.recordTypeId, changes, actor, chainDepth);
+    // Booking-specific status event (only for bookings, only when status moved) so
+    // automations can target "Booking status changed → No-show" without firing for
+    // Jobs. Reuses the engine's changes[] scoping → "BookingStatusChanged:status=<v>".
+    const statusChange = changes.find((c) => c.field === "status");
+    if (isBooking && statusChange) await emitBookingStatusChanged(tenantId, updated, statusChange, actor, chainDepth);
   } catch { /* never block the record save on event emission */ }
   // =================== END RECORD-UPDATED EVENT (Stage 2a) ===================
 
@@ -361,8 +366,28 @@ async function emitRecordUpdated(tenantId: string, record: any, recordTypeId: st
   });
 }
 
-// Append an internal note to a record's activity, stored in the record's own
-// customFields JSON under the reserved "__activity" key. No migration: notes
+// Booking-specific status event. Subject = the booking record; carries the status
+// change as changes[] so the engine derives "BookingStatusChanged:status=<value>"
+// scoped triggers (same convention as RecordUpdated). Actor is passed through, so
+// an automation-driven status change arrives as "automation" and the loop guard
+// ignores it.
+async function emitBookingStatusChanged(tenantId: string, record: any, statusChange: { field: string; label: string; old: any; new: any }, actor: EventActor = { type: "user" }, chainDepth = 0) {
+  await emitEvent({
+    tenantId,
+    type: "BookingStatusChanged",
+    actor,
+    chainDepth,
+    subject: { type: "record", id: record.id },
+    payload: {
+      record_id: record.id,
+      record_title: record.title ?? null,
+      old_status: statusChange.old ?? null,
+      new_status: statusChange.new ?? null,
+      changes: [statusChange],
+      changed_fields: ["status"],
+    },
+  });
+}
 // live on the record. Does NOT emit a RecordUpdated event (a note isn't a field
 // change), so an automation that adds a note can never loop. Tenant-scoped.
 export async function addRecordNote(

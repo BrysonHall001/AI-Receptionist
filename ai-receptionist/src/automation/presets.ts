@@ -681,6 +681,64 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
     },
     note: "Emails your Notify email by default and texts the lead. Neither sends until Resend/Twilio are connected; both sit as harmless drafts meanwhile.",
   },
+
+  // ===================== Bookings (Batch 1) =====================
+  {
+    key: "booking_confirmation",
+    name: "Booking confirmation",
+    description: "When a booking is made (manually or by the AI receptionist), text the customer a confirmation.",
+    category: "follow_ups",
+    vertical: "general",
+    summary: {
+      trigger: "A booking is created for a contact",
+      conditions: [],
+      actions: ["Text the linked contact a confirmation"],
+    },
+    shape: { trigger: "Booking created", actions: ["Text confirmation"] },
+    definition: {
+      name: "Booking confirmation",
+      triggerType: "BookingCreated",
+      conditions: [],
+      actions: [
+        {
+          type: "act_on_linked",
+          config: {
+            subAction: "sms",
+            body: "Hi {{name}}, your booking for {{record_title}} is confirmed. Reply here if you need to make any changes — see you soon!",
+          },
+        },
+      ],
+    },
+    note: "Texts the booking's linked contact. It won't actually send until Twilio is connected — until then it sits as a harmless draft. The customer's phone must be on their contact.",
+  },
+  {
+    key: "booking_no_show_followup",
+    name: "No-show follow-up",
+    description: "When a booking is marked No-show, text the customer to reschedule.",
+    category: "follow_ups",
+    vertical: "general",
+    summary: {
+      trigger: "A booking's status changes to No-show",
+      conditions: [],
+      actions: ["Text the linked contact to reschedule"],
+    },
+    shape: { trigger: "Booking → No-show", actions: ["Text to reschedule"] },
+    definition: {
+      name: "No-show follow-up",
+      triggerType: "BookingStatusChanged:status=no_show",
+      conditions: [],
+      actions: [
+        {
+          type: "act_on_linked",
+          config: {
+            subAction: "sms",
+            body: "Hi {{name}}, we missed you for {{record_title}}. Reply here and we'll help you find a new time.",
+          },
+        },
+      ],
+    },
+    note: "Fires only when a booking moves to the No-show status (status key \"no_show\"). Texts the linked contact; won't send until Twilio is connected.",
+  },
 ];
 
 export function getPreset(key: string): FlowPreset | undefined {
