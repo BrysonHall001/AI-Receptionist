@@ -107,6 +107,8 @@ async function main() {
     check(tr2.length === 1 && tr2[0].requestedOpen === false, `real checkAvailability ran and returned requestedOpen:false`);
     check(tr2[0].requestedTime === "14:00", `the fed-back time is 14:00 wall-clock (not 1/7) (got ${tr2[0]?.requestedTime})`);
     check(r2.message_to_speak === "Sorry, 2 PM is taken.", `final AIResponse parsed & returned`);
+    check(tr2[0].requestedReason === "booked", `a REAL booking clash reads as requestedReason:"booked" (got ${tr2[0]?.requestedReason})`);
+    check(tr2[0].resource === "Bob", `the result names the scoped resource ("Bob") (got ${tr2[0]?.resource})`);
 
     // ---------- T3: tool round-trip, OPEN time ----------
     console.log("(T3) model asks the tool about an OPEN time → real 'open' fed back:");
@@ -116,6 +118,8 @@ async function main() {
     check(tr3[0]?.requestedOpen === true, `requestedOpen:true for a free time (got ${tr3[0]?.requestedOpen})`);
     check(Array.isArray(tr3[0]?.openSlots) && tr3[0].openSlots.length > 0 && tr3[0].openSlots.every((x: string) => /^\d{1,2}:\d{2} (AM|PM)$/.test(x) && !x.includes("–")), "openSlots are START times (e.g. '3:00 PM'), NOT ranges");
     check(tr3[0]?.requestedTimeSpoken === "3:00 PM", `requested time is given as a spoken 12h label (got ${tr3[0]?.requestedTimeSpoken})`);
+    check(tr3[0]?.requestedReason === "open", `an open time reads as requestedReason:"open" (got ${tr3[0]?.requestedReason})`);
+    check(tr3[0]?.resource === "Bob", `the open result still names the scoped resource ("Bob")`);
 
     // ---------- T4: resource scoping through the tool (name→id reuse) ----------
     console.log("(T4) a named resource scopes the lookup to that resource's hours:");
@@ -124,6 +128,8 @@ async function main() {
     const tr4 = toolResults(m4.calls[m4.calls.length - 1].messages);
     check(tr4[0]?.resourceScoped === true, `lookup was scoped to a resource (Alice resolved by name)`);
     check(tr4[0]?.requestedOpen === false, `9 AM is NOT open for Alice (her hours are 2:00–2:30), proving her hours were used`);
+    check(tr4[0]?.requestedReason === "unavailable", `outside Alice's hours reads as "unavailable", NOT "booked" — no fabricated conflict (got ${tr4[0]?.requestedReason})`);
+    check(tr4[0]?.resource === "Alice", `the result names Alice as the scope (got ${tr4[0]?.resource})`);
 
     // ---------- T5: loop cap enforced, then forced finalize ----------
     console.log(`(T5) the model keeps calling the tool → capped at ${MAX_TOOL_ROUNDS}, then forced final:`);
@@ -142,6 +148,8 @@ async function main() {
     const tr6 = toolResults(m6.calls[m6.calls.length - 1].messages);
     check(tr6[0] && tr6[0].resourceScoped === false, `fell back to business-wide (resourceScoped:false)`);
     check(tr6[0] && (tr6[0].requestedOpen === true || tr6[0].requestedOpen === false), `still returned a real answer (no crash)`);
+    check(tr6[0] && tr6[0].resource === null, `business-wide result has resource:null (no person attributed)`);
+    check(tr6[0] && tr6[0].resourceNameUnmatched === "Zoltan the Magnificent", `the unmatched name is flagged so the AI won't attribute the result to them (got ${tr6[0]?.resourceNameUnmatched})`);
   } catch (e) {
     console.error("\nUNEXPECTED ERROR:", e);
     failures.push("unexpected error: " + (e as Error).message);

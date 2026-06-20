@@ -36,6 +36,11 @@ export interface AvailabilityResult {
   bufferMin: number;
   closed: boolean; // true when the business has no open hours that day
   slots: OpenSlot[];
+  // The day's open windows + existing busy intervals (day-minutes) that produced
+  // `slots`. Exposed so checkAvailability can explain WHY a requested time isn't
+  // open (outside hours vs. a real booking) WITHOUT recomputing any of it.
+  windows: { start: string; end: string }[];
+  busyMinutes: { s: number; e: number }[];
 }
 
 // ---- small time helpers (minutes since midnight <-> strings) ----
@@ -158,7 +163,7 @@ export async function findOpenSlots(
   const wk = weekdayKey(dateStr);
   const windows = (wk && hoursSource[wk]) || [];
   if (!windows.length) {
-    return { date: dateStr, serviceKey: serviceKey ?? null, durationMin, bufferMin, closed: true, slots: [] };
+    return { date: dateStr, serviceKey: serviceKey ?? null, durationMin, bufferMin, closed: true, slots: [], windows: [], busyMinutes: [] };
   }
 
   // Busy times: scope to this resource when one is given (so a resource's open
@@ -169,7 +174,7 @@ export async function findOpenSlots(
     .filter((x): x is { s: number; e: number } => x != null);
 
   const slots = computeOpenSlots({ dateStr, windows, busyMinutes, durationMin, bufferMin });
-  return { date: dateStr, serviceKey: serviceKey ?? null, durationMin, bufferMin, closed: false, slots };
+  return { date: dateStr, serviceKey: serviceKey ?? null, durationMin, bufferMin, closed: false, slots, windows, busyMinutes };
 }
 
 // ---- Availability lookup wrapper (Batch 1) — a thin, READ-ONLY function over
@@ -191,6 +196,13 @@ export interface SlotAvailability {
   requestedTime: string | null;  // normalized "YYYY-MM-DDTHH:MM" that was checked, or null
   requestedLabel: string | null;  // the requested time as a spoken 12h label, e.g. "12:00 PM"
   requestedOpen: boolean | null;  // true/false when a time was asked; null when none was
+  // Why the requested time is/ isn't open — so the AI can be HONEST instead of
+  // guessing "booked": "open" (it's offerable), "closed" (no hours that day for
+  // this scope), "booked" (clashes with a real existing appointment), or
+  // "unavailable" (the scope is open then, but that exact start isn't offered —
+  // e.g. it doesn't land on the slot grid, or it's too near end-of-day). null
+  // when no specific time was asked. NEVER conflate "unavailable" with "booked".
+  requestedReason: "open" | "closed" | "booked" | "unavailable" | null;
   durationMin: number;           // the appointment length used (resource -> business)
   slots: OpenSlot[];             // the day's open, offerable slots (for "what's open" / alternatives)
 }
@@ -233,12 +245,35 @@ export async function checkAvailability(
   const requestedOpen = requestedTime == null
     ? null
     : result.slots.some((s) => s.start === requestedTime);
+
+  // Explain WHY a requested time isn't open, reusing the SAME windows/busy/buffer
+  // that produced the slots (no new date math, no Date/toLocale — string/minute
+  // ops only). Distinguishes a genuine booking clash ("booked") from simply not
+  // being offered then ("unavailable"), so the AI never fabricates a conflict.
+  let requestedReason: SlotAvailability["requestedReason"] = null;
+  if (requestedTime != null) {
+    const reqMin = hmToMin(requestedTime.slice(11));
+    if (requestedOpen) {
+      requestedReason = "open";
+    } else if (result.closed) {
+      requestedReason = "closed";
+    } else if (!Number.isFinite(reqMin)) {
+      requestedReason = "unavailable";
+    } else {
+      const end = reqMin + result.durationMin;
+      const inWindow = result.windows.some((w) => reqMin >= hmToMin(w.start) && end <= hmToMin(w.end));
+      const clash = result.busyMinutes.some((b) => reqMin < b.e + result.bufferMin && end > b.s - result.bufferMin);
+      requestedReason = inWindow && clash ? "booked" : "unavailable";
+    }
+  }
+
   return {
     date: result.date,
     closed: result.closed,
     requestedTime,
     requestedLabel: requestedTime ? min12(hmToMin(requestedTime.slice(11))) : null,
     requestedOpen,
+    requestedReason,
     durationMin: result.durationMin,
     slots: result.slots,
   };

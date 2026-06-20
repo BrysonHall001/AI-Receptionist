@@ -90,6 +90,13 @@ async function runAvailabilityTool(tenantId: string, args: any): Promise<string>
 
   // Unknown name → null → business-wide lookup (AI may still clarify in speech).
   const resourceId = await resolveResourceByName(tenantId, resourceName);
+  // Canonical name of the resource we actually scoped to (so the AI can SAY whose
+  // availability this is). null = business-wide / any staff.
+  let resourceLabel: string | null = null;
+  if (resourceId) {
+    const r = await (prisma as any).resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null }, select: { name: true } });
+    resourceLabel = r?.name ?? null;
+  }
 
   // Service words → subtype key (reused mapping) so the duration is right.
   let serviceKey: string | null = null;
@@ -110,9 +117,12 @@ async function runAvailabilityTool(tenantId: string, args: any): Promise<string>
     requestedTime: result.requestedTime ? result.requestedTime.slice(11) : null, // "HH:MM" 24h (internal reference)
     requestedTimeSpoken: result.requestedLabel, // say the requested time THIS way, e.g. "12:00 PM"
     requestedOpen: result.requestedOpen,
+    requestedReason: result.requestedReason, // "open"|"closed"|"booked"|"unavailable"|null — say "booked" ONLY when this is "booked"
     durationMin: result.durationMin, // each open slot is an appointment this many minutes long
     openSlots: result.slots.slice(0, 12).map((s) => s.startLabel), // the START time of each slot, e.g. "12:00 PM" (NOT a range)
     resourceScoped: resourceId != null,
+    resource: resourceLabel, // WHOSE availability this is: a staff name (scoped) or null (business-wide / any staff)
+    resourceNameUnmatched: resourceName && !resourceId ? resourceName : null, // a name was given but matches no staff → this is a business-wide result, not that person's
   });
 }
 
