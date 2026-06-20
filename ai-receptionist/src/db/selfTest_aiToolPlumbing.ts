@@ -114,6 +114,8 @@ async function main() {
     await runAITurn(baseInput(tId) as any, { chat: m3.chat as any });
     const tr3 = toolResults(m3.calls[m3.calls.length - 1].messages);
     check(tr3[0]?.requestedOpen === true, `requestedOpen:true for a free time (got ${tr3[0]?.requestedOpen})`);
+    check(Array.isArray(tr3[0]?.openSlots) && tr3[0].openSlots.length > 0 && tr3[0].openSlots.every((x: string) => /^\d{1,2}:\d{2} (AM|PM)$/.test(x) && !x.includes("–")), "openSlots are START times (e.g. '3:00 PM'), NOT ranges");
+    check(tr3[0]?.requestedTimeSpoken === "3:00 PM", `requested time is given as a spoken 12h label (got ${tr3[0]?.requestedTimeSpoken})`);
 
     // ---------- T4: resource scoping through the tool (name→id reuse) ----------
     console.log("(T4) a named resource scopes the lookup to that resource's hours:");

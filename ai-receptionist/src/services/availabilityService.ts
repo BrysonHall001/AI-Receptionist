@@ -26,6 +26,7 @@ export interface OpenSlot {
   start: string; // "YYYY-MM-DDTHH:MM" wall-clock
   end: string;   // "YYYY-MM-DDTHH:MM"
   label: string; // e.g. "9:00 AM – 9:30 AM"
+  startLabel: string; // just the start, e.g. "9:00 AM" — for offering slots by start time
 }
 
 export interface AvailabilityResult {
@@ -123,6 +124,7 @@ export function computeOpenSlots(params: {
           start: `${dateStr}T${minToHM(start)}`,
           end: `${dateStr}T${minToHM(end)}`,
           label: `${min12(start)} – ${min12(end)}`,
+          startLabel: min12(start),
         });
       }
     }
@@ -187,6 +189,7 @@ export interface SlotAvailability {
   date: string;                  // the date that was queried ("YYYY-MM-DD")
   closed: boolean;               // the day has no open hours for this resource/business
   requestedTime: string | null;  // normalized "YYYY-MM-DDTHH:MM" that was checked, or null
+  requestedLabel: string | null;  // the requested time as a spoken 12h label, e.g. "12:00 PM"
   requestedOpen: boolean | null;  // true/false when a time was asked; null when none was
   durationMin: number;           // the appointment length used (resource -> business)
   slots: OpenSlot[];             // the day's open, offerable slots (for "what's open" / alternatives)
@@ -234,6 +237,7 @@ export async function checkAvailability(
     date: result.date,
     closed: result.closed,
     requestedTime,
+    requestedLabel: requestedTime ? min12(hmToMin(requestedTime.slice(11))) : null,
     requestedOpen,
     durationMin: result.durationMin,
     slots: result.slots,
@@ -369,6 +373,12 @@ function formatWeek(hours: Record<string, OpenWindow[]>): string {
   return WEEKDAY_KEYS.map((k) => `${DAY_LABEL[k]}: ${formatDayWindows(hours[k])}`).join(" · ");
 }
 
+/** The day NAMES that are closed (no open windows) — for an explicit, separate
+ *  callout so a closed day can never disappear into a summarized open-day range. */
+function closedDayNames(hours: Record<string, OpenWindow[]>): string[] {
+  return WEEKDAY_KEYS.filter((k) => formatDayWindows(hours[k]) === "closed").map((k) => DAY_LABEL[k]);
+}
+
 /**
  * Build the hours block for the AI prompt. Read-only. Business weekly hours plus,
  * for each resource, either its custom hours (stated) or "follows the business's
@@ -380,13 +390,26 @@ export async function buildHoursContext(tenantId: string): Promise<string> {
   const resources = await listResources(tenantId);
 
   const lines: string[] = [];
-  lines.push(`Business hours — ${formatWeek(config.hours)}`);
+
+  // Business hours ONE DAY PER LINE, plus a separate explicit "Closed days" line.
+  // The per-line layout + the standalone closed-days callout make it hard for the
+  // model to fold a closed day into a summarized range and drop it.
+  lines.push("Business hours (per day):");
+  for (const k of WEEKDAY_KEYS) {
+    lines.push(`  ${DAY_LABEL[k]}: ${formatDayWindows(config.hours[k])}`);
+  }
+  const bizClosed = closedDayNames(config.hours);
+  lines.push(`Closed days: ${bizClosed.length ? bizClosed.join(", ") : "none"}`);
 
   if (resources.length) {
     const staff = resources.map((r) => {
+      // null hours => inherits business hours (state that, not the full schedule).
       if (r.hours == null) return `${r.name}: follows the business's hours`;
+      // custom hours => state them, with an explicit closed-days note too.
       const eff = resolveResourceHours(r, config.hours);
-      return `${r.name}: ${formatWeek(eff)}`;
+      const closed = closedDayNames(eff);
+      const closedNote = closed.length ? ` (closed: ${closed.join(", ")})` : "";
+      return `${r.name}: ${formatWeek(eff)}${closedNote}`;
     });
     lines.push(`Staff hours — ${staff.join(" | ")}`);
   }

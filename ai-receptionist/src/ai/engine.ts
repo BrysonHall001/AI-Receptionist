@@ -107,9 +107,11 @@ async function runAvailabilityTool(tenantId: string, args: any): Promise<string>
   return JSON.stringify({
     date: result.date,
     closed: result.closed,
-    requestedTime: result.requestedTime ? result.requestedTime.slice(11) : null, // "HH:MM" (string slice)
+    requestedTime: result.requestedTime ? result.requestedTime.slice(11) : null, // "HH:MM" 24h (internal reference)
+    requestedTimeSpoken: result.requestedLabel, // say the requested time THIS way, e.g. "12:00 PM"
     requestedOpen: result.requestedOpen,
-    openSlots: result.slots.slice(0, 12).map((s) => s.label), // Batch 1 labels, verbatim
+    durationMin: result.durationMin, // each open slot is an appointment this many minutes long
+    openSlots: result.slots.slice(0, 12).map((s) => s.startLabel), // the START time of each slot, e.g. "12:00 PM" (NOT a range)
     resourceScoped: resourceId != null,
   });
 }
