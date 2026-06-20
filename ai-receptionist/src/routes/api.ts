@@ -16,7 +16,7 @@ import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDe
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
-import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket } from "../services/feedbackService";
+import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket } from "../services/feedbackService";
 import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
@@ -1768,6 +1768,18 @@ apiRouter.post("/feedback/:id/restore", async (req: Request, res: Response) => {
   if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
   try {
     res.json(await restoreFeedbackTicket(req.params.id, ctx as any));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+// Permanently delete a resolved ticket. OWNER/SUPER_ADMIN only + resolved-only,
+// both enforced inside deleteFeedbackTicket (scope "portal").
+apiRouter.delete("/feedback/:id", async (req: Request, res: Response) => {
+  const ctx = feedbackCtxPortal(req);
+  if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  try {
+    res.json(await deleteFeedbackTicket(req.params.id, ctx as any));
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
   }

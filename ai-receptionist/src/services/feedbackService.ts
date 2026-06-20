@@ -89,6 +89,12 @@ function canModerate(ctx: Ctx): boolean {
   return isPortalMod(ctx.actor.role);
 }
 
+// Hard-delete a RESOLVED ticket. OWNER/SUPER_ADMIN ONLY (never auditor), in BOTH
+// scopes — a deliberately stricter, separate gate from resolve/restore.
+function canDelete(ctx: Ctx): boolean {
+  return ctx.actor.role === "OWNER" || ctx.actor.role === "SUPER_ADMIN";
+}
+
 // ---- queries ---------------------------------------------------------------
 export async function listFeedback(ctx: Ctx): Promise<{ active: any[]; resolved: any[] }> {
   let where: any;
@@ -187,6 +193,19 @@ export async function restoreFeedbackTicket(id: string, ctx: Ctx): Promise<any> 
     include: { createdBy: true },
   });
   return ticketDTO(up);
+}
+
+// Hard-delete a single resolved ticket (its messages cascade). Mirrors the resolve
+// flow's checks: must be visible (404), the actor must be allowed to delete (403),
+// and only RESOLVED tickets are deletable (400). Same hard-delete mechanism the
+// 30-day sweep already uses.
+export async function deleteFeedbackTicket(id: string, ctx: Ctx): Promise<{ ok: true; id: string }> {
+  const t = await (prisma as any).feedbackTicket.findUnique({ where: { id }, include: { createdBy: true } });
+  if (!t || !canView(t, ctx)) throw httpError("Ticket not found.", 404);
+  if (!canDelete(ctx)) throw httpError("Not authorized to delete this ticket.", 403);
+  if (t.status !== "RESOLVED") throw httpError("Only resolved tickets can be deleted.", 400);
+  await (prisma as any).feedbackTicket.delete({ where: { id } });
+  return { ok: true, id };
 }
 
 // ---- 30-day auto-delete sweep (called by the scheduler in index.ts) --------

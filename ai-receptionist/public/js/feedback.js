@@ -32,6 +32,12 @@
     if (mode === "master") return role === "OWNER";        // master: owner only
     return isPortalMod(role);                                // portal: owner/super-admin
   }
+  // Delete is stricter + separate from resolve/restore: OWNER/SUPER_ADMIN only,
+  // in BOTH modes (a super-admin can delete a master ticket they can't resolve).
+  function canDelete() {
+    const role = me().role;
+    return role === "OWNER" || role === "SUPER_ADMIN";
+  }
   function canReplyTo(mode, ticket) {
     const role = me().role;
     if (mode === "master") return isMasterRole(role);
@@ -221,6 +227,21 @@
         modBar.appendChild(rb);
       }
       wrap.appendChild(modBar);
+    }
+
+    // Delete (resolved only) — separate, stricter gate so it shows for super-admins
+    // in the master view even though they can't resolve there.
+    if (resolved && canDelete()) {
+      const delBar = el("div"); delBar.style.marginTop = "8px";
+      const db = el("button", "btn btn-danger btn-sm", "Delete ticket");
+      db.onclick = async () => {
+        if (!(await App.ui.confirmModal({ title: "Delete ticket", message: "Permanently delete this resolved ticket and its replies? This can't be undone.", confirmText: "Delete" }))) return;
+        db.disabled = true;
+        try { await c.call(`${c.base}/${id}`, { method: "DELETE" }); toast("Ticket deleted"); backToList(mode); }
+        catch (e) { toast(e.message, true); db.disabled = false; }
+      };
+      delBar.appendChild(db);
+      wrap.appendChild(delBar);
     }
 
     host.appendChild(wrap);

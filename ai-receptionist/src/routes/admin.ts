@@ -4,7 +4,7 @@ import { listPortals, getPortal, createPortal, updatePortal } from "../services/
 import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
 import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
-import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket } from "../services/feedbackService";
+import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket } from "../services/feedbackService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -275,6 +275,17 @@ adminRouter.post("/feedback/:id/resolve", async (req: Request, res: Response) =>
 adminRouter.post("/feedback/:id/restore", async (req: Request, res: Response) => {
   try {
     res.json(await restoreFeedbackTicket(req.params.id, feedbackCtxMaster(req) as any));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+// Permanently delete a resolved master-hub ticket. The router allows auditors in,
+// so gate THIS route to OWNER/SUPER_ADMIN (auditors never delete); deleteFeedbackTicket
+// re-checks the same rule + resolved-only as defense in depth.
+adminRouter.delete("/feedback/:id", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try {
+    res.json(await deleteFeedbackTicket(req.params.id, feedbackCtxMaster(req) as any));
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
   }
