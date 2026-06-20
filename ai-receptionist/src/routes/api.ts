@@ -16,7 +16,7 @@ import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDe
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
-import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket } from "../services/feedbackService";
+import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows } from "../services/feedbackService";
 import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
@@ -1732,6 +1732,12 @@ apiRouter.post("/feedback", async (req: Request, res: Response) => {
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
   }
+});
+
+apiRouter.get("/feedback/export-rows", async (req: Request, res: Response) => {
+  const ctx = feedbackCtxPortal(req);
+  if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  res.json(await listFeedbackExportRows(ctx as any));
 });
 
 apiRouter.get("/feedback/:id", async (req: Request, res: Response) => {

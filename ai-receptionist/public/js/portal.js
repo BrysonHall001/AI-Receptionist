@@ -358,7 +358,7 @@
     const importBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8681;</span> Import ${App.label("contact", "many").toLowerCase()}`);
     importBtn.onclick = openImport;
     const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export ${App.label("contact", "many").toLowerCase()}`);
-    exportBtn.onclick = () => openExport(handle ? handle.getColumns() : columns, contacts);
+    exportBtn.onclick = () => openExport(contactExportOpts(handle ? handle.getColumns() : columns, contacts));
     bar.appendChild(dummyBtn);
     bar.appendChild(createBtn);
     bar.appendChild(importBtn);
@@ -396,7 +396,7 @@
     function bulkItem(label, fn) { const b = el("button", "bulk-item", label); b.onclick = () => fn(); return b; }
     bulkMenu.appendChild(bulkItem("Email selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("email", selectedRows()); }));
     bulkMenu.appendChild(bulkItem("Text selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("sms", selectedRows()); }));
-    bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openExport(handle.getColumns(), rows); }));
+    bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openExport(contactExportOpts(handle.getColumns(), rows)); }));
     bulkMenu.appendChild(el("div", "pop-sep"));
     bulkMenu.appendChild(bulkItem("Update a field…", () => { const ids = handle.getSelected(); if (!ids.length) return needSelection(); bulkMenu.classList.add("hidden"); openMassUpdate(ids, fields); }));
     bulkMenu.appendChild(bulkItem(("Merge " + App.label("contact","many").toLowerCase() + "…"), () => { const rows = selectedRows(); if (rows.length < 2) { needSelection(("Select at least 2 " + App.label("contact","many").toLowerCase() + " to merge.")); return; } bulkMenu.classList.add("hidden"); openMerge(rows, fields); }));
@@ -859,19 +859,33 @@
     }
   }
 
-  async function openExport(columns, rows) {
+  // Descriptor-driven export modal, shared by Contacts and Feedback (no fork).
+  // opts: { title, columns, rows, savedFilters, savedFilterView, namePlaceholder,
+  //         countText(n), unitPlural, sheetName, filterLabel, saveHistory }
+  async function openExport(opts) {
+    const columns = opts.columns;
+    const rows = opts.rows;
     const exportable = columns.filter((c) => c.key);
     const exState = { rules: [], search: "" };
     const selected = new Set(exportable.map((c) => c.key)); // all on by default
+    const showHistory = opts.saveHistory !== false;
+
+    const savedBlock = opts.savedFilters
+      ? `<label class="field-label">Start from a saved filter (optional)</label>
+        <select id="ex-saved" class="input"><option value="">— none —</option></select>`
+      : "";
+    const historyBlock = showHistory
+      ? `<div class="ex-history-head">Previous exports</div>
+        <div id="ex-history" class="ex-history"><div class="cell-muted">Loading…</div></div>`
+      : "";
 
     const inner = el("div");
-    inner.innerHTML = `<div class="modal-head"><h2>Export contacts</h2><button class="icon-btn" id="ex-close">&times;</button></div>
+    inner.innerHTML = `<div class="modal-head"><h2>${esc(opts.title || "Export")}</h2><button class="icon-btn" id="ex-close">&times;</button></div>
       <div class="modal-body">
         <label class="field-label">Export name *</label>
-        <input id="ex-name" class="input" placeholder="e.g. June leads — HVAC" />
-        <label class="field-label">Start from a saved filter (optional)</label>
-        <select id="ex-saved" class="input"><option value="">— none —</option></select>
-        <label class="field-label">Who to export</label>
+        <input id="ex-name" class="input" placeholder="${esc(opts.namePlaceholder || "")}" />
+        ${savedBlock}
+        <label class="field-label">${esc(opts.filterLabel || "Who to export")}</label>
         <div id="ex-rules"></div>
         <label class="field-label" style="margin-top:14px">Fields to include</label>
         <div id="ex-fields" class="ex-fields"></div>
@@ -879,26 +893,27 @@
         <label class="field-label">Format</label>
         <select id="ex-format" class="input"><option value="csv">CSV (.csv)</option><option value="xlsx">Excel (.xlsx)</option></select>
         <button id="ex-go" class="btn btn-primary btn-block">Export</button>
-        <div class="ex-history-head">Previous exports</div>
-        <div id="ex-history" class="ex-history"><div class="cell-muted">Loading…</div></div>
+        ${historyBlock}
       </div>`;
     const overlay = modal(inner);
     inner.querySelector("#ex-close").onclick = () => overlay.remove();
 
-    // saved filters dropdown to prefill criteria
-    try {
-      const saved = await App.portalApi("/api/saved-filters?view=contacts");
-      const sel = inner.querySelector("#ex-saved");
-      saved.forEach((f) => { const o = el("option", null, esc(f.name)); o.value = f.id; sel.appendChild(o); });
-      sel.onchange = () => {
-        const f = saved.find((x) => x.id === sel.value);
-        exState.rules = f && f.definition && f.definition.rules ? f.definition.rules.map((r) => ({ ...r })) : [];
-        exState.search = (f && f.definition && f.definition.search) || "";
-        rulesHost.innerHTML = "";
-        rulesHost.appendChild(App.table.ruleEditor(exportable, rows, exState.rules, updateCount));
-        updateCount();
-      };
-    } catch (e) {}
+    // saved filters dropdown to prefill criteria (contacts only)
+    if (opts.savedFilters) {
+      try {
+        const saved = await App.portalApi(`/api/saved-filters?view=${encodeURIComponent(opts.savedFilterView || "contacts")}`);
+        const sel = inner.querySelector("#ex-saved");
+        saved.forEach((f) => { const o = el("option", null, esc(f.name)); o.value = f.id; sel.appendChild(o); });
+        sel.onchange = () => {
+          const f = saved.find((x) => x.id === sel.value);
+          exState.rules = f && f.definition && f.definition.rules ? f.definition.rules.map((r) => ({ ...r })) : [];
+          exState.search = (f && f.definition && f.definition.search) || "";
+          rulesHost.innerHTML = "";
+          rulesHost.appendChild(App.table.ruleEditor(exportable, rows, exState.rules, updateCount));
+          updateCount();
+        };
+      } catch (e) {}
+    }
 
     const rulesHost = inner.querySelector("#ex-rules");
     rulesHost.appendChild(App.table.ruleEditor(exportable, rows, exState.rules, () => updateCount()));
@@ -915,11 +930,12 @@
     function matching() { return App.table.pipeline(rows, exportable, exState); }
     function updateCount() {
       const n = matching().length;
-      inner.querySelector("#ex-count").textContent = `${n} of ${App.countLabel("contact", rows.length).toLowerCase()} match.`;
+      inner.querySelector("#ex-count").textContent = `${n} of ${opts.countText(rows.length)} match.`;
     }
     updateCount();
 
     async function loadHistory() {
+      if (!showHistory) return;
       const host = inner.querySelector("#ex-history");
       try {
         const list = await App.portalApi("/api/exports");
@@ -928,7 +944,7 @@
         list.forEach((ex) => {
           const row = el("div", "ex-hist-row");
           row.innerHTML = `<div class="ex-hist-main"><div class="ex-hist-name">${esc(ex.name)}</div>
-            <div class="ex-hist-meta">${ex.rowCount} contacts · ${fmtDate(ex.createdAt)}</div></div>`;
+            <div class="ex-hist-meta">${ex.rowCount} ${esc(opts.unitPlural.toLowerCase())} · ${fmtDate(ex.createdAt)}</div></div>`;
           const dl = el("button", "btn btn-ghost btn-sm", "Download");
           dl.onclick = async () => {
             try { const r = await App.portalApi(`/api/exports/${ex.id}/download`); downloadCSV(`${(r.name || "export").replace(/[^a-z0-9]+/gi, "-")}.csv`, r.csv); }
@@ -947,7 +963,7 @@
       const cols = exportable.filter((c) => selected.has(c.key));
       if (!cols.length) { App.util.toast("Pick at least one field", true); return; }
       const out = matching();
-      if (!out.length) { App.util.toast(("No " + App.label("contact","many").toLowerCase() + " match"), true); return; }
+      if (!out.length) { App.util.toast(("No " + opts.unitPlural.toLowerCase() + " match"), true); return; }
       const csv = buildCSV(cols, out);
       const fileBase = name.replace(/[^a-z0-9]+/gi, "-");
       const format = inner.querySelector("#ex-format").value;
@@ -957,18 +973,37 @@
           const aoa = [cols.map((c) => c.label), ...out.map((row) => cols.map((c) => (c.text ? c.text(row) : c.get(row)) ?? ""))];
           const ws = XLSX.utils.aoa_to_sheet(aoa);
           const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, App.label("contact", "many"));
+          XLSX.utils.book_append_sheet(wb, ws, opts.sheetName || "Export");
           const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
           downloadBlob(`${fileBase}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         }
       } else {
         downloadCSV(`${fileBase}.csv`, csv);
       }
+      if (opts.saveHistory === false) { App.util.toast(`Exported ${opts.countText(out.length)}`); return; }
       try {
         await App.portalApi("/api/exports", { method: "POST", body: JSON.stringify({ name, rowCount: out.length, fields: cols.map((c) => c.label), csv }) });
-        App.util.toast(`Exported ${App.countLabel("contact", out.length).toLowerCase()}`);
+        App.util.toast(`Exported ${opts.countText(out.length)}`);
         loadHistory();
       } catch (err) { App.util.toast("Downloaded, but couldn't save to history: " + err.message, true); }
+    };
+  }
+  // Open the shared export modal from anywhere (e.g. feedback.js).
+  App.exportModal = openExport;
+
+  // Contacts descriptor — reproduces the previous contacts-export behavior exactly.
+  function contactExportOpts(columns, rows) {
+    return {
+      title: "Export contacts",
+      columns, rows,
+      savedFilters: true,
+      savedFilterView: "contacts",
+      namePlaceholder: "e.g. June leads — HVAC",
+      filterLabel: "Who to export",
+      unitPlural: App.label("contact", "many"),
+      sheetName: App.label("contact", "many"),
+      countText: (n) => App.countLabel("contact", n).toLowerCase(),
+      saveHistory: true,
     };
   }
 

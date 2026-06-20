@@ -51,17 +51,25 @@
       : `<span class="badge badge-progress">Needs Reply</span>`;
   }
 
-  // Columns for the ticket-log CSV export. Uses the shared App.exportCSV builder
-  // so the CSV format matches the contacts export. (Batch 3's all-portals export
-  // will prepend a "Portal" column to these.)
+  // Columns for the ticket-log CSV/Excel export over the flat one-row-per-reply
+  // shape from /api/feedback/export-rows. key+type+get let the shared modal do
+  // field-selection and criteria filtering; filtering on ticket-level fields
+  // (e.g. Status) naturally keeps all of a ticket's reply rows since those
+  // fields are repeated on every row.
   function ticketExportColumns() {
     return [
-      { label: "Problem", text: (r) => r.problem || "" },
-      { label: "Description", text: (r) => r.description || "" },
-      { label: "Status", text: (r) => (r.status === "RESOLVED" ? "Resolved" : "Open") },
-      { label: "Submitted by", text: (r) => (r.submitter ? (r.submitter.name || r.submitter.email) : "Unknown") },
-      { label: "Created", text: (r) => fmtDate(r.createdAt) },
-      { label: "Resolved at", text: (r) => (r.resolvedAt ? fmtDate(r.resolvedAt) : "") },
+      { key: "ticketId", label: "Ticket ID", type: "text", get: (r) => r.ticketId, text: (r) => r.ticketId || "" },
+      { key: "problem", label: "Problem", type: "text", get: (r) => r.problem, text: (r) => r.problem || "" },
+      { key: "description", label: "Description", type: "text", get: (r) => r.description, text: (r) => r.description || "" },
+      { key: "status", label: "Status", type: "status", get: (r) => r.status, text: (r) => (r.status === "RESOLVED" ? "Resolved" : "Open") },
+      { key: "postedBy", label: "Posted by", type: "text", get: (r) => r.postedBy, text: (r) => r.postedBy || "" },
+      { key: "postedAt", label: "Posted date", type: "date", get: (r) => r.postedAt, text: (r) => fmtDate(r.postedAt) },
+      { key: "resolvedAt", label: "Resolved date", type: "date", get: (r) => r.resolvedAt, text: (r) => (r.resolvedAt ? fmtDate(r.resolvedAt) : "") },
+      { key: "resolvedBy", label: "Resolved by", type: "text", get: (r) => r.resolvedBy, text: (r) => r.resolvedBy || "" },
+      { key: "portal", label: "Portal", type: "text", get: (r) => r.portal, text: (r) => r.portal || "" },
+      { key: "replyAuthor", label: "Reply author", type: "text", get: (r) => r.replyAuthor, text: (r) => r.replyAuthor || "" },
+      { key: "replyAt", label: "Reply timestamp", type: "date", get: (r) => r.replyAt, text: (r) => (r.replyAt ? fmtDate(r.replyAt) : "") },
+      { key: "replyText", label: "Reply text", type: "text", get: (r) => r.replyText, text: (r) => r.replyText || "" },
     ];
   }
 
@@ -81,15 +89,31 @@
       `</p>`;
     wrap.appendChild(intro);
 
-    // Export this portal's ticket log (portal view only; the master-hub all-portals
-    // export comes in its own batch). Exports whatever tickets the viewer can see.
-    let lastTickets = [];
+    // Export this portal's tickets via the shared export modal (fields + criteria
+    // + CSV/Excel + history; saved-filters off). Fetches the reply-expanded rows
+    // (one row per reply; reply-less tickets still appear as one row).
     if (mode === "portal") {
       const bar = el("div"); bar.style.cssText = "margin:2px 0 6px";
-      const exportBtn = el("button", "btn btn-ghost btn-sm", "Export tickets (CSV)");
-      exportBtn.onclick = () => {
-        if (!lastTickets.length) { toast("No tickets to export", true); return; }
-        App.exportCSV("feedback-tickets", ticketExportColumns(), lastTickets);
+      const exportBtn = el("button", "btn btn-ghost btn-sm", "Export tickets");
+      exportBtn.onclick = async () => {
+        exportBtn.disabled = true;
+        let rows;
+        try { rows = await c.call(`${c.base}/export-rows`); }
+        catch (e) { toast(e.message, true); exportBtn.disabled = false; return; }
+        exportBtn.disabled = false;
+        if (!rows.length) { toast("No tickets to export", true); return; }
+        App.exportModal({
+          title: "Export tickets",
+          columns: ticketExportColumns(),
+          rows,
+          savedFilters: false,
+          namePlaceholder: "e.g. Resolved tickets — June",
+          filterLabel: "Which tickets to include",
+          unitPlural: "rows",
+          sheetName: "Tickets",
+          countText: (n) => n + (n === 1 ? " row" : " rows"),
+          saveHistory: true,
+        });
       };
       bar.appendChild(exportBtn);
       wrap.appendChild(bar);
@@ -117,7 +141,6 @@
       let data;
       try { data = await c.call(c.base); }
       catch (e) { activeHost.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
-      lastTickets = [...(data.active || []), ...(data.resolved || [])];
       buildTable(activeHost, data.active || [], mode, "OPEN");
       buildTable(resolvedHost, data.resolved || [], mode, "RESOLVED");
     }

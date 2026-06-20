@@ -117,6 +117,57 @@ export async function listFeedback(ctx: Ctx): Promise<{ active: any[]; resolved:
   };
 }
 
+// Flat rows for the ticket export: ONE ROW PER REPLY, with the ticket's own fields
+// repeated on each of its reply rows. A ticket with ZERO replies still yields
+// EXACTLY ONE row (reply fields null) so unanswered/open tickets are never dropped.
+// Scope rules match listFeedback: portal moderators get all tickets in the portal,
+// other portal users get only their own; master scope gets master-hub tickets.
+export async function listFeedbackExportRows(ctx: Ctx): Promise<any[]> {
+  let where: any;
+  if (ctx.scope === "master") {
+    if (!isMasterRole(ctx.actor.role)) return [];
+    where = { tenantId: null };
+  } else {
+    if (!ctx.tenantId) return [];
+    where = { tenantId: ctx.tenantId };
+    if (!isPortalMod(ctx.actor.role)) where.createdById = ctx.actor.id;
+  }
+  const tickets = await (prisma as any).feedbackTicket.findMany({
+    where,
+    include: {
+      createdBy: true,
+      resolvedBy: true,
+      tenant: true,
+      messages: { include: { author: true }, orderBy: { createdAt: "asc" } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  const person = (u: any) => (u ? (u.name || u.email || null) : null);
+  const out: any[] = [];
+  for (const t of tickets) {
+    const base = {
+      ticketId: t.id,
+      problem: t.problem,
+      description: t.description,
+      status: t.status,
+      postedBy: person(t.createdBy),
+      postedAt: t.createdAt,
+      resolvedAt: t.resolvedAt,
+      resolvedBy: person(t.resolvedBy),
+      portal: t.tenant ? t.tenant.name : "Master hub",
+    };
+    const msgs = t.messages || [];
+    if (!msgs.length) {
+      out.push({ ...base, replyAuthor: null, replyAt: null, replyText: null });
+    } else {
+      for (const m of msgs) {
+        out.push({ ...base, replyAuthor: person(m.author), replyAt: m.createdAt, replyText: m.body });
+      }
+    }
+  }
+  return out;
+}
+
 export async function getFeedbackTicket(id: string, ctx: Ctx): Promise<any | null> {
   const t = await (prisma as any).feedbackTicket.findUnique({
     where: { id },
