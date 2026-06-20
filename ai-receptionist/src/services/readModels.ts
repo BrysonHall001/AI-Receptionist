@@ -29,6 +29,7 @@ export interface ContactDTO {
   phone: string;
   email: string | null;
   intent: string | null;
+  callerId: string | null;
   customFields: Record<string, unknown>;
   callCount: number;
   createdAt: string;
@@ -100,6 +101,7 @@ function mapContact(c: any) {
     email: c.email ?? null,
     intent: c.intent ?? null,
     source: c.source ?? "unknown",
+    callerId: c.callerId ?? null,
     customFields: (c.customFields as any) ?? {},
     callCount: c._count?.callSessions ?? 0,
     createdAt: c.createdAt.toISOString(),
@@ -151,6 +153,7 @@ export async function getContact(id: string, tenantId?: string | null) {
     phone: c.phone,
     email: c.email ?? null,
     intent: c.intent ?? null,
+    callerId: (c as any).callerId ?? null,
     customFields: (c.customFields as any) ?? {},
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),

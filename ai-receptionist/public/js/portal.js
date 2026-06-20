@@ -130,6 +130,7 @@
     const columns = [
       { key: "name", label: "Caller", type: "text", get: (r) => r.name, text: (r) => r.name || "Unknown caller", cellClass: "cell-strong", render: (r) => esc(r.name || "Unknown caller") },
       { key: "phone", label: "Phone", type: "text", get: (r) => r.phone || r.fromNumber, cellClass: "cell-mono" },
+      { key: "fromNumber", label: "Caller ID", type: "text", get: (r) => r.fromNumber, cellClass: "cell-mono", render: (r) => esc(r.fromNumber || "—") },
       { key: "intent", label: "Reason", type: "text", get: (r) => r.intent, cellClass: "cell-muted cell-truncate", render: (r) => esc(r.intent || "—") },
       { key: "status", label: "Status", type: "status", get: (r) => r.status, text: (r) => ({ COMPLETED: "Completed", FAILED: "Missed", COLLECTING_INFO: "In progress", GREETING: "In progress", INIT: "New" }[r.status] || r.status), render: (r) => statusBadge(r.status) },
       { key: "createdAt", label: "When", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
@@ -309,6 +310,7 @@
       };
     });
     cols.push({ key: "source", label: "Source", type: "text", get: (r) => r.source, text: (r) => r.source || "unknown", render: (r) => esc(r.source || "unknown") });
+    cols.push({ key: "callerId", label: "Caller ID", type: "text", get: (r) => r.callerId, text: (r) => r.callerId || "", cellClass: "cell-mono", render: (r) => esc(r.callerId || "—") });
     cols.push({ key: "callCount", label: "Calls", type: "number", get: (r) => r.callCount, text: (r) => String(r.callCount || 0) });
     cols.push({ key: "createdAt", label: "Time Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` });
     return cols;

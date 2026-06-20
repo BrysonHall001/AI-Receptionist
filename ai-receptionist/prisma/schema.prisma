@@ -171,6 +171,11 @@ model Contact {
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name         String?
   phone        String?
+  // Network-verified inbound caller ID (the number the caller actually called
+  // from). SEPARATE from the human-editable `phone` (the spoken/entered callback
+  // number) and deliberately NOT unique — two contacts may legitimately share a
+  // caller-ID line (family/office). System-set; preserved as the verified origin.
+  callerId     String?
   email        String?
   intent       String?
   source       String        @default("unknown")

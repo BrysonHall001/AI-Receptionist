@@ -10,6 +10,10 @@ export interface ContactInput {
   name?: string | null;
   email?: string | null;
   intent?: string | null;
+  // Verified inbound caller ID (system-set). Stored separately from `phone`;
+  // filled on first creation and back-filled if previously empty, but never
+  // overwrites a caller-ID already on the contact (it's the origin of record).
+  callerId?: string | null;
   // How this contact first entered the system. Set ONLY on first creation
   // (never on update), so it stays meaningful for a contact's whole life.
   source?: string | null;
@@ -34,12 +38,16 @@ export async function createOrUpdateContact(input: ContactInput, actor?: Mutatio
   const existing = await prisma.contact.findUnique({
     where: { tenantId_phone: { tenantId: input.tenantId, phone: input.phone } },
   });
+  // Caller ID: fill on create, and back-fill on update ONLY if the contact has
+  // none yet — never overwrite a verified origin already on record.
+  const callerId = (input.callerId ?? "").trim() || null;
+  const updateCaller = callerId && existing && !(existing as any).callerId ? { callerId } : {};
   const contact = await prisma.contact.upsert({
     where: { tenantId_phone: { tenantId: input.tenantId, phone: input.phone } },
     // NOTE: `source` is deliberately NOT in the update branch — a repeat caller
     // (or any later edit) must never relabel where the contact first came from.
-    update: pruneEmpty(fields),
-    create: { tenantId: input.tenantId, phone: input.phone, source: input.source ?? "unknown", ...fields } as any,
+    update: { ...pruneEmpty(fields), ...updateCaller } as any,
+    create: { tenantId: input.tenantId, phone: input.phone, source: input.source ?? "unknown", callerId, ...fields } as any,
   });
   try {
     if (!existing) {

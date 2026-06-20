@@ -236,6 +236,10 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
       name: extracted.name ?? null,
       email: extracted.email ?? null,
       intent: extracted.intent ?? null,
+      // The contact's IDENTITY is the spoken/entered phone (above). The verified
+      // inbound caller ID is preserved separately so the two can differ (e.g.
+      // someone booking from another person's phone) without colliding identities.
+      callerId: session.fromNumber ?? null,
       source: "phone",
     });
     contactId = contact.id;
