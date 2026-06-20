@@ -174,6 +174,7 @@ tbody tr:hover { background: var(--row-hover); }
 .cell-mono { font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); }
 .cell-muted { color: var(--ink-faint); }
 .cell-truncate { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-thumb { width: 34px; height: 34px; border-radius: 6px; object-fit: cover; border: 1px solid var(--line); vertical-align: middle; display: inline-block; }
 .row-new { animation: flashRow 1.6s ease; }
 @keyframes flashRow { 0% { background: var(--accent-soft); } 100% { background: transparent; } }
 
@@ -472,6 +473,12 @@ textarea.input { resize: vertical; }
 .table-wrap--wide tbody td { white-space: nowrap; }
 /* Keep long free-text cells from ballooning the row width unboundedly. */
 .table-wrap--wide tbody td.cell-truncate { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+/* Anchor the horizontal scrollbar to the visible screen: cap the contacts table's
+   height to the viewport and scroll INSIDE the box, so the left-right scrollbar
+   sits at the bottom of the on-screen area instead of way down past 50 rows. The
+   header stays put while you scroll. Scoped to the contacts (--wide) table only. */
+.table-wrap--wide { max-height: calc(100vh - 240px); overflow: auto; }
+.table-wrap--wide thead th { position: sticky; top: 0; z-index: 2; }
 
 /* ---------- Fields tab ---------- */
 .field-list { display: flex; flex-direction: column; }

@@ -306,7 +306,12 @@
       return {
         key: f.key, label: f.label, type: colType(f.type), get, text: disp,
         cellClass: f.key === "name" ? "cell-strong" : f.key === "phone" ? "cell-mono" : f.key === "email" || f.key === "intent" ? "cell-muted" : "",
-        render: f.key === "name" ? (r) => esc(disp(r) || "Unknown") : (r) => esc(disp(r) || "—"),
+        render:
+          f.type === "image"
+            ? (r) => { const v = get(r); return v && /^data:image\//i.test(String(v)) ? `<img class="cell-thumb" src="${esc(String(v))}" alt="" />` : `<span class="cell-muted">—</span>`; }
+            : f.key === "name"
+            ? (r) => esc(disp(r) || "Unknown")
+            : (r) => esc(disp(r) || "—"),
       };
     });
     cols.push({ key: "source", label: "Source", type: "text", get: (r) => r.source, text: (r) => r.source || "unknown", render: (r) => esc(r.source || "unknown") });
