@@ -165,7 +165,10 @@
     toolbar.appendChild(left);
     toolbar.appendChild(right);
 
-    const tableWrap = el("div", "table-wrap card");
+    // Opt-in horizontal scroll for tables with many columns (e.g. Contacts):
+    // the modifier class lets the table size to its content and overflow into the
+    // existing .table-wrap scroller. Tables that don't pass scrollX are unaffected.
+    const tableWrap = el("div", "table-wrap card" + (opts.scrollX ? " table-wrap--wide" : ""));
     area.appendChild(tableWrap);
 
     function distinctValues(col) {

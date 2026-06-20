@@ -463,6 +463,16 @@ textarea.input { resize: vertical; }
 .table-wrap { overflow-x: auto; }
 .table-wrap table { min-width: 820px; }
 
+/* Opt-in (Contacts): render every chosen column at a usable width and let the
+   table overflow horizontally into the .table-wrap scroller above, instead of
+   crushing/wrapping columns to fit. Scoped to .table-wrap--wide so Calls, Jobs,
+   and Recycle Bin tables are untouched. */
+.table-wrap--wide table { width: auto; min-width: 100%; }
+.table-wrap--wide thead th,
+.table-wrap--wide tbody td { white-space: nowrap; }
+/* Keep long free-text cells from ballooning the row width unboundedly. */
+.table-wrap--wide tbody td.cell-truncate { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+
 /* ---------- Fields tab ---------- */
 .field-list { display: flex; flex-direction: column; }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }

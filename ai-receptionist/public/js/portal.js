@@ -366,6 +366,7 @@
     let handle;
     handle = App.table.mount({
       container: tableHost, columns, rows: contacts, selectable: true, rowId: (r) => r.id,
+      scrollX: true, pageSize: 50,
       onRowClick: (r) => App.go("#/contact/" + r.id),
       onSelectionChange: (ids) => updateBulkBar(ids),
       defaultSort: "createdAt", defaultSortDir: "desc",
