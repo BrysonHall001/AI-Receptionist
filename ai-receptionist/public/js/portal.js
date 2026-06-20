@@ -825,6 +825,19 @@
     setTimeout(() => URL.revokeObjectURL(url), 500);
   }
 
+  // Shared CSV builder + one-call download, reused by the contacts export below
+  // AND the feedback ticket export, so the CSV format stays identical everywhere.
+  // columns: [{ label, get(row) | text(row) }] — same shape the table uses.
+  function buildCSV(cols, rows) {
+    const header = cols.map((c) => csvCell(c.label)).join(",");
+    const lines = rows.map((row) => cols.map((c) => csvCell(c.text ? c.text(row) : c.get(row))).join(","));
+    return [header, ...lines].join("\n");
+  }
+  App.exportCSV = function (filename, cols, rows) {
+    const base = String(filename || "export").replace(/[^a-z0-9]+/gi, "-");
+    downloadCSV(`${base}.csv`, buildCSV(cols, rows));
+  };
+
   // Read a CSV or Excel file into an array of row-arrays of strings.
   function readFileRows(file, cb) {
     const name = (file.name || "").toLowerCase();
@@ -935,9 +948,7 @@
       if (!cols.length) { App.util.toast("Pick at least one field", true); return; }
       const out = matching();
       if (!out.length) { App.util.toast(("No " + App.label("contact","many").toLowerCase() + " match"), true); return; }
-      const header = cols.map((c) => csvCell(c.label)).join(",");
-      const lines = out.map((row) => cols.map((c) => csvCell(c.text ? c.text(row) : c.get(row))).join(","));
-      const csv = [header, ...lines].join("\n");
+      const csv = buildCSV(cols, out);
       const fileBase = name.replace(/[^a-z0-9]+/gi, "-");
       const format = inner.querySelector("#ex-format").value;
       if (format === "xlsx") {

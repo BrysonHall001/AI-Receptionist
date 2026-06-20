@@ -51,6 +51,20 @@
       : `<span class="badge badge-progress">Needs Reply</span>`;
   }
 
+  // Columns for the ticket-log CSV export. Uses the shared App.exportCSV builder
+  // so the CSV format matches the contacts export. (Batch 3's all-portals export
+  // will prepend a "Portal" column to these.)
+  function ticketExportColumns() {
+    return [
+      { label: "Problem", text: (r) => r.problem || "" },
+      { label: "Description", text: (r) => r.description || "" },
+      { label: "Status", text: (r) => (r.status === "RESOLVED" ? "Resolved" : "Open") },
+      { label: "Submitted by", text: (r) => (r.submitter ? (r.submitter.name || r.submitter.email) : "Unknown") },
+      { label: "Created", text: (r) => fmtDate(r.createdAt) },
+      { label: "Resolved at", text: (r) => (r.resolvedAt ? fmtDate(r.resolvedAt) : "") },
+    ];
+  }
+
   // ---- list view ----------------------------------------------------------
   async function mount(host, mode) {
     const c = cfg(mode);
@@ -66,6 +80,20 @@
         : "Tell us about a problem and we'll follow up. You'll see your own tickets and replies below.") +
       `</p>`;
     wrap.appendChild(intro);
+
+    // Export this portal's ticket log (portal view only; the master-hub all-portals
+    // export comes in its own batch). Exports whatever tickets the viewer can see.
+    let lastTickets = [];
+    if (mode === "portal") {
+      const bar = el("div"); bar.style.cssText = "margin:2px 0 6px";
+      const exportBtn = el("button", "btn btn-ghost btn-sm", "Export tickets (CSV)");
+      exportBtn.onclick = () => {
+        if (!lastTickets.length) { toast("No tickets to export", true); return; }
+        App.exportCSV("feedback-tickets", ticketExportColumns(), lastTickets);
+      };
+      bar.appendChild(exportBtn);
+      wrap.appendChild(bar);
+    }
 
     // Submit form (only for roles allowed to submit)
     if (canSubmit(mode)) {
@@ -89,6 +117,7 @@
       let data;
       try { data = await c.call(c.base); }
       catch (e) { activeHost.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+      lastTickets = [...(data.active || []), ...(data.resolved || [])];
       buildTable(activeHost, data.active || [], mode, "OPEN");
       buildTable(resolvedHost, data.resolved || [], mode, "RESOLVED");
     }
