@@ -867,7 +867,7 @@
     const rows = opts.rows;
     const exportable = columns.filter((c) => c.key);
     const exState = { rules: [], search: "" };
-    const selected = new Set(exportable.map((c) => c.key)); // all on by default
+    const selected = new Set(exportable.filter((c) => !c.defaultOff).map((c) => c.key)); // all on by default, except defaultOff fields
     const showHistory = opts.saveHistory !== false;
 
     const savedBlock = opts.savedFilters
@@ -922,7 +922,7 @@
     exportable.forEach((c) => {
       const id = "exf-" + c.key;
       const lab = el("label", "ex-field");
-      lab.innerHTML = `<input type="checkbox" id="${id}" checked /> <span>${esc(c.label)}</span>`;
+      lab.innerHTML = `<input type="checkbox" id="${id}" ${c.defaultOff ? "" : "checked"} /> <span>${esc(c.label)}</span>`;
       lab.querySelector("input").onchange = (e) => { if (e.target.checked) selected.add(c.key); else selected.delete(c.key); };
       fieldsHost.appendChild(lab);
     });

@@ -56,21 +56,30 @@
   // field-selection and criteria filtering; filtering on ticket-level fields
   // (e.g. Status) naturally keeps all of a ticket's reply rows since those
   // fields are repeated on every row.
-  function ticketExportColumns() {
-    return [
-      { key: "ticketId", label: "Ticket ID", type: "text", get: (r) => r.ticketId, text: (r) => r.ticketId || "" },
+  //
+  // opts.portal: include the "Portal" column. OFF for a single portal's export
+  // (every ticket is that portal); the future master-hub all-portals export will
+  // pass { portal: true } to include it.
+  function ticketExportColumns(opts) {
+    const cols = [
+      { key: "ticketId", label: "Ticket ID", type: "text", defaultOff: true, get: (r) => r.ticketId, text: (r) => r.ticketId || "" },
       { key: "problem", label: "Problem", type: "text", get: (r) => r.problem, text: (r) => r.problem || "" },
       { key: "description", label: "Description", type: "text", get: (r) => r.description, text: (r) => r.description || "" },
-      { key: "status", label: "Status", type: "status", get: (r) => r.status, text: (r) => (r.status === "RESOLVED" ? "Resolved" : "Open") },
+      { key: "status", label: "Status", type: "status", get: (r) => r.status, text: (r) => (r.status === "RESOLVED" ? "Resolved" : "Needs Reply") },
       { key: "postedBy", label: "Posted by", type: "text", get: (r) => r.postedBy, text: (r) => r.postedBy || "" },
       { key: "postedAt", label: "Posted date", type: "date", get: (r) => r.postedAt, text: (r) => fmtDate(r.postedAt) },
       { key: "resolvedAt", label: "Resolved date", type: "date", get: (r) => r.resolvedAt, text: (r) => (r.resolvedAt ? fmtDate(r.resolvedAt) : "") },
       { key: "resolvedBy", label: "Resolved by", type: "text", get: (r) => r.resolvedBy, text: (r) => r.resolvedBy || "" },
-      { key: "portal", label: "Portal", type: "text", get: (r) => r.portal, text: (r) => r.portal || "" },
+    ];
+    if (opts && opts.portal) {
+      cols.push({ key: "portal", label: "Portal", type: "text", get: (r) => r.portal, text: (r) => r.portal || "" });
+    }
+    cols.push(
       { key: "replyAuthor", label: "Reply author", type: "text", get: (r) => r.replyAuthor, text: (r) => r.replyAuthor || "" },
       { key: "replyAt", label: "Reply timestamp", type: "date", get: (r) => r.replyAt, text: (r) => (r.replyAt ? fmtDate(r.replyAt) : "") },
       { key: "replyText", label: "Reply text", type: "text", get: (r) => r.replyText, text: (r) => r.replyText || "" },
-    ];
+    );
+    return cols;
   }
 
   // ---- list view ----------------------------------------------------------
@@ -89,12 +98,19 @@
       `</p>`;
     wrap.appendChild(intro);
 
-    // Export this portal's tickets via the shared export modal (fields + criteria
-    // + CSV/Excel + history; saved-filters off). Fetches the reply-expanded rows
-    // (one row per reply; reply-less tickets still appear as one row).
+    // Submit form (only for roles allowed to submit)
+    if (canSubmit(mode)) {
+      wrap.appendChild(submitForm(mode, () => load()));
+    }
+
+    const activeHead = el("h2", "fb-section-title", "Open tickets");
+    wrap.appendChild(activeHead);
+    // Export button — right-aligned directly above the Open table's search bar,
+    // mirroring the Contacts/Jobs `page-actions` pattern. One button covers both
+    // tables (it exports all of this portal's tickets via /export-rows).
     if (mode === "portal") {
-      const bar = el("div"); bar.style.cssText = "margin:2px 0 6px";
-      const exportBtn = el("button", "btn btn-ghost btn-sm", "Export tickets");
+      const actions = el("div", "page-actions");
+      const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export tickets`);
       exportBtn.onclick = async () => {
         exportBtn.disabled = true;
         let rows;
@@ -115,17 +131,9 @@
           saveHistory: true,
         });
       };
-      bar.appendChild(exportBtn);
-      wrap.appendChild(bar);
+      actions.appendChild(exportBtn);
+      wrap.appendChild(actions);
     }
-
-    // Submit form (only for roles allowed to submit)
-    if (canSubmit(mode)) {
-      wrap.appendChild(submitForm(mode, () => load()));
-    }
-
-    const activeHead = el("h2", "fb-section-title", "Open tickets");
-    wrap.appendChild(activeHead);
     const activeHost = el("div");
     wrap.appendChild(activeHost);
 
