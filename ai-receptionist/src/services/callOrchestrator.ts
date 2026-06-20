@@ -68,7 +68,20 @@ export async function startCall(params: {
 }
 
 /** LAYER 2/3: process one caller utterance through the AI + state machine. */
-export async function handleTurn(params: { callSid: string; speech: string; onLookupStart?: () => void; chat?: ChatCaller }): Promise<TurnResult> {
+/** Replace the most recent assistant turn's text with what the caller actually
+ *  heard before barging in (plus a marker). Immutable; returns a new array. */
+function correctLastAssistant(transcript: TranscriptTurn[], heard: string): TranscriptTurn[] {
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    if (transcript[i].role === "assistant") {
+      const copy = transcript.slice();
+      copy[i] = { ...copy[i], text: `${heard} …[caller interrupted]` };
+      return copy;
+    }
+  }
+  return transcript;
+}
+
+export async function handleTurn(params: { callSid: string; speech: string; onLookupStart?: () => void; chat?: ChatCaller; interruptedHeard?: string | null }): Promise<TurnResult> {
   const session = await getCallSession(params.callSid);
   if (!session) {
     // Unknown call -> start one so we never drop a caller.
@@ -84,6 +97,15 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
   let transcript = session.transcript as unknown as TranscriptTurn[];
   let extracted = session.extracted as unknown as Extracted;
   let emptyCount = session.emptyCount;
+
+  // If the caller barged in over the previous reply, correct the transcript so the
+  // model sees only what the caller actually HEARD — otherwise it thinks it said a
+  // whole reply the caller never heard, and loses the thread. handleTurn is the
+  // SOLE writer of the call session, so this update is race-free.
+  const heard = (params.interruptedHeard ?? "").trim();
+  if (heard.length > 0) {
+    transcript = correctLastAssistant(transcript, heard);
+  }
 
   const speech = (params.speech ?? "").trim();
 

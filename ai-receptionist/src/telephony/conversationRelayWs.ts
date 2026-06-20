@@ -52,6 +52,10 @@ function pickFiller(): string {
 /** Per-connection state: just the callSid this socket is bound to. */
 interface RelayConnState {
   callSid: string | null;
+  // What the caller actually heard before barging in over the last reply, kept
+  // ONLY in memory and consumed by the next turn. Never written to the DB here —
+  // handleTurn stays the sole writer of the call session (no concurrent writes).
+  lastInterruptHeard?: string | null;
 }
 
 export function attachConversationRelay(server: HttpServer): void {
@@ -167,12 +171,14 @@ export function attachConversationRelay(server: HttpServer): void {
             const result = await handleTurn({
               callSid: state.callSid,
               speech,
+              interruptedHeard: state.lastInterruptHeard ?? null,
               onLookupStart: () => {
                 const filler = pickFiller();
                 logger.info(`[relay] lookup filler on ${state.callSid}: "${filler}"`);
                 sendText(ws, filler);
               },
             });
+            state.lastInterruptHeard = null; // consumed; don't carry it forward
             logger.info(
               `[relay] reply on ${state.callSid}: "${result.messageToSpeak}" (done=${result.done})`,
             );
@@ -185,9 +191,13 @@ export function attachConversationRelay(server: HttpServer): void {
             // Stage 1 sends each reply as one complete `text` token, so there's
             // nothing to truncate. We log it for visibility; precise
             // "heard-until" tracking is a later (token-streaming) stage.
+            const heardSoFar = String(msg.utteranceUntilInterrupt ?? "");
+            // Remember (in memory only) what the caller actually heard, so the
+            // NEXT turn can correct the transcript and not lose the thread.
+            state.lastInterruptHeard = heardSoFar;
             logger.info(
               `[relay] caller interrupted on ${state.callSid ?? "(unknown)"}: ` +
-                `heardSoFar="${String(msg.utteranceUntilInterrupt ?? "")}"`,
+                `heardSoFar="${heardSoFar}"`,
             );
             break;
           }
