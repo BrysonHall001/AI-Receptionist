@@ -370,11 +370,12 @@ model Record {
   @@index([tenantId, recordTypeId, appointmentAt])
   // Per-resource lookups (assigned-booking counts now; resource calendar/lock later).
   @@index([tenantId, resourceId])
-  // One Clarity booking per Google event/instance (idempotent re-sync upsert).
-  // Native bookings have both external columns null; Postgres treats NULLs as
-  // distinct, so unlimited native rows are allowed — only external rows (both set)
-  // are constrained, matching the intended "one booking per event" rule.
-  @@unique([tenantId, externalCalendarId, externalEventId])
+  // One Clarity booking per Google event/instance PER RESOURCE (idempotent
+  // re-sync upsert). resourceId is in the key so a calendar mapped to several
+  // resources blocks each of them (one booking each). Native bookings have the
+  // external columns null; Postgres treats NULLs as distinct, so unlimited native
+  // rows are allowed — only external rows (all set) are constrained.
+  @@unique([tenantId, resourceId, externalCalendarId, externalEventId])
   // Metric-exclusion filter (exclude externalSource="google") + sync scans.
   @@index([tenantId, externalSource])
 }
@@ -715,6 +716,9 @@ model GoogleConnection {
   lastSyncedAt         DateTime?
   syncStatus           String?
   lastSyncError        String?
+  // Per-tenant two-way-sync switch. DEFAULT OFF: the sync engine does nothing for
+  // a connection until this is flipped true (so it ships dormant in production).
+  syncEnabled          Boolean   @default(false)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 }
