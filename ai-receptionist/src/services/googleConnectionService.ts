@@ -217,14 +217,16 @@ export async function clearResourceCalendarMap(resourceId: string): Promise<void
 export interface SyncEnabledConnection {
   tenantId: string;
   lastSyncedAt: Date | null;
+  syncEnabled: boolean;
+  pushEnabled: boolean;
 }
 
-/** Connections eligible for the sync sweep: connected AND syncEnabled. */
-export async function listSyncEnabledConnections(scope?: string | null): Promise<SyncEnabledConnection[]> {
-  const where: any = { status: "connected", syncEnabled: true };
+/** Connections eligible for the sweep: connected AND (read-in OR push) enabled. */
+export async function listActiveConnections(scope?: string | null): Promise<SyncEnabledConnection[]> {
+  const where: any = { status: "connected", OR: [{ syncEnabled: true }, { pushEnabled: true }] };
   if (scope) where.tenantId = scope;
-  const rows = await (prisma as any).googleConnection.findMany({ where, select: { tenantId: true, lastSyncedAt: true } });
-  return rows.map((r: any) => ({ tenantId: r.tenantId, lastSyncedAt: r.lastSyncedAt ?? null }));
+  const rows = await (prisma as any).googleConnection.findMany({ where, select: { tenantId: true, lastSyncedAt: true, syncEnabled: true, pushEnabled: true } });
+  return rows.map((r: any) => ({ tenantId: r.tenantId, lastSyncedAt: r.lastSyncedAt ?? null, syncEnabled: !!r.syncEnabled, pushEnabled: !!r.pushEnabled }));
 }
 
 /** Record a SUCCESSFUL sync pass: status ok, clear error, stamp lastSyncedAt. */

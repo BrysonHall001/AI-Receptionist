@@ -3,7 +3,7 @@
 // Proves event instants -> wall-clock (DST summer/winter), all-day blocks,
 // midnight-spanning, no-end default, and the forward window (wall-clock -> instant).
 
-import { eventToWallClock } from "../services/googleSyncService";
+import { eventToWallClock, bookingEventTimes } from "../services/googleSyncService";
 import type { GoogleEventRaw } from "../services/googleClient";
 
 const NY = "America/New_York";
@@ -50,6 +50,18 @@ eq(wall(r.endAt), "2026-07-01T15:00", "end == start -> +60 min");
 
 console.log("\n(5) unusable event (no date/dateTime) -> null:");
 eq(eventToWallClock(ev({}), NY), null, "no times -> null (skipped)");
+
+console.log("\n(6) OUT conversion: wall digits preserved + IANA zone (Google does DST):");
+{
+  const summer = bookingEventTimes(new Date("2026-07-14T14:00:00Z"), new Date("2026-07-14T15:00:00Z"), NY);
+  eq(summer.startWall, "2026-07-14T14:00", "summer start wall preserved");
+  eq(summer.endWall, "2026-07-14T15:00", "summer end wall preserved");
+  eq(summer.timeZone, NY, "summer timeZone is the IANA name");
+  const winter = bookingEventTimes(new Date("2026-01-15T09:00:00Z"), null, NY);
+  eq(winter.startWall, "2026-01-15T09:00", "winter start wall preserved");
+  eq(winter.endWall, "2026-01-15T09:30", "winter no-end -> +30 min default");
+  eq(winter.timeZone, NY, "winter timeZone is the IANA name");
+}
 
 console.log("\n==================================");
 if (failures.length === 0) console.log("ALL CHECKS PASSED \u2705");

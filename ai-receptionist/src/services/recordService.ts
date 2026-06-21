@@ -549,7 +549,7 @@ export async function syncUpsertGoogleBooking(
   p: SyncBookingInput,
 ): Promise<"created" | "updated" | "unchanged"> {
   const existing = await db.record.findFirst({
-    where: { tenantId, resourceId: p.resourceId, externalCalendarId: p.calendarId, externalEventId: p.eventId },
+    where: { tenantId, resourceId: p.resourceId, externalCalendarId: p.calendarId, externalEventId: p.eventId, externalSource: "google" },
   });
   const common = {
     title: (p.title || "(busy)").trim() || "(busy)",

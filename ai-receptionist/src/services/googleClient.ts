@@ -314,3 +314,67 @@ export async function listEvents(
     throw new GoogleNotReachableError(); // revoked/auth/timeout/network — never log tokens
   }
 }
+
+// ---- Write events for sync PUSH (sub-batch F). Requires events write scope. ----
+// Times are sent as { dateTime: "<local wall-clock>", timeZone: "<IANA>" } and
+// Google computes the offset — no hand-rolled offsets at this boundary.
+
+export interface GoogleEventWrite {
+  summary: string;
+  startWall: string; // "YYYY-MM-DDTHH:MM" (zoneless wall-clock)
+  endWall: string;   // "YYYY-MM-DDTHH:MM"
+  timeZone: string;  // IANA name, e.g. "America/New_York"
+}
+
+function eventBody(ev: GoogleEventWrite) {
+  return {
+    summary: ev.summary,
+    start: { dateTime: `${ev.startWall}:00`, timeZone: ev.timeZone },
+    end: { dateTime: `${ev.endWall}:00`, timeZone: ev.timeZone },
+  };
+}
+
+/** Create a Google event; returns its id. Throws GoogleNotReachableError on failure. */
+export async function insertEvent(tenantId: string, calendarId: string, ev: GoogleEventWrite, timeoutMs = 10000): Promise<string> {
+  const client = await makeAuthedClient(tenantId);
+  if (!client) throw new GoogleNotReachableError();
+  try {
+    const cal = google.calendar({ version: "v3", auth: client });
+    const resp = await cal.events.insert({ calendarId, requestBody: eventBody(ev) }, { timeout: timeoutMs });
+    const id = resp.data.id;
+    if (!id) throw new GoogleNotReachableError();
+    return id;
+  } catch (e) {
+    if (e instanceof GoogleNotReachableError) throw e;
+    throw new GoogleNotReachableError();
+  }
+}
+
+/** Update an existing Google event in place (same id). */
+export async function updateEvent(tenantId: string, calendarId: string, eventId: string, ev: GoogleEventWrite, timeoutMs = 10000): Promise<void> {
+  const client = await makeAuthedClient(tenantId);
+  if (!client) throw new GoogleNotReachableError();
+  try {
+    const cal = google.calendar({ version: "v3", auth: client });
+    await cal.events.update({ calendarId, eventId, requestBody: eventBody(ev) }, { timeout: timeoutMs });
+  } catch (e) {
+    if (e instanceof GoogleNotReachableError) throw e;
+    throw new GoogleNotReachableError();
+  }
+}
+
+/** Delete a Google event. An already-gone event (404/410) counts as success
+ *  (idempotent), so a retry after a partial failure won't error forever. */
+export async function deleteEvent(tenantId: string, calendarId: string, eventId: string, timeoutMs = 10000): Promise<void> {
+  const client = await makeAuthedClient(tenantId);
+  if (!client) throw new GoogleNotReachableError();
+  try {
+    const cal = google.calendar({ version: "v3", auth: client });
+    await cal.events.delete({ calendarId, eventId }, { timeout: timeoutMs });
+  } catch (e) {
+    const status = (e as any)?.code || (e as any)?.response?.status;
+    if (status === 404 || status === 410) return; // already gone = success
+    if (e instanceof GoogleNotReachableError) throw e;
+    throw new GoogleNotReachableError();
+  }
+}

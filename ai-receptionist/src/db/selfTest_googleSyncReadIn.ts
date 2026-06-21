@@ -49,6 +49,10 @@ const fakeDeps = {
     if (fakeMode === "fail") throw new GoogleNotReachableError();
     return calendarId === CAL ? fakeEvents : [];
   },
+  // Push is OFF in this read-in test; these stubs satisfy the type and assert they're never called.
+  insertEvent: async (): Promise<string> => { throw new Error("insertEvent must not be called in the read-in test"); },
+  updateEvent: async (): Promise<void> => { throw new Error("updateEvent must not be called in the read-in test"); },
+  deleteEvent: async (): Promise<void> => { throw new Error("deleteEvent must not be called in the read-in test"); },
 };
 const runSync = (tenantId: string) => runGoogleCalendarSync(tenantId, fakeDeps, { ignoreCadence: true });
 const activeGoogle = (tenantId: string, resourceId?: string) =>
