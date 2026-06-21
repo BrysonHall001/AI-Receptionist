@@ -24,6 +24,8 @@ import {
 import { listResourceCalendarMaps, listActiveConnections, connectionHasWriteScope, markSyncOk, markSyncDegraded } from "./googleConnectionService";
 import { ensureBookingRecordType } from "./recordTypeService";
 import { syncUpsertGoogleBooking, syncRemoveMissingGoogleBookings, SyncBookingInput } from "./recordService";
+import { resolveResourceDuration, effectiveDurationMin, listResources } from "./resourceService";
+import { loadBookingConfig } from "./bookingConfig";
 import { instantToWallClock, wallClockToUtcInstant, isValidTimeZone } from "./timezone";
 import { DEFAULT_TIMEZONE } from "../config/timezones";
 
@@ -148,11 +150,26 @@ async function pullTenant(tenantId: string, zone: string, recordTypeId: string, 
   return r;
 }
 
+/** Pure: build a clean Google event DESCRIPTION from CRM context. Google has no
+ *  native status/type/contact fields, so this is their home. Null/blank parts are
+ *  omitted; a null contact never crashes and just leaves the contact line out. */
+export interface EventDetailParts { statusLabel?: string | null; typeLabel?: string | null; contactName?: string | null; contactPhone?: string | null }
+export function buildEventDescription(p: EventDetailParts): string {
+  const lines: string[] = [];
+  if (p.typeLabel && p.typeLabel.trim()) lines.push(`Service: ${p.typeLabel.trim()}`);
+  if (p.statusLabel && p.statusLabel.trim()) lines.push(`Status: ${p.statusLabel.trim()}`);
+  const who = [p.contactName, p.contactPhone].map((x) => (x || "").trim()).filter(Boolean).join(" · ");
+  if (who) lines.push(`Contact: ${who}`);
+  if (lines.length) lines.push("");
+  lines.push("Synced from Clarity.");
+  return lines.join("\n");
+}
+
 /** Pure: a Clarity booking's wall-clock start/end + IANA zone for a Google write.
  *  We send wall-clock + timeZone and let Google compute the offset (no hand-rolled
- *  offsets). endAt is honored when present, else a default block length. */
-export function bookingEventTimes(appointmentAt: Date, endAt: Date | null, zone: string): { startWall: string; endWall: string; timeZone: string } {
-  const end = endAt ? endAt : new Date(appointmentAt.getTime() + PUSH_DEFAULT_MIN * 60000);
+ *  offsets). durationMin is the real appointment length (endAt- or service-based). */
+export function bookingEventTimes(appointmentAt: Date, durationMin: number, zone: string): { startWall: string; endWall: string; timeZone: string } {
+  const end = new Date(appointmentAt.getTime() + Math.max(1, durationMin) * 60000);
   return { startWall: dateToWall(appointmentAt), endWall: dateToWall(end), timeZone: zone };
 }
 
@@ -166,6 +183,17 @@ async function pushTenant(tenantId: string, zone: string, recordTypeId: string, 
   const calByResource = new Map<string, string>();
   for (const m of maps) calByResource.set(m.resourceId, m.googleCalendarId);
   const mappedResourceIds = [...calByResource.keys()];
+
+  // Per-tenant context for richer events (duration, status/type/contact labels).
+  const config = await loadBookingConfig(tenantId);
+  const resources = await listResources(tenantId);
+  const resById: Record<string, any> = {};
+  resources.forEach((res: any) => { resById[res.id] = res; });
+  const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
+  const subtypes: any[] = (rt && rt.subtypes) || [];
+  const recStages: any[] = (rt && rt.recordStages) || [];
+  const subLabel = (k: string | null) => { const s = subtypes.find((x) => x.key === k); return s ? s.label : (k || ""); };
+  const stageLabel = (k: string | null) => { const s = recStages.find((x) => x.key === k); return s ? s.label : (k || ""); };
 
   // --- DELETE: Clarity-owned bookings soft-deleted but whose mirror still exists.
   // Not windowed — a removed booking's mirror must go regardless of its date.
@@ -181,11 +209,32 @@ async function pushTenant(tenantId: string, zone: string, recordTypeId: string, 
       r.deletedOut++;
     } catch (e) {
       r.degraded = true; r.lastError = (e as Error).message || "Google push failed";
-      // leave the id intact; retry next tick
     }
   }
 
-  // --- CREATE/UPDATE: Clarity-owned bookings on a mapped resource, in the window.
+  // --- ORPHAN cleanup: a live Clarity-owned booking that HAS a mirror but no longer
+  // has a push target (resource unassigned, or its resource is no longer mapped) →
+  // remove the mirror and clear the id. Reassignment to a DIFFERENT mapped calendar
+  // is handled below (MOVE), so exclude bookings still on a mapped resource.
+  const orphans = await db.record.findMany({
+    where: {
+      tenantId, externalSource: null, deletedAt: null, externalEventId: { not: null },
+      OR: [{ resourceId: null }, { resourceId: { notIn: mappedResourceIds.length ? mappedResourceIds : ["__none__"] } }],
+    },
+    select: { id: true, externalEventId: true, externalCalendarId: true },
+  });
+  for (const b of orphans) {
+    if (!b.externalCalendarId || !b.externalEventId) continue;
+    try {
+      await deps.deleteEvent(tenantId, b.externalCalendarId, b.externalEventId);
+      await db.record.update({ where: { id: b.id }, data: { externalEventId: null, externalCalendarId: null, externalUpdatedAt: null } });
+      r.deletedOut++;
+    } catch (e) {
+      r.degraded = true; r.lastError = (e as Error).message || "Google push failed";
+    }
+  }
+
+  // --- CREATE / UPDATE / MOVE: Clarity-owned bookings on a mapped resource, in window.
   if (mappedResourceIds.length) {
     const todayWall = instantToWallClock(new Date().toISOString(), zone).slice(0, 10);
     const endDate = addDaysDateStr(todayWall, FORWARD_DAYS);
@@ -200,27 +249,53 @@ async function pushTenant(tenantId: string, zone: string, recordTypeId: string, 
       },
     });
 
+    // Linked-contact name+phone per booking (first contact link wins), batched.
+    const ids = candidates.map((b: any) => b.id);
+    const links = ids.length ? await db.recordLink.findMany({ where: { tenantId, recordId: { in: ids }, parentType: "contact", deletedAt: null } }) : [];
+    const contactIds = Array.from(new Set(links.map((l: any) => l.parentId)));
+    const contacts = contactIds.length ? await db.contact.findMany({ where: { id: { in: contactIds }, tenantId } }) : [];
+    const cById: Record<string, any> = {};
+    contacts.forEach((c: any) => { cById[c.id] = c; });
+    const contactByRecord: Record<string, any> = {};
+    for (const l of links) { if (!contactByRecord[l.recordId] && cById[l.parentId]) contactByRecord[l.recordId] = cById[l.parentId]; }
+
     for (const b of candidates) {
       const calendarId = calByResource.get(b.resourceId);
-      if (!calendarId || !b.appointmentAt) continue; // unmapped/unassigned -> skip cleanly
-      const { startWall, endWall, timeZone } = bookingEventTimes(b.appointmentAt, b.endAt || null, zone);
+      if (!calendarId || !b.appointmentAt) continue; // unmapped/unassigned -> handled by orphan pass
+      const resource = resById[b.resourceId] || null;
+      const durationMin = effectiveDurationMin(b.appointmentAt, b.endAt, resolveResourceDuration(resource, config, b.subtypeKey));
+      const { startWall, endWall, timeZone } = bookingEventTimes(b.appointmentAt, durationMin, zone);
       const summary = (b.title || "(busy)").trim() || "(busy)";
-      const sig = pushSignature(summary, startWall, endWall, b.resourceId, calendarId);
+      const contact = contactByRecord[b.id] || null;
+      const description = buildEventDescription({
+        statusLabel: stageLabel(b.stageKey), typeLabel: subLabel(b.subtypeKey),
+        contactName: contact?.name || null, contactPhone: contact?.phone || null,
+      });
+      const write = { summary, description, startWall, endWall, timeZone };
+      // Signature includes description so an edit to status/type/contact re-syncs.
+      const sig = pushSignature(`${summary}\u0002${description}`, startWall, endWall, b.resourceId, calendarId);
       try {
         if (!b.externalEventId) {
-          const id = await deps.insertEvent(tenantId, calendarId, { summary, startWall, endWall, timeZone });
+          const id = await deps.insertEvent(tenantId, calendarId, write);
           await db.record.update({ where: { id: b.id }, data: { externalEventId: id, externalCalendarId: calendarId, externalUpdatedAt: sig } });
           r.createdOut++;
+        } else if (b.externalCalendarId && b.externalCalendarId !== calendarId) {
+          // MOVE (reassigned to a different mapped calendar): delete old, then create
+          // new. Clear the id first so a failed insert leaves a clean create-next-tick
+          // state — never an orphan on the old calendar.
+          await deps.deleteEvent(tenantId, b.externalCalendarId, b.externalEventId);
+          await db.record.update({ where: { id: b.id }, data: { externalEventId: null, externalCalendarId: null, externalUpdatedAt: null } });
+          const id = await deps.insertEvent(tenantId, calendarId, write);
+          await db.record.update({ where: { id: b.id }, data: { externalEventId: id, externalCalendarId: calendarId, externalUpdatedAt: sig } });
+          r.updatedOut++;
         } else if (b.externalUpdatedAt !== sig) {
-          // Same-calendar update. (Cross-calendar reassignment is deferred to G.)
-          await deps.updateEvent(tenantId, b.externalCalendarId || calendarId, b.externalEventId, { summary, startWall, endWall, timeZone });
+          await deps.updateEvent(tenantId, b.externalCalendarId || calendarId, b.externalEventId, write);
           await db.record.update({ where: { id: b.id }, data: { externalUpdatedAt: sig, externalCalendarId: calendarId } });
           r.updatedOut++;
         }
         // else: signature matches -> already mirrored, no-op (idempotent)
       } catch (e) {
         r.degraded = true; r.lastError = (e as Error).message || "Google push failed";
-        // leave the booking + any stored id intact; retry next tick
       }
     }
   }

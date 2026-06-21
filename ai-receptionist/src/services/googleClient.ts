@@ -321,6 +321,7 @@ export async function listEvents(
 
 export interface GoogleEventWrite {
   summary: string;
+  description?: string | null; // CRM context (status/type/contact) — Google has no native fields
   startWall: string; // "YYYY-MM-DDTHH:MM" (zoneless wall-clock)
   endWall: string;   // "YYYY-MM-DDTHH:MM"
   timeZone: string;  // IANA name, e.g. "America/New_York"
@@ -329,6 +330,7 @@ export interface GoogleEventWrite {
 function eventBody(ev: GoogleEventWrite) {
   return {
     summary: ev.summary,
+    description: ev.description ?? undefined,
     start: { dateTime: `${ev.startWall}:00`, timeZone: ev.timeZone },
     end: { dateTime: `${ev.endWall}:00`, timeZone: ev.timeZone },
   };

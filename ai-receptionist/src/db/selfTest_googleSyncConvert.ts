@@ -3,7 +3,7 @@
 // Proves event instants -> wall-clock (DST summer/winter), all-day blocks,
 // midnight-spanning, no-end default, and the forward window (wall-clock -> instant).
 
-import { eventToWallClock, bookingEventTimes } from "../services/googleSyncService";
+import { eventToWallClock, bookingEventTimes, buildEventDescription } from "../services/googleSyncService";
 import type { GoogleEventRaw } from "../services/googleClient";
 
 const NY = "America/New_York";
@@ -53,14 +53,26 @@ eq(eventToWallClock(ev({}), NY), null, "no times -> null (skipped)");
 
 console.log("\n(6) OUT conversion: wall digits preserved + IANA zone (Google does DST):");
 {
-  const summer = bookingEventTimes(new Date("2026-07-14T14:00:00Z"), new Date("2026-07-14T15:00:00Z"), NY);
+  const summer = bookingEventTimes(new Date("2026-07-14T14:00:00Z"), 60, NY);
   eq(summer.startWall, "2026-07-14T14:00", "summer start wall preserved");
-  eq(summer.endWall, "2026-07-14T15:00", "summer end wall preserved");
+  eq(summer.endWall, "2026-07-14T15:00", "summer end = start + 60 min");
   eq(summer.timeZone, NY, "summer timeZone is the IANA name");
-  const winter = bookingEventTimes(new Date("2026-01-15T09:00:00Z"), null, NY);
+  const winter = bookingEventTimes(new Date("2026-01-15T09:00:00Z"), 45, NY);
   eq(winter.startWall, "2026-01-15T09:00", "winter start wall preserved");
-  eq(winter.endWall, "2026-01-15T09:30", "winter no-end -> +30 min default");
+  eq(winter.endWall, "2026-01-15T09:45", "winter end = start + 45 min (real duration)");
   eq(winter.timeZone, NY, "winter timeZone is the IANA name");
+}
+
+console.log("\n(7) event description builder (CRM context, null-safe):");
+{
+  const full = buildEventDescription({ statusLabel: "Confirmed", typeLabel: "Consultation", contactName: "Jane Doe", contactPhone: "+1 555 0100" });
+  eq(full.includes("Service: Consultation"), true, "includes service/type");
+  eq(full.includes("Status: Confirmed"), true, "includes status");
+  eq(full.includes("Contact: Jane Doe \u00b7 +1 555 0100"), true, "includes contact name + phone");
+  const noContact = buildEventDescription({ statusLabel: "Requested", typeLabel: "Follow-up", contactName: null, contactPhone: null });
+  eq(noContact.includes("Contact:"), false, "null contact -> no contact line (no crash)");
+  eq(noContact.includes("Status: Requested"), true, "still includes status with null contact");
+  eq(buildEventDescription({}).includes("Synced from Clarity."), true, "empty parts -> clean footer, no crash");
 }
 
 console.log("\n==================================");
