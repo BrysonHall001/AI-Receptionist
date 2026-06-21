@@ -31,6 +31,8 @@ import {
   upsertGoogleConnection,
   disconnectGoogle,
   getConnectionStatus,
+  setSyncSettings,
+  autoEnableOnConnect,
   setResourceCalendarMap,
   clearResourceCalendarMap,
   listResourceCalendarMaps,
@@ -83,6 +85,7 @@ googleRouter.get("/status", async (req: Request, res: Response) => {
     configured: googleConfigured(),
     writeGranted: status.writeGranted,
     syncEnabled: status.syncEnabled,
+    pushEnabled: status.pushEnabled,
     lastSyncedAt: status.lastSyncedAt,
     syncStatus: status.syncStatus,
     lastSyncError: status.lastSyncError,
@@ -131,6 +134,9 @@ googleRouter.put("/calendars/map", async (req: Request, res: Response) => {
   if (!googleCalendarId || typeof googleCalendarId !== "string") { res.status(400).json({ error: "A calendar is required" }); return; }
   if (!(await ownedResource(tenantId, resourceId))) { res.status(404).json({ error: "Resource not found" }); return; }
   await setResourceCalendarMap(tenantId, resourceId as string, googleCalendarId, calendarSummary ?? null);
+  // Auto-enable two-way sync on first mapping (read-in always; push only if write
+  // scope granted). No-ops if the owner has explicitly toggled sync off.
+  await autoEnableOnConnect(tenantId);
   res.json({ ok: true, mapping: { resourceId, googleCalendarId, calendarSummary: calendarSummary ?? null } });
 });
 
@@ -198,6 +204,9 @@ googleRouter.get("/oauth/callback", async (req: Request, res: Response) => {
       scope: tokens.scope ?? GOOGLE_SCOPES.join(" "),
       connectedById: req.user.id,
     });
+    // Reconnecting with the write scope (and mappings already present) flips push on
+    // automatically — unless the owner has explicitly toggled sync off.
+    await autoEnableOnConnect(tenantId);
     res.redirect(appReturn("connected"));
   } catch (e) {
     // Never log the code or any token.
@@ -219,6 +228,23 @@ googleRouter.post("/sync/run", requireRole("OWNER", "SUPER_ADMIN"), async (req: 
   } catch (e) {
     logger.error(`[google] manual sync failed: ${(e as Error).message}`);
     res.status(500).json({ error: "Sync run failed." });
+  }
+});
+
+// POST /api/google/sync/settings — the visible on/off control for two-way sync.
+// Body: { syncEnabled?: boolean, pushEnabled?: boolean }. OWNER/SUPER_ADMIN only.
+// Replaces hidden DB flag edits; the settings card calls this.
+googleRouter.post("/sync/settings", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.status(400).json({ error: "No portal selected (include ?tenantId=...)." }); return; }
+  const body = (req.body || {}) as { syncEnabled?: boolean; pushEnabled?: boolean };
+  try {
+    await setSyncSettings(tenantId, body);
+    const status = await getConnectionStatus(tenantId);
+    res.json({ ok: true, syncEnabled: status.syncEnabled, pushEnabled: status.pushEnabled });
+  } catch (e) {
+    logger.error(`[google] sync settings update failed: ${(e as Error).message}`);
+    res.status(500).json({ error: "Couldn't update sync settings." });
   }
 });
 

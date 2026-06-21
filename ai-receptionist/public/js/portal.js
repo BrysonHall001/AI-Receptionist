@@ -407,6 +407,28 @@
         }
         gHealth.innerHTML = rows.map((r) => `<div style="margin:2px 0;">${r}</div>`).join("");
 
+        // ---- Visible on/off control for two-way sync (replaces hidden DB flags). ----
+        const toggleWrap = el("label");
+        toggleWrap.style.cssText = "display:flex;gap:8px;align-items:center;margin:8px 0 4px;font-size:13px;cursor:pointer;";
+        const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!(data.syncEnabled || data.pushEnabled);
+        const toggleTxt = el("span", null, "Two-way calendar sync");
+        toggleWrap.appendChild(toggle); toggleWrap.appendChild(toggleTxt);
+        const toggleStat = el("span", "cell-muted"); toggleStat.style.cssText = "font-size:12px;margin-left:6px;";
+        toggleWrap.appendChild(toggleStat);
+        toggle.onchange = async () => {
+          const on = toggle.checked;
+          toggle.disabled = true; toggleStat.textContent = "Saving…";
+          try {
+            // Read-in turns on regardless; push only when write-back is granted.
+            await App.portalApi("/api/google/sync/settings", { method: "POST", body: JSON.stringify({ syncEnabled: on, pushEnabled: on && !!data.writeGranted }) });
+            App.util.toast(on ? (data.writeGranted ? "Two-way sync on" : "Sync on (reconnect to enable write-back)") : "Sync off");
+            renderGoogle();
+          } catch (e) {
+            toggleStat.textContent = ""; toggle.checked = !on; App.util.toast((e && e.message) || "Couldn't update", true);
+          } finally { toggle.disabled = false; }
+        };
+        gHealth.appendChild(toggleWrap);
+
         if (!data.writeGranted) {
           const recon = el("button", "btn btn-primary btn-sm", "Reconnect to enable write-back");
           recon.onclick = () => { window.location.href = googleConnectUrl(); };

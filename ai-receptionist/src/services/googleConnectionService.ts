@@ -32,7 +32,8 @@ export interface GoogleConnectionStatus {
   status: GoogleConnectionStatusValue | null; // null when no connection row exists
   scope: string | null;
   writeGranted: boolean;              // events write scope present (F can push); false => needs re-consent
-  syncEnabled: boolean;               // per-tenant sync switch
+  syncEnabled: boolean;               // per-tenant read-in switch
+  pushEnabled: boolean;               // per-tenant write-out switch
   lastSyncedAt: Date | null;          // last successful sync pass
   syncStatus: string | null;          // "ok" | "degraded" | null (before first sync)
   lastSyncError: string | null;       // reason when degraded
@@ -156,7 +157,7 @@ export async function getConnectionStatus(tenantId: string): Promise<GoogleConne
   const row = await db.googleConnection.findUnique({ where: { tenantId } });
   const mappings = await listResourceCalendarMaps(tenantId);
   if (!row) {
-    return { connected: false, accountEmail: null, status: null, scope: null, writeGranted: false, syncEnabled: false, lastSyncedAt: null, syncStatus: null, lastSyncError: null, mappings };
+    return { connected: false, accountEmail: null, status: null, scope: null, writeGranted: false, syncEnabled: false, pushEnabled: false, lastSyncedAt: null, syncStatus: null, lastSyncError: null, mappings };
   }
   const connected = row.status === "connected" && !!row.refreshTokenEnc;
   return {
@@ -166,11 +167,57 @@ export async function getConnectionStatus(tenantId: string): Promise<GoogleConne
     scope: row.scope ?? null,
     writeGranted: scopeHasWrite(row.scope),
     syncEnabled: !!row.syncEnabled,
+    pushEnabled: !!row.pushEnabled,
     lastSyncedAt: row.lastSyncedAt ?? null,
     syncStatus: row.syncStatus ?? null,
     lastSyncError: row.lastSyncError ?? null,
     mappings,
   };
+}
+
+const SYNC_STALE_MS = 15 * 60 * 1000; // degraded longer than this => treat data as stale
+
+/** Is this tenant's sync degraded AND stale (no recent successful pass)? Used by
+ *  the AI availability path to degrade safely instead of promising a stale slot.
+ *  A brief transient blip (recent lastSyncedAt) does NOT count — only persistent
+ *  degradation where we can't see fresh Google data. */
+export async function isSyncDegradedStale(tenantId: string, now: Date = new Date()): Promise<boolean> {
+  const row = await db.googleConnection.findUnique({
+    where: { tenantId },
+    select: { status: true, syncEnabled: true, syncStatus: true, lastSyncedAt: true },
+  });
+  if (!row || row.status !== "connected" || !row.syncEnabled) return false;
+  if (row.syncStatus !== "degraded") return false;
+  if (!row.lastSyncedAt) return true; // degraded and never synced -> definitely uncertain
+  return now.getTime() - new Date(row.lastSyncedAt).getTime() > SYNC_STALE_MS;
+}
+
+/** Set per-tenant sync switches (the visible on/off control). Records that the
+ *  owner has taken explicit control, so auto-enable won't override their choice. */
+export async function setSyncSettings(tenantId: string, input: { syncEnabled?: boolean; pushEnabled?: boolean }): Promise<void> {
+  const data: any = { syncConfiguredByUser: true };
+  if (typeof input.syncEnabled === "boolean") data.syncEnabled = input.syncEnabled;
+  if (typeof input.pushEnabled === "boolean") data.pushEnabled = input.pushEnabled;
+  await db.googleConnection.updateMany({ where: { tenantId }, data });
+}
+
+/** Auto-enable sync when a business connects + maps a calendar. Read-in turns on;
+ *  push turns on ONLY if the events write scope is granted (else it stays gated
+ *  until they reconnect). Does nothing once the owner has explicitly toggled sync
+ *  (so a deliberate "off" is never re-flipped on), and nothing if not connected. */
+export async function autoEnableOnConnect(tenantId: string): Promise<void> {
+  const row = await db.googleConnection.findUnique({
+    where: { tenantId },
+    select: { status: true, refreshTokenEnc: true, scope: true, syncConfiguredByUser: true },
+  });
+  if (!row || row.status !== "connected" || !row.refreshTokenEnc) return; // not connected
+  if (row.syncConfiguredByUser) return; // owner has taken manual control — respect it
+  const mapCount = await db.resourceCalendarMap.count({ where: { tenantId } });
+  if (!mapCount) return; // nothing mapped yet -> nothing to sync
+  await db.googleConnection.updateMany({
+    where: { tenantId },
+    data: { syncEnabled: true, pushEnabled: scopeHasWrite(row.scope) },
+  });
 }
 
 /** F-gate: does this tenant's connection have the events write scope? F must call
