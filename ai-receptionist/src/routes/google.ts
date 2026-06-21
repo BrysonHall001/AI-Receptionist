@@ -11,7 +11,7 @@
 
 import crypto from "crypto";
 import { Router, Request, Response } from "express";
-import { requireAuth, resolveTenantScope } from "../middleware/auth";
+import { requireAuth, requireRole, resolveTenantScope } from "../middleware/auth";
 import { isProduction, env } from "../config/env";
 import { logger } from "../utils/logger";
 import { google } from "googleapis";
@@ -22,6 +22,8 @@ import {
   fetchAccountEmail,
   chooseRefreshTokenForStore,
   listCalendars,
+  freeBusyForCalendar,
+  normalizeFreeBusyWindow,
   GoogleNotReachableError,
   GOOGLE_SCOPES,
 } from "../services/googleClient";
@@ -31,6 +33,7 @@ import {
   getConnectionStatus,
   setResourceCalendarMap,
   clearResourceCalendarMap,
+  listResourceCalendarMaps,
 } from "../services/googleConnectionService";
 import { prisma } from "../db/client";
 
@@ -201,4 +204,51 @@ googleRouter.post("/disconnect", async (req: Request, res: Response) => {
   if (!editable(req)) { res.status(403).json({ error: "Not authorized" }); return; }
   await disconnectGoogle(tenantId);
   res.json({ ok: true });
+});
+
+// GET /api/google/debug/freebusy?resourceId=&from=&to= — ADMIN-ONLY proof endpoint.
+// Reads RAW busy intervals for a resource's mapped calendar over a window, exactly
+// as Google returns them. NO timezone conversion, NO reshaping, NO availability
+// wiring — this only proves the pipe carries data. Distinct, explicit `result`
+// values so no failure ever looks like a silent "free":
+//   no_calendar_mapped | needs_reconnect | bad_request | ok (busy may be []).
+// Gated tighter than the settings card: OWNER/SUPER_ADMIN only (a debug tool).
+googleRouter.get("/debug/freebusy", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.status(400).json({ result: "bad_request", message: "No portal selected (include ?tenantId=...)." }); return; }
+
+  const { resourceId, from, to } = req.query as { resourceId?: string; from?: string; to?: string };
+  if (!resourceId || typeof resourceId !== "string") {
+    res.status(400).json({ result: "bad_request", message: "resourceId is required." }); return;
+  }
+  let window;
+  try { window = normalizeFreeBusyWindow(from, to); }
+  catch (e) { res.status(400).json({ result: "bad_request", message: (e as Error).message }); return; }
+
+  // Mapping lookup (sub-batch 3). No mapping = explicit, not an empty success.
+  const map = (await listResourceCalendarMaps(tenantId)).find((m) => m.resourceId === resourceId);
+  if (!map) {
+    res.status(200).json({ result: "no_calendar_mapped", resourceId, message: "No calendar mapped for this resource." });
+    return;
+  }
+
+  try {
+    const fb = await freeBusyForCalendar(tenantId, map.googleCalendarId, window.fromISO, window.toISO);
+    res.json({
+      result: "ok",
+      resourceId,
+      calendarId: map.googleCalendarId,
+      calendarSummary: map.calendarSummary,
+      window,
+      busy: fb.busy,                 // RAW from Google (real tz-aware instants), [] = genuinely free
+      googleErrors: fb.googleErrors, // e.g. a calendar the account can no longer see
+    });
+  } catch (e) {
+    if (e instanceof GoogleNotReachableError) {
+      res.status(502).json({ result: "needs_reconnect", message: "Google connection needs reconnecting." });
+      return;
+    }
+    logger.error(`[google] debug freebusy failed: ${(e as Error).message}`); // never logs tokens
+    res.status(502).json({ result: "error", message: "Couldn't reach Google. Please try reconnecting." });
+  }
 });

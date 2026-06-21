@@ -175,3 +175,66 @@ export async function listCalendars(tenantId: string): Promise<CalendarListEntry
     throw new GoogleNotReachableError();
   }
 }
+
+// ---- Debug free/busy (sub-batch 4: raw proof only; NOT wired into availability) ----
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Validate + normalize the debug window. Accepts a bare date (YYYY-MM-DD, treated
+ * as UTC midnight) or a full RFC3339 instant; returns the literal strings to hand
+ * to Google's free/busy (NOT reformatted through Date — we never mangle the window
+ * through a timezone). Pure + sandbox-testable. Throws on invalid input.
+ */
+export function normalizeFreeBusyWindow(from?: string | null, to?: string | null): { fromISO: string; toISO: string } {
+  const norm = (v: string | null | undefined, label: string): string => {
+    const s = String(v ?? "").trim();
+    if (!s) throw new Error(`"${label}" is required (a date YYYY-MM-DD or an RFC3339 instant)`);
+    const iso = DATE_ONLY.test(s) ? `${s}T00:00:00Z` : s;
+    if (Number.isNaN(new Date(iso).getTime())) throw new Error(`"${label}" is not a valid date/time: ${s}`);
+    return iso;
+  };
+  const fromISO = norm(from, "from");
+  const toISO = norm(to, "to");
+  if (new Date(toISO).getTime() <= new Date(fromISO).getTime()) throw new Error(`"to" must be after "from"`);
+  return { fromISO, toISO };
+}
+
+export interface FreeBusyRaw {
+  calendarId: string;
+  busy: Array<{ start?: string | null; end?: string | null }>; // RAW from Google, untouched
+  googleErrors: Array<{ domain?: string | null; reason?: string | null }>;
+}
+
+/**
+ * Call Google's free/busy for ONE calendar over [fromISO, toISO). Returns the RAW
+ * busy intervals exactly as Google sends them (real tz-aware instants — NO
+ * conversion, NO reshaping). Throws GoogleNotReachableError when there's no usable
+ * connection or the call fails/refresh fails. `timeoutMs` fails a slow call fast.
+ */
+export async function freeBusyForCalendar(
+  tenantId: string,
+  calendarId: string,
+  fromISO: string,
+  toISO: string,
+  timeoutMs = 10000,
+): Promise<FreeBusyRaw> {
+  const client = await makeAuthedClient(tenantId);
+  if (!client) throw new GoogleNotReachableError();
+  try {
+    const cal = google.calendar({ version: "v3", auth: client });
+    const resp = await cal.freebusy.query(
+      { requestBody: { timeMin: fromISO, timeMax: toISO, items: [{ id: calendarId }] } },
+      { timeout: timeoutMs },
+    );
+    const calData = (resp.data.calendars || {})[calendarId] || {};
+    return {
+      calendarId,
+      busy: (calData.busy as FreeBusyRaw["busy"]) || [],
+      googleErrors: (calData.errors as FreeBusyRaw["googleErrors"]) || [],
+    };
+  } catch {
+    // Revoked/expired refresh, auth error, timeout, or network failure. No token logged.
+    throw new GoogleNotReachableError();
+  }
+}
