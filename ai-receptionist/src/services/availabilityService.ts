@@ -18,7 +18,7 @@ import { OpenWindow, loadBookingConfig, durationForService, WEEKDAY_KEYS } from 
 import { getBusyTimes } from "./calendarSources";
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
-import { listResources, ResourceDTO, resolveResourceHours, resolveResourceDuration, resolveResourceBuffer } from "./resourceService";
+import { listResources, ResourceDTO, resolveResourceHours, resolveResourceDuration, resolveResourceBuffer, effectiveDurationMin } from "./resourceService";
 
 const db = prisma as any;
 
@@ -358,8 +358,9 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
     .map((r: any) => {
       const start = dateToWall(r.appointmentAt);
       // Block height uses the booking's resolved per-resource duration (resource's
-      // own value → business fallback), so a 60-min booking renders as 60 min.
-      const durationMin = resolveResourceDuration(r.resourceId ? resById[r.resourceId] : null, config, r.subtypeKey);
+      // own value → business fallback), so a 60-min booking renders as 60 min. An
+      // external/synced booking with a stored end uses that real end instead.
+      const durationMin = effectiveDurationMin(r.appointmentAt, r.endAt, resolveResourceDuration(r.resourceId ? resById[r.resourceId] : null, config, r.subtypeKey));
       return {
         id: r.id,
         title: r.title || "Booking",

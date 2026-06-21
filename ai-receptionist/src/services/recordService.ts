@@ -6,7 +6,7 @@
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
-import { resourceExists, resolveResourceHours, resolveResourceDuration } from "./resourceService";
+import { resourceExists, resolveResourceHours, resolveResourceDuration, effectiveDurationMin } from "./resourceService";
 import { randomValueForField } from "./contactService";
 import { emitEvent } from "../events/bus";
 import { EventActor } from "../events/types";
@@ -94,8 +94,9 @@ async function bookingOverlaps(
     const exStart = new Date(c.appointmentAt).getTime();
     // All candidates share the new booking's resourceId, so the same resource's
     // per-service duration applies (resource value → business fallback). This is
-    // what makes the overlap math protect the FULL real length.
-    const exEnd = exStart + resolveResourceDuration(resource, config, c.subtypeKey) * 60000;
+    // what makes the overlap math protect the FULL real length. An external/synced
+    // booking with a stored end uses that real end instead of the service duration.
+    const exEnd = exStart + effectiveDurationMin(c.appointmentAt, c.endAt, resolveResourceDuration(resource, config, c.subtypeKey)) * 60000;
     if (intervalsOverlap(newStart, newEnd, exStart, exEnd)) return true;
   }
   return false;

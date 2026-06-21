@@ -19,7 +19,7 @@ import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
-import { resolveResourceDuration } from "./resourceService";
+import { resolveResourceDuration, effectiveDurationMin } from "./resourceService";
 
 const db = prisma as any;
 
@@ -71,7 +71,7 @@ export const clarityBookingsSource: CalendarSource = {
 
     const rows = await db.record.findMany({
       where: { tenantId, recordTypeId, deletedAt: null, appointmentAt: { gte: from, lt: to }, ...(resourceId ? { resourceId } : {}) },
-      select: { appointmentAt: true, subtypeKey: true, stageKey: true },
+      select: { appointmentAt: true, subtypeKey: true, stageKey: true, endAt: true },
     });
 
     // When scoped to a resource, size that resource's busy blocks by ITS duration
@@ -88,7 +88,9 @@ export const clarityBookingsSource: CalendarSource = {
       // occupies it.
       if (r.stageKey === "no_show") continue;
       const start = dateToWall(r.appointmentAt);
-      const end = addMinutesWall(start, resolveResourceDuration(resource, config, r.subtypeKey));
+      // Honor a stored real end (external/synced events) when present; otherwise
+      // size by the service-based duration exactly as before (native unchanged).
+      const end = addMinutesWall(start, effectiveDurationMin(r.appointmentAt, r.endAt, resolveResourceDuration(resource, config, r.subtypeKey)));
       out.push({ start, end, sourceName: clarityBookingsSource.name });
     }
     return out;

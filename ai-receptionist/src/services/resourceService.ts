@@ -80,6 +80,26 @@ export function resolveResourceDuration(
   return durationForService(config, serviceKey);
 }
 
+/**
+ * The block length (minutes) for a booking. If an explicit end is stored — which
+ * only external/synced events have, because their arbitrary lengths don't fit the
+ * service-duration model — use the real start→end span. Otherwise fall back to
+ * `fallbackMin` (the existing service-based duration) EXACTLY as before, so native
+ * bookings (endAt null) are byte-for-byte unchanged. A non-positive or invalid
+ * span also falls back, never producing a zero/negative block.
+ */
+export function effectiveDurationMin(
+  appointmentAt: Date | string,
+  endAt: Date | string | null | undefined,
+  fallbackMin: number
+): number {
+  if (endAt) {
+    const diff = Math.round((new Date(endAt).getTime() - new Date(appointmentAt).getTime()) / 60000);
+    if (Number.isFinite(diff) && diff > 0) return diff;
+  }
+  return fallbackMin;
+}
+
 /** Effective buffer (minutes): the resource's own buffer if set, else business. */
 export function resolveResourceBuffer(
   resource: { bufferMin?: any } | null | undefined,
