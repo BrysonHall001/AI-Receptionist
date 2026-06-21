@@ -70,6 +70,13 @@ model Tenant {
   // One of the five allowed IDs (see src/config/voices.ts); defaults to the
   // original voice so nothing changes for existing portals.
   voiceId      String        @default("uIZsnBL0YK1S5j69bAih")
+  // Canonical per-business timezone as a NAMED IANA zone (e.g. "America/New_York"),
+  // never a numeric offset, so daylight saving is handled correctly later. Defaults
+  // to US Eastern so every existing + new portal has a sane value. FOUNDATION ONLY:
+  // nothing reads this yet — it's stored for the future Google Calendar integration
+  // (the instant<->wall-clock conversion will key off it). The whole app stays on the
+  // zoneless wall-clock model until then; this field changes no current time logic.
+  timezone     String        @default("America/New_York")
   status       TenantStatus  @default(ACTIVE)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
