@@ -10,6 +10,7 @@ import { inviteRouter } from "./routes/invites";
 import { authRouter } from "./routes/auth";
 import { adminRouter } from "./routes/admin";
 import { apiRouter } from "./routes/api";
+import { googleRouter } from "./routes/google";
 import { registerAutomationEngine } from "./automation/engine";
 import { isProduction } from "./config/env";
 
@@ -63,6 +64,9 @@ export function createApp(): express.Express {
   app.use("/api/auth", authRouter);
   // Master portal surface (SUPER_ADMIN only — enforced inside the router)
   app.use("/api/admin", adminRouter);
+  // Google Calendar OAuth (read-only) — auth + non-CLIENT_USER enforced inside.
+  // MUST be mounted before the catch-all /api router so its paths match first.
+  app.use("/api/google", googleRouter);
   // Portal dashboard surface (requires auth — enforced inside the router)
   app.use("/api", apiRouter);
 
