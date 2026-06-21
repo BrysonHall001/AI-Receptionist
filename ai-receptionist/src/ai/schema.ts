@@ -4,6 +4,11 @@ import { z } from "zod";
 export const ExtractedSchema = z.object({
   name: z.string().nullable().optional(),
   intent: z.string().nullable().optional(),
+  // The callback number the caller SPEAKS or spells out — capture the digits they
+  // say (even given one at a time, "one one two three…") here, e.g. "1123456789".
+  // This is the number to reach them on, and is SEPARATE from the verified inbound
+  // caller ID (tracked elsewhere). Never put the caller-ID number here when the
+  // caller has stated a different one. Null when they haven't given a number.
   phone: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   // Appointment capture (capture-only). A ZONELESS wall-clock string in the
@@ -13,10 +18,12 @@ export const ExtractedSchema = z.object({
   // they want booked (mapped to a Booking service later).
   appointment_datetime: z.string().nullable().optional(),
   service: z.string().nullable().optional(),
-  // Staff/resource the caller asks for BY NAME (e.g. "I'd like Alice"), in the
-  // caller's own words, or null when they don't name one. Fuzzy-matched to a real
-  // configured resource at booking time; an unrecognized name falls back to
-  // Unassigned (never an invented assignment).
+  // The staff member the booking was made with: the one the caller named, OR the
+  // one YOU (the assistant) selected and STATED to the caller (e.g. when the caller
+  // had no preference and you said "I've got you with Alice"). Whatever staff name
+  // you say out loud for the booking MUST be recorded here verbatim, so the booking
+  // matches what you told the caller. Null ONLY when no staff was named or announced.
+  // Fuzzy-matched to a real configured resource at booking time.
   resource: z.string().nullable().optional(),
 });
 export type Extracted = z.infer<typeof ExtractedSchema>;
