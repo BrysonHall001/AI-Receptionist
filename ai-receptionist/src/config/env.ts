@@ -54,6 +54,19 @@ const envSchema = z.object({
   // production. Empty in dev (endpoints stay open locally); REQUIRED to use
   // them in production.
   INTERNAL_API_SECRET: z.string().default(""),
+
+  // ---- GOOGLE CALENDAR (read-only; connection plumbing) ----
+  // All OPTIONAL so the app boots fine with Google unconfigured. The OAuth
+  // client id/secret come from Google Cloud Console (set up in a later sub-batch).
+  // GOOGLE_OAUTH_REDIRECT_URL is an optional override; normally the callback URL
+  // is derived from APP_BASE_URL. GOOGLE_TOKEN_ENCRYPTION_KEY is the secret used
+  // to AES-256-GCM encrypt stored Google tokens at rest — REQUIRED before any
+  // token can be stored (the storage layer refuses to write plaintext), but
+  // optional here so the app still boots without Google in use.
+  GOOGLE_CLIENT_ID: z.string().default(""),
+  GOOGLE_CLIENT_SECRET: z.string().default(""),
+  GOOGLE_OAUTH_REDIRECT_URL: z.string().default(""),
+  GOOGLE_TOKEN_ENCRYPTION_KEY: z.string().default(""),
 });
 
 export type Env = z.infer<typeof envSchema>;
