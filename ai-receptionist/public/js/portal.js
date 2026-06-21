@@ -338,20 +338,23 @@
     sec.appendChild(bar);
 
     // ---- Google Calendar connection (read-only; minimal connect/disconnect) ----
-    // Status + Connect/Disconnect only. NO calendar listing / mapping yet (later
-    // sub-batch). Tokens never reach the browser — the status is {connected, email}.
+    // Connect/Disconnect/status + per-resource calendar mapping. NO freebusy/
+    // availability wiring yet. Tokens never reach the browser.
     const gWrap = el("div");
     gWrap.style.cssText = "margin-top:18px;padding-top:16px;border-top:1px solid var(--border,#e5e7eb);";
     gWrap.innerHTML =
       `<h3 style="margin:0 0 6px;">Google Calendar</h3>` +
-      `<p class="cell-muted" style="margin:0 0 10px;">Connect your Google Calendar so Clarity can read busy times (read-only). Mapping calendars to staff comes next.</p>`;
+      `<p class="cell-muted" style="margin:0 0 10px;">Connect your Google Calendar so Clarity can read busy times (read-only), then map each calendar to a staff member.</p>`;
     const gStatusLine = el("p", "cell-muted");
     gStatusLine.style.cssText = "margin:0 0 10px;font-size:13px;";
     gStatusLine.textContent = "Checking…";
     const gBar = el("div");
     gBar.style.cssText = "display:flex;gap:10px;align-items:center;";
+    const gMap = el("div"); // per-resource calendar mapping (populated when connected)
+    gMap.style.cssText = "margin-top:14px;";
     gWrap.appendChild(gStatusLine);
     gWrap.appendChild(gBar);
+    gWrap.appendChild(gMap);
     sec.appendChild(gWrap);
 
     // Build the Connect URL the same way portalApi scopes the tenant (super-admin
@@ -367,8 +370,9 @@
     async function renderGoogle() {
       let data;
       try { data = await App.portalApi("/api/google/status"); }
-      catch { gStatusLine.textContent = "Couldn't load Google status."; gBar.innerHTML = ""; return; }
+      catch { gStatusLine.textContent = "Couldn't load Google status."; gBar.innerHTML = ""; gMap.innerHTML = ""; return; }
       gBar.innerHTML = "";
+      gMap.innerHTML = "";
       if (!data.configured) {
         gStatusLine.textContent = "Google Calendar isn't set up on this server yet.";
         return;
@@ -383,12 +387,102 @@
           catch (e) { App.util.toast((e && e.message) || "Disconnect failed", true); dis.disabled = false; }
         };
         gBar.appendChild(dis);
+        renderMappings(data.mappings || []);
       } else {
         gStatusLine.textContent = "Not connected.";
         const conn = el("button", "btn btn-primary btn-sm", "Connect Google Calendar");
         conn.onclick = () => { window.location.href = googleConnectUrl(); };
         gBar.appendChild(conn);
       }
+    }
+
+    // Per-resource calendar mapping. Reuses the same <select> + save-on-change +
+    // toast pattern as the voice/timezone pickers. Distinguishes "couldn't reach
+    // Google" (reconnect prompt) from "connected, zero calendars" (clear note).
+    async function renderMappings(mappings) {
+      gMap.innerHTML = `<div class="cell-muted" style="font-size:13px;">Loading calendars…</div>`;
+      let calendars, resources;
+      try {
+        [calendars, resources] = await Promise.all([
+          App.portalApi("/api/google/calendars"),
+          App.portalApi("/api/resources"),
+        ]);
+      } catch (e) {
+        // The calendars call fails closed with needsReconnect; show that, not an empty list.
+        const needsReconnect = e && e.data && e.data.needsReconnect;
+        gMap.innerHTML = "";
+        const warn = el("p", "cell-muted");
+        warn.style.cssText = "font-size:13px;color:var(--danger,#b91c1c);";
+        warn.textContent = needsReconnect
+          ? "Google connection needs reconnecting — click Disconnect, then Connect again."
+          : ((e && e.message) || "Couldn't load calendars.");
+        gMap.appendChild(warn);
+        return;
+      }
+      const cals = (calendars && calendars.calendars) || [];
+      const byResource = {};
+      (mappings || []).forEach((m) => { byResource[m.resourceId] = m; });
+
+      gMap.innerHTML = "";
+      const title = el("div", "form-label", "Map calendars to staff");
+      gMap.appendChild(title);
+
+      if (!resources.length) {
+        const none = el("p", "cell-muted"); none.style.cssText = "font-size:13px;";
+        none.textContent = "Add staff/resources first, then map a calendar to each.";
+        gMap.appendChild(none);
+        return;
+      }
+      if (!cals.length) {
+        const none = el("p", "cell-muted"); none.style.cssText = "font-size:13px;";
+        none.textContent = "Connected, but this Google account has no calendars to map.";
+        gMap.appendChild(none);
+        return;
+      }
+
+      resources.forEach((r) => {
+        const row = el("div");
+        row.style.cssText = "display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;";
+        const name = el("div"); name.style.cssText = "min-width:140px;font-size:13px;font-weight:600;";
+        name.textContent = r.name;
+        const sel = el("select", "input"); sel.style.cssText = "min-width:240px;";
+        const cur = byResource[r.id];
+        // "Not mapped" option
+        const optNone = el("option"); optNone.value = ""; optNone.textContent = "— Not mapped —"; sel.appendChild(optNone);
+        // If the current mapping's calendar is gone from the account, keep it visible.
+        if (cur && !cals.some((c) => c.id === cur.googleCalendarId)) {
+          const opt = el("option"); opt.value = cur.googleCalendarId;
+          opt.textContent = (cur.calendarSummary || cur.googleCalendarId) + " (unavailable)";
+          opt.selected = true; sel.appendChild(opt);
+        }
+        cals.forEach((c) => {
+          const opt = el("option"); opt.value = c.id;
+          opt.textContent = c.summary + (c.primary ? " (primary)" : "");
+          if (cur && cur.googleCalendarId === c.id) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        const stat = el("span", "cell-muted"); stat.style.cssText = "font-size:12px;min-height:14px;";
+        sel.onchange = async () => {
+          sel.disabled = true; stat.textContent = "Saving…";
+          try {
+            if (!sel.value) {
+              await App.portalApi("/api/google/calendars/map", { method: "DELETE", body: JSON.stringify({ resourceId: r.id }) });
+              App.util.toast(r.name + " unmapped");
+            } else {
+              const chosen = cals.find((c) => c.id === sel.value);
+              await App.portalApi("/api/google/calendars/map", { method: "PUT", body: JSON.stringify({ resourceId: r.id, googleCalendarId: sel.value, calendarSummary: chosen ? chosen.summary : null }) });
+              App.util.toast(r.name + " mapped to " + (chosen ? chosen.summary : "calendar"));
+            }
+            stat.textContent = "Saved.";
+            setTimeout(() => { if (stat.textContent === "Saved.") stat.textContent = ""; }, 2000);
+          } catch (e) {
+            stat.textContent = "";
+            App.util.toast((e && e.message) || "Save failed", true);
+          } finally { sel.disabled = false; }
+        };
+        row.appendChild(name); row.appendChild(sel); row.appendChild(stat);
+        gMap.appendChild(row);
+      });
     }
 
     // One-time toast from the OAuth round-trip's ?google=<flag>, then clear it.
