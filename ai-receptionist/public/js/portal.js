@@ -256,6 +256,52 @@
     headRight.appendChild(voiceNote);
     headRight.appendChild(voiceStatus);
 
+    // ---- Business time zone picker (foundation only; nothing converts off it yet) ----
+    // MUST stay in sync with TIMEZONE_OPTIONS in src/config/timezones.ts. The server
+    // also sends this list (data.timezoneOptions); this small fallback just guarantees
+    // the picker renders if that's ever missing.
+    const TZ_FALLBACK = [
+      { id: "America/New_York", label: "Eastern (New York)" },
+      { id: "America/Chicago", label: "Central (Chicago)" },
+      { id: "America/Denver", label: "Mountain (Denver)" },
+      { id: "America/Los_Angeles", label: "Pacific (Los Angeles)" },
+      { id: "America/Phoenix", label: "Arizona (no daylight saving)" },
+      { id: "Pacific/Honolulu", label: "Hawaii (no daylight saving)" },
+    ];
+    const tzOptions = (data.timezoneOptions && data.timezoneOptions.length) ? data.timezoneOptions : TZ_FALLBACK;
+    const tzLabel = el("label", "cell-muted");
+    tzLabel.style.cssText = "font-size:13px;font-weight:600;margin-top:10px;";
+    tzLabel.textContent = "Time zone";
+    const tzSel = el("select", "input");
+    tzSel.style.cssText = "width:100%;";
+    tzOptions.forEach((o) => {
+      const opt = el("option");
+      opt.value = o.id;
+      opt.textContent = o.label;
+      if (o.id === (data.timezone || "")) opt.selected = true;
+      tzSel.appendChild(opt);
+    });
+    const tzStatus = el("span", "cell-muted");
+    tzStatus.style.cssText = "font-size:12px;min-height:14px;";
+    tzSel.onchange = async () => {
+      tzSel.disabled = true;
+      tzStatus.textContent = "Saving…";
+      try {
+        await App.portalApi("/api/account/timezone", { method: "PATCH", body: JSON.stringify({ timezone: tzSel.value }) });
+        tzStatus.textContent = "Saved.";
+        App.util.toast("Business time zone saved");
+        setTimeout(() => { if (tzStatus.textContent === "Saved.") tzStatus.textContent = ""; }, 2500);
+      } catch (e) {
+        tzStatus.textContent = "";
+        App.util.toast((e && e.message) || "Save failed", true);
+      } finally {
+        tzSel.disabled = false;
+      }
+    };
+    headRight.appendChild(tzLabel);
+    headRight.appendChild(tzSel);
+    headRight.appendChild(tzStatus);
+
     head.appendChild(headLeft);
     head.appendChild(headRight);
     sec.appendChild(head);

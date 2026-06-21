@@ -1,5 +1,6 @@
 import { prisma } from "../db/client";
 import { DEFAULT_VOICE_ID } from "../config/voices";
+import { DEFAULT_TIMEZONE } from "../config/timezones";
 
 export async function listPortals() {
   const tenants = await prisma.tenant.findMany({
@@ -40,6 +41,7 @@ export async function getPortal(id: string) {
     receptionistEnabled: (t as any).receptionistEnabled === true,
     voiceMode: ((t as any).voiceMode as string) || ((t as any).receptionistEnabled === true ? "WALKIE" : "OFF"),
     voiceId: ((t as any).voiceId as string) || DEFAULT_VOICE_ID,
+    timezone: ((t as any).timezone as string) || DEFAULT_TIMEZONE,
     aiInstructions: (t as any).aiInstructions ?? "",
     createdAt: t.createdAt.toISOString(),
   };
@@ -120,7 +122,7 @@ export async function createPortal(input: {
 
 export async function updatePortal(
   id: string,
-  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; voiceId: string; aiInstructions: string }>,
+  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; voiceId: string; timezone: string; aiInstructions: string }>,
 ) {
   return prisma.tenant.update({ where: { id }, data: data as any });
 }

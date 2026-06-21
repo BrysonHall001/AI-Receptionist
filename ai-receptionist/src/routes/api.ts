@@ -24,6 +24,7 @@ import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../servi
 import { listExports, createExport, getExportCsv } from "../services/exportService";
 import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
 import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voices";
+import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns } from "../services/userService";
 import { createInvite, inviteLink, sendInvite, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
@@ -517,6 +518,9 @@ apiRouter.get("/account/ai-instructions", async (req: Request, res: Response) =>
     voiceId: (portal as any)?.voiceId ?? DEFAULT_VOICE_ID,
     voiceMode: (portal as any)?.voiceMode ?? "OFF",
     voiceOptions: VOICE_OPTIONS,
+    // Per-business timezone picker (foundation only — nothing converts off this yet).
+    timezone: (portal as any)?.timezone ?? DEFAULT_TIMEZONE,
+    timezoneOptions: TIMEZONE_OPTIONS,
   });
 });
 
@@ -563,6 +567,30 @@ apiRouter.patch("/account/voice", async (req: Request, res: Response) => {
   try {
     await updatePortal(tenantId, { voiceId } as any);
     res.json({ ok: true, voiceId });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// ---- Business timezone (foundation for future Google Calendar work) ----
+// Same editors as the voice picker. Saves immediately. The value MUST be one of
+// the allowed IANA zones (see src/config/timezones.ts) — anything else is
+// rejected. NOTHING converts time off this yet; it is stored only.
+apiRouter.patch("/account/timezone", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!aiInstructionsEditable(req)) {
+    res.status(403).json({ error: "You don't have permission to change the business timezone." });
+    return;
+  }
+  const timezone = String((req.body ?? {}).timezone ?? "");
+  if (!isValidTimezone(timezone)) {
+    res.status(400).json({ error: "Pick one of the available timezones." });
+    return;
+  }
+  try {
+    await updatePortal(tenantId, { timezone } as any);
+    res.json({ ok: true, timezone });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
