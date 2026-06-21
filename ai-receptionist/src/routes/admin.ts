@@ -4,7 +4,8 @@ import { listPortals, getPortal, createPortal, updatePortal } from "../services/
 import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
 import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
-import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket } from "../services/feedbackService";
+import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, listAllFeedbackExportRows } from "../services/feedbackService";
+import { createExport, listMasterExports, getMasterExportCsv } from "../services/exportService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -247,6 +248,36 @@ adminRouter.post("/feedback", async (req: Request, res: Response) => {
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
   }
+});
+
+// Export rows for the master-hub's OWN tickets (one row per reply). Master roles.
+adminRouter.get("/feedback/export-rows", async (req: Request, res: Response) => {
+  res.json(await listFeedbackExportRows(feedbackCtxMaster(req) as any));
+});
+
+// Export rows across ALL portals + the master hub (Portal column per row; capped).
+adminRouter.get("/feedback/export-rows-all", async (req: Request, res: Response) => {
+  res.json(await listAllFeedbackExportRows(req.user!));
+});
+
+// Master-hub export history (no single portal). Shared by the master-local and
+// all-portals export popups; gated to master roles by the admin router above.
+adminRouter.get("/exports", async (_req: Request, res: Response) => {
+  res.json(await listMasterExports());
+});
+
+adminRouter.post("/exports", async (req: Request, res: Response) => {
+  const { name, rowCount, fields, csv, scope } = (req.body ?? {}) as { name?: string; rowCount?: number; fields?: unknown; csv?: string; scope?: string };
+  if (!name || !name.trim()) { res.status(400).json({ error: "An export name is required" }); return; }
+  if (typeof csv !== "string") { res.status(400).json({ error: "Nothing to export" }); return; }
+  const rec = await createExport({ tenantId: null, scope: scope === "all" ? "all" : "master", name, rowCount: rowCount || 0, fields, csv, createdById: req.user!.id });
+  res.json(rec);
+});
+
+adminRouter.get("/exports/:id/download", async (req: Request, res: Response) => {
+  const result = await getMasterExportCsv(req.params.id);
+  if (!result) { res.status(404).json({ error: "Export not found" }); return; }
+  res.json(result);
 });
 
 adminRouter.get("/feedback/:id", async (req: Request, res: Response) => {

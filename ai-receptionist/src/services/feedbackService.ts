@@ -117,31 +117,11 @@ export async function listFeedback(ctx: Ctx): Promise<{ active: any[]; resolved:
   };
 }
 
-// Flat rows for the ticket export: ONE ROW PER REPLY, with the ticket's own fields
-// repeated on each of its reply rows. A ticket with ZERO replies still yields
-// EXACTLY ONE row (reply fields null) so unanswered/open tickets are never dropped.
-// Scope rules match listFeedback: portal moderators get all tickets in the portal,
-// other portal users get only their own; master scope gets master-hub tickets.
-export async function listFeedbackExportRows(ctx: Ctx): Promise<any[]> {
-  let where: any;
-  if (ctx.scope === "master") {
-    if (!isMasterRole(ctx.actor.role)) return [];
-    where = { tenantId: null };
-  } else {
-    if (!ctx.tenantId) return [];
-    where = { tenantId: ctx.tenantId };
-    if (!isPortalMod(ctx.actor.role)) where.createdById = ctx.actor.id;
-  }
-  const tickets = await (prisma as any).feedbackTicket.findMany({
-    where,
-    include: {
-      createdBy: true,
-      resolvedBy: true,
-      tenant: true,
-      messages: { include: { author: true }, orderBy: { createdAt: "asc" } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+// Expand tickets (with createdBy/resolvedBy/tenant/messages included) into flat
+// export rows: ONE ROW PER REPLY, ticket fields repeated; a ticket with ZERO
+// replies yields EXACTLY ONE row (reply fields null). Shared by the per-portal,
+// master-hub, and all-portals export paths so the shape never diverges.
+function expandTicketsToExportRows(tickets: any[]): any[] {
   const person = (u: any) => (u ? (u.name || u.email || null) : null);
   const out: any[] = [];
   for (const t of tickets) {
@@ -166,6 +146,52 @@ export async function listFeedbackExportRows(ctx: Ctx): Promise<any[]> {
     }
   }
   return out;
+}
+
+const FEEDBACK_EXPORT_INCLUDE = {
+  createdBy: true,
+  resolvedBy: true,
+  tenant: true,
+  messages: { include: { author: true }, orderBy: { createdAt: "asc" } },
+} as const;
+
+// Newest-N tickets cap for the all-portals export (safety valve for big datasets).
+export const ALL_PORTALS_EXPORT_TICKET_CAP = 5000;
+
+// Flat rows for the ticket export: ONE ROW PER REPLY, with the ticket's own fields
+// repeated on each of its reply rows. A ticket with ZERO replies still yields
+// EXACTLY ONE row (reply fields null) so unanswered/open tickets are never dropped.
+// Scope rules match listFeedback: portal moderators get all tickets in the portal,
+// other portal users get only their own; master scope gets master-hub tickets.
+export async function listFeedbackExportRows(ctx: Ctx): Promise<any[]> {
+  let where: any;
+  if (ctx.scope === "master") {
+    if (!isMasterRole(ctx.actor.role)) return [];
+    where = { tenantId: null };
+  } else {
+    if (!ctx.tenantId) return [];
+    where = { tenantId: ctx.tenantId };
+    if (!isPortalMod(ctx.actor.role)) where.createdById = ctx.actor.id;
+  }
+  const tickets = await (prisma as any).feedbackTicket.findMany({
+    where,
+    include: FEEDBACK_EXPORT_INCLUDE,
+    orderBy: { createdAt: "desc" },
+  });
+  return expandTicketsToExportRows(tickets);
+}
+
+// Flat export rows across ALL portals + the master hub, each row carrying its
+// Portal name ("Master hub" for tenantId null). Master roles only. Capped at the
+// newest ALL_PORTALS_EXPORT_TICKET_CAP tickets. Reuses the same reply-expansion.
+export async function listAllFeedbackExportRows(actor: AuthUser): Promise<any[]> {
+  if (!isMasterRole(actor.role)) return [];
+  const tickets = await (prisma as any).feedbackTicket.findMany({
+    include: FEEDBACK_EXPORT_INCLUDE,
+    orderBy: { createdAt: "desc" },
+    take: ALL_PORTALS_EXPORT_TICKET_CAP,
+  });
+  return expandTicketsToExportRows(tickets);
 }
 
 export async function getFeedbackTicket(id: string, ctx: Ctx): Promise<any | null> {

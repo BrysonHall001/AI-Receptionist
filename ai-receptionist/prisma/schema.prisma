@@ -229,8 +229,9 @@ model SavedFilter {
 
 model ExportRecord {
   id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scope       String?  // null/"portal" = a portal export; "master" = master-hub; "all" = all-portals
   name        String
   rowCount    Int      @default(0)
   fields      Json     @default("[]")
@@ -239,6 +240,7 @@ model ExportRecord {
   createdAt   DateTime @default(now())
 
   @@index([tenantId])
+  @@index([scope])
 }
 
 model FieldDef {
