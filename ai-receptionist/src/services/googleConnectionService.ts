@@ -14,6 +14,7 @@
 
 import { prisma } from "../db/client";
 import { encryptToken, decryptToken } from "./tokenCrypto";
+import { scopeHasWrite } from "./googleClient";
 
 const db = prisma as any;
 
@@ -30,6 +31,11 @@ export interface GoogleConnectionStatus {
   accountEmail: string | null;
   status: GoogleConnectionStatusValue | null; // null when no connection row exists
   scope: string | null;
+  writeGranted: boolean;              // events write scope present (F can push); false => needs re-consent
+  syncEnabled: boolean;               // per-tenant sync switch
+  lastSyncedAt: Date | null;          // last successful sync pass
+  syncStatus: string | null;          // "ok" | "degraded" | null (before first sync)
+  lastSyncError: string | null;       // reason when degraded
   mappings: ResourceCalendarMapping[];
 }
 
@@ -150,7 +156,7 @@ export async function getConnectionStatus(tenantId: string): Promise<GoogleConne
   const row = await db.googleConnection.findUnique({ where: { tenantId } });
   const mappings = await listResourceCalendarMaps(tenantId);
   if (!row) {
-    return { connected: false, accountEmail: null, status: null, scope: null, mappings };
+    return { connected: false, accountEmail: null, status: null, scope: null, writeGranted: false, syncEnabled: false, lastSyncedAt: null, syncStatus: null, lastSyncError: null, mappings };
   }
   const connected = row.status === "connected" && !!row.refreshTokenEnc;
   return {
@@ -158,8 +164,20 @@ export async function getConnectionStatus(tenantId: string): Promise<GoogleConne
     accountEmail: row.accountEmail ?? null,
     status: (row.status as GoogleConnectionStatusValue) ?? "error",
     scope: row.scope ?? null,
+    writeGranted: scopeHasWrite(row.scope),
+    syncEnabled: !!row.syncEnabled,
+    lastSyncedAt: row.lastSyncedAt ?? null,
+    syncStatus: row.syncStatus ?? null,
+    lastSyncError: row.lastSyncError ?? null,
     mappings,
   };
+}
+
+/** F-gate: does this tenant's connection have the events write scope? F must call
+ *  this before any push so a write never fires that would 403. (No write here.) */
+export async function connectionHasWriteScope(tenantId: string): Promise<boolean> {
+  const row = await db.googleConnection.findUnique({ where: { tenantId }, select: { scope: true } });
+  return scopeHasWrite(row?.scope);
 }
 
 // ---- Resource <-> calendar mappings -----------------------------------------

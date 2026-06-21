@@ -45,11 +45,12 @@ async function main() {
   console.log("======================================\n");
 
   // ---- Pure logic (no DB) ---------------------------------------------------
-  console.log("(1) scope is READ-ONLY only (no write/events scope):");
-  check(GOOGLE_SCOPES.length === 1, "exactly one scope requested");
-  check(GOOGLE_SCOPES[0] === "https://www.googleapis.com/auth/calendar.readonly", "scope is calendar.readonly");
+  console.log("(1) scope is READ-ONLY + EVENTS write (events only, NOT full calendar):");
+  check(GOOGLE_SCOPES.length === 2, "two scopes requested (readonly + events)");
+  check(GOOGLE_SCOPES.includes("https://www.googleapis.com/auth/calendar.readonly"), "calendar.readonly present");
+  check(GOOGLE_SCOPES.includes("https://www.googleapis.com/auth/calendar.events"), "calendar.events (write) present");
   const scopeBlob = GOOGLE_SCOPES.join(" ");
-  check(!/calendar\.events/.test(scopeBlob) && !/\/auth\/calendar(\s|$)/.test(scopeBlob), "no write/events scope present");
+  check(!/\/auth\/calendar(\s|$)/.test(scopeBlob), "NOT the full calendar scope (events only)");
 
   console.log("\n(2) consent URL is well-formed:");
   check(googleConfigured() === true, "googleConfigured() true when id+secret set");

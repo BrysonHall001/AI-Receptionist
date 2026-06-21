@@ -81,6 +81,11 @@ googleRouter.get("/status", async (req: Request, res: Response) => {
     connected: status.connected,
     accountEmail: status.accountEmail,
     configured: googleConfigured(),
+    writeGranted: status.writeGranted,
+    syncEnabled: status.syncEnabled,
+    lastSyncedAt: status.lastSyncedAt,
+    syncStatus: status.syncStatus,
+    lastSyncError: status.lastSyncError,
     mappings: status.mappings, // [{resourceId, googleCalendarId, calendarSummary}] — no tokens
   });
 });

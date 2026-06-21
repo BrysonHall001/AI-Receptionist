@@ -17,7 +17,24 @@ type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
 // READ-ONLY ONLY. Requesting a write scope here would be a scope-creep bug — the
 // whole point of this phase is read-only busy/free. Do NOT add calendar (rw),
 // calendar.events, or any *.events scope.
-export const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"] as const;
+// READ scope (calendars + events read) plus EVENTS read/write (for write-back in F).
+// NOT full "calendar" scope, per the locked decision — only events. An already-
+// connected tenant that granted only readonly must RE-CONSENT to gain write.
+export const GOOGLE_SCOPES = [
+  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
+] as const;
+
+export const GOOGLE_WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const GOOGLE_FULL_SCOPE = "https://www.googleapis.com/auth/calendar";
+
+/** True if a stored granted-scope string includes events write (or full calendar).
+ *  Used to detect whether a connection can push to Google yet (F gates on this). */
+export function scopeHasWrite(scope?: string | null): boolean {
+  if (!scope) return false;
+  const parts = String(scope).split(/\s+/).filter(Boolean);
+  return parts.includes(GOOGLE_WRITE_SCOPE) || parts.includes(GOOGLE_FULL_SCOPE);
+}
 
 function cfg() {
   return {
