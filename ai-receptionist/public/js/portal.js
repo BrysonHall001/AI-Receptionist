@@ -336,6 +336,80 @@
     bar.appendChild(save);
     bar.appendChild(status);
     sec.appendChild(bar);
+
+    // ---- Google Calendar connection (read-only; minimal connect/disconnect) ----
+    // Status + Connect/Disconnect only. NO calendar listing / mapping yet (later
+    // sub-batch). Tokens never reach the browser — the status is {connected, email}.
+    const gWrap = el("div");
+    gWrap.style.cssText = "margin-top:18px;padding-top:16px;border-top:1px solid var(--border,#e5e7eb);";
+    gWrap.innerHTML =
+      `<h3 style="margin:0 0 6px;">Google Calendar</h3>` +
+      `<p class="cell-muted" style="margin:0 0 10px;">Connect your Google Calendar so Clarity can read busy times (read-only). Mapping calendars to staff comes next.</p>`;
+    const gStatusLine = el("p", "cell-muted");
+    gStatusLine.style.cssText = "margin:0 0 10px;font-size:13px;";
+    gStatusLine.textContent = "Checking…";
+    const gBar = el("div");
+    gBar.style.cssText = "display:flex;gap:10px;align-items:center;";
+    gWrap.appendChild(gStatusLine);
+    gWrap.appendChild(gBar);
+    sec.appendChild(gWrap);
+
+    // Build the Connect URL the same way portalApi scopes the tenant (super-admin
+    // appends ?tenantId of the entered portal). It's a TOP-LEVEL navigation, not fetch.
+    function googleConnectUrl() {
+      let url = "/api/google/connect";
+      if (App.state.me && App.isAdminTier(App.state.me.role) && App.state.currentPortalId) {
+        url += "?tenantId=" + encodeURIComponent(App.state.currentPortalId);
+      }
+      return url;
+    }
+
+    async function renderGoogle() {
+      let data;
+      try { data = await App.portalApi("/api/google/status"); }
+      catch { gStatusLine.textContent = "Couldn't load Google status."; gBar.innerHTML = ""; return; }
+      gBar.innerHTML = "";
+      if (!data.configured) {
+        gStatusLine.textContent = "Google Calendar isn't set up on this server yet.";
+        return;
+      }
+      if (data.connected) {
+        gStatusLine.innerHTML = `Connected${data.accountEmail ? " as <strong>" + App.util.esc(data.accountEmail) + "</strong>" : ""}.`;
+        const dis = el("button", "btn btn-ghost btn-sm", "Disconnect");
+        dis.onclick = async () => {
+          if (App.ui && App.ui.confirmModal && !(await App.ui.confirmModal({ title: "Disconnect Google Calendar", message: "Disconnect this Google account? Clarity will stop reading its calendars.", confirmText: "Disconnect" }))) return;
+          dis.disabled = true;
+          try { await App.portalApi("/api/google/disconnect", { method: "POST" }); App.util.toast("Google Calendar disconnected"); renderGoogle(); }
+          catch (e) { App.util.toast((e && e.message) || "Disconnect failed", true); dis.disabled = false; }
+        };
+        gBar.appendChild(dis);
+      } else {
+        gStatusLine.textContent = "Not connected.";
+        const conn = el("button", "btn btn-primary btn-sm", "Connect Google Calendar");
+        conn.onclick = () => { window.location.href = googleConnectUrl(); };
+        gBar.appendChild(conn);
+      }
+    }
+
+    // One-time toast from the OAuth round-trip's ?google=<flag>, then clear it.
+    (function consumeGoogleFlag() {
+      const m = /[?&]google=([^&#]+)/.exec(window.location.search || "");
+      if (!m) return;
+      const flag = decodeURIComponent(m[1]);
+      const msg = {
+        connected: ["Google Calendar connected", false],
+        denied: ["Google sign-in was cancelled", true],
+        state: ["Sign-in expired or didn't match — please try again", true],
+        auth: ["Please sign in again, then reconnect", true],
+        unconfigured: ["Google Calendar isn't set up on this server yet", true],
+        error: ["Couldn't connect Google Calendar — please try again", true],
+      }[flag];
+      if (msg) App.util.toast(msg[0], msg[1]);
+      try { const u = new URL(window.location.href); u.searchParams.delete("google"); history.replaceState(null, "", u.pathname + u.search + u.hash); } catch (e) {}
+    })();
+
+    renderGoogle();
+
     host.appendChild(sec);
   }
 
