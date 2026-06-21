@@ -21,9 +21,20 @@ import {
   exchangeCodeForTokens,
   fetchAccountEmail,
   chooseRefreshTokenForStore,
+  listCalendars,
+  GoogleNotReachableError,
   GOOGLE_SCOPES,
 } from "../services/googleClient";
-import { upsertGoogleConnection, disconnectGoogle, getConnectionStatus } from "../services/googleConnectionService";
+import {
+  upsertGoogleConnection,
+  disconnectGoogle,
+  getConnectionStatus,
+  setResourceCalendarMap,
+  clearResourceCalendarMap,
+} from "../services/googleConnectionService";
+import { prisma } from "../db/client";
+
+const db = prisma as any;
 
 export const googleRouter = Router();
 googleRouter.use(requireAuth);
@@ -55,13 +66,73 @@ function clearStateCookie(res: Response): void {
   res.clearCookie(STATE_COOKIE, { path: "/api/google" });
 }
 
-// GET /api/google/status — leak-proof: {connected, accountEmail, configured}.
+// GET /api/google/status — leak-proof: {connected, accountEmail, configured, mappings}.
 googleRouter.get("/status", async (req: Request, res: Response) => {
   const tenantId = resolveTenantScope(req);
   if (!tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
   if (!editable(req)) { res.status(403).json({ error: "Not authorized" }); return; }
   const status = await getConnectionStatus(tenantId);
-  res.json({ connected: status.connected, accountEmail: status.accountEmail, configured: googleConfigured() });
+  res.json({
+    connected: status.connected,
+    accountEmail: status.accountEmail,
+    configured: googleConfigured(),
+    mappings: status.mappings, // [{resourceId, googleCalendarId, calendarSummary}] — no tokens
+  });
+});
+
+// GET /api/google/calendars — the connected account's calendars (id + name only).
+// 200 with an array (possibly empty = "connected, zero calendars"); a 502 with
+// {needsReconnect:true} when the connection is missing/revoked or Google is
+// unreachable — so the UI can tell "no calendars" apart from "couldn't reach Google".
+googleRouter.get("/calendars", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  if (!editable(req)) { res.status(403).json({ error: "Not authorized" }); return; }
+  try {
+    const calendars = await listCalendars(tenantId);
+    res.json({ calendars });
+  } catch (e) {
+    if (e instanceof GoogleNotReachableError) {
+      res.status(502).json({ error: e.message, needsReconnect: true });
+      return;
+    }
+    logger.error(`[google] list calendars failed: ${(e as Error).message}`); // never logs tokens
+    res.status(502).json({ error: "Couldn't reach Google. Please try reconnecting.", needsReconnect: true });
+  }
+});
+
+// Resource ownership guard — the resource must belong to this tenant (and not be
+// soft-deleted), so a mapping can't be set/cleared cross-tenant.
+async function ownedResource(tenantId: string, resourceId: unknown): Promise<boolean> {
+  if (!resourceId || typeof resourceId !== "string") return false;
+  const r = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null } });
+  return !!r;
+}
+
+// PUT /api/google/calendars/map — map a resource to a calendar (upsert; one
+// calendar per resource, re-mapping replaces). Returns the mapping (no tokens).
+googleRouter.put("/calendars/map", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  if (!editable(req)) { res.status(403).json({ error: "Not authorized" }); return; }
+  const { resourceId, googleCalendarId, calendarSummary } = (req.body ?? {}) as {
+    resourceId?: string; googleCalendarId?: string; calendarSummary?: string | null;
+  };
+  if (!googleCalendarId || typeof googleCalendarId !== "string") { res.status(400).json({ error: "A calendar is required" }); return; }
+  if (!(await ownedResource(tenantId, resourceId))) { res.status(404).json({ error: "Resource not found" }); return; }
+  await setResourceCalendarMap(tenantId, resourceId as string, googleCalendarId, calendarSummary ?? null);
+  res.json({ ok: true, mapping: { resourceId, googleCalendarId, calendarSummary: calendarSummary ?? null } });
+});
+
+// DELETE /api/google/calendars/map — clear a resource's mapping.
+googleRouter.delete("/calendars/map", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  if (!editable(req)) { res.status(403).json({ error: "Not authorized" }); return; }
+  const { resourceId } = (req.body ?? {}) as { resourceId?: string };
+  if (!(await ownedResource(tenantId, resourceId))) { res.status(404).json({ error: "Resource not found" }); return; }
+  await clearResourceCalendarMap(resourceId as string);
+  res.json({ ok: true });
 });
 
 // GET /api/google/connect — top-level browser navigation (NOT fetch). Mints a

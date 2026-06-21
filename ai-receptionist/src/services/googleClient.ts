@@ -123,3 +123,55 @@ export async function makeAuthedClient(tenantId: string): Promise<OAuth2Client |
   });
   return client;
 }
+
+/** Distinguishes "couldn't reach Google / connection needs reconnecting" from a
+ *  genuine empty calendar list. The route turns this into a clean, clear error
+ *  (never a 500, never a silent empty list). */
+export class GoogleNotReachableError extends Error {
+  readonly needsReconnect = true;
+  constructor(message = "Google connection needs reconnecting") {
+    super(message);
+    this.name = "GoogleNotReachableError";
+  }
+}
+
+export interface CalendarListEntry {
+  id: string;
+  summary: string;
+  primary: boolean;
+}
+
+/**
+ * List the calendars the connected account can see. READ-ONLY (calendarList.list).
+ * Returns ONLY {id, summary, primary} — never tokens. Throws GoogleNotReachableError
+ * when there's no usable connection or the Google call fails (e.g. revoked token),
+ * so the caller can tell that apart from a real (but empty) list. This is the first
+ * live Google API call, so it also exercises makeAuthedClient's auto-refresh.
+ */
+export async function listCalendars(tenantId: string): Promise<CalendarListEntry[]> {
+  const client = await makeAuthedClient(tenantId);
+  if (!client) throw new GoogleNotReachableError();
+  try {
+    const cal = google.calendar({ version: "v3", auth: client });
+    const out: CalendarListEntry[] = [];
+    let pageToken: string | undefined;
+    do {
+      const resp = await cal.calendarList.list({ maxResults: 250, pageToken, showHidden: false });
+      for (const item of resp.data.items || []) {
+        if (!item.id) continue;
+        out.push({
+          id: item.id,
+          summary: (item.summaryOverride || item.summary || item.id) as string,
+          primary: !!item.primary,
+        });
+      }
+      pageToken = resp.data.nextPageToken || undefined;
+    } while (pageToken);
+    // Primary first, then alphabetical — stable, readable order for the dropdown.
+    out.sort((a, b) => (a.primary === b.primary ? a.summary.localeCompare(b.summary) : a.primary ? -1 : 1));
+    return out;
+  } catch {
+    // Revoked/expired refresh, auth error, or network failure. Never log tokens.
+    throw new GoogleNotReachableError();
+  }
+}
