@@ -173,3 +173,67 @@ export async function runGoogleCalendarSync(
   }
   return summary;
 }
+
+// ---------------------------------------------------------------------------
+// DIAGNOSTIC (read-only). previewSync runs the SAME setup the real sync uses —
+// same timezone, same forward window, same mapping lookup, same listEvents call —
+// but writes NOTHING. It exists to answer "why did the pull find zero events?":
+// it shows the window requested, every mapping's calendarId, and the raw events
+// (count + a sample) Google actually returned per calendar. Safe to run on prod.
+// ---------------------------------------------------------------------------
+
+export interface SyncPreviewCalendar {
+  calendarId: string;
+  resourceIds: string[];
+  ok: boolean;
+  error?: string;
+  eventCount: number;
+  sample: { id: string; summary: string | null; start: string | null; end: string | null }[];
+}
+export interface SyncPreview {
+  tenantId: string;
+  timezone: string;
+  now: string;
+  window: { timeMin: string; timeMax: string };
+  mappingCount: number;
+  mappings: { resourceId: string; calendarId: string; calendarSummary: string | null }[];
+  calendars: SyncPreviewCalendar[];
+}
+
+export async function previewSync(tenantId: string, deps: SyncDeps = { listEvents: realListEvents }): Promise<SyncPreview> {
+  const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+  const zone = isValidTimeZone(tenant?.timezone) ? tenant.timezone : DEFAULT_TIMEZONE;
+  const now = new Date();
+  const window = forwardWindow(zone, now);
+
+  const maps = await listResourceCalendarMaps(tenantId);
+  const byCalendar = new Map<string, string[]>();
+  for (const m of maps) {
+    const arr = byCalendar.get(m.googleCalendarId) || [];
+    arr.push(m.resourceId);
+    byCalendar.set(m.googleCalendarId, arr);
+  }
+
+  const calendars: SyncPreviewCalendar[] = [];
+  for (const [calendarId, resourceIds] of byCalendar) {
+    try {
+      const events = await deps.listEvents(tenantId, calendarId, window.timeMin, window.timeMax);
+      calendars.push({
+        calendarId, resourceIds, ok: true, eventCount: events.length,
+        sample: events.slice(0, 10).map((e) => ({
+          id: e.id, summary: e.summary,
+          start: e.startDateTime || e.startDate, end: e.endDateTime || e.endDate,
+        })),
+      });
+    } catch (e) {
+      calendars.push({ calendarId, resourceIds, ok: false, error: (e as Error).message, eventCount: 0, sample: [] });
+    }
+  }
+
+  return {
+    tenantId, timezone: zone, now: now.toISOString(), window,
+    mappingCount: maps.length,
+    mappings: maps.map((m) => ({ resourceId: m.resourceId, calendarId: m.googleCalendarId, calendarSummary: m.calendarSummary })),
+    calendars,
+  };
+}

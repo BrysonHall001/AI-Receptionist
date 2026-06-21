@@ -36,7 +36,7 @@ import {
   listResourceCalendarMaps,
 } from "../services/googleConnectionService";
 import { prisma } from "../db/client";
-import { runGoogleCalendarSync } from "../services/googleSyncService";
+import { runGoogleCalendarSync, previewSync } from "../services/googleSyncService";
 import { syncRemoveAllGoogleBookingsForResource, syncRemoveAllGoogleBookingsForTenant } from "../services/recordService";
 
 const db = prisma as any;
@@ -214,6 +214,22 @@ googleRouter.post("/sync/run", requireRole("OWNER", "SUPER_ADMIN"), async (req: 
   } catch (e) {
     logger.error(`[google] manual sync failed: ${(e as Error).message}`);
     res.status(500).json({ error: "Sync run failed." });
+  }
+});
+
+// GET /api/google/debug/sync-preview — ADMIN-ONLY read-only diagnostic. Runs the
+// EXACT setup the read-in sync uses (timezone, forward window, mapping lookup,
+// events.list) but writes nothing. Answers "why zero events?": shows the window,
+// every mapping's calendarId, and the raw events Google returned per calendar.
+googleRouter.get("/debug/sync-preview", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.status(400).json({ error: "No portal selected (include ?tenantId=...)." }); return; }
+  try {
+    const preview = await previewSync(tenantId);
+    res.json({ ok: true, preview });
+  } catch (e) {
+    logger.error(`[google] sync-preview failed: ${(e as Error).message}`);
+    res.status(500).json({ error: (e as Error).message });
   }
 });
 googleRouter.post("/disconnect", async (req: Request, res: Response) => {
