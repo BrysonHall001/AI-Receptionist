@@ -97,6 +97,8 @@ model Tenant {
   inboundEndpoints InboundEndpoint[]
   inboundCalls     InboundCall[]
   recordTypes      RecordType[]
+  googleConnection GoogleConnection?
+  calendarMaps     ResourceCalendarMap[]
   records          Record[]
   recordLinks      RecordLink[]
   stageHistory     StageHistory[]
@@ -664,6 +666,44 @@ model Resource {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+  calendarMap ResourceCalendarMap?
+
+  @@index([tenantId])
+}
+
+// ONE Google Calendar connection per business (1:1 with Tenant). The owner
+// connects once (later sub-batch); this sub-batch only defines storage. Tokens
+// are stored ENCRYPTED (AES-256-GCM) — never plaintext, never logged, never
+// returned by any GET. Null token columns + status "revoked" = disconnected.
+// `status`: "connected" | "revoked" | "error".
+model GoogleConnection {
+  id                   String    @id @default(cuid())
+  tenantId             String    @unique
+  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accountEmail         String?
+  accessTokenEnc       String?
+  refreshTokenEnc      String?
+  accessTokenExpiresAt DateTime?
+  scope                String?
+  status               String    @default("connected")
+  connectedById        String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+// One row per Clarity resource that's mapped to a Google calendar (the hybrid:
+// one business connection, many calendar->resource maps). `resourceId` is unique
+// so a resource maps to at most one calendar. NOT used by availability this batch.
+model ResourceCalendarMap {
+  id               String   @id @default(cuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  resourceId       String   @unique
+  resource         Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  googleCalendarId String
+  calendarSummary  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([tenantId])
 }
