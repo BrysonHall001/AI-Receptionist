@@ -722,6 +722,10 @@ model GoogleConnection {
   // Per-tenant WRITE-OUT (push) switch, independent of read-in. DEFAULT OFF. Push
   // also requires the events write scope (re-consent) before anything is written.
   pushEnabled          Boolean   @default(false)
+  // True once the owner has explicitly used the on/off toggle. Auto-enable-on-connect
+  // only fires while this is false, so a deliberate "off" is never re-flipped on by
+  // saving another calendar mapping.
+  syncConfiguredByUser Boolean   @default(false)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 }
