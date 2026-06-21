@@ -719,6 +719,9 @@ model GoogleConnection {
   // Per-tenant two-way-sync switch. DEFAULT OFF: the sync engine does nothing for
   // a connection until this is flipped true (so it ships dormant in production).
   syncEnabled          Boolean   @default(false)
+  // Per-tenant WRITE-OUT (push) switch, independent of read-in. DEFAULT OFF. Push
+  // also requires the events write scope (re-consent) before anything is written.
+  pushEnabled          Boolean   @default(false)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 }
