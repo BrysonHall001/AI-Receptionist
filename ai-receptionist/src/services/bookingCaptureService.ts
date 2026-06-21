@@ -96,6 +96,51 @@ async function pickFreeResource(tenantId: string, appointmentDatetime: string, s
   return free.length ? free[0].id : null;
 }
 
+/** Heuristic: does this call look like the caller intended to book? Used only to
+ *  decide whether a missing/garbage appointment time should be logged LOUDLY (an
+ *  "announced but not recorded" loss) versus quietly (a normal non-booking call). */
+function looksLikeBookingIntent(intent?: string | null, resource?: string | null, service?: string | null): boolean {
+  if ((resource && resource.trim()) || (service && service.trim())) return true;
+  return /book|appoint|schedul|reschedul|reserv/i.test(String(intent || ""));
+}
+
+/** Create the booking, RESCUING a named-but-unbookable resource: if createRecord
+ *  rejects the chosen resource because it's closed or already booked, auto-assign
+ *  a resource that IS free at this time (the same availability union the AI uses)
+ *  and retry — so a resource the AI named/picked that can't actually take the slot
+ *  is rescued, never silently lost. Returns the booking, or null when nobody can
+ *  take it (logged loudly). Non-closed/overlap errors are rethrown (logged loudly
+ *  by the caller's handler). */
+async function createBookingWithRescue(
+  tenantId: string,
+  p: { title: string; subtypeKey: string | null; appointmentDatetime: string; resourceId: string | null; haveResources: boolean; callSid?: string },
+): Promise<{ id: string } | null> {
+  const attempt = (rid: string | null) =>
+    createRecord(tenantId, BOOKING_RECORD_TYPE_KEY, {
+      title: p.title, subtypeKey: p.subtypeKey, stageKey: REQUESTED_STAGE_KEY, appointmentAt: p.appointmentDatetime, resourceId: rid,
+    }, { source: "ai" });
+
+  try {
+    return await attempt(p.resourceId);
+  } catch (e: any) {
+    const code = e && e.code;
+    if ((code === "closed" || code === "overlap") && p.haveResources) {
+      const free = await pickFreeResource(tenantId, p.appointmentDatetime, p.subtypeKey);
+      if (free && free !== p.resourceId) {
+        logger.warn(`[booking-capture] chosen resource ${p.resourceId ?? "(unassigned)"} can't take ${p.appointmentDatetime} (${code}); RESCUING onto free resource ${free} (${p.callSid ?? "?"})`);
+        try {
+          return await attempt(free);
+        } catch (e2: any) {
+          logger.warn(`[booking-capture] rescue retry ALSO failed for ${p.appointmentDatetime} (${e2?.code ?? e2?.message}) — booking NOT placed; caller still captured (${p.callSid ?? "?"})`);
+          return null;
+        }
+      }
+      logger.warn(`[booking-capture] chosen resource can't take ${p.appointmentDatetime} (${code}) and NO other resource is free — booking NOT placed; caller still captured (${p.callSid ?? "?"})`);
+      return null;
+    }
+    throw e; // unexpected — surface loudly via the caller's handler
+  }
+}
 
 export async function createBookingFromCall(params: {
   tenantId: string;
@@ -103,12 +148,20 @@ export async function createBookingFromCall(params: {
   appointmentDatetime?: string | null;
   service?: string | null;
   resource?: string | null;
+  intent?: string | null;
   callSid?: string;
 }): Promise<string | null> {
-  const { tenantId, contactId, appointmentDatetime, service, resource } = params;
+  const { tenantId, contactId, appointmentDatetime, service, resource, intent } = params;
 
-  // GUARD: only proceed on a real, concrete, parseable wall-clock date+time.
-  if (!isConcreteAppointment(appointmentDatetime)) return null;
+  // GUARD: only proceed on a real, concrete, parseable wall-clock date+time. When
+  // a booking was clearly INTENDED but no concrete time was recorded, log LOUDLY —
+  // this is the "announced but not recorded" loss, the worst failure for bookings.
+  if (!isConcreteAppointment(appointmentDatetime)) {
+    if (looksLikeBookingIntent(intent, resource, service)) {
+      logger.warn(`[booking-capture] booking INTENDED but appointment_datetime was missing/not-concrete (value=${JSON.stringify(appointmentDatetime ?? null)}, intent=${intent ?? "-"}, resource=${resource ?? "-"}, service=${service ?? "-"}) — NO booking created; caller still captured (${params.callSid ?? "?"})`);
+    }
+    return null;
+  }
 
   // Look up this portal's Booking type + its services (for the Type mapping).
   const recordTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY);
@@ -140,40 +193,33 @@ export async function createBookingFromCall(params: {
   // Title: the caller's own words for the service, else a neutral fallback.
   const title = (service || "").trim() || "Phone booking";
 
-  // Resolve the caller's spoken staff name to a real resource (or null/Unassigned).
-  // createRecord then applies that resource's OWN hours/duration and the per-
-  // resource double-booking lock; AI bookings can never override a conflict, so a
-  // clash hard-blocks (no booking) — the caller is still captured as a contact/lead.
+  // Resolve the caller's spoken/announced staff name to a real resource (or null).
   let resourceId = await resolveResourceByName(tenantId, resource);
+  const resources = await listResources(tenantId);
+  const haveResources = resources.length > 0;
 
   // SAFETY NET (decision #4): a booking must never land Unassigned-and-unsynced
   // when staff exist. If no resource was resolved (no name / no confident match)
   // but the business HAS bookable resources, auto-assign one that is FREE at this
   // time, reusing the availability union the AI uses. If NONE is free, do NOT
   // force-assign a busy resource (that would double-book) — fail safe: no booking,
-  // the caller is still captured as a contact/lead, exactly like a clash. With
-  // zero resources configured, Unassigned is the only lane, so we leave it as-is.
-  if (!resourceId) {
-    const resources = await listResources(tenantId);
-    if (resources.length > 0) {
-      const free = await pickFreeResource(tenantId, appointmentDatetime as string, subtypeKey);
-      if (!free) {
-        logger.info(`[booking-capture] resources exist but none free at ${appointmentDatetime}; booking not placed (${params.callSid ?? "?"})`);
-        return null;
-      }
-      resourceId = free;
+  // logged LOUDLY. With zero resources configured, Unassigned is the only lane.
+  if (!resourceId && haveResources) {
+    const free = await pickFreeResource(tenantId, appointmentDatetime as string, subtypeKey);
+    if (!free) {
+      logger.warn(`[booking-capture] no resource was named and NONE is free at ${appointmentDatetime} — booking NOT placed; caller still captured (${params.callSid ?? "?"})`);
+      return null;
     }
+    resourceId = free;
   }
 
-  // Reuse createRecord — appointmentDatetime goes through the SAME wall-clock
-  // parser as the manual picker, so the stored digits match what the caller said.
-  const booking = await createRecord(tenantId, BOOKING_RECORD_TYPE_KEY, {
-    title,
-    subtypeKey,
-    stageKey: REQUESTED_STAGE_KEY,
-    appointmentAt: appointmentDatetime,
-    resourceId,
-  }, { source: "ai" });
+  // Create — RESCUING a named-but-unbookable resource onto a free one (so the AI
+  // naming someone who can't actually take the slot never silently loses it). All
+  // no-booking outcomes inside here are logged loudly.
+  const booking = await createBookingWithRescue(tenantId, {
+    title, subtypeKey, appointmentDatetime: appointmentDatetime as string, resourceId, haveResources, callSid: params.callSid,
+  });
+  if (!booking) return null; // rescue/none-free already logged loudly
 
   // Link the caller's contact using the SAME mechanism as the UI.
   try {

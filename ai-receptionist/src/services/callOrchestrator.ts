@@ -261,6 +261,7 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
         appointmentDatetime: extracted.appointment_datetime ?? null,
         service: extracted.service ?? null,
         resource: extracted.resource ?? null,
+        intent: extracted.intent ?? null,
         callSid,
       });
     } catch (err) {
