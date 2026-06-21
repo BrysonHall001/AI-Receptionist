@@ -183,9 +183,22 @@
     load();
   }
 
-  function isValidHttpUrl(s) {
-    try { const u = new URL(s); return u.protocol === "http:" || u.protocol === "https:"; }
-    catch { return false; }
+  // Normalize one attachment link. Returns {skip} for blank rows, {ok:false} for
+  // junk, or {ok:true, value} with the normalized URL. Bare domains get "https://"
+  // prepended. MUST stay identical to normalizeAttachmentUrl in feedbackService.ts.
+  function normalizeAttachmentUrl(raw) {
+    const s = String(raw == null ? "" : raw).trim();
+    if (!s) return { skip: true, ok: true };
+    if (/\s/.test(s)) return { skip: false, ok: false };
+    let candidate;
+    if (/^https?:\/\//i.test(s)) candidate = s;
+    else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return { skip: false, ok: false };
+    else candidate = "https://" + s;
+    let u;
+    try { u = new URL(candidate); } catch { return { skip: false, ok: false }; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return { skip: false, ok: false };
+    if (!u.hostname || u.hostname.indexOf(".") === -1) return { skip: false, ok: false };
+    return { skip: false, ok: true, value: candidate };
   }
   // Repeatable attachment-link rows (add-another + remove), reused on the create
   // form and the detail-view "add links" control. Reuses .input / .link-danger.
@@ -196,7 +209,7 @@
     function addRow(value) {
       const row = el("div", "fb-link-row");
       row.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:6px";
-      const inp = el("input", "input"); inp.type = "text"; inp.placeholder = "https://…"; inp.value = value || ""; inp.style.marginBottom = "0";
+      const inp = el("input", "input"); inp.type = "text"; inp.placeholder = "google.com or https://…"; inp.value = value || ""; inp.style.marginBottom = "0";
       const rm = el("button", "link-danger", "Remove"); rm.type = "button";
       rm.onclick = () => row.remove();
       row.appendChild(inp); row.appendChild(rm);
@@ -208,10 +221,15 @@
     wrap.appendChild(addBtn);
     addRow(""); // start with one empty row
     function collect() {
-      const vals = Array.from(rowsHost.querySelectorAll("input")).map((i) => i.value.trim()).filter((v) => v);
-      const bad = vals.find((v) => !isValidHttpUrl(v));
-      if (bad) return { ok: false, error: `Not a valid link: ${bad}` };
-      return { ok: true, urls: vals };
+      const inputs = Array.from(rowsHost.querySelectorAll("input"));
+      const out = [];
+      for (const i of inputs) {
+        const r = normalizeAttachmentUrl(i.value);
+        if (r.skip) continue;
+        if (!r.ok) return { ok: false, error: `Not a valid link: ${i.value.trim()}` };
+        out.push(r.value);
+      }
+      return { ok: true, urls: out };
     }
     function clear() { rowsHost.innerHTML = ""; addRow(""); }
     return { node: wrap, collect, clear };

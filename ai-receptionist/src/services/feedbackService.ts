@@ -39,20 +39,38 @@ function httpError(message: string, status: number): Error {
   return e;
 }
 
-// Validate + normalize a list of attachment link URLs. Each must be a valid
-// http/https URL. We only STORE and DISPLAY these (never fetch them server-side),
-// so no SSRF/private-IP checks are needed. Blank entries are dropped.
+// Normalize one attachment link. Returns {skip} for blank rows, {ok:false} for
+// junk, or {ok:true, value} with the normalized URL. A bare domain ("google.com")
+// gets "https://" prepended; an already-http(s) URL is kept; any other scheme or a
+// hostname without a dot ("asdf") or whitespace is rejected. MUST stay identical to
+// the frontend normalizeAttachmentUrl in feedback.js (no bundler to share one copy).
+function normalizeAttachmentUrl(raw: unknown): { skip: boolean; ok: boolean; value?: string } {
+  const s = String(raw ?? "").trim();
+  if (!s) return { skip: true, ok: true };
+  if (/\s/.test(s)) return { skip: false, ok: false };
+  let candidate: string;
+  if (/^https?:\/\//i.test(s)) candidate = s;
+  else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return { skip: false, ok: false }; // some other scheme
+  else candidate = "https://" + s;
+  let u: URL;
+  try { u = new URL(candidate); } catch { return { skip: false, ok: false }; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return { skip: false, ok: false };
+  if (!u.hostname || u.hostname.indexOf(".") === -1) return { skip: false, ok: false };
+  return { skip: false, ok: true, value: candidate };
+}
+
+// Validate + normalize a list of attachment link URLs. We only STORE and DISPLAY
+// these (never fetch them server-side), so no SSRF/private-IP checks are needed.
+// Blank entries are dropped; the STORED value is the normalized one (with https://).
 function sanitizeAttachments(raw: unknown): string[] {
   if (raw == null) return [];
   if (!Array.isArray(raw)) throw httpError("Attachments must be a list of links.", 400);
   const out: string[] = [];
   for (const item of raw) {
-    const s = String(item ?? "").trim();
-    if (!s) continue;
-    let url: URL;
-    try { url = new URL(s); } catch { throw httpError(`Not a valid URL: ${s}`, 400); }
-    if (url.protocol !== "http:" && url.protocol !== "https:") throw httpError(`Only http/https links are allowed: ${s}`, 400);
-    out.push(s);
+    const r = normalizeAttachmentUrl(item);
+    if (r.skip) continue;
+    if (!r.ok) throw httpError(`Not a valid link: ${String(item ?? "").trim()}`, 400);
+    out.push(r.value!);
   }
   return out;
 }

@@ -80,6 +80,18 @@ async function main() {
     // Sanity: getFeedbackTicket surfaces attachments to the detail view.
     const viewed = await getFeedbackTicket(created.id, ctxCreator);
     check(Array.isArray(viewed.attachments) && viewed.attachments.length === 4, "getFeedbackTicket returns attachments for display");
+
+    console.log("(7) bare domains normalize to https:// (create + add); blanks dropped; junk rejected:");
+    const norm = await createFeedbackTicket(ctxCreator, { problem: "p", description: "d", attachments: ["google.com", "google.com/some/path", "https://already.example.com", "", "  "] });
+    check(
+      JSON.stringify(norm.attachments) === JSON.stringify(["https://google.com", "https://google.com/some/path", "https://already.example.com"]),
+      `normalized + blank rows dropped (${JSON.stringify(norm.attachments)})`,
+    );
+    await expectStatus(() => createFeedbackTicket(ctxCreator, { problem: "p", description: "d", attachments: ["hello world"] }), 400, "'hello world' (spaces) rejected on create");
+    await expectStatus(() => createFeedbackTicket(ctxCreator, { problem: "p", description: "d", attachments: ["asdf"] }), 400, "'asdf' (no dot) rejected on create");
+    const addNorm = await addFeedbackAttachments(norm.id, ctxOwner, { urls: ["dropbox.com/x"] });
+    check(addNorm.attachments[addNorm.attachments.length - 1] === "https://dropbox.com/x", "bare domain normalized on the add-to-existing path");
+    await expectStatus(() => addFeedbackAttachments(norm.id, ctxOwner, { urls: ["asdf"] }), 400, "'asdf' rejected on the add path");
   } catch (e) {
     console.error("\nUNEXPECTED ERROR:", e);
     failures.push("unexpected error: " + (e as Error).message);
