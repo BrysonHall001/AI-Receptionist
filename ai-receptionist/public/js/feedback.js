@@ -38,6 +38,12 @@
     const role = me().role;
     return role === "OWNER" || role === "SUPER_ADMIN";
   }
+  // Export (both per-portal and all-portals) is limited to the admin tier:
+  // OWNER/SUPER_ADMIN/AUDITOR. me().role is the EFFECTIVE role, so impersonating
+  // a CLIENT_USER/PORTAL_ADMIN correctly drops the export ability.
+  function canExport() {
+    return isMasterRole(me().role);
+  }
   function canReplyTo(mode, ticket) {
     const role = me().role;
     if (mode === "master") return isMasterRole(role);
@@ -132,14 +138,14 @@
       };
       return btn;
     }
-    if (mode === "portal") {
+    if (mode === "portal" && canExport()) {
       const actions = el("div", "page-actions");
       actions.appendChild(makeExportButton("Export tickets", `${c.base}/export-rows`, {
         title: "Export tickets",
         columns: ticketExportColumns(),
       }));
       wrap.appendChild(actions);
-    } else if (mode === "master") {
+    } else if (mode === "master" && canExport()) {
       const actions = el("div", "page-actions");
       // This master hub's own tickets.
       actions.appendChild(makeExportButton("Export tickets", `${c.base}/export-rows`, {
@@ -148,8 +154,8 @@
         historyApi: App.api, historyBase: "/api/admin/exports", scope: "master",
       }));
       // Every portal + the master hub, with a Portal column.
-      actions.appendChild(makeExportButton("Export all portals", `${c.base}/export-rows-all`, {
-        title: "Export all portals",
+      actions.appendChild(makeExportButton("Export feedback from all portals", `${c.base}/export-rows-all`, {
+        title: "Export feedback from all portals",
         columns: ticketExportColumns({ portal: true }),
         historyApi: App.api, historyBase: "/api/admin/exports", scope: "all",
         note: "* Shows the newest 5,000 tickets across all portals.",

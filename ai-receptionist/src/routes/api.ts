@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { requireAuth, resolveTenantScope, isAdminTier } from "../middleware/auth";
+import { requireAuth, resolveTenantScope, isAdminTier, requireRole } from "../middleware/auth";
 import { setImpersonation, clearImpersonation, SESSION_COOKIE } from "../auth/session";
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
 import { runSimulatedCall } from "../services/simulationService";
@@ -1734,7 +1734,9 @@ apiRouter.post("/feedback", async (req: Request, res: Response) => {
   }
 });
 
-apiRouter.get("/feedback/export-rows", async (req: Request, res: Response) => {
+// Export reflects the EFFECTIVE role (impersonating a CLIENT_USER/PORTAL_ADMIN
+// drops it). Master-hub export routes are already gated by the admin router.
+apiRouter.get("/feedback/export-rows", requireRole("OWNER", "SUPER_ADMIN", "AUDITOR"), async (req: Request, res: Response) => {
   const ctx = feedbackCtxPortal(req);
   if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
   res.json(await listFeedbackExportRows(ctx as any));
