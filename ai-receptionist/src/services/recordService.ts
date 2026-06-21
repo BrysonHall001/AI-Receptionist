@@ -149,7 +149,7 @@ function serializeRecord(r: any) {
 // Parse an incoming appointment value into a real Date (or null to clear).
 // Returns undefined when the caller didn't send the field at all, so an update
 // that omits it leaves the stored value untouched.
-function parseAppointmentAt(v: any): Date | null | undefined {
+export function parseAppointmentAt(v: any): Date | null | undefined {
   if (v === undefined) return undefined;       // field not provided — don't touch
   if (v === null || v === "") return null;      // explicitly cleared
   const s = String(v).trim();

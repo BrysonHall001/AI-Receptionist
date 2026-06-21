@@ -7,7 +7,7 @@
 
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
-import { createRecord } from "./recordService";
+import { createRecord, parseAppointmentAt } from "./recordService";
 import { createLink } from "./recordLinkService";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
 import { listResources } from "./resourceService";
@@ -115,6 +115,27 @@ export async function createBookingFromCall(params: {
   const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
   const subtypes: any[] = (rt && rt.subtypes) || [];
   const subtypeKey = mapServiceToSubtype(subtypes, service);
+
+  // IDEMPOTENCY (Bug 1b): never create a SECOND booking for the same contact at the
+  // same wall-clock time. finalizeCall is already claimed atomically once, so this
+  // is belt-and-suspenders that makes a duplicate structurally impossible no matter
+  // how booking creation is reached (retries, future callers). If one already
+  // exists for this contact at this exact appointmentAt, return it instead of
+  // creating another. Uses the SAME wall-clock parser createRecord stores with.
+  const apptInstant = parseAppointmentAt(appointmentDatetime);
+  if (apptInstant) {
+    const dup = await db.record.findFirst({
+      where: {
+        tenantId, recordTypeId, deletedAt: null, appointmentAt: apptInstant,
+        links: { some: { parentType: "contact", parentId: contactId, deletedAt: null } },
+      },
+      select: { id: true },
+    });
+    if (dup) {
+      logger.info(`[booking-capture] booking already exists for contact ${contactId} @ ${appointmentDatetime}; skipping duplicate (${params.callSid ?? "?"})`);
+      return dup.id;
+    }
+  }
 
   // Title: the caller's own words for the service, else a neutral fallback.
   const title = (service || "").trim() || "Phone booking";
