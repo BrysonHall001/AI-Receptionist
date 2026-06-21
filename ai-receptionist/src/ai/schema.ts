@@ -14,9 +14,12 @@ export const ExtractedSchema = z.object({
   // Appointment capture (capture-only). A ZONELESS wall-clock string in the
   // EXACT picker format "YYYY-MM-DDTHH:MM" (24-hour), or null when no concrete
   // date+time has been confirmed. Stored verbatim as the booking's wall-clock
-  // appointmentAt — never converted. `service` is the caller's words for what
-  // they want booked (mapped to a Booking service later).
+  // appointmentAt — never converted. SAY IT, RECORD IT: the instant you tell the
+  // caller a specific date/time is booked, this MUST hold that exact value on the
+  // same turn — announcing a booking with this left null loses the booking.
   appointment_datetime: z.string().nullable().optional(),
+  // The caller's words for what they want booked (mapped to a Booking service
+  // later). If you state the service to the caller, record their words here.
   service: z.string().nullable().optional(),
   // The staff member the booking was made with: the one the caller named, OR the
   // one YOU (the assistant) selected and STATED to the caller (e.g. when the caller
