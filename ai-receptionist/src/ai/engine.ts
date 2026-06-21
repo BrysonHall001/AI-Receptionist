@@ -123,6 +123,7 @@ async function runAvailabilityTool(tenantId: string, args: any): Promise<string>
     resourceScoped: resourceId != null,
     resource: resourceLabel, // WHOSE availability this is: a staff name (scoped) or null (business-wide / any staff)
     resourceNameUnmatched: resourceName && !resourceId ? resourceName : null, // a name was given but matches no staff → this is a business-wide result, not that person's
+    uncertain: result.uncertain, // true => calendar sync is degraded/stale; DO NOT promise this slot. Offer to take details and have someone confirm.
   });
 }
 

@@ -18,6 +18,7 @@ import { OpenWindow, loadBookingConfig, durationForService, WEEKDAY_KEYS } from 
 import { getBusyTimes } from "./calendarSources";
 import { prisma } from "../db/client";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
+import { isSyncDegradedStale } from "./googleConnectionService";
 import { listResources, ResourceDTO, resolveResourceHours, resolveResourceDuration, resolveResourceBuffer, effectiveDurationMin } from "./resourceService";
 
 const db = prisma as any;
@@ -205,6 +206,7 @@ export interface SlotAvailability {
   requestedReason: "open" | "closed" | "booked" | "unavailable" | null;
   durationMin: number;           // the appointment length used (resource -> business)
   slots: OpenSlot[];             // the day's open, offerable slots (for "what's open" / alternatives)
+  uncertain: boolean;            // Google sync is degraded+stale: don't promise a slot on possibly-stale data
 }
 
 // Two-digit zero-pad for an hour string (pure string op; no Date).
@@ -276,6 +278,7 @@ export async function checkAvailability(
     requestedReason,
     durationMin: result.durationMin,
     slots: result.slots,
+    uncertain: await isSyncDegradedStale(tenantId),
   };
 }
 
