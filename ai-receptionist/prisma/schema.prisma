@@ -345,6 +345,20 @@ model Record {
   // Resource.id) with app-level integrity (delete is blocked while assigned).
   resourceId   String?
   customFields Json         @default("{}")
+  // Two-way Google Calendar sync (provenance/ownership). All nullable + additive:
+  //   externalSource    "google" = Google-owned (read-only in Clarity); null = Clarity-native.
+  //   externalEventId   the Google event/instance id; for a Clarity-owned booking,
+  //                     stores the mirror event id after it's pushed out.
+  //   externalCalendarId which Google calendar it came from / was pushed to.
+  //   externalUpdatedAt  Google's last-updated marker/etag, for idempotent re-sync.
+  //   endAt              the REAL end of an external event (arbitrary lengths that
+  //                     don't fit the service-duration model). Null for native
+  //                     bookings, which keep deriving duration from the service.
+  externalSource     String?
+  externalEventId    String?
+  externalCalendarId String?
+  externalUpdatedAt  String?
+  endAt              DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
@@ -356,6 +370,13 @@ model Record {
   @@index([tenantId, recordTypeId, appointmentAt])
   // Per-resource lookups (assigned-booking counts now; resource calendar/lock later).
   @@index([tenantId, resourceId])
+  // One Clarity booking per Google event/instance (idempotent re-sync upsert).
+  // Native bookings have both external columns null; Postgres treats NULLs as
+  // distinct, so unlimited native rows are allowed — only external rows (both set)
+  // are constrained, matching the intended "one booking per event" rule.
+  @@unique([tenantId, externalCalendarId, externalEventId])
+  // Metric-exclusion filter (exclude externalSource="google") + sync scans.
+  @@index([tenantId, externalSource])
 }
 
 // The many-to-many join between a "parent" and a Record — and the pipeline atom.
@@ -687,6 +708,13 @@ model GoogleConnection {
   scope                String?
   status               String    @default("connected")
   connectedById        String?
+  // Sync-health visibility (two-way sync). Additive + nullable:
+  //   lastSyncedAt  when the last successful sync pass completed.
+  //   syncStatus    "ok" | "degraded" (null until the first sync).
+  //   lastSyncError a short human-readable reason when degraded.
+  lastSyncedAt         DateTime?
+  syncStatus           String?
+  lastSyncError        String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 }
