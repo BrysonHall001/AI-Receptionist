@@ -869,6 +869,8 @@
     const exState = { rules: [], search: "" };
     const selected = new Set(exportable.filter((c) => !c.defaultOff).map((c) => c.key)); // all on by default, except defaultOff fields
     const showHistory = opts.saveHistory !== false;
+    const historyApi = opts.historyApi || App.portalApi;   // App.api for master/admin scope
+    const historyBase = opts.historyBase || "/api/exports"; // "/api/admin/exports" for master
 
     const savedBlock = opts.savedFilters
       ? `<label class="field-label">Start from a saved filter (optional)</label>
@@ -893,6 +895,7 @@
         <label class="field-label">Format</label>
         <select id="ex-format" class="input"><option value="csv">CSV (.csv)</option><option value="xlsx">Excel (.xlsx)</option></select>
         <button id="ex-go" class="btn btn-primary btn-block">Export</button>
+        ${opts.note ? `<p class="cell-muted" style="font-size:12px;margin:8px 0 0">${esc(opts.note)}</p>` : ""}
         ${historyBlock}
       </div>`;
     const overlay = modal(inner);
@@ -938,7 +941,7 @@
       if (!showHistory) return;
       const host = inner.querySelector("#ex-history");
       try {
-        const list = await App.portalApi("/api/exports");
+        const list = await historyApi(historyBase);
         host.innerHTML = "";
         if (!list.length) { host.appendChild(el("div", "cell-muted", "No exports yet.")); return; }
         list.forEach((ex) => {
@@ -947,7 +950,7 @@
             <div class="ex-hist-meta">${ex.rowCount} ${esc(opts.unitPlural.toLowerCase())} · ${fmtDate(ex.createdAt)}</div></div>`;
           const dl = el("button", "btn btn-ghost btn-sm", "Download");
           dl.onclick = async () => {
-            try { const r = await App.portalApi(`/api/exports/${ex.id}/download`); downloadCSV(`${(r.name || "export").replace(/[^a-z0-9]+/gi, "-")}.csv`, r.csv); }
+            try { const r = await historyApi(`${historyBase}/${ex.id}/download`); downloadCSV(`${(r.name || "export").replace(/[^a-z0-9]+/gi, "-")}.csv`, r.csv); }
             catch (err) { App.util.toast(err.message, true); }
           };
           row.appendChild(dl);
@@ -982,7 +985,7 @@
       }
       if (opts.saveHistory === false) { App.util.toast(`Exported ${opts.countText(out.length)}`); return; }
       try {
-        await App.portalApi("/api/exports", { method: "POST", body: JSON.stringify({ name, rowCount: out.length, fields: cols.map((c) => c.label), csv }) });
+        await historyApi(historyBase, { method: "POST", body: JSON.stringify({ name, rowCount: out.length, fields: cols.map((c) => c.label), csv, scope: opts.scope }) });
         App.util.toast(`Exported ${opts.countText(out.length)}`);
         loadHistory();
       } catch (err) { App.util.toast("Downloaded, but couldn't save to history: " + err.message, true); }

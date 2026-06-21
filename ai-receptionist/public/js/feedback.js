@@ -105,22 +105,21 @@
 
     const activeHead = el("h2", "fb-section-title", "Open tickets");
     wrap.appendChild(activeHead);
-    // Export button — right-aligned directly above the Open table's search bar,
-    // mirroring the Contacts/Jobs `page-actions` pattern. One button covers both
-    // tables (it exports all of this portal's tickets via /export-rows).
-    if (mode === "portal") {
-      const actions = el("div", "page-actions");
-      const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export tickets`);
-      exportBtn.onclick = async () => {
-        exportBtn.disabled = true;
+    // Export button(s) — right-aligned directly above the Open table's search bar,
+    // mirroring the Contacts/Jobs `page-actions` pattern. The button(s) fetch the
+    // reply-expanded rows (one row per reply; reply-less tickets kept) then open
+    // the shared App.exportModal. Portal: one button (this portal's tickets).
+    // Master hub: two buttons — its own tickets, and all portals combined.
+    function makeExportButton(label, fetchPath, modalOpts) {
+      const btn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> ${label}`);
+      btn.onclick = async () => {
+        btn.disabled = true;
         let rows;
-        try { rows = await c.call(`${c.base}/export-rows`); }
-        catch (e) { toast(e.message, true); exportBtn.disabled = false; return; }
-        exportBtn.disabled = false;
+        try { rows = await c.call(fetchPath); }
+        catch (e) { toast(e.message, true); btn.disabled = false; return; }
+        btn.disabled = false;
         if (!rows.length) { toast("No tickets to export", true); return; }
-        App.exportModal({
-          title: "Export tickets",
-          columns: ticketExportColumns(),
+        App.exportModal(Object.assign({
           rows,
           savedFilters: false,
           namePlaceholder: "e.g. Resolved tickets — June",
@@ -129,9 +128,32 @@
           sheetName: "Tickets",
           countText: (n) => n + (n === 1 ? " row" : " rows"),
           saveHistory: true,
-        });
+        }, modalOpts));
       };
-      actions.appendChild(exportBtn);
+      return btn;
+    }
+    if (mode === "portal") {
+      const actions = el("div", "page-actions");
+      actions.appendChild(makeExportButton("Export tickets", `${c.base}/export-rows`, {
+        title: "Export tickets",
+        columns: ticketExportColumns(),
+      }));
+      wrap.appendChild(actions);
+    } else if (mode === "master") {
+      const actions = el("div", "page-actions");
+      // This master hub's own tickets.
+      actions.appendChild(makeExportButton("Export tickets", `${c.base}/export-rows`, {
+        title: "Export tickets",
+        columns: ticketExportColumns(),
+        historyApi: App.api, historyBase: "/api/admin/exports", scope: "master",
+      }));
+      // Every portal + the master hub, with a Portal column.
+      actions.appendChild(makeExportButton("Export all portals", `${c.base}/export-rows-all`, {
+        title: "Export all portals",
+        columns: ticketExportColumns({ portal: true }),
+        historyApi: App.api, historyBase: "/api/admin/exports", scope: "all",
+        note: "* Shows the newest 5,000 tickets across all portals.",
+      }));
       wrap.appendChild(actions);
     }
     const activeHost = el("div");
