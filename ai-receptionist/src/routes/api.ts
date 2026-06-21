@@ -16,7 +16,7 @@ import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDe
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
-import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows } from "../services/feedbackService";
+import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
@@ -1726,9 +1726,9 @@ apiRouter.post("/feedback", async (req: Request, res: Response) => {
     res.status(403).json({ error: "Only portal users can submit feedback here." });
     return;
   }
-  const { problem, description } = (req.body ?? {}) as { problem?: string; description?: string };
+  const { problem, description, attachments } = (req.body ?? {}) as { problem?: string; description?: string; attachments?: unknown };
   try {
-    res.json(await createFeedbackTicket(ctx as any, { problem: problem || "", description: description || "" }));
+    res.json(await createFeedbackTicket(ctx as any, { problem: problem || "", description: description || "", attachments }));
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
   }
@@ -1756,6 +1756,17 @@ apiRouter.post("/feedback/:id/messages", async (req: Request, res: Response) => 
   const { body } = (req.body ?? {}) as { body?: string };
   try {
     res.json(await addFeedbackMessage(req.params.id, ctx as any, { body: body || "" }));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+apiRouter.post("/feedback/:id/attachments", async (req: Request, res: Response) => {
+  const ctx = feedbackCtxPortal(req);
+  if (!ctx.tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
+  const { urls } = (req.body ?? {}) as { urls?: unknown };
+  try {
+    res.json(await addFeedbackAttachments(req.params.id, ctx as any, { urls }));
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
   }

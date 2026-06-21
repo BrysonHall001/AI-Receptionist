@@ -4,7 +4,7 @@ import { listPortals, getPortal, createPortal, updatePortal } from "../services/
 import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
 import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
-import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, listAllFeedbackExportRows } from "../services/feedbackService";
+import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, listAllFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { createExport, listMasterExports, getMasterExportCsv } from "../services/exportService";
 import { logger } from "../utils/logger";
 
@@ -242,9 +242,9 @@ adminRouter.get("/feedback", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/feedback", async (req: Request, res: Response) => {
-  const { problem, description } = (req.body ?? {}) as { problem?: string; description?: string };
+  const { problem, description, attachments } = (req.body ?? {}) as { problem?: string; description?: string; attachments?: unknown };
   try {
-    res.json(await createFeedbackTicket(feedbackCtxMaster(req) as any, { problem: problem || "", description: description || "" }));
+    res.json(await createFeedbackTicket(feedbackCtxMaster(req) as any, { problem: problem || "", description: description || "", attachments }));
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
   }
@@ -290,6 +290,15 @@ adminRouter.post("/feedback/:id/messages", async (req: Request, res: Response) =
   const { body } = (req.body ?? {}) as { body?: string };
   try {
     res.json(await addFeedbackMessage(req.params.id, feedbackCtxMaster(req) as any, { body: body || "" }));
+  } catch (err) {
+    res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+adminRouter.post("/feedback/:id/attachments", async (req: Request, res: Response) => {
+  const { urls } = (req.body ?? {}) as { urls?: unknown };
+  try {
+    res.json(await addFeedbackAttachments(req.params.id, feedbackCtxMaster(req) as any, { urls }));
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
   }

@@ -183,8 +183,41 @@
     load();
   }
 
-  function submitForm(mode, onDone) {
-    const c = cfg(mode);
+  function isValidHttpUrl(s) {
+    try { const u = new URL(s); return u.protocol === "http:" || u.protocol === "https:"; }
+    catch { return false; }
+  }
+  // Repeatable attachment-link rows (add-another + remove), reused on the create
+  // form and the detail-view "add links" control. Reuses .input / .link-danger.
+  function attachmentLinksEditor() {
+    const wrap = el("div", "fb-links");
+    const rowsHost = el("div");
+    wrap.appendChild(rowsHost);
+    function addRow(value) {
+      const row = el("div", "fb-link-row");
+      row.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:6px";
+      const inp = el("input", "input"); inp.type = "text"; inp.placeholder = "https://…"; inp.value = value || ""; inp.style.marginBottom = "0";
+      const rm = el("button", "link-danger", "Remove"); rm.type = "button";
+      rm.onclick = () => row.remove();
+      row.appendChild(inp); row.appendChild(rm);
+      rowsHost.appendChild(row);
+    }
+    const addBtn = el("button", "btn btn-ghost btn-sm", "+ Add another link");
+    addBtn.type = "button";
+    addBtn.onclick = () => addRow("");
+    wrap.appendChild(addBtn);
+    addRow(""); // start with one empty row
+    function collect() {
+      const vals = Array.from(rowsHost.querySelectorAll("input")).map((i) => i.value.trim()).filter((v) => v);
+      const bad = vals.find((v) => !isValidHttpUrl(v));
+      if (bad) return { ok: false, error: `Not a valid link: ${bad}` };
+      return { ok: true, urls: vals };
+    }
+    function clear() { rowsHost.innerHTML = ""; addRow(""); }
+    return { node: wrap, collect, clear };
+  }
+
+  function submitForm(mode, onDone) {    const c = cfg(mode);
     const card = el("div", "card fb-form-card");
     card.innerHTML =
       `<div class="form-row form-row--wide"><label class="form-label">Problem</label>` +
@@ -194,17 +227,25 @@
     const bar = el("div", "fb-form-actions");
     const btn = el("button", "btn btn-primary btn-sm", "Submit");
     bar.appendChild(btn);
+    const linksWrap = el("div", "form-row form-row--wide");
+    linksWrap.innerHTML = `<label class="form-label">Attachment links (optional)</label>`;
+    const linksEd = attachmentLinksEditor();
+    linksWrap.appendChild(linksEd.node);
+    card.appendChild(linksWrap);
     card.appendChild(bar);
 
     btn.onclick = async () => {
       const problem = card.querySelector("#fb-problem").value.trim();
       const description = card.querySelector("#fb-desc").value.trim();
       if (!problem || !description) { toast("Please fill in both Problem and Description", true); return; }
+      const links = linksEd.collect();
+      if (!links.ok) { toast(links.error, true); return; }
       btn.disabled = true;
       try {
-        await c.call(c.base, { method: "POST", body: JSON.stringify({ problem, description }) });
+        await c.call(c.base, { method: "POST", body: JSON.stringify({ problem, description, attachments: links.urls }) });
         card.querySelector("#fb-problem").value = "";
         card.querySelector("#fb-desc").value = "";
+        linksEd.clear();
         toast("Feedback submitted");
         onDone();
       } catch (e) { toast(e.message, true); }
@@ -254,7 +295,13 @@
       `<h2 style="margin:0;font-size:18px">${esc(t.problem)}</h2>${statusBadge(t.status)}</div>` +
       `<p class="cell-muted" style="font-size:12.5px;margin:6px 0 0">` +
       `From ${esc(t.submitter ? (t.submitter.name || t.submitter.email) : "Unknown")} · ${fmtDate(t.createdAt)}</p>` +
-      `<p style="white-space:pre-wrap;margin:12px 0 0">${esc(t.description)}</p>`;
+      `<p style="white-space:pre-wrap;margin:12px 0 0">${esc(t.description)}</p>` +
+      ((t.attachments && t.attachments.length)
+        ? `<div class="fb-attachments" style="margin-top:12px">` +
+          `<div class="cell-muted" style="font-size:12px;margin-bottom:4px">Attachment links</div>` +
+          t.attachments.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener" style="display:block;font-size:13px;word-break:break-all">${esc(u)}</a>`).join("") +
+          `</div>`
+        : "");
     wrap.appendChild(head);
 
     // conversation
@@ -292,6 +339,27 @@
       const note = el("p", "cell-muted"); note.style.cssText = "font-size:13px;margin:10px 2px";
       note.textContent = "This ticket is resolved.";
       wrap.appendChild(note);
+    }
+
+    // Add attachment link(s) to this existing ticket — same access rule as replying.
+    if (canReplyTo(mode, t)) {
+      const ac = el("div", "card fb-thread-wrap"); ac.style.marginTop = "8px";
+      ac.appendChild(el("div", "form-label", "Add attachment link"));
+      const ed = attachmentLinksEditor();
+      ac.appendChild(ed.node);
+      const saveBar = el("div"); saveBar.style.marginTop = "8px";
+      const save = el("button", "btn btn-ghost btn-sm", "Save links");
+      saveBar.appendChild(save);
+      ac.appendChild(saveBar);
+      save.onclick = async () => {
+        const r = ed.collect();
+        if (!r.ok) { toast(r.error, true); return; }
+        if (!r.urls.length) { toast("Add at least one link", true); return; }
+        save.disabled = true;
+        try { await c.call(`${c.base}/${id}/attachments`, { method: "POST", body: JSON.stringify({ urls: r.urls }) }); toast("Links added"); openThread(id, mode); }
+        catch (e) { toast(e.message, true); save.disabled = false; }
+      };
+      wrap.appendChild(ac);
     }
 
     // moderate (resolve / restore)

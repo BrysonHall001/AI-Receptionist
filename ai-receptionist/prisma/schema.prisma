@@ -606,6 +606,7 @@ model FeedbackTicket {
   createdBy    User           @relation("FeedbackSubmitter", fields: [createdById], references: [id], onDelete: Cascade)
   problem      String
   description  String
+  attachments  Json           @default("[]") // list of external link URLs (strings)
   status       FeedbackStatus @default(OPEN)
   resolvedAt   DateTime?
   resolvedById String?

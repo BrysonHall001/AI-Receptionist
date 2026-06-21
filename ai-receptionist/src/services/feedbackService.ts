@@ -39,6 +39,24 @@ function httpError(message: string, status: number): Error {
   return e;
 }
 
+// Validate + normalize a list of attachment link URLs. Each must be a valid
+// http/https URL. We only STORE and DISPLAY these (never fetch them server-side),
+// so no SSRF/private-IP checks are needed. Blank entries are dropped.
+function sanitizeAttachments(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) throw httpError("Attachments must be a list of links.", 400);
+  const out: string[] = [];
+  for (const item of raw) {
+    const s = String(item ?? "").trim();
+    if (!s) continue;
+    let url: URL;
+    try { url = new URL(s); } catch { throw httpError(`Not a valid URL: ${s}`, 400); }
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw httpError(`Only http/https links are allowed: ${s}`, 400);
+    out.push(s);
+  }
+  return out;
+}
+
 // ---- DTOs ------------------------------------------------------------------
 function ticketDTO(t: any) {
   return {
@@ -46,6 +64,7 @@ function ticketDTO(t: any) {
     tenantId: t.tenantId ?? null,
     problem: t.problem,
     description: t.description,
+    attachments: Array.isArray(t.attachments) ? t.attachments : [],
     status: t.status,
     resolvedAt: t.resolvedAt,
     createdAt: t.createdAt,
@@ -205,13 +224,14 @@ export async function getFeedbackTicket(id: string, ctx: Ctx): Promise<any | nul
 
 export async function createFeedbackTicket(
   ctx: Ctx,
-  input: { problem: string; description: string },
+  input: { problem: string; description: string; attachments?: unknown },
 ): Promise<any> {
   const problem = (input.problem || "").trim();
   const description = (input.description || "").trim();
   if (!problem || !description) {
     throw httpError("Both a problem and a description are required.", 400);
   }
+  const attachments = sanitizeAttachments(input.attachments);
   const tenantId = ctx.scope === "master" ? null : ctx.tenantId || null;
   if (ctx.scope === "master" && !isMasterRole(ctx.actor.role)) {
     throw httpError("Not authorized to submit master feedback.", 403);
@@ -219,12 +239,30 @@ export async function createFeedbackTicket(
   if (ctx.scope === "portal" && !tenantId) throw httpError("No portal selected.", 400);
 
   const t = await (prisma as any).feedbackTicket.create({
-    data: { tenantId, createdById: ctx.actor.id, problem, description },
+    data: { tenantId, createdById: ctx.actor.id, problem, description, attachments },
     include: { createdBy: true },
   });
   const portalName = tenantId ? await tenantName(tenantId) : "Master hub";
   await notifyNewTicket({ portalName, submitter: ctx.actor, problem, description });
   return ticketDTO(t);
+}
+
+// Append attachment link(s) to an EXISTING ticket. Same access rule as replying
+// (canReply): a portal moderator may add to any ticket in the portal, a submitter
+// to their own; master roles to master tickets. Validates each link (http/https).
+export async function addFeedbackAttachments(id: string, ctx: Ctx, input: { urls: unknown }): Promise<any> {
+  const t = await (prisma as any).feedbackTicket.findUnique({ where: { id }, include: { createdBy: true } });
+  if (!t || !canView(t, ctx)) throw httpError("Ticket not found.", 404);
+  if (!canReply(t, ctx)) throw httpError("Not authorized to add attachments to this ticket.", 403);
+  const additions = sanitizeAttachments(input.urls);
+  if (!additions.length) throw httpError("Add at least one valid link.", 400);
+  const existing = Array.isArray(t.attachments) ? t.attachments : [];
+  const up = await (prisma as any).feedbackTicket.update({
+    where: { id },
+    data: { attachments: [...existing, ...additions] },
+    include: { createdBy: true },
+  });
+  return ticketDTO(up);
 }
 
 export async function addFeedbackMessage(
