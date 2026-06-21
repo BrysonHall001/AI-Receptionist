@@ -80,6 +80,17 @@
     if (opts && opts.portal) {
       cols.push({ key: "portal", label: "Portal", type: "text", get: (r) => r.portal, text: (r) => r.portal || "" });
     }
+    // Dynamic "Attachment N" columns: N = the max number of links on any single
+    // ticket in the rows being exported. Tickets with fewer leave the rest blank;
+    // they're ticket-level, so they repeat across a ticket's reply rows. Selectable
+    // + filterable as normal text columns.
+    const rows = (opts && opts.rows) || [];
+    let maxAtt = 0;
+    for (const r of rows) { const n = (r.attachments && r.attachments.length) || 0; if (n > maxAtt) maxAtt = n; }
+    for (let i = 0; i < maxAtt; i++) {
+      const idx = i;
+      cols.push({ key: "attachment" + (idx + 1), label: "Attachment " + (idx + 1), type: "text", get: (r) => (r.attachments && r.attachments[idx]) || "", text: (r) => (r.attachments && r.attachments[idx]) || "" });
+    }
     cols.push(
       { key: "replyAuthor", label: "Reply author", type: "text", get: (r) => r.replyAuthor, text: (r) => r.replyAuthor || "" },
       { key: "replyAt", label: "Reply timestamp", type: "date", get: (r) => r.replyAt, text: (r) => (r.replyAt ? fmtDate(r.replyAt) : "") },
@@ -126,6 +137,7 @@
         btn.disabled = false;
         if (!rows.length) { toast("No tickets to export", true); return; }
         App.exportModal(Object.assign({
+          columns: ticketExportColumns({ portal: !!(modalOpts && modalOpts.portal), rows }),
           rows,
           savedFilters: false,
           namePlaceholder: "e.g. Resolved tickets — June",
@@ -142,7 +154,6 @@
       const actions = el("div", "page-actions");
       actions.appendChild(makeExportButton("Export tickets", `${c.base}/export-rows`, {
         title: "Export tickets",
-        columns: ticketExportColumns(),
       }));
       wrap.appendChild(actions);
     } else if (mode === "master" && canExport()) {
@@ -150,13 +161,12 @@
       // This master hub's own tickets.
       actions.appendChild(makeExportButton("Export tickets", `${c.base}/export-rows`, {
         title: "Export tickets",
-        columns: ticketExportColumns(),
         historyApi: App.api, historyBase: "/api/admin/exports", scope: "master",
       }));
       // Every portal + the master hub, with a Portal column.
       actions.appendChild(makeExportButton("Export feedback from all portals", `${c.base}/export-rows-all`, {
         title: "Export feedback from all portals",
-        columns: ticketExportColumns({ portal: true }),
+        portal: true,
         historyApi: App.api, historyBase: "/api/admin/exports", scope: "all",
         note: "* Shows the newest 5,000 tickets across all portals.",
       }));

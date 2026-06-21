@@ -172,6 +172,7 @@ function expandTicketsToExportRows(tickets: any[]): any[] {
       resolvedAt: t.resolvedAt,
       resolvedBy: person(t.resolvedBy),
       portal: t.tenant ? t.tenant.name : "Master hub",
+      attachments: Array.isArray(t.attachments) ? t.attachments : [],
     };
     const msgs = t.messages || [];
     if (!msgs.length) {
