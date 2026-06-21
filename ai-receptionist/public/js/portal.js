@@ -348,11 +348,14 @@
     const gStatusLine = el("p", "cell-muted");
     gStatusLine.style.cssText = "margin:0 0 10px;font-size:13px;";
     gStatusLine.textContent = "Checking…";
+    const gHealth = el("div"); // sync-health + write-scope state (populated when connected)
+    gHealth.style.cssText = "margin:0 0 10px;font-size:12px;";
     const gBar = el("div");
     gBar.style.cssText = "display:flex;gap:10px;align-items:center;";
     const gMap = el("div"); // per-resource calendar mapping (populated when connected)
     gMap.style.cssText = "margin-top:14px;";
     gWrap.appendChild(gStatusLine);
+    gWrap.appendChild(gHealth);
     gWrap.appendChild(gBar);
     gWrap.appendChild(gMap);
     sec.appendChild(gWrap);
@@ -372,6 +375,7 @@
       try { data = await App.portalApi("/api/google/status"); }
       catch { gStatusLine.textContent = "Couldn't load Google status."; gBar.innerHTML = ""; gMap.innerHTML = ""; return; }
       gBar.innerHTML = "";
+      gHealth.innerHTML = "";
       gMap.innerHTML = "";
       if (!data.configured) {
         gStatusLine.textContent = "Google Calendar isn't set up on this server yet.";
@@ -379,6 +383,36 @@
       }
       if (data.connected) {
         gStatusLine.innerHTML = `Connected${data.accountEmail ? " as <strong>" + App.util.esc(data.accountEmail) + "</strong>" : ""}.`;
+
+        // ---- Sync health: last synced + status, so drift is never silent. ----
+        const rows = [];
+        if (data.syncStatus === "degraded") {
+          rows.push(`<span style="color:var(--danger,#b91c1c);font-weight:600;">⚠ Sync degraded</span>` +
+            (data.lastSyncError ? ` — ${App.util.esc(data.lastSyncError)}` : ""));
+        } else if (data.syncStatus === "ok") {
+          rows.push(`<span style="color:var(--ok,#15803d);font-weight:600;">● Sync OK</span>`);
+        }
+        if (data.lastSyncedAt) {
+          rows.push(`Last synced: ${new Date(data.lastSyncedAt).toLocaleString()}`);
+        } else if (data.syncEnabled) {
+          rows.push("Not synced yet.");
+        }
+        if (!data.syncEnabled) rows.push(`<span class="cell-muted">Sync is currently turned off.</span>`);
+
+        // ---- Write-scope: prompt a one-time reconnect to enable write-back (F). ----
+        if (data.writeGranted) {
+          rows.push(`<span style="color:var(--ok,#15803d);">Write-back ready.</span>`);
+        } else {
+          rows.push(`<span class="cell-muted">Write-back is not enabled yet (reading still works).</span>`);
+        }
+        gHealth.innerHTML = rows.map((r) => `<div style="margin:2px 0;">${r}</div>`).join("");
+
+        if (!data.writeGranted) {
+          const recon = el("button", "btn btn-primary btn-sm", "Reconnect to enable write-back");
+          recon.onclick = () => { window.location.href = googleConnectUrl(); };
+          gBar.appendChild(recon);
+        }
+
         const dis = el("button", "btn btn-ghost btn-sm", "Disconnect");
         dis.onclick = async () => {
           if (App.ui && App.ui.confirmModal && !(await App.ui.confirmModal({ title: "Disconnect Google Calendar", message: "Disconnect this Google account? Clarity will stop reading its calendars.", confirmText: "Disconnect" }))) return;
@@ -3419,6 +3453,7 @@
           blk.style.left = `calc(${it.lane * wPct}% + 3px)`;
           blk.style.width = `calc(${wPct}% - 6px)`;
           const m = metaFor(it.b.stageKey);
+          const isExt = it.b.externalSource === "google";
           if (c.color) {
             // Resource view: tint the block with the resource's color; the status
             // glyph keeps its own color so status still reads.
@@ -3426,7 +3461,14 @@
           } else {
             blk.style.background = m.bg; blk.style.borderColor = m.fg; blk.style.color = m.fg; blk.style.borderLeftWidth = "3px";
           }
+          if (isExt) {
+            // External/Blocked (from Google): distinct read-only look, dashed border.
+            blk.classList.add("cal-block-ext");
+            blk.style.background = "#f1f5f9"; blk.style.borderColor = "#64748b"; blk.style.color = "#475569";
+            blk.style.borderStyle = "dashed"; blk.style.borderLeftWidth = "3px";
+          }
           const tline = el("div", "cal-block-t");
+          if (isExt) { tline.appendChild(el("span", "cal-ext-badge", "Google")); }
           const gl = el("span", "cal-glyph", m.glyph); if (c.color) gl.style.color = m.fg; tline.appendChild(gl);
           // Subtle resource indicator: only in the week/day view (no column color),
           // where the resource isn't already conveyed by the column tint. In the
@@ -3507,7 +3549,7 @@
   function recordColumnDefs(fields, type, resById) {
     resById = resById || {};
     const cols = [];
-    cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => esc(r.title || "Untitled") });
+    cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => esc(r.title || "Untitled") + (r.externalSource === "google" ? ` <span class="ext-badge">Google</span>` : "") });
     // Bookings: the typed appointment date+time as a first-class column (it is a
     // real DB field, not a custom field, so it's added here explicitly).
     if (type && type.key === "booking") {
@@ -4077,6 +4119,17 @@
     saveBar.appendChild(save);
     card.appendChild(saveBar);
     wrap.appendChild(card);
+
+    // External/Blocked bookings (synced from Google) are read-only here — the server
+    // rejects edits/deletes too (ownership guard). Show a clear banner, disable the
+    // Details inputs, and hide Save. Internal notes below stay allowed.
+    if (rec.externalSource === "google") {
+      const banner = el("div", "ext-readonly-banner");
+      banner.innerHTML = `<span aria-hidden="true">🔒</span><span>This booking is synced from <strong>Google Calendar</strong> and is read-only here. Edit or delete it in Google — your changes flow back automatically.</span>`;
+      card.insertBefore(banner, card.firstChild.nextSibling);
+      card.querySelectorAll("input, select, textarea").forEach((e) => { e.disabled = true; });
+      saveBar.style.display = "none";
+    }
 
     // ---- Linked candidates card: List | Board (kanban) — two views of the SAME links ----
     const linkCard = el("div", "card");
