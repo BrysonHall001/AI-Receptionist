@@ -42,6 +42,25 @@ export interface AvailabilityResult {
   // open (outside hours vs. a real booking) WITHOUT recomputing any of it.
   windows: { start: string; end: string }[];
   busyMinutes: { s: number; e: number }[];
+  // BUSINESS-WIDE (no-resource) UNION only. A named-resource check leaves these
+  // absent. `perResource` is each bookable lane's own availability; `freeResources
+  // ByStart` maps an offered start time -> the resources free then. Together they
+  // let checkAvailability answer "is ANY resource free?" and "WHO is free?".
+  perResource?: ResourceAvailability[];
+  freeResourcesByStart?: Record<string, { id: string; name: string }[]>;
+}
+
+// One bookable lane's availability for a date, used to build the business-wide
+// union. Carries its OWN resolved duration/buffer/windows/busy so the requested-
+// time reasoning (booked vs unavailable) stays per-resource-accurate.
+export interface ResourceAvailability {
+  id: string;
+  name: string;
+  durationMin: number;
+  bufferMin: number;
+  windows: { start: string; end: string }[];
+  busyMinutes: { s: number; e: number }[];
+  slots: OpenSlot[];
 }
 
 // ---- small time helpers (minutes since midnight <-> strings) ----
@@ -139,8 +158,47 @@ export function computeOpenSlots(params: {
 }
 
 /**
- * Compute open slots for a real tenant + date + service. Loads the booking
- * config and the merged busy-times, then calls the pure core. Read-only.
+ * Compute ONE lane's availability — a named resource, or null for the business-
+ * level fallback. Exactly the logic the named path always used: the resource's
+ * OWN hours/duration/buffer (business fallback) and ITS OWN busy times (scoped by
+ * resource id, so other lanes — including the Unassigned lane — never block it).
+ * Read-only.
+ */
+async function computeResourceAvailability(
+  tenantId: string,
+  dateStr: string,
+  serviceKey: string | null | undefined,
+  resource: { id?: string; name?: string; hours?: any; durations?: any; bufferMin?: any } | null,
+  config: Awaited<ReturnType<typeof loadBookingConfig>>,
+): Promise<{ durationMin: number; bufferMin: number; closed: boolean; slots: OpenSlot[]; windows: { start: string; end: string }[]; busyMinutes: { s: number; e: number }[] }> {
+  const durationMin = resolveResourceDuration(resource, config, serviceKey);
+  const bufferMin = resolveResourceBuffer(resource, config);
+  const hoursSource = resolveResourceHours(resource, config.hours);
+
+  const wk = weekdayKey(dateStr);
+  const windows = (wk && hoursSource[wk]) || [];
+  if (!windows.length) return { durationMin, bufferMin, closed: true, slots: [], windows: [], busyMinutes: [] };
+
+  // Scope busy to THIS lane (its resource id, or the shared null lane for the
+  // business-level fallback) — same per-lane scoping the write path uses.
+  const busyRaw = await getBusyTimes(tenantId, `${dateStr}T00:00`, `${nextDay(dateStr)}T00:00`, (resource && resource.id) ?? null);
+  const busyMinutes = busyRaw
+    .map((b) => busyToDayMinutes(b, dateStr))
+    .filter((x): x is { s: number; e: number } => x != null);
+
+  const slots = computeOpenSlots({ dateStr, windows, busyMinutes, durationMin, bufferMin });
+  return { durationMin, bufferMin, closed: false, slots, windows, busyMinutes };
+}
+
+/**
+ * Compute open slots for a real tenant + date + service. Read-only.
+ *   - A specific resourceId  -> that one lane (unchanged behavior).
+ *   - No resource (null)      -> UNION of every bookable resource's availability:
+ *     a start time is offered if AT LEAST ONE resource is free then, and we record
+ *     WHICH resources are free (so the AI can book a named person, never the
+ *     Unassigned lane). An Unassigned booking only ever sits in the null lane, so
+ *     it can no longer block bob/Alice. Matches the write path's per-lane scoping.
+ *   - No bookable resources   -> business-level single lane (fallback, unchanged).
  */
 export async function findOpenSlots(
   tenantId: string,
@@ -150,32 +208,55 @@ export async function findOpenSlots(
 ): Promise<AvailabilityResult> {
   const config = await loadBookingConfig(tenantId);
 
-  // Resolve hours, duration AND buffer for the resource in context (its own
-  // values, falling back to business). With no resource (business preview /
-  // unassigned) all three use the business values.
-  let resource: any = null;
+  // NAMED resource: single lane, exactly as before (plus freeResourcesByStart so
+  // availableResources is populated consistently with the union path).
   if (resourceId) {
-    resource = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null } });
-  }
-  const durationMin = resolveResourceDuration(resource, config, serviceKey);
-  const bufferMin = resolveResourceBuffer(resource, config);
-  const hoursSource = resolveResourceHours(resource, config.hours);
-
-  const wk = weekdayKey(dateStr);
-  const windows = (wk && hoursSource[wk]) || [];
-  if (!windows.length) {
-    return { date: dateStr, serviceKey: serviceKey ?? null, durationMin, bufferMin, closed: true, slots: [], windows: [], busyMinutes: [] };
+    const resource = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null } });
+    const r = await computeResourceAvailability(tenantId, dateStr, serviceKey, resource, config);
+    const freeResourcesByStart: Record<string, { id: string; name: string }[]> = {};
+    if (resource) for (const s of r.slots) freeResourcesByStart[s.start] = [{ id: resource.id, name: resource.name }];
+    return { date: dateStr, serviceKey: serviceKey ?? null, durationMin: r.durationMin, bufferMin: r.bufferMin, closed: r.closed, slots: r.slots, windows: r.windows, busyMinutes: r.busyMinutes, freeResourcesByStart };
   }
 
-  // Busy times: scope to this resource when one is given (so a resource's open
-  // slots aren't blocked by other people's bookings); otherwise shop-wide.
-  const busyRaw = await getBusyTimes(tenantId, `${dateStr}T00:00`, `${nextDay(dateStr)}T00:00`, resourceId ?? null);
-  const busyMinutes = busyRaw
-    .map((b) => busyToDayMinutes(b, dateStr))
-    .filter((x): x is { s: number; e: number } => x != null);
+  // BUSINESS-WIDE: union of per-resource availability.
+  const resources = await listResources(tenantId);
+  if (!resources.length) {
+    // FALLBACK (unchanged): no bookable resources -> business-level single lane.
+    const r = await computeResourceAvailability(tenantId, dateStr, serviceKey, null, config);
+    return { date: dateStr, serviceKey: serviceKey ?? null, durationMin: r.durationMin, bufferMin: r.bufferMin, closed: r.closed, slots: r.slots, windows: r.windows, busyMinutes: r.busyMinutes };
+  }
 
-  const slots = computeOpenSlots({ dateStr, windows, busyMinutes, durationMin, bufferMin });
-  return { date: dateStr, serviceKey: serviceKey ?? null, durationMin, bufferMin, closed: false, slots, windows, busyMinutes };
+  const perResource: ResourceAvailability[] = [];
+  for (const res of resources) {
+    const r = await computeResourceAvailability(tenantId, dateStr, serviceKey, res, config);
+    perResource.push({ id: res.id, name: res.name, durationMin: r.durationMin, bufferMin: r.bufferMin, windows: r.windows, busyMinutes: r.busyMinutes, slots: r.slots });
+  }
+
+  // Union the open starts; remember who's free at each. First resource to offer a
+  // given start provides the representative slot (its own label/end).
+  const freeResourcesByStart: Record<string, { id: string; name: string }[]> = {};
+  const slotByStart: Record<string, OpenSlot> = {};
+  for (const pr of perResource) {
+    for (const s of pr.slots) {
+      if (!freeResourcesByStart[s.start]) freeResourcesByStart[s.start] = [];
+      freeResourcesByStart[s.start].push({ id: pr.id, name: pr.name });
+      if (!slotByStart[s.start]) slotByStart[s.start] = s;
+    }
+  }
+  const slots = Object.keys(slotByStart).sort().map((k) => slotByStart[k]);
+
+  // Header duration/buffer are business-level representatives; per-resource values
+  // are what actually gated each slot (and drive requested-time reasoning).
+  const durationMin = resolveResourceDuration(null, config, serviceKey);
+  const bufferMin = resolveResourceBuffer(null, config);
+  const closed = perResource.every((p) => p.windows.length === 0); // every lane closed that day
+
+  return {
+    date: dateStr, serviceKey: serviceKey ?? null,
+    durationMin, bufferMin, closed,
+    slots, windows: [], busyMinutes: [],
+    perResource, freeResourcesByStart,
+  };
 }
 
 // ---- Availability lookup wrapper (Batch 1) — a thin, READ-ONLY function over
@@ -206,6 +287,10 @@ export interface SlotAvailability {
   requestedReason: "open" | "closed" | "booked" | "unavailable" | null;
   durationMin: number;           // the appointment length used (resource -> business)
   slots: OpenSlot[];             // the day's open, offerable slots (for "what's open" / alternatives)
+  // Resources free at the requested time. Business-wide: every resource free then
+  // (drives "1 free -> book that person; 2+ -> ask who"). Named check: that one
+  // resource when open. Empty when no time was asked or nothing is free.
+  availableResources: { id: string; name: string }[];
   uncertain: boolean;            // Google sync is degraded+stale: don't promise a slot on possibly-stale data
 }
 
@@ -242,16 +327,21 @@ export async function checkAvailability(
 ): Promise<SlotAvailability> {
   const result = await findOpenSlots(tenantId, dateStr, serviceKey, resourceId);
   const requestedTime = normalizeRequestedStart(dateStr, timeStr);
-  // "Open" == the requested time is one of the offerable open slots (single source
-  // of truth: only times findOpenSlots would offer count as open).
+  const isUnion = !!result.perResource; // business-wide union path (vs single lane)
+  const freeByStart = result.freeResourcesByStart || {};
+
+  // "Open" == at least one resource is free at the requested start (union), or the
+  // single lane offers it (named/fallback). Same single source of truth: a time is
+  // open only if findOpenSlots would actually offer it.
   const requestedOpen = requestedTime == null
     ? null
-    : result.slots.some((s) => s.start === requestedTime);
+    : (isUnion
+        ? (freeByStart[requestedTime]?.length ?? 0) > 0
+        : result.slots.some((s) => s.start === requestedTime));
 
-  // Explain WHY a requested time isn't open, reusing the SAME windows/busy/buffer
-  // that produced the slots (no new date math, no Date/toLocale — string/minute
-  // ops only). Distinguishes a genuine booking clash ("booked") from simply not
-  // being offered then ("unavailable"), so the AI never fabricates a conflict.
+  // Explain WHY a requested time isn't open. For the union, "booked" means SOME
+  // resource is open then but every open-then resource is busy; "unavailable"
+  // means no lane is open then (off-grid / outside hours). Never conflate them.
   let requestedReason: SlotAvailability["requestedReason"] = null;
   if (requestedTime != null) {
     const reqMin = hmToMin(requestedTime.slice(11));
@@ -261,6 +351,14 @@ export async function checkAvailability(
       requestedReason = "closed";
     } else if (!Number.isFinite(reqMin)) {
       requestedReason = "unavailable";
+    } else if (isUnion) {
+      const anyInWindowBusy = (result.perResource || []).some((pr) => {
+        const end = reqMin + pr.durationMin;
+        const inWindow = pr.windows.some((w) => reqMin >= hmToMin(w.start) && end <= hmToMin(w.end));
+        const clash = pr.busyMinutes.some((b) => reqMin < b.e + pr.bufferMin && end > b.s - pr.bufferMin);
+        return inWindow && clash;
+      });
+      requestedReason = anyInWindowBusy ? "booked" : "unavailable";
     } else {
       const end = reqMin + result.durationMin;
       const inWindow = result.windows.some((w) => reqMin >= hmToMin(w.start) && end <= hmToMin(w.end));
@@ -268,6 +366,9 @@ export async function checkAvailability(
       requestedReason = inWindow && clash ? "booked" : "unavailable";
     }
   }
+
+  // Who is free at the requested time (when open) — drives the AI's book-or-ask flow.
+  const availableResources = (requestedTime != null && requestedOpen) ? (freeByStart[requestedTime] || []) : [];
 
   return {
     date: result.date,
@@ -278,6 +379,7 @@ export async function checkAvailability(
     requestedReason,
     durationMin: result.durationMin,
     slots: result.slots,
+    availableResources,
     uncertain: await isSyncDegradedStale(tenantId),
   };
 }

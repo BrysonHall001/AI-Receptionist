@@ -11,6 +11,7 @@ import { createRecord } from "./recordService";
 import { createLink } from "./recordLinkService";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
 import { listResources } from "./resourceService";
+import { checkAvailability } from "./availabilityService";
 
 const db = prisma as any;
 
@@ -82,12 +83,20 @@ export async function resolveResourceByName(tenantId: string, name?: string | nu
   return hit ? hit.id : null; // no confident match → Unassigned
 }
 
-/**
- * Create a Booking from a finalized call, if (and only if) a concrete date+time
- * was captured. Best-effort and self-contained: the caller wraps it so a failure
- * can never break call finalization. Returns the new booking id, or null when no
- * booking was created (no real time, or an error that was logged).
- */
+/** Pick a resource that is FREE at the given wall-clock time, reusing the SAME
+ *  availability union the AI uses (so the read matches the write). Returns the
+ *  first free resource's id, or null when none is free (caller fails safe — it
+ *  must NOT force-assign a busy resource, which would double-book). serviceKey is
+ *  the booking's subtype so the duration used here matches the booking's own. */
+async function pickFreeResource(tenantId: string, appointmentDatetime: string, serviceKey: string | null): Promise<string | null> {
+  const dateStr = String(appointmentDatetime).slice(0, 10);
+  const timeStr = String(appointmentDatetime).slice(11, 16);
+  const avail = await checkAvailability(tenantId, dateStr, timeStr, serviceKey, null);
+  const free = avail.availableResources || [];
+  return free.length ? free[0].id : null;
+}
+
+
 export async function createBookingFromCall(params: {
   tenantId: string;
   contactId: string;
@@ -114,7 +123,26 @@ export async function createBookingFromCall(params: {
   // createRecord then applies that resource's OWN hours/duration and the per-
   // resource double-booking lock; AI bookings can never override a conflict, so a
   // clash hard-blocks (no booking) — the caller is still captured as a contact/lead.
-  const resourceId = await resolveResourceByName(tenantId, resource);
+  let resourceId = await resolveResourceByName(tenantId, resource);
+
+  // SAFETY NET (decision #4): a booking must never land Unassigned-and-unsynced
+  // when staff exist. If no resource was resolved (no name / no confident match)
+  // but the business HAS bookable resources, auto-assign one that is FREE at this
+  // time, reusing the availability union the AI uses. If NONE is free, do NOT
+  // force-assign a busy resource (that would double-book) — fail safe: no booking,
+  // the caller is still captured as a contact/lead, exactly like a clash. With
+  // zero resources configured, Unassigned is the only lane, so we leave it as-is.
+  if (!resourceId) {
+    const resources = await listResources(tenantId);
+    if (resources.length > 0) {
+      const free = await pickFreeResource(tenantId, appointmentDatetime as string, subtypeKey);
+      if (!free) {
+        logger.info(`[booking-capture] resources exist but none free at ${appointmentDatetime}; booking not placed (${params.callSid ?? "?"})`);
+        return null;
+      }
+      resourceId = free;
+    }
+  }
 
   // Reuse createRecord — appointmentDatetime goes through the SAME wall-clock
   // parser as the manual picker, so the stored digits match what the caller said.

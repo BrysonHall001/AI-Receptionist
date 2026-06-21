@@ -118,6 +118,7 @@ async function runAvailabilityTool(tenantId: string, args: any): Promise<string>
     requestedTimeSpoken: result.requestedLabel, // say the requested time THIS way, e.g. "12:00 PM"
     requestedOpen: result.requestedOpen,
     requestedReason: result.requestedReason, // "open"|"closed"|"booked"|"unavailable"|null — say "booked" ONLY when this is "booked"
+    availableResources: result.availableResources.map((r) => r.name), // staff FREE at the requested time. 1 name -> just book that person; 2+ -> ask which they'd like; always book onto one of these (never "Unassigned").
     durationMin: result.durationMin, // each open slot is an appointment this many minutes long
     openSlots: result.slots.slice(0, 12).map((s) => s.startLabel), // the START time of each slot, e.g. "12:00 PM" (NOT a range)
     resourceScoped: resourceId != null,
