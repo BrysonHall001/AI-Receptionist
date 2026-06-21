@@ -3,7 +3,7 @@
 // types are just new string literals — no code in the bus or engine needs to
 // change to support them, which keeps emitters and consumers loosely coupled.
 
-export type ActorType = "user" | "system" | "automation";
+export type ActorType = "user" | "system" | "automation" | "sync";
 
 export interface EventActor {
   type: ActorType;

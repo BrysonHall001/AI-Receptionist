@@ -28,6 +28,20 @@ function overlapError(): Error {
   return e;
 }
 
+/** Tagged error for trying to edit/delete a Google-owned (read-only) booking as a
+ *  user/AI. Only the sync engine (sync actor) may change these — Google is the
+ *  source of truth for them. */
+function externalReadOnlyError(): Error {
+  const e: any = new Error("This event is managed in Google Calendar and can't be edited here.");
+  e.code = "external_readonly";
+  return e;
+}
+
+/** Only the sync engine may create/update/delete Google-owned records. */
+function isSyncActor(actor: EventActor | undefined | null): boolean {
+  return actor?.type === "sync";
+}
+
 /** Tagged error for booking a CLOSED time. Manual bookings can override with a
  *  warning; the AI never auto-books a closed time. */
 function closedError(label: string | null): Error {
@@ -123,6 +137,10 @@ function serializeRecord(r: any) {
     appointmentAt: r.appointmentAt ? new Date(r.appointmentAt).toISOString() : null,
     resourceId: r.resourceId ?? null,
     customFields: r.customFields ?? {},
+    // Provenance/ownership (read-only state) so the client can hide/disable edit
+    // controls for Google-owned bookings. Enforcement is server-side regardless.
+    externalSource: r.externalSource ?? null,
+    endAt: r.endAt ? new Date(r.endAt).toISOString() : null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
@@ -231,6 +249,10 @@ export async function createRecord(
 export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null }, actor: EventActor = { type: "user" }, chainDepth = 0) {
   const existing = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Record not found");
+  // OWNERSHIP GUARD: Google-owned bookings are read-only in Clarity. Only the sync
+  // engine (sync actor) may change them; users and the AI are blocked server-side
+  // (the UI also hides the controls, but this is the unbypassable enforcement).
+  if (existing.externalSource === "google" && !isSyncActor(actor)) throw externalReadOnlyError();
   const data: any = {};
   if (input.title !== undefined) data.title = (input.title || "").trim() || null;
   if (input.stageKey !== undefined) data.stageKey = input.stageKey ?? null;
@@ -413,9 +435,20 @@ export async function addRecordNote(
   return true;
 }
 
-/** Soft-delete records (recycle-bin style) and soft-delete their links too. */
-export async function softDeleteRecords(tenantId: string, ids: string[]): Promise<number> {
+/** Soft-delete records (recycle-bin style) and soft-delete their links too.
+ *  Google-owned bookings are read-only: a user/AI delete of any Google-owned
+ *  target is rejected (the whole call), so a protected event can't be removed
+ *  in Clarity. The sync actor may delete them (that's how sync removes events
+ *  deleted in Google). */
+export async function softDeleteRecords(tenantId: string, ids: string[], actor: EventActor = { type: "user" }): Promise<number> {
   if (!Array.isArray(ids) || !ids.length) return 0;
+  if (!isSyncActor(actor)) {
+    const protectedRows = await db.record.findMany({
+      where: { id: { in: ids }, tenantId, deletedAt: null, externalSource: "google" },
+      select: { id: true },
+    });
+    if (protectedRows.length) throw externalReadOnlyError();
+  }
   const r = await db.record.updateMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, data: { deletedAt: new Date() } });
   try {
     await db.recordLink.updateMany({ where: { tenantId, recordId: { in: ids }, deletedAt: null }, data: { deletedAt: new Date() } });
@@ -423,9 +456,18 @@ export async function softDeleteRecords(tenantId: string, ids: string[]): Promis
   return r.count;
 }
 
-/** Set one field (title, stageKey, or a custom field) on many records. */
-export async function bulkUpdateRecordField(tenantId: string, ids: string[], field: string, value: any): Promise<number> {
+/** Set one field (title, stageKey, or a custom field) on many records. Google-owned
+ *  bookings are read-only: a user/AI bulk-edit touching any Google-owned target is
+ *  rejected (this is a record-mutation path too, so it needs the same guard). */
+export async function bulkUpdateRecordField(tenantId: string, ids: string[], field: string, value: any, actor: EventActor = { type: "user" }): Promise<number> {
   if (!Array.isArray(ids) || !ids.length || !field) return 0;
+  if (!isSyncActor(actor)) {
+    const protectedRows = await db.record.findMany({
+      where: { id: { in: ids }, tenantId, deletedAt: null, externalSource: "google" },
+      select: { id: true },
+    });
+    if (protectedRows.length) throw externalReadOnlyError();
+  }
   if (field === "title" || field === "stageKey" || field === "subtypeKey") {
     const r = await db.record.updateMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, data: { [field]: value ?? null } });
     return r.count;

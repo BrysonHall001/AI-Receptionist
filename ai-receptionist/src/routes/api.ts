@@ -885,8 +885,14 @@ apiRouter.post("/records/bulk-delete", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   const ids = (req.body?.ids ?? []) as string[];
-  const count = await softDeleteRecords(tenantId, ids);
-  res.json({ count });
+  try {
+    const count = await softDeleteRecords(tenantId, ids);
+    res.json({ count });
+  } catch (err) {
+    const code = (err as any).code;
+    if (code === "external_readonly") { res.status(403).json({ error: (err as Error).message, code }); return; }
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 apiRouter.post("/records/bulk-update", async (req: Request, res: Response) => {
@@ -896,7 +902,11 @@ apiRouter.post("/records/bulk-update", async (req: Request, res: Response) => {
     const { ids, field, value } = (req.body ?? {}) as any;
     const count = await bulkUpdateRecordField(tenantId, ids ?? [], field, value);
     res.json({ count });
-  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+  } catch (err) {
+    const code = (err as any).code;
+    if (code === "external_readonly") { res.status(403).json({ error: (err as Error).message, code }); return; }
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 apiRouter.post("/records/dummy", async (req: Request, res: Response) => {
@@ -935,6 +945,7 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   } catch (err) {
     const code = (err as any).code;
     if (code === "overlap" || code === "closed") { res.status(409).json({ error: (err as Error).message, code }); return; }
+    if (code === "external_readonly") { res.status(403).json({ error: (err as Error).message, code }); return; }
     res.status(400).json({ error: (err as Error).message });
   }
 });

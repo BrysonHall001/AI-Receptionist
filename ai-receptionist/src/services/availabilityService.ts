@@ -309,6 +309,7 @@ export interface CalendarBooking {
   stageLabel: string;
   contactName: string | null;
   resourceId: string | null; // assigned bookable resource (Batch 1), null = unassigned
+  externalSource: string | null; // "google" = Google-owned/read-only; null = Clarity-native
 }
 
 export interface WeekCalendar {
@@ -373,6 +374,7 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
         stageLabel: stageLabel(r.stageKey),
         contactName: nameByRecord[r.id] || null,
         resourceId: r.resourceId || null,
+        externalSource: r.externalSource || null,
       };
     });
 
