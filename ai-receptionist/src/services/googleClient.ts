@@ -238,3 +238,62 @@ export async function freeBusyForCalendar(
     throw new GoogleNotReachableError();
   }
 }
+
+// ---- Read events for sync PULL (sub-batch D). READ-ONLY (events.list). ----
+
+export interface GoogleEventRaw {
+  id: string;
+  summary: string | null;
+  updated: string | null;        // RFC3339 last-modified -> externalUpdatedAt (etag-ish)
+  startDateTime: string | null;  // timed event start (RFC3339 instant)
+  endDateTime: string | null;    // timed event end (RFC3339 instant)
+  startDate: string | null;      // all-day start ("YYYY-MM-DD")
+  endDate: string | null;        // all-day end ("YYYY-MM-DD", EXCLUSIVE per Google)
+}
+
+/**
+ * List a calendar's events in [timeMinISO, timeMaxISO) with singleEvents=true, so
+ * recurring events are expanded into discrete instances (each its own id/time).
+ * READ-ONLY (calendar.readonly covers events.list — no scope change). Cancelled
+ * events are omitted (showDeleted=false), so a deletion shows up as "absent from a
+ * successful fetch" for the caller's delete-on-disappear logic. Throws
+ * GoogleNotReachableError on no-connection / auth / timeout / network failure.
+ */
+export async function listEvents(
+  tenantId: string,
+  calendarId: string,
+  timeMinISO: string,
+  timeMaxISO: string,
+  timeoutMs = 10000,
+): Promise<GoogleEventRaw[]> {
+  const client = await makeAuthedClient(tenantId);
+  if (!client) throw new GoogleNotReachableError();
+  try {
+    const cal = google.calendar({ version: "v3", auth: client });
+    const out: GoogleEventRaw[] = [];
+    let pageToken: string | undefined;
+    do {
+      const resp = await cal.events.list(
+        { calendarId, timeMin: timeMinISO, timeMax: timeMaxISO, singleEvents: true, orderBy: "startTime", showDeleted: false, maxResults: 2500, pageToken },
+        { timeout: timeoutMs },
+      );
+      for (const ev of resp.data.items || []) {
+        if (!ev.id || ev.status === "cancelled") continue;
+        out.push({
+          id: ev.id,
+          summary: ev.summary ?? null,
+          updated: ev.updated ?? null,
+          startDateTime: ev.start?.dateTime ?? null,
+          endDateTime: ev.end?.dateTime ?? null,
+          startDate: ev.start?.date ?? null,
+          endDate: ev.end?.date ?? null,
+        });
+      }
+      pageToken = resp.data.nextPageToken || undefined;
+    } while (pageToken);
+    return out;
+  } catch (e) {
+    if (e instanceof GoogleNotReachableError) throw e;
+    throw new GoogleNotReachableError(); // revoked/auth/timeout/network — never log tokens
+  }
+}

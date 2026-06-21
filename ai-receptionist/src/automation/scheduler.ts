@@ -4,6 +4,7 @@ import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions"
 import { loadFieldDefs, buildColumns, valueOf } from "./contactRow";
 import { evalRules } from "./conditions";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "../services/recordTypeService";
+import { runGoogleCalendarSync } from "../services/googleSyncService";
 
 const db = prisma as any;
 
@@ -419,6 +420,10 @@ export async function processDueJobs(scope?: string): Promise<{ swept: number; r
   const swept = await runDailySweep(scope);
   const reminded = await runAppointmentReminderSweep(scope); // Batch 2: appointment reminders
   const stalled = await runStalledSweep(scope); // Stage 3c: time-in-stage nudges
+  // Google Calendar READ-IN sync (Sub-batch D): flag-gated per tenant, OFF by
+  // default. Self-contained + never throws, but wrap defensively so a sync hiccup
+  // can never break the rest of the tick.
+  try { await runGoogleCalendarSync(scope); } catch (e) { logger.error(`[google-sync] sweep error: ${(e as Error).message}`); }
   const now = new Date();
   const where: any = { status: "pending", dueAt: { lte: now } };
   if (scope) where.tenantId = scope;

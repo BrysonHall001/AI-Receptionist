@@ -193,3 +193,35 @@ export async function setResourceCalendarMap(
 export async function clearResourceCalendarMap(resourceId: string): Promise<void> {
   await db.resourceCalendarMap.deleteMany({ where: { resourceId } });
 }
+
+// ---- Sync health + enablement (Sub-batch D) ----
+
+export interface SyncEnabledConnection {
+  tenantId: string;
+  lastSyncedAt: Date | null;
+}
+
+/** Connections eligible for the sync sweep: connected AND syncEnabled. */
+export async function listSyncEnabledConnections(scope?: string | null): Promise<SyncEnabledConnection[]> {
+  const where: any = { status: "connected", syncEnabled: true };
+  if (scope) where.tenantId = scope;
+  const rows = await (prisma as any).googleConnection.findMany({ where, select: { tenantId: true, lastSyncedAt: true } });
+  return rows.map((r: any) => ({ tenantId: r.tenantId, lastSyncedAt: r.lastSyncedAt ?? null }));
+}
+
+/** Record a SUCCESSFUL sync pass: status ok, clear error, stamp lastSyncedAt. */
+export async function markSyncOk(tenantId: string): Promise<void> {
+  await (prisma as any).googleConnection.updateMany({
+    where: { tenantId },
+    data: { syncStatus: "ok", lastSyncError: null, lastSyncedAt: new Date() },
+  });
+}
+
+/** Record a DEGRADED sync pass: status degraded + reason. Does NOT touch
+ *  lastSyncedAt (so "last successful sync" stays truthful) and never deletes data. */
+export async function markSyncDegraded(tenantId: string, reason: string): Promise<void> {
+  await (prisma as any).googleConnection.updateMany({
+    where: { tenantId },
+    data: { syncStatus: "degraded", lastSyncError: (reason || "Google unreachable").slice(0, 300) },
+  });
+}

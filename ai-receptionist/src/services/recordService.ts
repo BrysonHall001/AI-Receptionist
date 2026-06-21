@@ -521,3 +521,97 @@ export async function bulkCreateRecords(tenantId: string, recordType: string | n
   }
   return { imported, skipped };
 }
+
+// ---------------------------------------------------------------------------
+// SYNC-ONLY external booking upsert/remove (Sub-batch D, PULL). These record
+// Google-owned events as read-only blocking bookings. They run ONLY from the sync
+// engine: external blocks are recorded as-is (NO overlap lock, NO closed/overlap
+// rejection — Google is the source of truth and its events must always block).
+// Deletes go through softDeleteRecords with the privileged "sync" actor (C).
+// ---------------------------------------------------------------------------
+
+export interface SyncBookingInput {
+  resourceId: string;
+  calendarId: string;
+  eventId: string;
+  externalUpdatedAt: string | null;
+  title: string;
+  appointmentAt: Date; // wall-clock start parked in its UTC slot
+  endAt: Date;         // wall-clock end parked in its UTC slot
+}
+
+/** Upsert one Google-owned booking, keyed on (tenant, resource, calendar, event).
+ *  Idempotent: unchanged events (same externalUpdatedAt) are left alone; changed
+ *  or previously-soft-deleted ones are updated/revived. Returns what happened. */
+export async function syncUpsertGoogleBooking(
+  tenantId: string,
+  recordTypeId: string,
+  p: SyncBookingInput,
+): Promise<"created" | "updated" | "unchanged"> {
+  const existing = await db.record.findFirst({
+    where: { tenantId, resourceId: p.resourceId, externalCalendarId: p.calendarId, externalEventId: p.eventId },
+  });
+  const common = {
+    title: (p.title || "(busy)").trim() || "(busy)",
+    appointmentAt: p.appointmentAt,
+    endAt: p.endAt,
+    externalUpdatedAt: p.externalUpdatedAt ?? null,
+    stageKey: "confirmed", // any non-"no_show" stage = busy
+    deletedAt: null,
+  };
+  if (!existing) {
+    await db.record.create({ data: {
+      tenantId, recordTypeId, subtypeKey: null, resourceId: p.resourceId,
+      externalSource: "google", externalEventId: p.eventId, externalCalendarId: p.calendarId,
+      ...common,
+    }});
+    return "created";
+  }
+  const unchanged = existing.deletedAt == null && existing.externalUpdatedAt === (p.externalUpdatedAt ?? null);
+  if (unchanged) return "unchanged";
+  await db.record.update({ where: { id: existing.id }, data: common });
+  return "updated";
+}
+
+/** Delete-on-disappear for ONE successfully-fetched (calendar, resource): soft-delete
+ *  any Google-owned booking whose event id is no longer present. MUST be called only
+ *  after a SUCCESSFUL fetch — never on failure (that would free real blocks). */
+export async function syncRemoveMissingGoogleBookings(
+  tenantId: string,
+  calendarId: string,
+  resourceId: string,
+  keepEventIds: string[],
+): Promise<number> {
+  const rows = await db.record.findMany({
+    where: { tenantId, resourceId, externalCalendarId: calendarId, externalSource: "google", deletedAt: null },
+    select: { id: true, externalEventId: true },
+  });
+  const keep = new Set(keepEventIds);
+  const toDelete = rows.filter((r: any) => !keep.has(r.externalEventId)).map((r: any) => r.id);
+  if (!toDelete.length) return 0;
+  return softDeleteRecords(tenantId, toDelete, { type: "sync" });
+}
+
+/** Mapping-cleanup: when a resource is unmapped/disconnected, soft-delete ALL its
+ *  Google-owned bookings (they're no longer authoritative). Sync actor. */
+export async function syncRemoveAllGoogleBookingsForResource(tenantId: string, resourceId: string): Promise<number> {
+  const rows = await db.record.findMany({
+    where: { tenantId, resourceId, externalSource: "google", deletedAt: null },
+    select: { id: true },
+  });
+  const ids = rows.map((r: any) => r.id);
+  if (!ids.length) return 0;
+  return softDeleteRecords(tenantId, ids, { type: "sync" });
+}
+
+/** Disconnect-cleanup: soft-delete ALL of a tenant's Google-owned bookings (the
+ *  connection is gone, so none of them are authoritative anymore). Sync actor. */
+export async function syncRemoveAllGoogleBookingsForTenant(tenantId: string): Promise<number> {
+  const rows = await db.record.findMany({
+    where: { tenantId, externalSource: "google", deletedAt: null },
+    select: { id: true },
+  });
+  const ids = rows.map((r: any) => r.id);
+  if (!ids.length) return 0;
+  return softDeleteRecords(tenantId, ids, { type: "sync" });
+}

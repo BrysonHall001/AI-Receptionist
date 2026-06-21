@@ -36,6 +36,8 @@ import {
   listResourceCalendarMaps,
 } from "../services/googleConnectionService";
 import { prisma } from "../db/client";
+import { runGoogleCalendarSync } from "../services/googleSyncService";
+import { syncRemoveAllGoogleBookingsForResource, syncRemoveAllGoogleBookingsForTenant } from "../services/recordService";
 
 const db = prisma as any;
 
@@ -135,6 +137,8 @@ googleRouter.delete("/calendars/map", async (req: Request, res: Response) => {
   const { resourceId } = (req.body ?? {}) as { resourceId?: string };
   if (!(await ownedResource(tenantId, resourceId))) { res.status(404).json({ error: "Resource not found" }); return; }
   await clearResourceCalendarMap(resourceId as string);
+  // Mapping-cleanup: the resource's Google-owned bookings are no longer authoritative.
+  await syncRemoveAllGoogleBookingsForResource(tenantId, resourceId as string);
   res.json({ ok: true });
 });
 
@@ -197,12 +201,28 @@ googleRouter.get("/oauth/callback", async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/google/disconnect — clears tokens + flips status (sub-batch 1 path).
+// POST /api/google/sync/run — ADMIN-ONLY manual sync trigger (Sub-batch D). Runs
+// the read-in sync for THIS tenant immediately (ignores the ~5-min cadence) so the
+// owner can test without waiting for a scheduler tick. Honors the per-tenant
+// syncEnabled flag (does nothing if sync is off for the tenant). Returns counts.
+googleRouter.post("/sync/run", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.status(400).json({ error: "No portal selected (include ?tenantId=...)." }); return; }
+  try {
+    const summary = await runGoogleCalendarSync(tenantId, undefined, { ignoreCadence: true });
+    res.json({ ok: true, summary });
+  } catch (e) {
+    logger.error(`[google] manual sync failed: ${(e as Error).message}`);
+    res.status(500).json({ error: "Sync run failed." });
+  }
+});
 googleRouter.post("/disconnect", async (req: Request, res: Response) => {
   const tenantId = resolveTenantScope(req);
   if (!tenantId) { res.status(400).json({ error: "No portal selected" }); return; }
   if (!editable(req)) { res.status(403).json({ error: "Not authorized" }); return; }
   await disconnectGoogle(tenantId);
+  // Disconnect-cleanup: none of this tenant's Google-owned bookings are authoritative now.
+  await syncRemoveAllGoogleBookingsForTenant(tenantId);
   res.json({ ok: true });
 });
 
