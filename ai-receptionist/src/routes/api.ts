@@ -225,7 +225,7 @@ apiRouter.post("/contacts/bulk-delete", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   const ids = (req.body ?? {}).ids;
-  const count = await softDeleteContacts(tenantId, Array.isArray(ids) ? ids : []);
+  const count = await softDeleteContacts(tenantId, Array.isArray(ids) ? ids : [], actorOf(req));
   res.json({ ok: true, count });
 });
 
@@ -292,7 +292,7 @@ apiRouter.delete("/contacts/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   // Soft delete — moves the contact to the recycle bin, never erases it here.
-  const count = await softDeleteContacts(tenantId, [req.params.id]);
+  const count = await softDeleteContacts(tenantId, [req.params.id], actorOf(req));
   if (!count) {
     res.status(404).json({ error: "Contact not found" });
     return;
@@ -887,7 +887,7 @@ apiRouter.post("/records/bulk-delete", async (req: Request, res: Response) => {
   if (!tenantId) return;
   const ids = (req.body?.ids ?? []) as string[];
   try {
-    const count = await softDeleteRecords(tenantId, ids);
+    const count = await softDeleteRecords(tenantId, ids, actorOf(req));
     res.json({ count });
   } catch (err) {
     const code = (err as any).code;

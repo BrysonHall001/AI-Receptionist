@@ -9,7 +9,7 @@ import { loadBookingConfig, durationForService } from "./bookingConfig";
 import { resourceExists, resolveResourceHours, resolveResourceDuration, effectiveDurationMin } from "./resourceService";
 import { randomValueForField } from "./contactService";
 import { emitEvent } from "../events/bus";
-import { EventActor } from "../events/types";
+import { EventActor, deletedByFromActor } from "../events/types";
 
 const db = prisma as any;
 
@@ -449,7 +449,8 @@ export async function softDeleteRecords(tenantId: string, ids: string[], actor: 
     });
     if (protectedRows.length) throw externalReadOnlyError();
   }
-  const r = await db.record.updateMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, data: { deletedAt: new Date() } });
+  const { deletedBy, deletedByType } = deletedByFromActor(actor);
+  const r = await db.record.updateMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, data: { deletedAt: new Date(), deletedBy, deletedByType } });
   try {
     await db.recordLink.updateMany({ where: { tenantId, recordId: { in: ids }, deletedAt: null }, data: { deletedAt: new Date() } });
   } catch (_e) { /* links table absent pre-migration — ignore */ }

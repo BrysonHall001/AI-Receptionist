@@ -567,7 +567,7 @@ const EXECUTORS: Record<string, Executor> = {
       return { type: "delete_record_items", status: "failed", error: `Refusing to delete ${ids.length} records. Turn on "Allow bulk delete" in this action to permit more than ${BULK_DELETE_THRESHOLD}.` };
     }
     let n = 0;
-    try { n = await softDeleteRecords(ctx.tenantId, ids); }
+    try { n = await softDeleteRecords(ctx.tenantId, ids, ctx.actor); }
     catch (e) { return { type: "delete_record_items", status: "failed", error: `Could not delete records: ${(e as Error).message}` }; }
     return { type: "delete_record_items", status: "success", detail: `moved ${n} record(s) to the recycle bin` };
   },
@@ -641,7 +641,7 @@ const EXECUTORS: Record<string, Executor> = {
     // softDeleteContacts == the recycle-bin path (sets deletedAt). Tenant-scoped.
     // Nothing is hard-deleted; restore from Recycle Bin works exactly as for a
     // user-initiated delete.
-    const n = await softDeleteContacts(ctx.tenantId, ids);
+    const n = await softDeleteContacts(ctx.tenantId, ids, ctx.actor);
     return { type: "delete_record", status: "success", detail: `moved ${n} contact(s) to the recycle bin` };
   },
 

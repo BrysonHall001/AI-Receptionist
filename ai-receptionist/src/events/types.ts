@@ -11,6 +11,40 @@ export interface EventActor {
   name?: string | null;
 }
 
+// Loose actor shape accepted by deletedByFromActor — both EventActor (records)
+// and contactService's MutationActor satisfy it structurally.
+export interface ActorLike {
+  type?: string | null;
+  id?: string | null;
+  name?: string | null;
+}
+
+/**
+ * Map the actor behind a soft-delete to the pair we persist on the row, so the
+ * Recycle Bin preview can later show "by [user]" for each case:
+ *   human user        -> their name (captured at delete time), type "user"
+ *   AI receptionist   -> "AI receptionist",  type "ai"   (automation actor)
+ *   calendar sync     -> "Calendar sync",    type "sync"
+ *   system            -> "System",           type "system"
+ * Unknown / no actor / a user with no resolvable name -> deletedBy NULL (the
+ * date-only fallback). Pure + side-effect-free; never throws.
+ */
+export function deletedByFromActor(actor?: ActorLike | null): { deletedBy: string | null; deletedByType: string | null } {
+  if (!actor || !actor.type) return { deletedBy: null, deletedByType: null };
+  switch (actor.type) {
+    case "user":
+      return { deletedBy: (actor.name && actor.name.trim()) || null, deletedByType: "user" };
+    case "automation":
+      return { deletedBy: "AI receptionist", deletedByType: "ai" };
+    case "sync":
+      return { deletedBy: "Calendar sync", deletedByType: "sync" };
+    case "system":
+      return { deletedBy: "System", deletedByType: "system" };
+    default:
+      return { deletedBy: (actor.name && actor.name.trim()) || null, deletedByType: actor.type };
+  }
+}
+
 export interface EventSubject {
   type: string; // e.g. "contact"
   id: string | null;

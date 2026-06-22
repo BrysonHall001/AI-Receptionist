@@ -2,7 +2,7 @@ import { prisma } from "../db/client";
 import { Extracted } from "../ai/schema";
 import { log as logActivity } from "./activityService";
 import { emitEvent } from "../events/bus";
-import { EVENT_TYPES } from "../events/types";
+import { EVENT_TYPES, deletedByFromActor, ActorLike } from "../events/types";
 
 export interface ContactInput {
   tenantId: string;
@@ -236,12 +236,14 @@ export async function importContacts(
 import { RETENTION_DAYS } from "./readModels";
 
 // Mark contacts deleted (moves them to the recycle bin). Tenant-scoped; only
-// affects currently-active contacts owned by this tenant.
-export async function softDeleteContacts(tenantId: string, ids: string[]): Promise<number> {
+// affects currently-active contacts owned by this tenant. Captures WHO deleted
+// them (deletedBy/deletedByType) from the actor, going forward.
+export async function softDeleteContacts(tenantId: string, ids: string[], actor?: ActorLike): Promise<number> {
   if (!Array.isArray(ids) || !ids.length) return 0;
+  const { deletedBy, deletedByType } = deletedByFromActor(actor);
   const r = await prisma.contact.updateMany({
     where: { id: { in: ids }, tenantId, deletedAt: null },
-    data: { deletedAt: new Date() } as any,
+    data: { deletedAt: new Date(), deletedBy, deletedByType } as any,
   });
   // Orphan cleanup: the record<->contact relationship (RecordLink) has a
   // polymorphic parent, so there is no DB foreign key to auto-clean. Soft-delete
@@ -382,7 +384,8 @@ export async function mergeContacts(
   await prisma.activityLog.updateMany({ where: { contactId: { in: loserIds } }, data: { contactId: survivorId } });
 
   // 2) Soft-delete the losers -> recycle bin (frees their email for app-level uniqueness).
-  await prisma.contact.updateMany({ where: { id: { in: loserIds }, tenantId } as any, data: { deletedAt: new Date() } as any });
+  const lostBy = deletedByFromActor(actor as ActorLike);
+  await prisma.contact.updateMany({ where: { id: { in: loserIds }, tenantId } as any, data: { deletedAt: new Date(), deletedBy: lostBy.deletedBy, deletedByType: lostBy.deletedByType } as any });
 
   // 3) Apply chosen field values to the survivor (phone is never changed — the
   //    survivor's phone is the identity key that wins).
