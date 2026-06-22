@@ -49,15 +49,18 @@ googleRouter.use(requireAuth);
 const STATE_COOKIE = "g_oauth_state";
 const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes to complete consent
 
-// Same gate as the voice/timezone settings: anyone but a CLIENT_USER may manage
-// the portal's Google connection.
-function editable(req: Request): boolean {
-  return req.user!.role !== "CLIENT_USER";
+// Google is editable by EVERY portal role (per the Integrations permission
+// matrix) — including CLIENT_USER, who used to be blocked here. Connecting,
+// disconnecting, toggling sync, and mapping calendars are all allowed for any
+// authenticated portal user. Exported so the self-test can assert the relaxed gate.
+export function editable(req: Request): boolean {
+  return !!req.user;
 }
 
 // Bounce back into the SPA with a one-time ?google=<flag> the front-end reads + clears.
+// Returns to the Integrations tab (where the Google Calendar card now lives).
 function appReturn(flag: string): string {
-  return `/?google=${encodeURIComponent(flag)}#/calls`;
+  return `/?google=${encodeURIComponent(flag)}#/integrations`;
 }
 
 function setStateCookie(res: Response, value: string): void {
@@ -178,10 +181,11 @@ googleRouter.get("/oauth/callback", async (req: Request, res: Response) => {
   if (!code || !state || !cookie) { res.redirect(appReturn("state")); return; }
 
   const [nonce, tenantId, userId] = cookie.split(".");
-  // CSRF / tenant-binding: nonce must match, and the SAME logged-in, still-allowed
-  // user must complete it. Any mismatch fails closed.
+  // CSRF / tenant-binding: nonce must match, and the SAME logged-in user must
+  // complete it. (All portal roles may connect Google now, so role isn't gated
+  // here — only identity is, to keep the CSRF binding intact.)
   if (!nonce || nonce !== String(state)) { res.redirect(appReturn("state")); return; }
-  if (!req.user || req.user.id !== userId || req.user.role === "CLIENT_USER") { res.redirect(appReturn("auth")); return; }
+  if (!req.user || req.user.id !== userId) { res.redirect(appReturn("auth")); return; }
   if (!tenantId) { res.redirect(appReturn("state")); return; }
 
   try {

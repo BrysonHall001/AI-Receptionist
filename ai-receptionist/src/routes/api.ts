@@ -1213,7 +1213,7 @@ apiRouter.patch("/theme", async (req: Request, res: Response) => {
 });
 
 // ---- Portal settings (PORTAL_ADMIN for own portal, SUPER_ADMIN anywhere) ----
-apiRouter.get("/settings", async (req: Request, res: Response) => {
+export async function getSettingsHandler(req: Request, res: Response) {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   const portal = await getPortal(tenantId);
@@ -1222,7 +1222,8 @@ apiRouter.get("/settings", async (req: Request, res: Response) => {
     return;
   }
   res.json(portal);
-});
+}
+apiRouter.get("/settings", getSettingsHandler);
 
 apiRouter.patch("/settings", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
@@ -1241,6 +1242,51 @@ apiRouter.patch("/settings", async (req: Request, res: Response) => {
     res.status(400).json({ error: (err as Error).message });
   }
 });
+
+// ---- Integrations tab edit paths (Twilio number + OpenAI on/off) ----
+// "See" uses the existing ungated GET /api/settings (any portal user reads the
+// values). "Edit" is gated to the admin tier — OWNER / SUPER_ADMIN / AUDITOR —
+// per the Integrations permission matrix; PORTAL_ADMIN and CLIENT_USER are
+// view-only and get a 403 here (the grayed-out UI is NOT the security boundary,
+// this check is). Scoped to the Integrations tab ONLY: the existing
+// PATCH /api/settings behavior is intentionally left unchanged.
+function integrationsEditable(req: Request): boolean {
+  return isAdminTier(req.user!.role);
+}
+
+export async function patchIntegrationsTwilio(req: Request, res: Response) {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!integrationsEditable(req)) { res.status(403).json({ error: "Not authorized to edit the Twilio number" }); return; }
+  const phoneNumber = String((req.body ?? {}).phoneNumber ?? "").trim();
+  try {
+    await updatePortal(tenantId, { phoneNumber: phoneNumber || null });
+    res.json({ ok: true, phoneNumber: phoneNumber || null });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+}
+apiRouter.patch("/integrations/twilio", patchIntegrationsTwilio);
+
+export async function patchIntegrationsOpenai(req: Request, res: Response) {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!integrationsEditable(req)) { res.status(403).json({ error: "Not authorized to change the AI receptionist" }); return; }
+  const enabled = (req.body ?? {}).enabled === true;
+  try {
+    // Mirror the existing admin toggle (receptionistEnabled <-> voiceMode), but
+    // PRESERVE an already-chosen voice mode (e.g. SMOOTH/premium) when turning
+    // back on — only bump OFF up to the basic WALKIE mode so the line answers.
+    const current = await getPortal(tenantId);
+    const curMode = (current as any)?.voiceMode || "OFF";
+    const voiceMode = enabled ? (curMode === "OFF" ? "WALKIE" : curMode) : "OFF";
+    await updatePortal(tenantId, { receptionistEnabled: enabled, voiceMode });
+    res.json({ ok: true, enabled });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+}
+apiRouter.patch("/integrations/openai", patchIntegrationsOpenai);
 
 // ---- Users within the current portal (PORTAL_ADMIN manages their own) ----
 apiRouter.get("/users", async (req: Request, res: Response) => {

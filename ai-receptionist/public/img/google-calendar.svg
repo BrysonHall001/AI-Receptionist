@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="img" aria-label="Google Calendar logo placeholder">
+  <!-- PLACEHOLDER ONLY — replace with the official Google Calendar brand SVG. See install notes. -->
+  <rect x="2" y="2" width="44" height="44" rx="10" fill="#ffffff" stroke="#4285F4" stroke-width="2"/>
+  <circle cx="24" cy="19" r="7" fill="#4285F4"/>
+  <text x="24" y="40" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7" font-weight="700" fill="#4285F4">Google Calendar</text>
+</svg>

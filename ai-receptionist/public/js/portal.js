@@ -59,6 +59,7 @@
     if (v === "automations") return App.automations.render(view());
     if (v === "learn") return App.learn.render(view());
     if (v === "feedback") return App.feedback.renderPortal(view());
+    if (v === "integrations") return renderIntegrations();
     if (v === "settings") return renderSettings(sub);
     return App.reports.mountHome(view());
   }
@@ -337,13 +338,19 @@
     bar.appendChild(status);
     sec.appendChild(bar);
 
+    host.appendChild(sec);
+  }
+
+  // ---------------- Google Calendar card (relocated to Integrations) ----------------
+  // Moved INTACT from the Calls AI-instructions card. Same /api/google/* wiring,
+  // OAuth state, sync toggle, and per-resource mapping — only its home changed.
+  function mountGoogleCard(host) {
     // ---- Google Calendar connection (read-only; minimal connect/disconnect) ----
     // Connect/Disconnect/status + per-resource calendar mapping. NO freebusy/
     // availability wiring yet. Tokens never reach the browser.
     const gWrap = el("div");
-    gWrap.style.cssText = "margin-top:18px;padding-top:16px;border-top:1px solid var(--border,#e5e7eb);";
+    gWrap.style.cssText = "";
     gWrap.innerHTML =
-      `<h3 style="margin:0 0 6px;">Google Calendar</h3>` +
       `<p class="cell-muted" style="margin:0 0 10px;">Connect your Google Calendar so Clarity can read busy times (read-only), then map each calendar to a staff member.</p>`;
     const gStatusLine = el("p", "cell-muted");
     gStatusLine.style.cssText = "margin:0 0 10px;font-size:13px;";
@@ -358,7 +365,7 @@
     gWrap.appendChild(gHealth);
     gWrap.appendChild(gBar);
     gWrap.appendChild(gMap);
-    sec.appendChild(gWrap);
+    host.appendChild(gWrap);
 
     // Build the Connect URL the same way portalApi scopes the tenant (super-admin
     // appends ?tenantId of the entered portal). It's a TOP-LEVEL navigation, not fetch.
@@ -559,9 +566,117 @@
     })();
 
     renderGoogle();
-
-    host.appendChild(sec);
   }
+
+  // ---------------- Integrations ----------------
+  // Three integration cards (Twilio, OpenAI, Google Calendar), each with its
+  // brand logo. SEE is open to every portal role (values always shown). EDIT for
+  // Twilio + OpenAI is admin-tier only (OWNER/SUPER_ADMIN/AUDITOR) — others get a
+  // grayed/disabled control; the SERVER also enforces this (the disabled UI is
+  // not the boundary). Google is editable by all roles.
+  async function renderIntegrations() {
+    const host = view();
+    loading();
+    let s;
+    try { s = await App.portalApi("/api/settings"); }
+    catch { host.innerHTML = `<div class="card" style="padding:18px;">Couldn't load integrations.</div>`; return; }
+
+    const me = App.state.me || {};
+    const canEditTO = App.isAdminTier(me.role); // Twilio + OpenAI edit gate
+
+    host.innerHTML = "";
+    const wrap = el("div");
+    wrap.style.cssText = "max-width:760px;";
+    const intro = el("p", "cell-muted", "Connect and manage the services that power your receptionist.");
+    intro.style.cssText = "margin:0 0 16px;";
+    wrap.appendChild(intro);
+
+    // Shared card: brand logo + title header; returns the body element to fill.
+    function card(logo, title) {
+      const c = el("div", "card");
+      c.style.cssText = "padding:18px;margin-bottom:18px;";
+      const head = el("div");
+      head.style.cssText = "display:flex;align-items:center;gap:10px;margin:0 0 12px;";
+      const img = el("img"); img.src = logo; img.alt = title + " logo";
+      img.style.cssText = "width:26px;height:26px;object-fit:contain;flex:0 0 auto;";
+      const h = el("h3", null, esc(title)); h.style.cssText = "margin:0;";
+      head.appendChild(img); head.appendChild(h);
+      c.appendChild(head);
+      const body = el("div"); c.appendChild(body);
+      wrap.appendChild(c);
+      return body;
+    }
+
+    // ---- Twilio: connected phone number ----
+    (function twilio() {
+      const body = card("/img/twilio.svg", "Twilio");
+      const label = el("label", "cell-muted", "Connected phone number");
+      label.style.cssText = "font-size:13px;font-weight:600;display:block;margin:0 0 6px;";
+      body.appendChild(label);
+      const inp = el("input", "input"); inp.value = s.phoneNumber || ""; inp.placeholder = "+1 555 555 5555";
+      inp.style.cssText = "width:100%;max-width:320px;";
+      body.appendChild(inp);
+      if (!canEditTO) {
+        inp.disabled = true;
+        const note = el("p", "cell-muted", "View only — ask an owner or super admin to change this.");
+        note.style.cssText = "font-size:12px;margin:8px 0 0;";
+        body.appendChild(note);
+        return;
+      }
+      const barB = el("div"); barB.style.cssText = "margin-top:10px;display:flex;gap:10px;align-items:center;";
+      const save = el("button", "btn btn-primary btn-sm", "Save");
+      const stat = el("span", "cell-muted"); stat.style.cssText = "font-size:12px;";
+      save.onclick = async () => {
+        save.disabled = true; stat.textContent = "Saving…";
+        try {
+          await App.portalApi("/api/integrations/twilio", { method: "PATCH", body: JSON.stringify({ phoneNumber: inp.value }) });
+          stat.textContent = "Saved."; App.util.toast("Twilio number saved");
+          setTimeout(() => { if (stat.textContent === "Saved.") stat.textContent = ""; }, 2500);
+        } catch (e) { stat.textContent = ""; App.util.toast((e && e.message) || "Save failed", true); }
+        finally { save.disabled = false; }
+      };
+      barB.appendChild(save); barB.appendChild(stat); body.appendChild(barB);
+    })();
+
+    // ---- OpenAI: AI receptionist on/off ----
+    (function openai() {
+      const body = card("/img/openai.svg", "OpenAI");
+      const desc = el("p", "cell-muted", "Powers the AI receptionist that answers and handles your calls.");
+      desc.style.cssText = "font-size:13px;margin:0 0 10px;";
+      body.appendChild(desc);
+      const tWrap = el("label");
+      tWrap.style.cssText = "display:flex;gap:8px;align-items:center;font-size:14px;" + (canEditTO ? "cursor:pointer;" : "");
+      const tog = el("input"); tog.type = "checkbox"; tog.checked = (s.receptionistEnabled === true);
+      const txt = el("span", null, "AI receptionist enabled");
+      const stat = el("span", "cell-muted"); stat.style.cssText = "font-size:12px;margin-left:6px;";
+      tWrap.appendChild(tog); tWrap.appendChild(txt); tWrap.appendChild(stat);
+      body.appendChild(tWrap);
+      if (!canEditTO) {
+        tog.disabled = true;
+        const note = el("p", "cell-muted", "View only — ask an owner or super admin to change this.");
+        note.style.cssText = "font-size:12px;margin:8px 0 0;";
+        body.appendChild(note);
+        return;
+      }
+      tog.onchange = async () => {
+        const on = tog.checked; tog.disabled = true; stat.textContent = "Saving…";
+        try {
+          await App.portalApi("/api/integrations/openai", { method: "PATCH", body: JSON.stringify({ enabled: on }) });
+          stat.textContent = ""; App.util.toast(on ? "AI receptionist on" : "AI receptionist off");
+        } catch (e) { stat.textContent = ""; tog.checked = !on; App.util.toast((e && e.message) || "Couldn't update", true); }
+        finally { tog.disabled = false; }
+      };
+    })();
+
+    // ---- Google Calendar: the relocated card (editable by all roles) ----
+    (function google() {
+      const body = card("/img/google-calendar.svg", "Google Calendar");
+      mountGoogleCard(body);
+    })();
+
+    host.appendChild(wrap);
+  }
+
 
   // ---------------- Contacts ----------------
   // Build the full set of available columns from Fields (system + custom),
