@@ -3299,6 +3299,12 @@
 
     const state = { view: "week", anchor: todayYmd(), resource: "all" };
     let lastResources = []; // refreshed each load so handlers know if resources exist
+    // Header side-data, fetched ONCE (not per navigation) then cached: the business
+    // timezone (relocated into the toolbar) and the Google sync status (Calendar
+    // Sync block). lastRender lets us repaint the header once this data arrives.
+    let tzConfig = null;   // { timezone, timezoneOptions, timezoneEditable }
+    let gStatus = null;    // { configured, connected, syncEnabled }
+    let lastRender = null; // { dates, data }
 
     // Resource view = "All" is selected AND the business has resources → columns
     // become one-per-resource for a SINGLE day. Otherwise it's the normal date grid.
@@ -3327,6 +3333,7 @@
     }
 
     function render(dates, data) {
+      lastRender = { dates, data };
       const hours = data.hours || {};
       const bookings = data.bookings || [];
       const resources = data.resources || [];
@@ -3415,7 +3422,68 @@
         tb.appendChild(legend);
       }
 
+      // ---- Calendar Sync block (display-only) — sits in the space the 2×2 legend
+      // frees on the left. One tile per synced calendar: its icon + a READ-ONLY
+      // checkbox reflecting the existing Google sync flag (connected && syncEnabled).
+      // Built from a list so Outlook/Cal.com tiles can be added later without
+      // restructuring. The actual enable/disable lives in Settings › Integrations.
+      const syncCalendars = [];
+      if (gStatus && gStatus.configured) {
+        syncCalendars.push({ name: "Google Calendar", icon: "/img/google-calendar.webp", enabled: !!(gStatus.connected && gStatus.syncEnabled) });
+      }
+      const calSync = el("div", "cal-sync");
+      calSync.appendChild(el("div", "cal-sync-title", "Calendar Sync"));
+      const syncTiles = el("div", "cal-sync-tiles");
+      if (syncCalendars.length) {
+        syncCalendars.forEach((c) => {
+          const tile = el("div", "cal-sync-tile");
+          tile.title = c.name + (c.enabled ? " — sync on" : " — sync off");
+          const icon = el("img", "cal-sync-icon"); icon.src = c.icon; icon.alt = c.name;
+          const cb = el("input"); cb.type = "checkbox"; cb.checked = c.enabled; cb.disabled = true; // display-only
+          tile.appendChild(icon); tile.appendChild(cb);
+          syncTiles.appendChild(tile);
+        });
+      } else {
+        syncTiles.appendChild(el("span", "cell-muted cal-sync-none", "No calendars connected"));
+      }
+      calSync.appendChild(syncTiles);
+      const syncBlurb = el("div", "cal-sync-blurb cell-muted");
+      syncBlurb.innerHTML = `To enable or disable third-party calendars, go to <a href="#/settings/integrations">Settings &rsaquo; Integrations</a>.`;
+      calSync.appendChild(syncBlurb);
+      tb.appendChild(calSync);
+
       const controls = el("div", "cal-controls");
+
+      // ---- Business time zone (relocated into the header row). SAME tenant.timezone
+      // field and SAME PATCH /api/account/timezone write path — relocation only, one
+      // source of truth. Styled like the "All" resource filter (cal-resource-sel) so
+      // the font matches. Read-only for client users (timezoneEditable:false).
+      if (tzConfig) {
+        const tzSel = el("select", "input cal-resource-sel cal-tz-sel");
+        tzSel.title = "Business time zone";
+        ((tzConfig.timezoneOptions && tzConfig.timezoneOptions.length) ? tzConfig.timezoneOptions : []).forEach((o) => {
+          const opt = el("option", null, esc(o.label)); opt.value = o.id;
+          if (o.id === (tzConfig.timezone || "")) opt.selected = true;
+          tzSel.appendChild(opt);
+        });
+        if (tzConfig.timezoneEditable === false) {
+          tzSel.disabled = true;
+        } else {
+          tzSel.onchange = async () => {
+            const prev = tzConfig.timezone;
+            tzSel.disabled = true;
+            try {
+              await App.portalApi("/api/account/timezone", { method: "PATCH", body: JSON.stringify({ timezone: tzSel.value }) });
+              tzConfig.timezone = tzSel.value;
+              App.util.toast("Business time zone saved");
+            } catch (e) {
+              tzSel.value = prev || "";
+              App.util.toast((e && e.message) || "Save failed", true);
+            } finally { tzSel.disabled = false; }
+          };
+        }
+        controls.appendChild(tzSel);
+      }
 
       // Resource selector (view-only) — sits with the view controls. Shown only
       // when the business has resources; otherwise the calendar is unchanged.
@@ -3438,7 +3506,8 @@
         seg.appendChild(wkBtn); seg.appendChild(dyBtn);
         controls.appendChild(seg);
       }
-      const todayBtn = el("button", "btn btn-ghost btn-sm", "Today");
+      const onToday = state.anchor === todayYmd();
+      const todayBtn = el("button", "btn btn-ghost btn-sm" + (onToday ? " cal-today-on" : ""), "Go to Today");
       const prev = el("button", "btn btn-ghost btn-sm", "‹");
       const next = el("button", "btn btn-ghost btn-sm", "›");
       const navStep = resourceView ? 1 : (state.view === "day" ? 1 : 7);
@@ -3635,7 +3704,17 @@
       }
     }
 
+    // Fetch header side-data ONCE (business timezone + Google sync status), then
+    // repaint so the relocated timezone dropdown and Calendar Sync block appear.
+    // Cached for later navigations (prev/next/today/week/day) — no refetch per move.
     load();
+    Promise.all([
+      App.portalApi("/api/booking-config").catch(() => null),
+      App.portalApi("/api/google/status").catch(() => null),
+    ]).then(([bc, gs]) => {
+      tzConfig = bc; gStatus = gs;
+      if (lastRender) render(lastRender.dates, lastRender.data);
+    });
   }
 
   function recordColumnDefs(fields, type, resById) {
@@ -3674,71 +3753,6 @@
     });
     cols.push({ key: "createdAt", label: "Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` });
     return cols;
-  }
-
-  // ---- Business time zone picker — now lives on the Bookings page ----
-  // Same tenant.timezone field as before (one source of truth — the value Luxon
-  // reads at the Google conversion boundary). Reads the current value + options
-  // from /api/booking-config (display-only) and WRITES via the unchanged
-  // PATCH /api/account/timezone. Read-only for client users (timezoneEditable),
-  // so the always-visible Bookings page never 403s a client user on save.
-  async function mountBookingsTimezone(host) {
-    let data;
-    try { data = await App.portalApi("/api/booking-config"); }
-    catch { return; }
-    const TZ_FALLBACK = [
-      { id: "America/New_York", label: "Eastern (New York)" },
-      { id: "America/Chicago", label: "Central (Chicago)" },
-      { id: "America/Denver", label: "Mountain (Denver)" },
-      { id: "America/Los_Angeles", label: "Pacific (Los Angeles)" },
-      { id: "America/Phoenix", label: "Arizona (no daylight saving)" },
-      { id: "Pacific/Honolulu", label: "Hawaii (no daylight saving)" },
-    ];
-    const tzOptions = (data.timezoneOptions && data.timezoneOptions.length) ? data.timezoneOptions : TZ_FALLBACK;
-    const editable = data.timezoneEditable !== false; // default to editable if absent
-
-    const card = el("div", "card");
-    card.style.cssText = "padding:12px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;";
-    const tzLabel = el("label", "cell-muted", "Business time zone");
-    tzLabel.style.cssText = "font-size:13px;font-weight:600;";
-    const tzSel = el("select", "input");
-    tzSel.style.cssText = "max-width:320px;";
-    tzOptions.forEach((o) => {
-      const opt = el("option");
-      opt.value = o.id;
-      opt.textContent = o.label;
-      if (o.id === (data.timezone || "")) opt.selected = true;
-      tzSel.appendChild(opt);
-    });
-    const tzStatus = el("span", "cell-muted");
-    tzStatus.style.cssText = "font-size:12px;min-height:14px;";
-    card.appendChild(tzLabel);
-    card.appendChild(tzSel);
-    card.appendChild(tzStatus);
-
-    if (!editable) {
-      tzSel.disabled = true;
-      const note = el("span", "cell-muted", "View only");
-      note.style.cssText = "font-size:12px;";
-      card.appendChild(note);
-    } else {
-      tzSel.onchange = async () => {
-        tzSel.disabled = true;
-        tzStatus.textContent = "Saving…";
-        try {
-          await App.portalApi("/api/account/timezone", { method: "PATCH", body: JSON.stringify({ timezone: tzSel.value }) });
-          tzStatus.textContent = "Saved.";
-          App.util.toast("Business time zone saved");
-          setTimeout(() => { if (tzStatus.textContent === "Saved.") tzStatus.textContent = ""; }, 2500);
-        } catch (e) {
-          tzStatus.textContent = "";
-          App.util.toast((e && e.message) || "Save failed", true);
-        } finally {
-          tzSel.disabled = false;
-        }
-      };
-    }
-    host.appendChild(card);
   }
 
   async function renderRecordList(typeKey) {
@@ -3788,10 +3802,6 @@
     // click a booking to open it; creating from an empty slot + the double-booking
     // lock come in the next batch. ----
     if (type.key === "booking") {
-      // Business time zone (relocated from the Calls card) sits above the calendar.
-      const tzHost = el("div");
-      container.appendChild(tzHost);
-      mountBookingsTimezone(tzHost); // async fill; lands above the calendar
       const calLayout = el("div", "table-layout");
       calLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
       const calArea = el("div", "table-area");

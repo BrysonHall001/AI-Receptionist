@@ -1368,10 +1368,31 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .cal-empty { padding: 20px; text-align: center; color: var(--ink-faint); }
 
 /* calendar polish: legend, status glyph, now-line, closed-day label */
-.cal-legend { display: inline-flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.cal-legend { display: grid; grid-template-columns: auto auto; column-gap: 14px; row-gap: 5px; align-items: center; }
 .cal-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); }
 .cal-legend-sw { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; font-size: 11px; font-weight: 700; border: 1px solid currentColor; }
 .cal-legend-lbl { color: var(--ink); }
+
+/* "Go to Today" — distinct shade when the calendar is already on today. Reuses the
+   same accent tokens the Week/Day segmented control uses for its active state, so it
+   adapts across every Appearance theme (no hardcoded color). */
+.cal-today-on, .cal-today-on:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+/* Calendar Sync block (display-only). A repeating tile row so more calendars
+   (Outlook, Cal.com…) drop in later without restructuring. */
+.cal-sync { display: inline-flex; flex-direction: column; gap: 4px; }
+.cal-sync-title { font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+.cal-sync-tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+.cal-sync-tile { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.cal-sync-icon { width: 16px; height: 16px; object-fit: contain; display: block; }
+.cal-sync-tile input { margin: 0; }
+.cal-sync-none { font-size: 12px; }
+.cal-sync-blurb { font-size: 11px; }
+.cal-sync-blurb a { color: var(--accent); text-decoration: none; }
+.cal-sync-blurb a:hover { text-decoration: underline; }
+
+/* Timezone dropdown in the header — matches the "All" filter; just cap its width. */
+.cal-tz-sel { max-width: 200px; }
 .cal-closed-tag { font-size: 9.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
 /* Small resource color dot, reused in the bookings list cell and on calendar blocks. */
 .res-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; flex: 0 0 auto; }
