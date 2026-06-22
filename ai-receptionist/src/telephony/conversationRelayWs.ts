@@ -21,6 +21,19 @@ function pickFiller(): string {
   return LOOKUP_FILLERS[Math.floor(Math.random() * LOOKUP_FILLERS.length)];
 }
 
+// No-audio fallback. If NO inbound caller audio arrives at all — not even a
+// partial transcript — within ~10s of `setup`, the receptionist re-prompts once
+// instead of sitting in dead air. If there is STILL nothing ~7s after that, it
+// says a graceful goodbye and ends the session cleanly (rather than waiting for
+// Twilio to close silently at promptsReceived=0). These are fixed VOICE-LAYER
+// strings only — no model call, no prompt, no config field — exactly like the
+// LOOKUP_FILLERS above. The millisecond constants are exported so the self-test
+// can wait the REAL durations (it drives the real handler, not a copy).
+export const NO_AUDIO_REPROMPT_MS = 10_000;
+export const NO_AUDIO_GOODBYE_MS = 7_000;
+export const NO_AUDIO_REPROMPT = "I'm having trouble hearing you — are you still there?";
+export const NO_AUDIO_GOODBYE = "Sorry, I can't seem to hear you — please call back. Goodbye.";
+
 /**
  * Twilio ConversationRelay WebSocket endpoint — the transport for the new,
  * PARALLEL voice path. It speaks Twilio's ConversationRelay message protocol and
@@ -56,6 +69,10 @@ interface RelayConnState {
   // ONLY in memory and consumed by the next turn. Never written to the DB here —
   // handleTurn stays the sole writer of the call session (no concurrent writes).
   lastInterruptHeard?: string | null;
+  // No-audio fallback timers (in-memory, this connection only). Armed on setup,
+  // cleared the instant ANY inbound audio signal arrives.
+  noAudioRepromptTimer?: ReturnType<typeof setTimeout> | null;
+  noAudioGoodbyeTimer?: ReturnType<typeof setTimeout> | null;
 }
 
 export function attachConversationRelay(server: HttpServer): void {
@@ -101,6 +118,46 @@ export function attachConversationRelay(server: HttpServer): void {
     }, 5000);
     ws.on("pong", () => logger.debug(`[relay] pong from Twilio for ${state.callSid ?? "(none)"}`));
 
+    // Clear BOTH no-audio timers. Called on the first sign of inbound audio
+    // (any prompt incl. partials, an interrupt) and on close. Idempotent.
+    const clearNoAudioTimers = () => {
+      if (state.noAudioRepromptTimer) { clearTimeout(state.noAudioRepromptTimer); state.noAudioRepromptTimer = null; }
+      if (state.noAudioGoodbyeTimer) { clearTimeout(state.noAudioGoodbyeTimer); state.noAudioGoodbyeTimer = null; }
+    };
+
+    // Arm the no-audio fallback after the greeting goes out on setup. Two stages,
+    // both gated on "still zero prompts AND socket still open" so a good call (or a
+    // call that already moved on) can never be spoken over.
+    const armNoAudioFallback = () => {
+      state.noAudioRepromptTimer = setTimeout(() => {
+        if (promptCount > 0 || ws.readyState !== WebSocket.OPEN) return; // audio arrived / gone
+        logger.warn(
+          `[relay] NO caller audio ${NO_AUDIO_REPROMPT_MS}ms after setup on ${state.callSid ?? "(unknown)"} — ` +
+            `re-prompting (likely a one-way-audio/media issue; outbound TTS still works).`,
+        );
+        sendText(ws, NO_AUDIO_REPROMPT);
+        // Stage 2: still nothing a bit later → graceful goodbye + end + finalize.
+        state.noAudioGoodbyeTimer = setTimeout(async () => {
+          if (promptCount > 0 || ws.readyState !== WebSocket.OPEN) return;
+          logger.warn(
+            `[relay] STILL no caller audio after re-prompt on ${state.callSid ?? "(unknown)"} — ` +
+              `saying goodbye and ending the session instead of dying silently.`,
+          );
+          sendText(ws, NO_AUDIO_GOODBYE);
+          endSession(ws);
+          // Finalize normally (idempotent: the close handler's finalize becomes a
+          // no-op via claimFinalization). Mirrors finalize-on-close behavior.
+          if (state.callSid) {
+            try {
+              await finalizeCall(state.callSid, "COMPLETED");
+            } catch (err) {
+              logger.error(`[relay] finalize-on-no-audio failed for ${state.callSid}: ${(err as Error).message}`);
+            }
+          }
+        }, NO_AUDIO_GOODBYE_MS);
+      }, NO_AUDIO_REPROMPT_MS);
+    };
+
     ws.on("message", async (data: RawData) => {
       const rawStr = data.toString();
       let msg: Record<string, unknown>;
@@ -141,11 +198,21 @@ export function attachConversationRelay(server: HttpServer): void {
             const result = await startCall({ callSid: state.callSid, from, to });
             sendText(ws, result.messageToSpeak);
             if (result.done) endSession(ws);
+            // Greeting is out; the caller should speak next. If NO inbound audio
+            // arrives at all, the fallback re-prompts then gracefully ends instead
+            // of sitting in silence. (Not armed if the greeting already ended the
+            // call.) Cleared the instant any inbound audio signal appears.
+            if (!result.done) armNoAudioFallback();
             break;
           }
 
           case "prompt": {
             promptCount += 1;
+            // FIRST sign of inbound audio — partial OR final — means the media is
+            // flowing, so stand the no-audio fallback down immediately. This MUST
+            // happen before the partial early-return below, or a caller mid-sentence
+            // could be spoken over by the re-prompt.
+            clearNoAudioTimers();
             const speech = msg.voicePrompt != null ? String(msg.voicePrompt) : "";
             // Log every prompt we receive, partial or final, so we can see them.
             logger.info(
@@ -188,6 +255,9 @@ export function attachConversationRelay(server: HttpServer): void {
           }
 
           case "interrupt": {
+            // The caller talked over the TTS — that's inbound audio, so stand the
+            // no-audio fallback down too.
+            clearNoAudioTimers();
             // Stage 1 sends each reply as one complete `text` token, so there's
             // nothing to truncate. We log it for visibility; precise
             // "heard-until" tracking is a later (token-streaming) stage.
@@ -234,6 +304,7 @@ export function attachConversationRelay(server: HttpServer): void {
 
     ws.on("close", async (code: number, reason: Buffer) => {
       clearInterval(pingTimer);
+      clearNoAudioTimers(); // socket gone — never let a fallback fire post-close
       const aliveMs = Date.now() - connectedAt;
       const sinceSetupMs = setupAt ? Date.now() - setupAt : null;
       const reasonStr = reason && reason.length ? reason.toString() : "";
