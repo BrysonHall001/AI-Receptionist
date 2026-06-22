@@ -576,7 +576,7 @@ apiRouter.patch("/account/voice", async (req: Request, res: Response) => {
 // Same editors as the voice picker. Saves immediately. The value MUST be one of
 // the allowed IANA zones (see src/config/timezones.ts) — anything else is
 // rejected. NOTHING converts time off this yet; it is stored only.
-apiRouter.patch("/account/timezone", async (req: Request, res: Response) => {
+export async function patchAccountTimezone(req: Request, res: Response) {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   if (!aiInstructionsEditable(req)) {
@@ -594,7 +594,8 @@ apiRouter.patch("/account/timezone", async (req: Request, res: Response) => {
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
-});
+}
+apiRouter.patch("/account/timezone", patchAccountTimezone);
 
 // ---- Personal email signature ----
 apiRouter.get("/account/signature", async (req: Request, res: Response) => {  const u = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { signature: true } });
@@ -971,7 +972,7 @@ apiRouter.get("/availability", async (req: Request, res: Response) => {
 // ---- Booking scheduling config (hours / durations / buffer). The editor reads
 // the service LIST from the Booking record type (single source of truth on the
 // Fields page) and only attaches a duration to each by stable key.
-apiRouter.get("/booking-config", async (req: Request, res: Response) => {
+export async function getBookingConfigHandler(req: Request, res: Response) {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
@@ -982,9 +983,22 @@ apiRouter.get("/booking-config", async (req: Request, res: Response) => {
       .slice()
       .sort((a, b) => (a.order || 0) - (b.order || 0))
       .map((s) => ({ key: s.key, label: s.label }));
-    res.json({ config, services });
+    // Additive: the business timezone now lives on the Bookings page. Same field
+    // (tenant.timezone) and same WRITE path (PATCH /api/account/timezone) — these
+    // are display-only. timezoneEditable mirrors the timezone PATCH gate
+    // (aiInstructionsEditable: blocked for CLIENT_USER) so the Bookings picker can
+    // render read-only for client users instead of 403-ing on save.
+    const portal = await getPortal(tenantId);
+    res.json({
+      config,
+      services,
+      timezone: (portal as any)?.timezone ?? DEFAULT_TIMEZONE,
+      timezoneOptions: TIMEZONE_OPTIONS,
+      timezoneEditable: aiInstructionsEditable(req),
+    });
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
+}
+apiRouter.get("/booking-config", getBookingConfigHandler);
 
 apiRouter.patch("/booking-config", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);

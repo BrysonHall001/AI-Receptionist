@@ -59,7 +59,6 @@
     if (v === "automations") return App.automations.render(view());
     if (v === "learn") return App.learn.render(view());
     if (v === "feedback") return App.feedback.renderPortal(view());
-    if (v === "integrations") return renderIntegrations();
     if (v === "settings") return renderSettings(sub);
     return App.reports.mountHome(view());
   }
@@ -256,52 +255,6 @@
     headRight.appendChild(voiceSel);
     headRight.appendChild(voiceNote);
     headRight.appendChild(voiceStatus);
-
-    // ---- Business time zone picker (foundation only; nothing converts off it yet) ----
-    // MUST stay in sync with TIMEZONE_OPTIONS in src/config/timezones.ts. The server
-    // also sends this list (data.timezoneOptions); this small fallback just guarantees
-    // the picker renders if that's ever missing.
-    const TZ_FALLBACK = [
-      { id: "America/New_York", label: "Eastern (New York)" },
-      { id: "America/Chicago", label: "Central (Chicago)" },
-      { id: "America/Denver", label: "Mountain (Denver)" },
-      { id: "America/Los_Angeles", label: "Pacific (Los Angeles)" },
-      { id: "America/Phoenix", label: "Arizona (no daylight saving)" },
-      { id: "Pacific/Honolulu", label: "Hawaii (no daylight saving)" },
-    ];
-    const tzOptions = (data.timezoneOptions && data.timezoneOptions.length) ? data.timezoneOptions : TZ_FALLBACK;
-    const tzLabel = el("label", "cell-muted");
-    tzLabel.style.cssText = "font-size:13px;font-weight:600;margin-top:10px;";
-    tzLabel.textContent = "Time zone";
-    const tzSel = el("select", "input");
-    tzSel.style.cssText = "width:100%;";
-    tzOptions.forEach((o) => {
-      const opt = el("option");
-      opt.value = o.id;
-      opt.textContent = o.label;
-      if (o.id === (data.timezone || "")) opt.selected = true;
-      tzSel.appendChild(opt);
-    });
-    const tzStatus = el("span", "cell-muted");
-    tzStatus.style.cssText = "font-size:12px;min-height:14px;";
-    tzSel.onchange = async () => {
-      tzSel.disabled = true;
-      tzStatus.textContent = "Saving…";
-      try {
-        await App.portalApi("/api/account/timezone", { method: "PATCH", body: JSON.stringify({ timezone: tzSel.value }) });
-        tzStatus.textContent = "Saved.";
-        App.util.toast("Business time zone saved");
-        setTimeout(() => { if (tzStatus.textContent === "Saved.") tzStatus.textContent = ""; }, 2500);
-      } catch (e) {
-        tzStatus.textContent = "";
-        App.util.toast((e && e.message) || "Save failed", true);
-      } finally {
-        tzSel.disabled = false;
-      }
-    };
-    headRight.appendChild(tzLabel);
-    headRight.appendChild(tzSel);
-    headRight.appendChild(tzStatus);
 
     head.appendChild(headLeft);
     head.appendChild(headRight);
@@ -574,19 +527,17 @@
   // Twilio + OpenAI is admin-tier only (OWNER/SUPER_ADMIN/AUDITOR) — others get a
   // grayed/disabled control; the SERVER also enforces this (the disabled UI is
   // not the boundary). Google is editable by all roles.
-  async function renderIntegrations() {
-    const host = view();
-    loading();
+  async function renderIntegrations(host) {
     let s;
     try { s = await App.portalApi("/api/settings"); }
-    catch { host.innerHTML = `<div class="card" style="padding:18px;">Couldn't load integrations.</div>`; return; }
+    catch { host.innerHTML = `<div class="cell-muted" style="padding:8px;">Couldn't load integrations.</div>`; return; }
 
     const me = App.state.me || {};
     const canEditTO = App.isAdminTier(me.role); // Twilio + OpenAI edit gate
 
     host.innerHTML = "";
     const wrap = el("div");
-    wrap.style.cssText = "max-width:760px;";
+    wrap.innerHTML = `<h2 class="settings-h">Integrations</h2>`;
     const intro = el("p", "cell-muted", "Connect and manage the services that power your receptionist.");
     intro.style.cssText = "margin:0 0 16px;";
     wrap.appendChild(intro);
@@ -609,7 +560,7 @@
 
     // ---- Twilio: connected phone number ----
     (function twilio() {
-      const body = card("/img/twilio.svg", "Twilio");
+      const body = card("/img/twilio.png", "Twilio");
       const label = el("label", "cell-muted", "Connected phone number");
       label.style.cssText = "font-size:13px;font-weight:600;display:block;margin:0 0 6px;";
       body.appendChild(label);
@@ -640,7 +591,7 @@
 
     // ---- OpenAI: AI receptionist on/off ----
     (function openai() {
-      const body = card("/img/openai.svg", "OpenAI");
+      const body = card("/img/openai.webp", "OpenAI");
       const desc = el("p", "cell-muted", "Powers the AI receptionist that answers and handles your calls.");
       desc.style.cssText = "font-size:13px;margin:0 0 10px;";
       body.appendChild(desc);
@@ -670,7 +621,7 @@
 
     // ---- Google Calendar: the relocated card (editable by all roles) ----
     (function google() {
-      const body = card("/img/google-calendar.svg", "Google Calendar");
+      const body = card("/img/google-calendar.webp", "Google Calendar");
       mountGoogleCard(body);
     })();
 
@@ -2447,6 +2398,10 @@
       { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
       { key: "scheduling", label: "Scheduling", admin: true, build: secScheduling },
       { key: "resources", label: App.label("resource", "many"), admin: true, build: secResources },
+      // Integrations is visible to EVERY role (admin:false) — Twilio/OpenAI edit
+      // is gated inside the section, Google is editable by all. renderIntegrations
+      // fills the panel directly (same build(panel) contract as the others).
+      { key: "integrations", label: "Integrations", admin: false, build: renderIntegrations },
       { key: "account", label: "Your account", admin: false, build: secAccount },
       { key: "labels", label: "Labels", admin: true, build: secLabels },
       { key: "fields", label: "Fields", admin: true, build: secFields },
@@ -3721,6 +3676,71 @@
     return cols;
   }
 
+  // ---- Business time zone picker — now lives on the Bookings page ----
+  // Same tenant.timezone field as before (one source of truth — the value Luxon
+  // reads at the Google conversion boundary). Reads the current value + options
+  // from /api/booking-config (display-only) and WRITES via the unchanged
+  // PATCH /api/account/timezone. Read-only for client users (timezoneEditable),
+  // so the always-visible Bookings page never 403s a client user on save.
+  async function mountBookingsTimezone(host) {
+    let data;
+    try { data = await App.portalApi("/api/booking-config"); }
+    catch { return; }
+    const TZ_FALLBACK = [
+      { id: "America/New_York", label: "Eastern (New York)" },
+      { id: "America/Chicago", label: "Central (Chicago)" },
+      { id: "America/Denver", label: "Mountain (Denver)" },
+      { id: "America/Los_Angeles", label: "Pacific (Los Angeles)" },
+      { id: "America/Phoenix", label: "Arizona (no daylight saving)" },
+      { id: "Pacific/Honolulu", label: "Hawaii (no daylight saving)" },
+    ];
+    const tzOptions = (data.timezoneOptions && data.timezoneOptions.length) ? data.timezoneOptions : TZ_FALLBACK;
+    const editable = data.timezoneEditable !== false; // default to editable if absent
+
+    const card = el("div", "card");
+    card.style.cssText = "padding:12px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;";
+    const tzLabel = el("label", "cell-muted", "Business time zone");
+    tzLabel.style.cssText = "font-size:13px;font-weight:600;";
+    const tzSel = el("select", "input");
+    tzSel.style.cssText = "max-width:320px;";
+    tzOptions.forEach((o) => {
+      const opt = el("option");
+      opt.value = o.id;
+      opt.textContent = o.label;
+      if (o.id === (data.timezone || "")) opt.selected = true;
+      tzSel.appendChild(opt);
+    });
+    const tzStatus = el("span", "cell-muted");
+    tzStatus.style.cssText = "font-size:12px;min-height:14px;";
+    card.appendChild(tzLabel);
+    card.appendChild(tzSel);
+    card.appendChild(tzStatus);
+
+    if (!editable) {
+      tzSel.disabled = true;
+      const note = el("span", "cell-muted", "View only");
+      note.style.cssText = "font-size:12px;";
+      card.appendChild(note);
+    } else {
+      tzSel.onchange = async () => {
+        tzSel.disabled = true;
+        tzStatus.textContent = "Saving…";
+        try {
+          await App.portalApi("/api/account/timezone", { method: "PATCH", body: JSON.stringify({ timezone: tzSel.value }) });
+          tzStatus.textContent = "Saved.";
+          App.util.toast("Business time zone saved");
+          setTimeout(() => { if (tzStatus.textContent === "Saved.") tzStatus.textContent = ""; }, 2500);
+        } catch (e) {
+          tzStatus.textContent = "";
+          App.util.toast((e && e.message) || "Save failed", true);
+        } finally {
+          tzSel.disabled = false;
+        }
+      };
+    }
+    host.appendChild(card);
+  }
+
   async function renderRecordList(typeKey) {
     loading();
     let records, fields, types, resources;
@@ -3768,6 +3788,10 @@
     // click a booking to open it; creating from an empty slot + the double-booking
     // lock come in the next batch. ----
     if (type.key === "booking") {
+      // Business time zone (relocated from the Calls card) sits above the calendar.
+      const tzHost = el("div");
+      container.appendChild(tzHost);
+      mountBookingsTimezone(tzHost); // async fill; lands above the calendar
       const calLayout = el("div", "table-layout");
       calLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
       const calArea = el("div", "table-area");
