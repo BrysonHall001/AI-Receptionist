@@ -65,9 +65,15 @@ async function main() {
     check(out.includes("Sunday: closed"), "Sunday reads as closed");
     check(out.includes("Thursday: 9:00 AM – 5:00 PM"), "Thursday states 9:00 AM – 5:00 PM");
 
+    // Explicit closed-days callout (the Issue-1 fix: a closed day can't be dropped)
+    const closedLine = out.split("\n").find((l) => l.startsWith("Closed days:")) || "";
+    check(closedLine.includes("Wednesday") && closedLine.includes("Sunday"), "explicit 'Closed days' callout names BOTH Wednesday and Sunday");
+    check(!closedLine.includes("Monday") && !closedLine.includes("Tuesday"), "the closed-days callout lists ONLY closed days (not open ones)");
+
     // Resource hours
     check(/Bob:[^|]*Monday: 1:00 AM – 1:00 PM/.test(out), "Bob states his CUSTOM Monday hours (1:00 AM – 1:00 PM)");
     check(/Bob:[^|]*Saturday: closed/.test(out), "Bob's Saturday reads as closed");
+    check(/Bob:[^|]*\(closed:[^)]*Saturday[^)]*\)/.test(out), "Bob's custom hours carry an explicit (closed: …) note naming Saturday");
     check(out.includes("Alice: follows the business's hours"), "Alice (inherit) says she follows the business's hours");
     check(!/Alice:[^|]*Monday:/.test(out), "Alice does NOT repeat the full schedule (just 'follows')");
   } catch (e) {
