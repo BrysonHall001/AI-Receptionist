@@ -214,6 +214,13 @@ model CallSession {
   extracted   Json       @default("{}")
   turnCount   Int        @default(0)
   emptyCount  Int        @default(0)
+  // Backend-owned booking commitment, captured the moment the AI calls the
+  // confirm_booking tool (not reconstructed at finalize from the AI's extracted
+  // blob). committedAppointmentAt is the SAME zoneless wall-clock string the rest
+  // of the app uses ("YYYY-MM-DDTHH:MM") — stored verbatim, never timezone-
+  // converted. finalize prefers these over `extracted` when present.
+  committedResourceId    String?
+  committedAppointmentAt String?
   finalizedAt DateTime?
   emailSentAt DateTime?
   createdAt   DateTime   @default(now())

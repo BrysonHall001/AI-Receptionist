@@ -12,10 +12,11 @@ import {
   claimFinalization,
   markEmailSent,
   linkContact,
+  setCommittedBooking,
 } from "./callSessionService";
 import { createOrUpdateContact, phoneFromExtracted } from "./contactService";
 import { sendCallSummaryEmail } from "./notificationService";
-import { createBookingFromCall } from "./bookingCaptureService";
+import { createBookingFromCall, looksLikeBookingIntent } from "./bookingCaptureService";
 import { buildHoursContext } from "./availabilityService";
 
 export interface TurnResult {
@@ -163,6 +164,20 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
     aiMessage = ai.message_to_speak;
     extracted = mergeExtracted(extracted, ai.extracted, session.fromNumber);
     nextState = resolveNextState(state, ai.state_update as CallState);
+
+    // COMMITMENT MOMENT: if the AI called confirm_booking this turn, the backend
+    // already decided the resource + wall-clock time. Persist it on the session
+    // NOW (before the per-turn update and any same-turn finalize) so finalize
+    // reads a backend-owned decision, not the AI's reconstructed `extracted`.
+    // handleTurn is the SOLE session writer, so this never races.
+    if (ai.committedBooking) {
+      try {
+        await setCommittedBooking(params.callSid, ai.committedBooking.resourceId, ai.committedBooking.appointmentAt);
+        logger.info(`[orchestrator] committed booking for ${params.callSid}: resource=${ai.committedBooking.resourceId ?? "(none free/unassigned)"} at ${ai.committedBooking.appointmentAt}`);
+      } catch (e) {
+        logger.error(`[orchestrator] failed to persist committed booking for ${params.callSid}: ${(e as Error).message}`);
+      }
+    }
   } catch (err) {
     // FAILURE RECOVERY (LAYER 2/13): never crash the call; persist partial data.
     logger.error(`AI failed on ${params.callSid}: ${(err as Error).message}`);
@@ -253,19 +268,41 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
   // Best-effort and fully guarded: a vague/no-time call makes no booking, and any
   // failure here can never break finalization or the summary email. No calendar
   // and no availability logic — just records what the caller asked for.
+  //
+  // SOURCE OF TRUTH: prefer the BACKEND-OWNED commitment (captured the moment the
+  // AI called confirm_booking) over the AI's reconstructed `extracted`. The
+  // committed resource id is passed straight through (skipping name-resolution and
+  // the auto-assign safety net, which is now a true last resort); committed time
+  // is the same zoneless wall-clock string used everywhere. Falls back to
+  // `extracted` only when nothing was committed.
+  const committedResourceId: string | null = (session as any).committedResourceId ?? null;
+  const committedAppointmentAt: string | null = (session as any).committedAppointmentAt ?? null;
+  const appointmentDatetime = committedAppointmentAt ?? extracted.appointment_datetime ?? null;
+
   if (contactId) {
     try {
       await createBookingFromCall({
         tenantId: tenant.id,
         contactId,
-        appointmentDatetime: extracted.appointment_datetime ?? null,
+        appointmentDatetime,
         service: extracted.service ?? null,
         resource: extracted.resource ?? null,
+        resolvedResourceId: committedResourceId, // committed id wins; skips name-resolve + safety net
         intent: extracted.intent ?? null,
         callSid,
       });
     } catch (err) {
       logger.error(`Booking capture failed for ${callSid}: ${(err as Error).message}`);
+    }
+  } else {
+    // #3 (audit): a booking can be LOST here without any booking-level log — if the
+    // contact upsert above failed, contactId is null and we never even attempt the
+    // booking. Log LOUDLY when a booking looked intended so the loss is diagnosable.
+    if (committedAppointmentAt || looksLikeBookingIntent(extracted.intent ?? null, extracted.resource ?? null, extracted.service ?? null)) {
+      logger.warn(
+        `[finalize] booking NOT attempted for ${callSid} because no contact was persisted (contact upsert failed earlier) — ` +
+          `committed=${committedAppointmentAt ?? "-"} resource=${extracted.resource ?? "-"} service=${extracted.service ?? "-"} intent=${extracted.intent ?? "-"}`,
+      );
     }
   }
 
@@ -315,6 +352,12 @@ function mergeExtracted(prev: Extracted, next: Extracted, fallbackPhone: string)
     // confirmed time only once; merging keeps it if a later turn omits it.
     appointment_datetime: pick(prev.appointment_datetime, next.appointment_datetime),
     service: pick(prev.service, next.service),
+    // RESOURCE MUST be carried forward exactly like appointment_datetime above.
+    // It was previously dropped here, so a resource the AI announced on one turn
+    // (e.g. "with Alice") was lost before finalize — finalize then saw null and
+    // the safety net auto-assigned the first free staff ("books bob"). Carrying it
+    // forward makes the announced staff survive to finalize. (Bug #1 from audit.)
+    resource: pick(prev.resource, next.resource),
   };
 }
 

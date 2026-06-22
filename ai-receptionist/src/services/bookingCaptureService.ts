@@ -98,8 +98,10 @@ async function pickFreeResource(tenantId: string, appointmentDatetime: string, s
 
 /** Heuristic: does this call look like the caller intended to book? Used only to
  *  decide whether a missing/garbage appointment time should be logged LOUDLY (an
- *  "announced but not recorded" loss) versus quietly (a normal non-booking call). */
-function looksLikeBookingIntent(intent?: string | null, resource?: string | null, service?: string | null): boolean {
+ *  "announced but not recorded" loss) versus quietly (a normal non-booking call).
+ *  Exported so finalize can reuse the SAME signal when a contact failure would
+ *  otherwise drop a booking with no booking-level log. */
+export function looksLikeBookingIntent(intent?: string | null, resource?: string | null, service?: string | null): boolean {
   if ((resource && resource.trim()) || (service && service.trim())) return true;
   return /book|appoint|schedul|reschedul|reserv/i.test(String(intent || ""));
 }
@@ -113,7 +115,7 @@ function looksLikeBookingIntent(intent?: string | null, resource?: string | null
  *  by the caller's handler). */
 async function createBookingWithRescue(
   tenantId: string,
-  p: { title: string; subtypeKey: string | null; appointmentDatetime: string; resourceId: string | null; haveResources: boolean; callSid?: string },
+  p: { title: string; subtypeKey: string | null; appointmentDatetime: string; resourceId: string | null; haveResources: boolean; callSid?: string; announcedResourceName?: string | null },
 ): Promise<{ id: string } | null> {
   const attempt = (rid: string | null) =>
     createRecord(tenantId, BOOKING_RECORD_TYPE_KEY, {
@@ -127,7 +129,15 @@ async function createBookingWithRescue(
     if ((code === "closed" || code === "overlap") && p.haveResources) {
       const free = await pickFreeResource(tenantId, p.appointmentDatetime, p.subtypeKey);
       if (free && free !== p.resourceId) {
-        logger.warn(`[booking-capture] chosen resource ${p.resourceId ?? "(unassigned)"} can't take ${p.appointmentDatetime} (${code}); RESCUING onto free resource ${free} (${p.callSid ?? "?"})`);
+        // ANNOUNCED ≠ BOOKED: the caller was told one staff member but the booking
+        // is being moved to another. Resolve both to names and log it as an
+        // explicit MISMATCH (not just an internal note) so it's easy to spot.
+        const resources = await listResources(tenantId);
+        const nameOf = (id: string | null) => (id ? (resources.find((r) => r.id === id)?.name ?? id) : "(unassigned)");
+        const announced = (p.announcedResourceName && p.announcedResourceName.trim()) || nameOf(p.resourceId);
+        logger.warn(
+          `[booking-capture] ANNOUNCED-VS-BOOKED MISMATCH (${p.callSid ?? "?"}): caller was told "${announced}" but that resource can't take ${p.appointmentDatetime} (${code}); RESCUING booking onto free resource "${nameOf(free)}". The caller may expect a different staff member.`,
+        );
         try {
           return await attempt(free);
         } catch (e2: any) {
@@ -148,6 +158,11 @@ export async function createBookingFromCall(params: {
   appointmentDatetime?: string | null;
   service?: string | null;
   resource?: string | null;
+  /** A backend-COMMITTED resource id (captured by confirm_booking and read from the
+   *  CallSession at finalize). When present, it is the source of truth: name
+   *  resolution and the auto-assign safety net are skipped. The rescue still
+   *  applies if this committed resource went closed/busy by finalize. */
+  resolvedResourceId?: string | null;
   intent?: string | null;
   callSid?: string;
 }): Promise<string | null> {
@@ -159,6 +174,11 @@ export async function createBookingFromCall(params: {
   if (!isConcreteAppointment(appointmentDatetime)) {
     if (looksLikeBookingIntent(intent, resource, service)) {
       logger.warn(`[booking-capture] booking INTENDED but appointment_datetime was missing/not-concrete (value=${JSON.stringify(appointmentDatetime ?? null)}, intent=${intent ?? "-"}, resource=${resource ?? "-"}, service=${service ?? "-"}) — NO booking created; caller still captured (${params.callSid ?? "?"})`);
+    } else {
+      // #2 (audit): a genuine non-booking call (no concrete time, no booking signal).
+      // Not a loss — but trace it at INFO so this exit is never truly silent, while
+      // staying off the WARN channel that flags real losses (no alarm fatigue).
+      logger.info(`[booking-capture] no booking: no concrete time and no booking intent detected — nothing to record (${params.callSid ?? "?"})`);
     }
     return null;
   }
@@ -193,31 +213,43 @@ export async function createBookingFromCall(params: {
   // Title: the caller's own words for the service, else a neutral fallback.
   const title = (service || "").trim() || "Phone booking";
 
-  // Resolve the caller's spoken/announced staff name to a real resource (or null).
-  let resourceId = await resolveResourceByName(tenantId, resource);
   const resources = await listResources(tenantId);
   const haveResources = resources.length > 0;
 
-  // SAFETY NET (decision #4): a booking must never land Unassigned-and-unsynced
-  // when staff exist. If no resource was resolved (no name / no confident match)
-  // but the business HAS bookable resources, auto-assign one that is FREE at this
-  // time, reusing the availability union the AI uses. If NONE is free, do NOT
-  // force-assign a busy resource (that would double-book) — fail safe: no booking,
-  // logged LOUDLY. With zero resources configured, Unassigned is the only lane.
-  if (!resourceId && haveResources) {
+  // SOURCE OF TRUTH for the resource:
+  //  - If the backend COMMITTED a resource (confirm_booking), use it verbatim and
+  //    SKIP name-resolution + the auto-assign safety net (the decision is already
+  //    made deterministically). The rescue below still protects it if it went
+  //    closed/busy by finalize.
+  //  - Otherwise fall back to resolving the caller's spoken/announced name, then to
+  //    the safety net (now a TRUE last resort: only when nothing was committed AND
+  //    no name matched).
+  const committedId = params.resolvedResourceId;
+  const usingCommitted = typeof committedId === "string" && committedId.trim().length > 0;
+
+  let resourceId = usingCommitted ? (committedId as string) : await resolveResourceByName(tenantId, resource);
+
+  // SAFETY NET (decision #4), now LAST RESORT: only when no resource is committed
+  // and none was named/matched. Auto-assign one that is FREE at this time, reusing
+  // the availability union the AI uses. If NONE is free, do NOT force-assign a busy
+  // resource (that would double-book) — fail safe: no booking, logged LOUDLY. With
+  // zero resources configured, Unassigned is the only lane.
+  if (!usingCommitted && !resourceId && haveResources) {
     const free = await pickFreeResource(tenantId, appointmentDatetime as string, subtypeKey);
     if (!free) {
-      logger.warn(`[booking-capture] no resource was named and NONE is free at ${appointmentDatetime} — booking NOT placed; caller still captured (${params.callSid ?? "?"})`);
+      logger.warn(`[booking-capture] no resource was named and NONE is free at ${appointmentDatetime} (and none was committed) — booking NOT placed; caller still captured (${params.callSid ?? "?"})`);
       return null;
     }
     resourceId = free;
   }
 
-  // Create — RESCUING a named-but-unbookable resource onto a free one (so the AI
-  // naming someone who can't actually take the slot never silently loses it). All
-  // no-booking outcomes inside here are logged loudly.
+  // Create — RESCUING a named/committed-but-unbookable resource onto a free one (so
+  // a resource that can't actually take the slot never silently loses the booking,
+  // and an announced-vs-booked change is logged as a MISMATCH). All no-booking
+  // outcomes inside here are logged loudly.
   const booking = await createBookingWithRescue(tenantId, {
     title, subtypeKey, appointmentDatetime: appointmentDatetime as string, resourceId, haveResources, callSid: params.callSid,
+    announcedResourceName: resource ?? null,
   });
   if (!booking) return null; // rescue/none-free already logged loudly
 

@@ -7,7 +7,7 @@ import { runMockTurn } from "./mockEngine";
 import { prisma } from "../db/client";
 import { checkAvailability } from "../services/availabilityService";
 // REUSE (export-only) the existing fail-safe resolvers — no second copies.
-import { resolveResourceByName, mapServiceToSubtype } from "../services/bookingCaptureService";
+import { resolveResourceByName, mapServiceToSubtype, isConcreteAppointment } from "../services/bookingCaptureService";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "../services/recordTypeService";
 
 const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -74,6 +74,47 @@ const AVAILABILITY_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
   },
 };
 
+// The COMMIT tool. Unlike check_availability (read-only), this RECORDS the booking
+// decision on the CallSession the instant the AI announces it — so the booked
+// resource + time come from a deterministic backend decision, not from whatever
+// the model later happens to put in `extracted`. The backend re-verifies the slot
+// and CHOOSES the resource here, then returns the chosen staff name for the AI to
+// announce. This is the commitment moment.
+const CONFIRM_BOOKING_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "confirm_booking",
+    description:
+      "Call this at the EXACT moment you announce a booking to the caller — after they have said yes to a specific date and time. " +
+      "It records the booking on the backend so it cannot be lost or mis-recorded. Pass the confirmed date and 24-hour time; " +
+      "optionally the staff member the caller asked for. The result tells you which staff member to announce — say exactly that name and that time. " +
+      "Do NOT announce a booking without calling this on the same turn.",
+    parameters: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Confirmed appointment date, YYYY-MM-DD." },
+        time: { type: "string", description: "Confirmed start time, 24-hour HH:MM (e.g. 14:00 for 2 PM)." },
+        resource: { type: "string", description: "Optional staff member name the caller asked for. Omit for no-preference." },
+        service: { type: "string", description: "Optional service in the caller's own words." },
+      },
+      required: ["date", "time"],
+      additionalProperties: false,
+    },
+  },
+};
+
+/** The backend-owned commitment captured by confirm_booking, threaded back out of
+ *  runAITurn so handleTurn (the SOLE session writer) can persist it. appointmentAt
+ *  is the zoneless wall-clock string ("YYYY-MM-DDTHH:MM"), never converted. */
+export interface CommittedBooking {
+  resourceId: string | null;
+  appointmentAt: string;
+}
+
+/** runAITurn returns the normal AIResponse plus, when the model committed a
+ *  booking this turn, the backend-owned commitment to persist. */
+export type AITurnResult = AIResponse & { committedBooking?: CommittedBooking };
+
 /**
  * The availability tool's handler. READ-ONLY: resolves the resource NAME via the
  * reused fail-safe resolver (unknown → null → business-wide, never an invented
@@ -82,6 +123,20 @@ const AVAILABILITY_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
  * the slot labels come straight from Batch 1 (pure minute math, no Date/toLocale);
  * the requested time is sliced as a string. NO new date formatting is introduced.
  */
+/** Map the caller's service words to a Booking subtype key (reused mapping) so the
+ *  per-service duration is right. Best-effort: null on any failure (default
+ *  duration is safe). Shared by both the availability and confirm tools. */
+async function serviceWordsToKey(tenantId: string, serviceWords: string | null): Promise<string | null> {
+  if (!serviceWords || !serviceWords.trim()) return null;
+  try {
+    const rtId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY);
+    const rt = await (prisma as any).recordType.findFirst({ where: { tenantId, id: rtId } });
+    return mapServiceToSubtype((rt && rt.subtypes) || [], serviceWords);
+  } catch {
+    return null; // mapping is best-effort; default duration is safe
+  }
+}
+
 async function runAvailabilityTool(tenantId: string, args: any): Promise<string> {
   const date = String(args?.date ?? "").trim();
   const time = args?.time != null && String(args.time).trim() !== "" ? String(args.time).trim() : null;
@@ -99,16 +154,7 @@ async function runAvailabilityTool(tenantId: string, args: any): Promise<string>
   }
 
   // Service words → subtype key (reused mapping) so the duration is right.
-  let serviceKey: string | null = null;
-  if (serviceWords && serviceWords.trim()) {
-    try {
-      const rtId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY);
-      const rt = await (prisma as any).recordType.findFirst({ where: { tenantId, id: rtId } });
-      serviceKey = mapServiceToSubtype((rt && rt.subtypes) || [], serviceWords);
-    } catch {
-      serviceKey = null; // mapping is best-effort; default duration is safe
-    }
-  }
+  const serviceKey = await serviceWordsToKey(tenantId, serviceWords);
 
   const result = await checkAvailability(tenantId, date, time, serviceKey, resourceId);
   return JSON.stringify({
@@ -141,6 +187,81 @@ async function dispatchToolCall(tenantId: string, tc: any): Promise<string> {
   }
 }
 
+/**
+ * The confirm_booking handler — the COMMITMENT MOMENT. The backend, not the model,
+ * decides the booked resource + time here and returns both: a JSON result for the
+ * model to ANNOUNCE, and a CommittedBooking to PERSIST. Reuses the same fail-safe
+ * resolvers + availability union the rest of the app uses (no new logic, no new
+ * date math — the wall-clock string is the caller's exact digits).
+ *
+ * Decision rules (deterministic):
+ *   - time must be a concrete wall-clock value AND report OPEN; otherwise NO commit
+ *     (the model is told why so it doesn't announce a bad time).
+ *   - resource: the caller's named staff IF they're free; else the first FREE staff
+ *     (backend's pick); else the named staff even if not free (finalize's rescue
+ *     covers it); else null only when the business has no free/!any staff.
+ * Never throws — on any error returns committed:null so the turn still completes.
+ */
+async function runConfirmBookingTool(
+  tenantId: string,
+  args: any,
+): Promise<{ toModel: string; committed: CommittedBooking | null }> {
+  try {
+    const date = String(args?.date ?? "").trim();
+    const time = String(args?.time ?? "").trim();
+    const resourceName = args?.resource != null ? String(args.resource) : null;
+    const serviceWords = args?.service != null ? String(args.service) : null;
+    const wallClock = `${date}T${time}`; // zoneless wall-clock, exact digits, no conversion
+
+    // Guard: only commit a real, concrete, parseable wall-clock date+time.
+    if (!isConcreteAppointment(wallClock)) {
+      return { toModel: JSON.stringify({ committed: false, error: "need a concrete date and time (YYYY-MM-DD and HH:MM) before booking" }), committed: null };
+    }
+
+    const serviceKey = await serviceWordsToKey(tenantId, serviceWords);
+    const result = await checkAvailability(tenantId, date, time, serviceKey, null);
+
+    // Don't commit a time the slot brain doesn't report OPEN — tell the model why
+    // so it offers something else instead of announcing a bad booking.
+    if (!result.requestedOpen) {
+      return {
+        toModel: JSON.stringify({ committed: false, requestedReason: result.requestedReason, error: "that exact time is not open — do not announce it; offer another time" }),
+        committed: null,
+      };
+    }
+
+    // Backend CHOOSES the resource deterministically from who is actually free.
+    const free = result.availableResources || []; // [{ id, name }]
+    const namedId = await resolveResourceByName(tenantId, resourceName);
+    let committedId: string | null = null;
+    if (namedId && free.some((r) => r.id === namedId)) committedId = namedId; // caller's pick, and free
+    else if (free.length) committedId = free[0].id; // backend picks a free staff member
+    else if (namedId) committedId = namedId; // named but not in free list — finalize rescue covers it
+    // else: no staff free and none named → null (unassigned lane; only when no resources)
+
+    const committedName =
+      free.find((r) => r.id === committedId)?.name ??
+      (committedId
+        ? (await (prisma as any).resource.findFirst({ where: { id: committedId, tenantId, deletedAt: null }, select: { name: true } }))?.name ?? null
+        : null);
+
+    return {
+      toModel: JSON.stringify({
+        committed: true,
+        resource: committedName, // ANNOUNCE exactly this staff member
+        appointmentTime: result.requestedLabel, // say the time this way, e.g. "2:00 PM"
+        service: serviceWords,
+        uncertain: result.uncertain, // if true, don't over-promise; details will be confirmed
+        note: "Booking recorded on the backend. Announce exactly this staff member and time.",
+      }),
+      committed: { resourceId: committedId, appointmentAt: wallClock },
+    };
+  } catch (e) {
+    logger.warn(`[ai] confirm_booking tool failed: ${(e as Error).message}`);
+    return { toModel: JSON.stringify({ committed: false, error: "could not record the booking just now" }), committed: null };
+  }
+}
+
 /** Parse + validate model content into a strict AIResponse, or null if invalid. */
 function tryParseAIResponse(raw: string | null | undefined): AIResponse | null {
   if (!raw) return null;
@@ -162,7 +283,7 @@ function tryParseAIResponse(raw: string | null | undefined): AIResponse | null {
  *     tool-calling.)
  * Throws AIEngineError if a valid final response can't be produced.
  */
-export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Promise<AIResponse> {
+export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Promise<AITurnResult> {
   // No real OpenAI key AND no injected caller -> local deterministic receptionist
   // (unchanged production behavior). An injected caller (test only) skips this.
   if (!deps.chat && useMockAI()) {
@@ -185,13 +306,18 @@ export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Prom
     });
   }
 
+  // Backend-owned commitment captured if the model calls confirm_booking this turn;
+  // attached to whatever AIResponse we return so handleTurn can persist it.
+  let committedBooking: CommittedBooking | undefined;
+  const attach = (r: AIResponse): AITurnResult => (committedBooking ? { ...r, committedBooking } : r);
+
   // --- TOOL PHASE ---
   let lookupSignalled = false; // ensure the filler fires at most once per turn
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const completion = await callModel({
       model: env.OPENAI_MODEL,
       temperature: 0.3,
-      tools: [AVAILABILITY_TOOL],
+      tools: [AVAILABILITY_TOOL, CONFIRM_BOOKING_TOOL],
       tool_choice: "auto",
       messages,
     });
@@ -207,14 +333,23 @@ export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Prom
       }
       messages.push({ role: "assistant", content: msg?.content ?? null, tool_calls: toolCalls });
       for (const tc of toolCalls) {
-        const out = await dispatchToolCall(input.tenantId, tc);
-        messages.push({ role: "tool", tool_call_id: (tc as any).id, content: out });
+        if ((tc as any)?.function?.name === "confirm_booking") {
+          // COMMITMENT MOMENT: the backend decides + records the booking now.
+          let cbArgs: any = {};
+          try { cbArgs = JSON.parse((tc as any).function?.arguments || "{}"); } catch { cbArgs = {}; }
+          const { toModel, committed } = await runConfirmBookingTool(input.tenantId, cbArgs);
+          if (committed) committedBooking = committed; // last commit this turn wins
+          messages.push({ role: "tool", tool_call_id: (tc as any).id, content: toModel });
+        } else {
+          const out = await dispatchToolCall(input.tenantId, tc);
+          messages.push({ role: "tool", tool_call_id: (tc as any).id, content: out });
+        }
       }
       continue; // allow a follow-up lookup or a final answer
     }
     // No tool call → use the direct answer if it's already valid JSON (1-call path).
     const direct = tryParseAIResponse(msg?.content);
-    if (direct) return direct;
+    if (direct) return attach(direct);
     break; // content wasn't valid JSON → force it below
   }
 
@@ -229,7 +364,7 @@ export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Prom
         messages,
       });
       const raw = completion.choices[0]?.message?.content ?? "";
-      return AIResponseSchema.parse(JSON.parse(raw));
+      return attach(AIResponseSchema.parse(JSON.parse(raw)));
     } catch (err) {
       lastError = err;
       logger.warn(`AI finalize attempt ${attempt}/${env.AI_MAX_RETRIES} failed: ${(err as Error).message}`);

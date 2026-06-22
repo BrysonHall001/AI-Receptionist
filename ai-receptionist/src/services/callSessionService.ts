@@ -89,3 +89,22 @@ export async function markEmailSent(callSid: string) {
 export async function linkContact(callSid: string, contactId: string) {
   return prisma.callSession.update({ where: { callSid }, data: { contactId } });
 }
+
+/**
+ * Persist the backend-owned booking commitment captured when the AI calls the
+ * confirm_booking tool. Written by handleTurn (the SOLE session writer) so it
+ * never races the per-turn update. appointmentAt is the zoneless wall-clock
+ * string ("YYYY-MM-DDTHH:MM") stored verbatim — no timezone conversion. Cast to
+ * `any` so this compiles before `prisma generate` adds the new columns (same
+ * pattern as the rest of the codebase's `prisma as any`).
+ */
+export async function setCommittedBooking(
+  callSid: string,
+  committedResourceId: string | null,
+  committedAppointmentAt: string | null,
+) {
+  return (prisma as any).callSession.update({
+    where: { callSid },
+    data: { committedResourceId, committedAppointmentAt },
+  });
+}
