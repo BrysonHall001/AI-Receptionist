@@ -135,7 +135,7 @@ export async function listDeletedContacts(tenantId?: string | null, limit = 500)
     const deletedMs = new Date(c.deletedAt).getTime();
     const expiresMs = deletedMs + RETENTION_DAYS * 86400000;
     const daysLeft = Math.max(0, Math.ceil((expiresMs - now) / 86400000));
-    return { ...mapContact(c), deletedAt: new Date(c.deletedAt).toISOString(), daysLeft };
+    return { ...mapContact(c), deletedAt: new Date(c.deletedAt).toISOString(), deletedBy: c.deletedBy ?? null, deletedByType: c.deletedByType ?? null, daysLeft };
   });
 }
 

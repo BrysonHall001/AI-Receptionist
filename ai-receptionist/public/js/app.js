@@ -554,6 +554,21 @@
       return App.portal.renderRecord(id);
     }
 
+    // Recycle Bin read-only preview (contact or record). Stays INSIDE the bin:
+    // buildShell keeps "#/recycle" highlighted, and the renderer is read-only.
+    if (path.indexOf("/recycle/contact/") === 0) {
+      const id = path.slice("/recycle/contact/".length);
+      if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
+      buildShell("portal", "#/recycle");
+      return App.portal.renderRecycledPreview("contact", id);
+    }
+    if (path.indexOf("/recycle/record/") === 0) {
+      const id = path.slice("/recycle/record/".length);
+      if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
+      buildShell("portal", "#/recycle");
+      return App.portal.renderRecycledPreview("record", id);
+    }
+
     // Old Inbound link now lives inside Settings.
     if (path === "/inbound") return App.go("#/settings/leadcapture");
 

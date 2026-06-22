@@ -1098,7 +1098,7 @@
 
     // One restorable, paginated table section (reuses App.table + the Restore
     // control). pageSize 5 paginates — nothing is hidden; Prev/Next reach it all.
-    function section(title, columns, rows, restoreUrl) {
+    function section(title, columns, rows, restoreUrl, previewBase) {
       const sec = el("div", "rb-section");
       sec.appendChild(el("h2", "rb-section-title", `${title} (${rows.length})`));
       const tableHost = el("div");
@@ -1109,6 +1109,7 @@
       let handle;
       handle = App.table.mount({
         container: tableHost, columns, rows, selectable: true, rowId: (r) => r.id, pageSize: 5,
+        onRowClick: (r) => App.go(previewBase + r.id), // read-only preview, stays in the bin
         onSelectionChange: (ids) => { rc.textContent = ids.length ? `${ids.length} selected` : ""; },
         emptyHtml: `<div class="empty"><div class="empty-emoji">&#128465;</div><h3>Nothing here</h3><p>These will appear here for 30 days after deletion.</p></div>`,
       });
@@ -1124,13 +1125,13 @@
 
     // Contacts table.
     const contactCols = withCountdown(applyColumnLayout(contactColumnDefs(cFields), (cCols && cCols.layout) || {}).slice(), "name", (r) => r.name || "Unknown");
-    section(App.label("contact", "many"), contactCols, delContacts || [], "/api/contacts/restore");
+    section(App.label("contact", "many"), contactCols, delContacts || [], "/api/contacts/restore", "#/recycle/contact/");
 
     // One table per record type that has deleted items (Jobs, Bookings, custom…).
     typesWithDeleted.forEach((t) => {
       const base = recordColumnDefs(fieldsByType[t.id] || [], t, resById);
       const cols = withCountdown(applyRecordLayout(base, loadRecordLayout(t.key)).slice(), "title", (r) => r.title || "Untitled");
-      section(t.labelPlural || t.label, cols, recsByType[t.id] || [], "/api/records/restore");
+      section(t.labelPlural || t.label, cols, recsByType[t.id] || [], "/api/records/restore", "#/recycle/record/");
     });
 
     // Truly-empty state (no deleted contacts AND no deleted records of any type).
@@ -1138,6 +1139,112 @@
       const empty = el("div", "card");
       empty.innerHTML = `<div class="empty"><div class="empty-emoji">&#128465;</div><h3>Recycle Bin is empty</h3><p>Deleted items will appear here for 30 days.</p></div>`;
       container.appendChild(empty);
+    }
+  }
+
+  // ---------------- Recycle Bin: read-only preview ----------------
+  // A deleted contact or record, shown READ-ONLY and IN the bin (the route keeps
+  // "#/recycle" highlighted). Reuses the SAME column defs as the bin tables for
+  // labels/values, adds the "Moved to Recycle Bin on [date] by [user]" line
+  // (date-only when deletedBy is null — pre-Batch-A items), and a Restore action.
+  async function renderRecycledPreview(kind, id) {
+    loading();
+    try {
+      let item, cols, title, restoreUrl, typeLabel = "";
+      if (kind === "contact") {
+        const [deleted, fields] = await Promise.all([
+          App.portalApi("/api/contacts/deleted"),
+          App.portalApi("/api/fields").catch(() => []),
+        ]);
+        item = (deleted || []).find((r) => r.id === id);
+        if (!item) return previewMissing();
+        cols = contactColumnDefs(fields);
+        title = item.name || "Unknown";
+        typeLabel = App.label("contact", "one");
+        restoreUrl = "/api/contacts/restore";
+      } else {
+        const [deleted, types, resources] = await Promise.all([
+          App.portalApi("/api/records/deleted"),
+          App.portalApi("/api/record-types").catch(() => []),
+          App.portalApi("/api/resources").catch(() => []),
+        ]);
+        item = (deleted || []).find((r) => r.id === id);
+        if (!item) return previewMissing();
+        const type = (types || []).find((t) => t.id === item.recordTypeId) || { key: "record", label: "Record" };
+        const fields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)).catch(() => []);
+        const resById = {}; (resources || []).forEach((r) => { resById[r.id] = r; });
+        cols = recordColumnDefs(fields, type, resById);
+        title = item.title || "Untitled";
+        typeLabel = type.label;
+        restoreUrl = "/api/records/restore";
+      }
+
+      view().innerHTML = "";
+      const card = el("div", "card rb-preview");
+
+      const top = el("div", "rb-preview-top");
+      const back = el("a", "btn btn-ghost btn-sm", "← Back to Recycle Bin");
+      back.href = "#/recycle";
+      top.appendChild(back);
+      top.appendChild(el("span", "rb-readonly-badge", "Read-only preview"));
+      card.appendChild(top);
+
+      const h = el("h1", "rb-preview-title");
+      h.textContent = title;
+      if (typeLabel) { const tl = el("span", "rb-preview-type", esc(typeLabel)); h.appendChild(document.createTextNode(" ")); h.appendChild(tl); }
+      card.appendChild(h);
+
+      // "Moved to Recycle Bin on [date] by [user]." — date always; "by" only when
+      // we captured it (older items show date only).
+      const when = item.deletedAt ? new Date(item.deletedAt).toLocaleString() : null;
+      const who = item.deletedBy ? (" by " + item.deletedBy) : "";
+      const left = (typeof item.daysLeft === "number") ? ` · ${item.daysLeft} day${item.daysLeft === 1 ? "" : "s"} until permanent deletion` : "";
+      const note = el("p", "rb-preview-note cell-muted");
+      note.textContent = (when ? `Moved to Recycle Bin on ${when}${who}.` : "In the Recycle Bin.") + left;
+      card.appendChild(note);
+
+      // Read-only field rows, straight from the shared column defs (label → value).
+      const fieldsWrap = el("div", "rb-preview-fields");
+      (cols || []).forEach((c) => {
+        if (!c || !c.label) return;
+        const row = el("div", "rb-field");
+        row.appendChild(el("div", "rb-field-label", esc(c.label)));
+        const val = el("div", "rb-field-value");
+        let html = "";
+        try { html = c.render ? c.render(item) : esc(c.text ? c.text(item) : ""); } catch (e) { html = ""; }
+        if (html == null || html === "") html = `<span class="cell-muted">—</span>`;
+        val.innerHTML = html;
+        row.appendChild(val);
+        fieldsWrap.appendChild(row);
+      });
+      card.appendChild(fieldsWrap);
+
+      const actions = el("div", "rb-preview-actions");
+      const restoreBtn = el("button", "btn btn-primary btn-sm", "Restore");
+      restoreBtn.onclick = async () => {
+        restoreBtn.disabled = true;
+        try { await App.portalApi(restoreUrl, { method: "POST", body: JSON.stringify({ ids: [id] }) }); App.util.toast("Restored"); App.go("#/recycle"); }
+        catch (e) { restoreBtn.disabled = false; App.util.toast((e && e.message) || "Restore failed", true); }
+      };
+      actions.appendChild(restoreBtn);
+      card.appendChild(actions);
+
+      view().appendChild(card);
+    } catch (e) {
+      view().innerHTML = `<div class="card"><p class="cell-muted">${esc((e && e.message) || "Couldn't load this item.")}</p></div>`;
+    }
+
+    function previewMissing() {
+      view().innerHTML = "";
+      const card = el("div", "card rb-preview");
+      const back = el("a", "btn btn-ghost btn-sm", "← Back to Recycle Bin");
+      back.href = "#/recycle";
+      card.appendChild(back);
+      const p = el("p", "cell-muted");
+      p.style.marginTop = "12px";
+      p.textContent = "This item is no longer in the Recycle Bin — it may have been restored or permanently removed.";
+      card.appendChild(p);
+      view().appendChild(card);
     }
   }
 
@@ -4596,7 +4703,7 @@
     loadLinks();
   }
 
-  App.portal = { render, refresh, simulate, renderContact, renderRecord, current: () => current };
+  App.portal = { render, refresh, simulate, renderContact, renderRecord, renderRecycledPreview, current: () => current };
   // Mountable labels editor (the SAME secLabels used by Settings > Labels), so the
   // portal setup screen can render it for a just-created portal. It targets whatever
   // App.state.currentPortalId is set to (via App.portalApi), like the in-portal pane.
