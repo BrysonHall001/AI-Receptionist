@@ -8,6 +8,7 @@ import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_
 import { loadBookingConfig, durationForService } from "./bookingConfig";
 import { resourceExists, resolveResourceHours, resolveResourceDuration, effectiveDurationMin } from "./resourceService";
 import { randomValueForField } from "./contactService";
+import { RETENTION_DAYS } from "./readModels";
 import { emitEvent } from "../events/bus";
 import { EventActor, deletedByFromActor } from "../events/types";
 
@@ -454,6 +455,53 @@ export async function softDeleteRecords(tenantId: string, ids: string[], actor: 
   try {
     await db.recordLink.updateMany({ where: { tenantId, recordId: { in: ids }, deletedAt: null }, data: { deletedAt: new Date() } });
   } catch (_e) { /* links table absent pre-migration — ignore */ }
+  return r.count;
+}
+
+/** ---- Records recycle bin (mirrors the contacts recycle-bin path) ----
+ *  Soft-deleted records of EVERY record type for this tenant, newest first, each
+ *  with a days-until-permanent-deletion countdown (RETENTION_DAYS from deletion)
+ *  and the deletedAt/deletedBy/deletedByType captured in Batch A. The Recycle Bin
+ *  groups these by recordTypeId into per-type tables. */
+export async function listDeletedRecords(tenantId: string) {
+  const rows = await db.record.findMany({
+    where: { tenantId, deletedAt: { not: null } },
+    orderBy: { deletedAt: "desc" },
+  });
+  const now = Date.now();
+  return rows.map((r: any) => {
+    const deletedMs = new Date(r.deletedAt).getTime();
+    const daysLeft = Math.max(0, Math.ceil((deletedMs + RETENTION_DAYS * 86400000 - now) / 86400000));
+    return {
+      ...serializeRecord(r),
+      deletedAt: new Date(r.deletedAt).toISOString(),
+      deletedBy: r.deletedBy ?? null,
+      deletedByType: r.deletedByType ?? null,
+      daysLeft,
+    };
+  });
+}
+
+/** Restore records from the recycle bin back into their active list. Mirrors
+ *  restoreContacts: flips deletedAt back to null (tenant-scoped, only rows that
+ *  are actually deleted). Links are intentionally left as-is, matching how
+ *  contact restore behaves today. */
+export async function restoreRecords(tenantId: string, ids: string[]): Promise<number> {
+  if (!Array.isArray(ids) || !ids.length) return 0;
+  const r = await db.record.updateMany({
+    where: { id: { in: ids }, tenantId, deletedAt: { not: null } },
+    data: { deletedAt: null },
+  });
+  return r.count;
+}
+
+/** Permanently remove records past the retention window. Called lazily when the
+ *  recycle bin is loaded (no scheduled job needed) — same as purgeExpiredContacts. */
+export async function purgeExpiredRecords(tenantId: string): Promise<number> {
+  const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400000);
+  const r = await db.record.deleteMany({
+    where: { tenantId, deletedAt: { not: null, lt: cutoff } },
+  });
   return r.count;
 }
 

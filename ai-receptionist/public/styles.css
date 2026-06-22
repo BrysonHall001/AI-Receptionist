@@ -1053,6 +1053,9 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .rb-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .rb-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
 .rb-countdown { font-size: 11.5px; color: var(--amber); margin-top: 2px; }
+/* Per-type sections in the Recycle Bin (Contacts, Jobs, Bookings, …). */
+.rb-section { margin-bottom: 26px; }
+.rb-section-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; color: var(--ink); }
 
 /* ---------- Today dashboard ---------- */
 .today-head { margin-bottom: 18px; }

@@ -11,7 +11,7 @@ import { listFields, createField, updateField, deleteField, reorderFields, setFi
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
 import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels } from "../services/recordTypeService";
 import { addRecordStatus, renameRecordStatus, reorderRecordStatuses, deleteRecordStatus } from "../services/recordTypeService";
-import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote } from "../services/recordService";
+import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, listDeletedRecords, restoreRecords, purgeExpiredRecords } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
@@ -928,6 +928,24 @@ apiRouter.post("/records/import", async (req: Request, res: Response) => {
     const result = await bulkCreateRecords(tenantId, type ?? null, rows ?? []);
     res.json(result);
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// ---- Recycle bin (soft-deleted records) ----
+// MUST be registered before "/records/:id" so "deleted" isn't read as an id.
+apiRouter.get("/records/deleted", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  // Lazy purge: anything past the 30-day window is permanently removed on load.
+  await purgeExpiredRecords(tenantId);
+  res.json(await listDeletedRecords(tenantId));
+});
+
+apiRouter.post("/records/restore", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ids = (req.body ?? {}).ids;
+  const count = await restoreRecords(tenantId, Array.isArray(ids) ? ids : []);
+  res.json({ ok: true, count });
 });
 
 apiRouter.get("/records/:id", async (req: Request, res: Response) => {

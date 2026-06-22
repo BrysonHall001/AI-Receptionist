@@ -1051,48 +1051,94 @@
   // ---------------- Recycle Bin ----------------
   async function renderRecycleBin() {
     loading();
-    const [deleted, fields, colResp] = await Promise.all([
-      App.portalApi("/api/contacts/deleted"),
-      App.portalApi("/api/fields").catch(() => []),
-      App.portalApi("/api/account/contact-columns").catch(() => ({ layout: {} })),
-    ]);
-    const allColumns = contactColumnDefs(fields);
-    const layout = (colResp && colResp.layout) || {};
-    let columns = applyColumnLayout(allColumns, layout).slice();
-    // Override the name column to show the countdown beneath the name.
-    columns = columns.map((c) => c.key === "name"
-      ? { ...c, render: (r) => `${esc((r.name) || "Unknown")}<div class="rb-countdown">${r.daysLeft} day${r.daysLeft === 1 ? "" : "s"} until permanent deletion</div>` }
-      : c);
+    // Contacts live in their own table/endpoint; records (jobs/bookings/custom)
+    // come back across ALL types from one endpoint and get split per type below.
+    let delContacts, delRecords, types, resources, cFields, cCols;
+    try {
+      [delContacts, delRecords, types, resources, cFields, cCols] = await Promise.all([
+        App.portalApi("/api/contacts/deleted"),
+        App.portalApi("/api/records/deleted").catch(() => []),
+        App.portalApi("/api/record-types").catch(() => []),
+        App.portalApi("/api/resources").catch(() => []),
+        App.portalApi("/api/fields").catch(() => []),
+        App.portalApi("/api/account/contact-columns").catch(() => ({ layout: {} })),
+      ]);
+    } catch (e) {
+      view().innerHTML = `<div class="card"><p class="cell-muted">${esc((e && e.message) || "Couldn't load the Recycle Bin.")}</p></div>`;
+      return;
+    }
+
+    const resById = {}; (resources || []).forEach((r) => { resById[r.id] = r; });
+
+    // Group deleted records by record type, keep types in their display order.
+    const recsByType = {};
+    (delRecords || []).forEach((r) => { (recsByType[r.recordTypeId] = recsByType[r.recordTypeId] || []).push(r); });
+    const typesWithDeleted = (types || []).filter((t) => (recsByType[t.id] || []).length);
+
+    // Each such type's fields drive its columns (same as the live list). Parallel.
+    const fieldsByType = {};
+    await Promise.all(typesWithDeleted.map(async (t) => {
+      fieldsByType[t.id] = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(t.key)).catch(() => []);
+    }));
 
     view().innerHTML = "";
     const container = el("div", "fade-in");
     const head = el("div", "rb-head");
-    head.innerHTML = `<div><h1 class="rb-title">&#128465; Recycle Bin</h1><p class="cell-muted">Deleted contacts are kept for 30 days, then permanently removed. They don't appear anywhere else.</p></div>`;
-    const backBtn = el("a", "btn btn-ghost btn-sm", ("← Back to " + App.label("contact","many")));
+    head.innerHTML = `<div><h1 class="rb-title">&#128465; Recycle Bin</h1><p class="cell-muted">Deleted items are kept for 30 days, then permanently removed. They don't appear anywhere else.</p></div>`;
+    const backBtn = el("a", "btn btn-ghost btn-sm", ("← Back to " + App.label("contact", "many")));
     backBtn.href = "#/contacts";
     head.appendChild(backBtn);
     container.appendChild(head);
-    const tableHost = el("div");
-    container.appendChild(tableHost);
     view().appendChild(container);
 
-    let handle;
-    handle = App.table.mount({
-      container: tableHost, columns, rows: deleted, selectable: true, rowId: (r) => r.id,
-      onRowClick: (r) => App.go("#/contact/" + r.id),
-      onSelectionChange: (ids) => { rc.textContent = ids.length ? `${ids.length} selected` : ""; },
-      defaultSort: "createdAt", defaultSortDir: "desc",
-      emptyHtml: `<div class="empty"><div class="empty-emoji">&#128465;</div><h3>Recycle Bin is empty</h3><p>Deleted contacts will appear here for 30 days.</p></div>`,
+    // Show the days-left countdown beneath the primary cell (the old bin's pattern).
+    const withCountdown = (columns, primaryKey, nameOf) => columns.map((c) => c.key === primaryKey
+      ? { ...c, render: (r) => `${esc(nameOf(r))}<div class="rb-countdown">${r.daysLeft} day${r.daysLeft === 1 ? "" : "s"} until permanent deletion</div>` }
+      : c);
+
+    // One restorable, paginated table section (reuses App.table + the Restore
+    // control). pageSize 5 paginates — nothing is hidden; Prev/Next reach it all.
+    function section(title, columns, rows, restoreUrl) {
+      const sec = el("div", "rb-section");
+      sec.appendChild(el("h2", "rb-section-title", `${title} (${rows.length})`));
+      const tableHost = el("div");
+      sec.appendChild(tableHost);
+      container.appendChild(sec);
+
+      const rc = el("span", "bulk-count", "");
+      let handle;
+      handle = App.table.mount({
+        container: tableHost, columns, rows, selectable: true, rowId: (r) => r.id, pageSize: 5,
+        onSelectionChange: (ids) => { rc.textContent = ids.length ? `${ids.length} selected` : ""; },
+        emptyHtml: `<div class="empty"><div class="empty-emoji">&#128465;</div><h3>Nothing here</h3><p>These will appear here for 30 days after deletion.</p></div>`,
+      });
+      const restoreBtn = el("button", "btn btn-primary btn-sm", "Restore selected");
+      restoreBtn.onclick = async () => {
+        const ids = handle.getSelected();
+        if (!ids.length) { App.util.toast("Select something to restore first.", true); return; }
+        try { await App.portalApi(restoreUrl, { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Restored"); renderRecycleBin(); }
+        catch (e) { App.util.toast((e && e.message) || "Restore failed", true); }
+      };
+      if (handle.toolbarLeft) { handle.toolbarLeft.appendChild(restoreBtn); handle.toolbarLeft.appendChild(rc); }
+    }
+
+    // Contacts table.
+    const contactCols = withCountdown(applyColumnLayout(contactColumnDefs(cFields), (cCols && cCols.layout) || {}).slice(), "name", (r) => r.name || "Unknown");
+    section(App.label("contact", "many"), contactCols, delContacts || [], "/api/contacts/restore");
+
+    // One table per record type that has deleted items (Jobs, Bookings, custom…).
+    typesWithDeleted.forEach((t) => {
+      const base = recordColumnDefs(fieldsByType[t.id] || [], t, resById);
+      const cols = withCountdown(applyRecordLayout(base, loadRecordLayout(t.key)).slice(), "title", (r) => r.title || "Untitled");
+      section(t.labelPlural || t.label, cols, recsByType[t.id] || [], "/api/records/restore");
     });
-    const restoreBtn = el("button", "btn btn-primary btn-sm", "Restore selected");
-    const rc = el("span", "bulk-count", "");
-    restoreBtn.onclick = async () => {
-      const ids = handle.getSelected();
-      if (!ids.length) { App.util.toast(("Select a " + App.label("contact","one").toLowerCase() + " first."), true); return; }
-      try { await App.portalApi("/api/contacts/restore", { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Restored to " + App.label("contact","many")); renderRecycleBin(); }
-      catch (e) { App.util.toast(e.message, true); }
-    };
-    if (handle.toolbarLeft) { handle.toolbarLeft.appendChild(restoreBtn); handle.toolbarLeft.appendChild(rc); }
+
+    // Truly-empty state (no deleted contacts AND no deleted records of any type).
+    if (!(delContacts || []).length && !(delRecords || []).length) {
+      const empty = el("div", "card");
+      empty.innerHTML = `<div class="empty"><div class="empty-emoji">&#128465;</div><h3>Recycle Bin is empty</h3><p>Deleted items will appear here for 30 days.</p></div>`;
+      container.appendChild(empty);
+    }
   }
 
   // ---------------- Saved filters dropdown ----------------
