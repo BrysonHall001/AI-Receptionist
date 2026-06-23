@@ -58,7 +58,7 @@
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
   const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
-  const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"], ["#/admin/feedback", "Feedback"]];
+  const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
   // Exposed so the Settings → Labels → "Pages & navigation" editor builds its rows
   // from the same canonical list the sidebar uses (no drift, no second definition).
   App.PORTAL_NAV = PORTAL_NAV;
@@ -473,7 +473,7 @@
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
     } else {
-      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/fields": "Fields", "#/reports": "Reports", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users", "#/admin/feedback": "Feedback" };
+      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/fields": "Fields", "#/reports": "Reports", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
       topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Home Dashboard"));
     }
     topbar.appendChild(topLeft);
@@ -533,7 +533,7 @@
     // Master (admin) section
     if (path.indexOf("/admin") === 0) {
       if (!App.isAdminTier(me.role)) return App.go("#/dashboard");
-      const sub = path === "/admin/users" ? "users" : path === "/admin/feedback" ? "feedback" : "portals";
+      const sub = path === "/admin/users" ? "users" : path === "/admin/feedback" ? "feedback" : path === "/admin/changelog" ? "changelog" : "portals";
       buildShell("admin", "#/admin/" + sub);
       return App.admin.render(sub);
     }

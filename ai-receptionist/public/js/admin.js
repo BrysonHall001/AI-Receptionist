@@ -31,6 +31,7 @@
     current = v;
     if (v === "users") return renderUsers();
     if (v === "feedback") return App.feedback.renderMaster(view());
+    if (v === "changelog") return renderChangelog();
     return renderPortals();
   }
 
@@ -624,6 +625,33 @@
         navigator.clipboard.writeText(link || "").then(done).catch(() => { try { document.execCommand("copy"); done(); } catch (e) {} });
       } else { try { document.execCommand("copy"); done(); } catch (e) {} }
     };
+  }
+
+  // ---------------- Change Log ----------------
+  // Product-level log of every change shipped, read from the DB (never git).
+  // Reuses App.table.mount — same sort/filter/pagination as the other hub tables.
+  async function renderChangelog() {
+    loading();
+    let rows;
+    try { rows = await App.api("/api/admin/changelog"); }
+    catch (e) { view().innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+    if (!Array.isArray(rows)) rows = [];
+
+    view().innerHTML = "";
+    const host = el("div", "fade-in");
+    view().appendChild(host);
+
+    const columns = [
+      { key: "date", label: "Date", type: "date", get: (r) => r.date, text: (r) => fmtDate(r.date), render: (r) => `<span class="cell-muted">${fmtDate(r.date)}</span>` },
+      { key: "type", label: "Type", type: "text", get: (r) => r.type, cellClass: "cell-strong", render: (r) => esc(r.type || "—") },
+      { key: "description", label: "Description", type: "text", get: (r) => r.description, render: (r) => esc(r.description || "—") },
+    ];
+    const empty = `<div class="card cell-muted" style="padding:18px">No changes logged yet.</div>`;
+    App.table.mount({
+      container: host, columns, rows,
+      defaultSort: "date", defaultSortDir: "desc",
+      emptyHtml: empty, pageSize: 25,
+    });
   }
 
   App.admin = { render };

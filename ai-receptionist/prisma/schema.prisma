@@ -763,3 +763,20 @@ model ResourceCalendarMap {
 
   @@index([tenantId])
 }
+
+// ---- Change Log -------------------------------------------------------------
+// Global (non-tenant) product-level log of every change ever shipped to the app.
+// Seeded ONCE from git history (see src/db/seedChangelog.ts) and then read by the
+// master hub — the running app NEVER reads git. Going forward, each change ships
+// its own row as a tiny INSERT migration committed alongside it. `commitSha` is
+// unique so seeding/dedup is idempotent (re-running can't create duplicates).
+model ChangeLogEntry {
+  id          String   @id @default(cuid())
+  date        DateTime            // when the change was made (the commit date)
+  type        String              // category: Feature / Fix / UI / Backend / Infra / Integration
+  description String              // clean, plain-English, user-facing summary
+  commitSha   String?  @unique    // source commit hash; null for manually-added rows
+  createdAt   DateTime @default(now())
+
+  @@index([date])
+}

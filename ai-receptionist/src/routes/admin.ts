@@ -6,6 +6,7 @@ import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvi
 import { prisma } from "../db/client";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, listAllFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { createExport, listMasterExports, getMasterExportCsv } from "../services/exportService";
+import { listChangeLog } from "../services/changelogService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -328,5 +329,16 @@ adminRouter.delete("/feedback/:id", requireRole("OWNER", "SUPER_ADMIN"), async (
     res.json(await deleteFeedbackTicket(req.params.id, feedbackCtxMaster(req) as any));
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+// Product-level Change Log (read-only). Gated by the router-level
+// requireRole(OWNER, SUPER_ADMIN, AUDITOR) above — the same master-hub tier used
+// everywhere else here. The app reads these rows from the DB; it never reads git.
+adminRouter.get("/changelog", async (_req: Request, res: Response) => {
+  try {
+    res.json(await listChangeLog());
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 });

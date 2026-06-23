@@ -1,0 +1,14 @@
+[
+  {
+    "date": "2026-06-23",
+    "type": "Feature",
+    "description": "Added the master-hub Change Log page (this machinery batch).",
+    "commitSha": "sample-0001"
+  },
+  {
+    "date": "2026-06-23",
+    "type": "Backend",
+    "description": "Added the read-only Change Log API and idempotent seed loader.",
+    "commitSha": "sample-0002"
+  }
+]
