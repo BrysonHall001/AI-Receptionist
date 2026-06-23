@@ -179,10 +179,18 @@ export async function listRecords(tenantId: string, recordType?: string | null) 
   return rows.map(serializeRecord);
 }
 
-export async function getRecord(tenantId: string, id: string) {
-  const r = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
+export async function getRecord(tenantId: string, id: string, opts: { includeDeleted?: boolean } = {}) {
+  const where: any = { id, tenantId };
+  if (!opts.includeDeleted) where.deletedAt = null; // live page excludes deleted; the bin preview includes it
+  const r = await db.record.findFirst({ where });
   if (!r) throw new Error("Record not found");
-  return serializeRecord(r);
+  return {
+    ...serializeRecord(r),
+    // Recycle-bin metadata for the read-only preview note (null for active records).
+    deletedAt: r.deletedAt ? new Date(r.deletedAt).toISOString() : null,
+    deletedBy: r.deletedBy ?? null,
+    deletedByType: r.deletedByType ?? null,
+  };
 }
 
 /** Resolve & validate an assignment to a bookable resource. Blank/none → null

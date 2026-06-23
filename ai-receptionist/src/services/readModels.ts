@@ -157,6 +157,11 @@ export async function getContact(id: string, tenantId?: string | null) {
     customFields: (c.customFields as any) ?? {},
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
+    // Recycle-bin metadata so the read-only preview can show the deleted-on/by
+    // note. Null for active contacts (and for items deleted before Batch A).
+    deletedAt: (c as any).deletedAt ? new Date((c as any).deletedAt).toISOString() : null,
+    deletedBy: (c as any).deletedBy ?? null,
+    deletedByType: (c as any).deletedByType ?? null,
     calls: (c.callSessions as any[]).map((r) => toCallDTO(r)),
   };
 }

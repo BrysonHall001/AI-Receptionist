@@ -1143,109 +1143,53 @@
   }
 
   // ---------------- Recycle Bin: read-only preview ----------------
-  // A deleted contact or record, shown READ-ONLY and IN the bin (the route keeps
-  // "#/recycle" highlighted). Reuses the SAME column defs as the bin tables for
-  // labels/values, adds the "Moved to Recycle Bin on [date] by [user]" line
-  // (date-only when deletedBy is null — pre-Batch-A items), and a Restore action.
-  async function renderRecycledPreview(kind, id) {
-    loading();
-    try {
-      let item, cols, title, restoreUrl, typeLabel = "";
-      if (kind === "contact") {
-        const [deleted, fields] = await Promise.all([
-          App.portalApi("/api/contacts/deleted"),
-          App.portalApi("/api/fields").catch(() => []),
-        ]);
-        item = (deleted || []).find((r) => r.id === id);
-        if (!item) return previewMissing();
-        cols = contactColumnDefs(fields);
-        title = item.name || "Unknown";
-        typeLabel = App.label("contact", "one");
-        restoreUrl = "/api/contacts/restore";
-      } else {
-        const [deleted, types, resources] = await Promise.all([
-          App.portalApi("/api/records/deleted"),
-          App.portalApi("/api/record-types").catch(() => []),
-          App.portalApi("/api/resources").catch(() => []),
-        ]);
-        item = (deleted || []).find((r) => r.id === id);
-        if (!item) return previewMissing();
-        const type = (types || []).find((t) => t.id === item.recordTypeId) || { key: "record", label: "Record" };
-        const fields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)).catch(() => []);
-        const resById = {}; (resources || []).forEach((r) => { resById[r.id] = r; });
-        cols = recordColumnDefs(fields, type, resById);
-        title = item.title || "Untitled";
-        typeLabel = type.label;
-        restoreUrl = "/api/records/restore";
-      }
+  // The preview REUSES the real detail renderers (renderContact / renderRecord)
+  // in read-only mode (opts.preview), so a deleted item mirrors its real page and
+  // stays in sync if that page changes. This dispatcher just routes by kind.
+  function renderRecycledPreview(kind, id) {
+    if (kind === "contact") return renderContact(id, { preview: true });
+    return renderRecord(id, { preview: true });
+  }
 
-      view().innerHTML = "";
-      const card = el("div", "card rb-preview");
-
-      const top = el("div", "rb-preview-top");
-      const back = el("a", "btn btn-ghost btn-sm", "← Back to Recycle Bin");
-      back.href = "#/recycle";
-      top.appendChild(back);
-      top.appendChild(el("span", "rb-readonly-badge", "Read-only preview"));
-      card.appendChild(top);
-
-      const h = el("h1", "rb-preview-title");
-      h.textContent = title;
-      if (typeLabel) { const tl = el("span", "rb-preview-type", esc(typeLabel)); h.appendChild(document.createTextNode(" ")); h.appendChild(tl); }
-      card.appendChild(h);
-
-      // "Moved to Recycle Bin on [date] by [user]." — date always; "by" only when
-      // we captured it (older items show date only).
-      const when = item.deletedAt ? new Date(item.deletedAt).toLocaleString() : null;
-      const who = item.deletedBy ? (" by " + item.deletedBy) : "";
-      const left = (typeof item.daysLeft === "number") ? ` · ${item.daysLeft} day${item.daysLeft === 1 ? "" : "s"} until permanent deletion` : "";
-      const note = el("p", "rb-preview-note cell-muted");
-      note.textContent = (when ? `Moved to Recycle Bin on ${when}${who}.` : "In the Recycle Bin.") + left;
-      card.appendChild(note);
-
-      // Read-only field rows, straight from the shared column defs (label → value).
-      const fieldsWrap = el("div", "rb-preview-fields");
-      (cols || []).forEach((c) => {
-        if (!c || !c.label) return;
-        const row = el("div", "rb-field");
-        row.appendChild(el("div", "rb-field-label", esc(c.label)));
-        const val = el("div", "rb-field-value");
-        let html = "";
-        try { html = c.render ? c.render(item) : esc(c.text ? c.text(item) : ""); } catch (e) { html = ""; }
-        if (html == null || html === "") html = `<span class="cell-muted">—</span>`;
-        val.innerHTML = html;
-        row.appendChild(val);
-        fieldsWrap.appendChild(row);
-      });
-      card.appendChild(fieldsWrap);
-
-      const actions = el("div", "rb-preview-actions");
-      const restoreBtn = el("button", "btn btn-primary btn-sm", "Restore");
-      restoreBtn.onclick = async () => {
-        restoreBtn.disabled = true;
-        try { await App.portalApi(restoreUrl, { method: "POST", body: JSON.stringify({ ids: [id] }) }); App.util.toast("Restored"); App.go("#/recycle"); }
-        catch (e) { restoreBtn.disabled = false; App.util.toast((e && e.message) || "Restore failed", true); }
-      };
-      actions.appendChild(restoreBtn);
-      card.appendChild(actions);
-
-      view().appendChild(card);
-    } catch (e) {
-      view().innerHTML = `<div class="card"><p class="cell-muted">${esc((e && e.message) || "Couldn't load this item.")}</p></div>`;
+  // Preview chrome shared by both renderers: the read-only badge, the
+  // "Moved to Recycle Bin on [date] by [user]" note (date-only when deletedBy is
+  // null — pre-Batch-A items), and the Restore action.
+  function recyclePreviewChrome(kind, data, id) {
+    const box = el("div", "rb-preview-chrome");
+    box.appendChild(el("span", "rb-readonly-badge", "Read-only preview"));
+    const when = data.deletedAt ? new Date(data.deletedAt).toLocaleString() : null;
+    const who = data.deletedBy ? (" by " + data.deletedBy) : "";
+    let left = "";
+    if (data.deletedAt) {
+      const dleft = Math.max(0, Math.ceil((new Date(data.deletedAt).getTime() + 30 * 86400000 - Date.now()) / 86400000));
+      left = ` · ${dleft} day${dleft === 1 ? "" : "s"} until permanent deletion`;
     }
+    const note = el("p", "rb-preview-note cell-muted");
+    note.textContent = (when ? `Moved to Recycle Bin on ${when}${who}.` : "In the Recycle Bin.") + left;
+    box.appendChild(note);
+    const restoreBtn = el("button", "btn btn-primary btn-sm", "Restore");
+    restoreBtn.onclick = async () => {
+      restoreBtn.disabled = true;
+      const url = kind === "contact" ? "/api/contacts/restore" : "/api/records/restore";
+      try { await App.portalApi(url, { method: "POST", body: JSON.stringify({ ids: [id] }) }); App.util.toast("Restored"); App.go("#/recycle"); }
+      catch (e) { restoreBtn.disabled = false; App.util.toast((e && e.message) || "Restore failed", true); }
+    };
+    box.appendChild(restoreBtn);
+    return box;
+  }
 
-    function previewMissing() {
-      view().innerHTML = "";
-      const card = el("div", "card rb-preview");
-      const back = el("a", "btn btn-ghost btn-sm", "← Back to Recycle Bin");
-      back.href = "#/recycle";
-      card.appendChild(back);
-      const p = el("p", "cell-muted");
-      p.style.marginTop = "12px";
-      p.textContent = "This item is no longer in the Recycle Bin — it may have been restored or permanently removed.";
-      card.appendChild(p);
-      view().appendChild(card);
-    }
+  // Shown when a previewed item is no longer in the bin (restored or purged).
+  function recycleMissing() {
+    view().innerHTML = "";
+    const card = el("div", "card rb-preview");
+    const back = el("a", "btn btn-ghost btn-sm", "← Back to Recycle Bin");
+    back.href = "#/recycle";
+    card.appendChild(back);
+    const p = el("p", "cell-muted");
+    p.style.marginTop = "12px";
+    p.textContent = "This item is no longer in the Recycle Bin — it may have been restored or permanently removed.";
+    card.appendChild(p);
+    view().appendChild(card);
   }
 
   // ---------------- Saved filters dropdown ----------------
@@ -1992,30 +1936,36 @@
   }
 
   // ---------------- Contact profile page ----------------
-  async function renderContact(id) {
+  async function renderContact(id, opts) {
+    opts = opts || {};
+    const ro = !!opts.preview; // read-only Recycle Bin preview
     loading();
     let c, fields, sections;
     try { [c, fields, sections] = await Promise.all([App.portalApi(`/api/contacts/${id}`), App.portalApi("/api/fields"), App.portalApi("/api/field-sections?recordType=contact").catch(() => [])]); }
-    catch (err) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(err.message)}</p></div>`; return; }
+    catch (err) { if (ro) return recycleMissing(); view().innerHTML = `<div class="card"><p class="cell-muted">${esc(err.message)}</p></div>`; return; }
+    if (ro && !c.deletedAt) return recycleMissing(); // restored/purged since the bin was opened
 
     const wrap = el("div", "fade-in contact-page");
-    const back = el("a", "back-link", ("← " + App.label("contact","many")));
-    back.href = "#/contacts";
+    const back = el("a", "back-link", ro ? "← Back to Recycle Bin" : ("← " + App.label("contact","many")));
+    back.href = ro ? "#/recycle" : "#/contacts";
     wrap.appendChild(back);
 
     const head = el("div", "contact-head");
     head.innerHTML = `<div class="contact-avatar">${esc((c.name || c.phone || "?").charAt(0).toUpperCase())}</div>
       <div><h1 class="contact-name">${esc(c.name || "Unknown")}</h1>
       <div class="contact-sub">${esc(c.phone || "")}${c.email ? " · " + esc(c.email) : ""}</div></div>`;
-    const runAuto = el("button", "btn btn-ghost btn-sm", "Run automation");
-    runAuto.style.marginLeft = "auto";
-    runAuto.onclick = () => openRunAutomation(id, c.name || c.phone || ("this " + App.label("contact","one").toLowerCase()));
-    head.appendChild(runAuto);
+    if (!ro) {
+      const runAuto = el("button", "btn btn-ghost btn-sm", "Run automation");
+      runAuto.style.marginLeft = "auto";
+      runAuto.onclick = () => openRunAutomation(id, c.name || c.phone || ("this " + App.label("contact","one").toLowerCase()));
+      head.appendChild(runAuto);
+    }
     wrap.appendChild(head);
+    if (ro) wrap.appendChild(recyclePreviewChrome("contact", c, id));
 
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const tabs = [["fields", "All fields"], ["timeline", "Timeline"], ["email", "Email"], ["text", "Text"]];
+    const tabs = ro ? [["fields", "All fields"], ["timeline", "Timeline"]] : [["fields", "All fields"], ["timeline", "Timeline"], ["email", "Email"], ["text", "Text"]];
     let active = "fields";
     function setTab(key) {
       active = key;
@@ -2048,7 +1998,7 @@
     jobsCard.appendChild(jobsBody);
     const jobAddRow = el("div", "link-add");
     jobsCard.appendChild(jobAddRow);
-    wrap.appendChild(jobsCard);
+    if (!ro) wrap.appendChild(jobsCard); // linked-jobs management is hidden in the read-only preview
     let jobLinks = [];
     let jobsView = "list"; // List is the default; Board is the toggle
     jobsListBtn.onclick = () => { if (jobsView === "list") return; jobsView = "list"; jobsListBtn.classList.add("seg-on"); jobsBoardBtn.classList.remove("seg-on"); renderJobs(); };
@@ -2230,7 +2180,7 @@
     jobInput.onfocus = runJobSearch;
     jobInput.onblur = () => setTimeout(hideJobResults, 200);
 
-    loadLinkedJobs();
+    if (!ro) loadLinkedJobs();
 
     view().innerHTML = "";
     view().appendChild(wrap);
@@ -2242,23 +2192,25 @@
       const card = el("div", "card");
       const editorHost = el("div", "field-editor");
       card.appendChild(editorHost);
-      App.fields.renderGroupedEditor(editorHost, fields, values, sections || [], {});
-      const saveBar = el("div", "drawer-save-bar");
-      const save = el("button", "btn btn-primary btn-sm", "Save changes");
-      save.onclick = async () => {
-        const custom = {};
-        fields.forEach((f) => { if (!App.fields.SYSTEM_KEYS.includes(f.key) && f.type !== "formula") custom[f.key] = values[f.key]; });
-        save.disabled = true; save.textContent = "Saving…";
-        try {
-          await App.portalApi(`/api/contacts/${id}`, { method: "PATCH", body: JSON.stringify({ name: values.name, phone: values.phone, email: values.email, intent: values.intent, customFields: custom }) });
-          App.util.toast((App.label("contact","one") + " saved"));
-          c.name = values.name; c.email = values.email; c.phone = values.phone;
-          App.util.$(".contact-name", wrap).textContent = values.name || "Unknown";
-        } catch (e) { App.util.toast(e.message, true); }
-        finally { save.disabled = false; save.textContent = "Save changes"; }
-      };
-      saveBar.appendChild(save);
-      card.appendChild(saveBar);
+      App.fields.renderGroupedEditor(editorHost, fields, values, sections || [], { readOnly: ro });
+      if (!ro) {
+        const saveBar = el("div", "drawer-save-bar");
+        const save = el("button", "btn btn-primary btn-sm", "Save changes");
+        save.onclick = async () => {
+          const custom = {};
+          fields.forEach((f) => { if (!App.fields.SYSTEM_KEYS.includes(f.key) && f.type !== "formula") custom[f.key] = values[f.key]; });
+          save.disabled = true; save.textContent = "Saving…";
+          try {
+            await App.portalApi(`/api/contacts/${id}`, { method: "PATCH", body: JSON.stringify({ name: values.name, phone: values.phone, email: values.email, intent: values.intent, customFields: custom }) });
+            App.util.toast((App.label("contact","one") + " saved"));
+            c.name = values.name; c.email = values.email; c.phone = values.phone;
+            App.util.$(".contact-name", wrap).textContent = values.name || "Unknown";
+          } catch (e) { App.util.toast(e.message, true); }
+          finally { save.disabled = false; save.textContent = "Save changes"; }
+        };
+        saveBar.appendChild(save);
+        card.appendChild(saveBar);
+      }
       tabBody.appendChild(card);
     }
 
@@ -4305,23 +4257,27 @@
   }
 
   // ---------------- Single record (e.g. Job) detail ----------------
-  async function renderRecord(id) {
+  async function renderRecord(id, opts) {
+    opts = opts || {};
+    const ro = !!opts.preview; // read-only Recycle Bin preview
     loading();
     let rec, types;
-    try { [rec, types] = await Promise.all([App.portalApi("/api/records/" + id), App.portalApi("/api/record-types").catch(() => [])]); }
-    catch (e) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
+    try { [rec, types] = await Promise.all([App.portalApi("/api/records/" + id + (ro ? "?includeDeleted=1" : "")), App.portalApi("/api/record-types").catch(() => [])]); }
+    catch (e) { if (ro) return recycleMissing(); view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
+    if (ro && !rec.deletedAt) return recycleMissing(); // restored/purged since the bin was opened
     const type = (types || []).find((t) => t.id === rec.recordTypeId) || { key: "record", label: App.label("record","one"), labelPlural: "Records", stages: [], recordStages: [] };
     let fields = [];
     let fieldSections = [];
     try { [fields, fieldSections] = await Promise.all([App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)), App.portalApi("/api/field-sections?recordType=" + encodeURIComponent(type.key)).catch(() => [])]); } catch (e) { fields = []; }
 
     const wrap = el("div", "fade-in contact-page");
-    const back = el("a", "back-link", "← " + esc(type.labelPlural || App.label("record","many")));
-    back.href = type.key === "booking" ? "#/bookings" : "#/jobs";
+    const back = el("a", "back-link", ro ? "← Back to Recycle Bin" : ("← " + esc(type.labelPlural || App.label("record","many"))));
+    back.href = ro ? "#/recycle" : (type.key === "booking" ? "#/bookings" : "#/jobs");
     // The /record/:id route highlights "Jobs" by default; now that we know the
     // record's real type, re-mark the correct sidebar item so a Booking shows
-    // Bookings active (not Jobs).
-    {
+    // Bookings active (not Jobs). In the read-only preview we DON'T re-mark —
+    // Recycle Bin stays highlighted.
+    if (!ro) {
       const navHref = type.key === "booking" ? "#/bookings" : type.key === "contact" ? "#/contacts" : "#/jobs";
       document.querySelectorAll(".sidebar-nav .nav-item").forEach((a) => a.classList.toggle("active", a.dataset.href === navHref));
     }
@@ -4332,6 +4288,7 @@
       <div><h1 class="contact-name">${esc(rec.title || "Untitled " + (type.label || App.label("record","one").toLowerCase()))}</h1>
       <div class="contact-sub">${esc(type.label || App.label("record","one"))}${rec.stageKey ? " · " + esc(recordStageLabel(type, rec.stageKey)) : ""}</div></div>`;
     wrap.appendChild(head);
+    if (ro) wrap.appendChild(recyclePreviewChrome("record", rec, id));
 
     // ---- Details card (editable fields) ----
     const card = el("div", "card");
@@ -4398,7 +4355,7 @@
     const values = { ...(rec.customFields || {}) };
     const editorHost = el("div", "field-editor");
     card.appendChild(editorHost);
-    App.fields.renderGroupedEditor(editorHost, fields || [], values, fieldSections || [], {});
+    App.fields.renderGroupedEditor(editorHost, fields || [], values, fieldSections || [], { readOnly: ro });
 
     const saveBar = el("div", "drawer-save-bar");
     const save = el("button", "btn btn-primary btn-sm", "Save changes");
@@ -4444,6 +4401,13 @@
     card.appendChild(saveBar);
     wrap.appendChild(card);
 
+    // Read-only preview: disable every Details input and hide Save — the SAME
+    // technique used below for Google-synced bookings.
+    if (ro) {
+      card.querySelectorAll("input, select, textarea").forEach((e) => { e.disabled = true; });
+      saveBar.style.display = "none";
+    }
+
     // External/Blocked bookings (synced from Google) are read-only here — the server
     // rejects edits/deletes too (ownership guard). Show a clear banner, disable the
     // Details inputs, and hide Save. Internal notes below stay allowed.
@@ -4469,7 +4433,7 @@
     linkCard.appendChild(candBody);
     const addRow = el("div", "link-add");
     linkCard.appendChild(addRow);
-    wrap.appendChild(linkCard);
+    if (!ro) wrap.appendChild(linkCard); // linking/candidate management hidden in the read-only preview
 
     // ---- Activity card (Stage 2a): internal notes on this record. Notes live in
     // the record's customFields.__activity; automations and the box below write here.
@@ -4506,7 +4470,7 @@
       finally { noteBtn.disabled = false; }
     };
     addNoteRow.appendChild(noteInp); addNoteRow.appendChild(noteBtn);
-    actCard.appendChild(addNoteRow);
+    if (!ro) actCard.appendChild(addNoteRow); // notes are read-only in the preview
     wrap.appendChild(actCard);
 
     let candView = "list";
@@ -4700,7 +4664,7 @@
     addInput.onfocus = runSearch;
     addInput.onblur = () => setTimeout(hideResults, 200); // let a result click register first
 
-    loadLinks();
+    if (!ro) loadLinks();
   }
 
   App.portal = { render, refresh, simulate, renderContact, renderRecord, renderRecycledPreview, current: () => current };

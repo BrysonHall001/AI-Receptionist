@@ -951,7 +951,8 @@ apiRouter.post("/records/restore", async (req: Request, res: Response) => {
 apiRouter.get("/records/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  try { res.json(await getRecord(tenantId, req.params.id)); }
+  const includeDeleted = String((req.query.includeDeleted ?? "")) === "1" || String((req.query.includeDeleted ?? "")) === "true";
+  try { res.json(await getRecord(tenantId, req.params.id, { includeDeleted })); }
   catch (err) { res.status(404).json({ error: (err as Error).message }); }
 });
 
