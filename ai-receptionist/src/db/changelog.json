@@ -1,0 +1,938 @@
+[
+  {
+    "date": "2026-06-03",
+    "type": "Feature",
+    "description": "The initial Clarity platform: AI receptionist with secure login and accounts, a master admin portal for managing client businesses, contact records with custom fields, saved filters, and CSV export.",
+    "commitSha": "58f9e5b26ed87e6792f129e7ef612b52f7191b29"
+  },
+  {
+    "date": "2026-06-04",
+    "type": "Feature",
+    "description": "Added the automations system (automatic email/text follow-ups via triggers, conditions, and actions) and hardened security (super-admin role, rate limiting, authenticated webhooks, secure cookies).",
+    "commitSha": "0f4ca55857f9d701e2616d325d6e5f3ed09fc9ce"
+  },
+  {
+    "date": "2026-06-05",
+    "type": "Feature",
+    "description": "Contacts: multi-select, bulk actions, soft-delete with a 30-day Recycle Bin, and customizable columns; added visual themes.",
+    "commitSha": "c08e0ae23f63d7a428a79781103f5d34e6104fc4"
+  },
+  {
+    "date": "2026-06-06",
+    "type": "Feature",
+    "description": "Added the Learning Center (in-app guides), rebranding, more contact operations, and contact identity rules (email/phone requirements).",
+    "commitSha": "6bb2d9a5d83ec1928b97e8f41835a9c782e32ef9"
+  },
+  {
+    "date": "2026-06-06",
+    "type": "Feature",
+    "description": "Added inbound webhook intake (capture leads from external sources) and a scheduled-jobs engine for time-based automations.",
+    "commitSha": "942af14c167106ce25a5fecebdbe3be20f414e38"
+  },
+  {
+    "date": "2026-06-06",
+    "type": "Feature",
+    "description": "Added automation presets, a branching setup wizard, and an expanded library of automation templates.",
+    "commitSha": "190431a27c7f7df83263c4b7dc7a53fe57c59a27"
+  },
+  {
+    "date": "2026-06-06",
+    "type": "Feature",
+    "description": "Added automation pair-linking (connect related automations).",
+    "commitSha": "b84bbd38713c74a0245cb575592de52813b1da7e"
+  },
+  {
+    "date": "2026-06-06",
+    "type": "UI",
+    "description": "Added a toolbar to the automations list (search, filter, and manage).",
+    "commitSha": "7105e3df319fb3bfcd52168011b829fafaf641f1"
+  },
+  {
+    "date": "2026-06-06",
+    "type": "UI",
+    "description": "Learning Center: removed placeholder screenshots and expanded the Automations section into nine guides.",
+    "commitSha": "ae733de6ecd137e8548b329e0cfc9b9284ed9c79"
+  },
+  {
+    "date": "2026-06-06",
+    "type": "Backend",
+    "description": "Added the Records backbone — the data foundation for record types like Jobs and Bookings.",
+    "commitSha": "dd81cb1d21d78c6f7e14d41b0ba79ded3c105913"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Records: fields can be defined per record type (different fields for Jobs vs Bookings, etc.).",
+    "commitSha": "997025f3854bee0719a58dc7e7ae1e77088b29b7"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Added the Jobs page — create and manage Jobs, with links between Jobs and contacts.",
+    "commitSha": "a09f0814a2b56da94f5aee0c19b67b95919ce2f4"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Jobs: brought to parity with contacts, including import and sample data.",
+    "commitSha": "67efee2fa5645c5e68cde0f1e5803a8050ea25eb"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Fix",
+    "description": "Fixed and refined linking contacts to Jobs — search, visibility, and showing email/phone in the picker.",
+    "commitSha": "d7f2c19e4cc1b6fdc01bc20eaed837333cc64629"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Fields can be grouped into sections with a two-column layout on record pages.",
+    "commitSha": "264438634223f469585bad7425590703e4ee91d8"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "UI",
+    "description": "Drag fields into sections, with spacing improvements and link-a-Job refinements.",
+    "commitSha": "3a8d804becf3efa21e7f57db818a034c5c77d7c7"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Record pages: added column-width controls and pipeline stages.",
+    "commitSha": "f06c444389f124cc76cd6e7cfb648485482090e7"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Fix",
+    "description": "Fixed a visual flicker (blink) on record pages.",
+    "commitSha": "bf4f5b2ce16b1e62859a7cbe111d8f856baea5ab"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Added Job types (subtypes), each with its own pipeline of stages.",
+    "commitSha": "a48fddbb6f6b8e73762ad0941fb47ea1423bd197"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Added a kanban board on the Job page to drag linked contacts (candidates) through pipeline stages.",
+    "commitSha": "2269b05482d33f0031aa3efd203a1039c154ac85"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Automations can trigger when a contact's pipeline stage changes.",
+    "commitSha": "f2330b37b50a1141afce371eed765814a6d8e908"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Automations can act on Jobs and records, not just contacts.",
+    "commitSha": "ad6010a84387494d260ed8bbad938264f88a1026"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Automations can fan out to every contact linked to a Job, with a send gate to control recipients.",
+    "commitSha": "de2c423e47087b462ebbefc5e8e07530b20fba9e"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Backend",
+    "description": "Pipeline stage changes are now tracked as history, recorded on every move, with past moves backfilled.",
+    "commitSha": "36284b1f57cbee5f94bd9cb90022070410f9635e"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Added a stalled-candidate nudge — automatically follow up when a candidate sits in a stage too long.",
+    "commitSha": "036cac581242b9019dfc4211102eca0a0ea212b9"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Backend",
+    "description": "Added loop-safety so automations can't trigger each other endlessly (depth limit plus actor tracking).",
+    "commitSha": "87cbfaa68b253a3c7796617b1408f67d23b726b5"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Automations can write to a record's stage or fields as an action.",
+    "commitSha": "f4cad7fb5aec6b4d0d9a39e63cbb4b93c2957e26"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Automations can use record and Job fields as conditions.",
+    "commitSha": "e32eafc4900522c3fe11fff4f96473ea2028b81e"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Automation builder: actions grouped with descriptions, plus a live preview of what an automation will do.",
+    "commitSha": "c917f9e7b0e8378c84fd8be9fb3380ac5b080d8e"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Added more automation templates and wizard options.",
+    "commitSha": "a238cf8441ff0ef75eb510bc4c7b32c369c64330"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "UI",
+    "description": "Relabeled automation actions to describe honestly what they do.",
+    "commitSha": "f53c9901eed8f988abb9f46673a794056456013f"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "Feature",
+    "description": "Automations can perform real actions on records (create and update Jobs and fields).",
+    "commitSha": "d631280674aed5e82c12f15cf32db5dbe33d29e9"
+  },
+  {
+    "date": "2026-06-07",
+    "type": "UI",
+    "description": "Redesigned the Settings area with a new shell and layout.",
+    "commitSha": "8a239ab34f35ec5522dbdb183e1e0d4a8ff445f9"
+  },
+  {
+    "date": "2026-06-08",
+    "type": "Feature",
+    "description": "Added per-business relabeling: rename app terms (Contacts, Jobs, Stages, and more) from a Labels editor in Settings, with automatic pluralization.",
+    "commitSha": "cfbf197e11670ac3b245c4545230d6c50fdd4169"
+  },
+  {
+    "date": "2026-06-08",
+    "type": "Feature",
+    "description": "Applied per-business labels across all pages, the automation builder, and the Learning Center.",
+    "commitSha": "6e250633607f95938e33f20057c45fae541cfcd1"
+  },
+  {
+    "date": "2026-06-09",
+    "type": "Feature",
+    "description": "Themes can now be set per business.",
+    "commitSha": "fa8d0cfa10680f3c489dc50fffef9d9d63fe081a"
+  },
+  {
+    "date": "2026-06-09",
+    "type": "Feature",
+    "description": "Reports: added record-level reporting (report on Jobs and records, not just contacts).",
+    "commitSha": "8fea53e174f6c168a002c49ad027b2d33d5e6f25"
+  },
+  {
+    "date": "2026-06-09",
+    "type": "Backend",
+    "description": "Added a pipeline service that backs record reporting.",
+    "commitSha": "bd25d1d822122914684becc002a72a70e9257279"
+  },
+  {
+    "date": "2026-06-09",
+    "type": "Feature",
+    "description": "Added a status editor to manage pipeline statuses and stages for record types.",
+    "commitSha": "ae7e227a72943dc31d3cb33f3bc37e5287e7e846"
+  },
+  {
+    "date": "2026-06-09",
+    "type": "UI",
+    "description": "UI cleanup across compose, records, reports, and theming.",
+    "commitSha": "a5520cdceaa718ba854e3a3db97faacf55388866"
+  },
+  {
+    "date": "2026-06-09",
+    "type": "UI",
+    "description": "Added a styled confirmation dialog, replacing the plain browser pop-up.",
+    "commitSha": "a988a388e5d3ddbfa7f63aadac83a1707f2aaf84"
+  },
+  {
+    "date": "2026-06-09",
+    "type": "Feature",
+    "description": "Added a swimlane board view for contacts across pipeline stages.",
+    "commitSha": "35ce05dd0904c734622b42b4f5e165f723e88f5a"
+  },
+  {
+    "date": "2026-06-09",
+    "type": "Feature",
+    "description": "Added the Home dashboard.",
+    "commitSha": "daff221656a7ad8dcd378e6bbbb79e210191a3a5"
+  },
+  {
+    "date": "2026-06-09",
+    "type": "Feature",
+    "description": "Reports: added an additional reporting view and controls.",
+    "commitSha": "ee3fb3cbac8a5b20682e16c8ec2f8f66b45acb4a"
+  },
+  {
+    "date": "2026-06-10",
+    "type": "Feature",
+    "description": "Added per-business navigation customization: rename, reorder, and hide sidebar items.",
+    "commitSha": "6a1cfc928d6fec445cea3d0bb5c9d9b085698a69"
+  },
+  {
+    "date": "2026-06-10",
+    "type": "Feature",
+    "description": "Added impersonation — super-admins can securely act as another user (view-only, role-downgraded, with a master-hub lockout and a start/exit control).",
+    "commitSha": "31c82bcb54e25a3c69fead5f6a8d3f0100ebc746"
+  },
+  {
+    "date": "2026-06-10",
+    "type": "Backend",
+    "description": "Hardened tenant scoping so data never leaks across businesses (fail-safe).",
+    "commitSha": "748144d51188eb24d1069efb8911c1b4b53ceb22"
+  },
+  {
+    "date": "2026-06-10",
+    "type": "Feature",
+    "description": "The automation send-email action now uses the rich-text editor with subject lines and templates.",
+    "commitSha": "5aa77140a182cffd766800520949e1c15c3f7921"
+  },
+  {
+    "date": "2026-06-10",
+    "type": "Feature",
+    "description": "Added portal invitations — invite users to a business via an email link instead of temporary passwords.",
+    "commitSha": "b5e274cf120186a10b1cdeda53fe235433660163"
+  },
+  {
+    "date": "2026-06-10",
+    "type": "Feature",
+    "description": "Unified the new-portal setup into a single guided screen (removed the per-card Set up button and aligned the toolbar).",
+    "commitSha": "c0e2014ffb4d908235ae5f9d71d8f5944427e398"
+  },
+  {
+    "date": "2026-06-11",
+    "type": "Fix",
+    "description": "Fixed a startup crash caused by duplicate record-type seeding, and added a process-level error guard.",
+    "commitSha": "4b77087aeca437a4597cc15c87fa76d862c3c0bd"
+  },
+  {
+    "date": "2026-06-11",
+    "type": "UI",
+    "description": "Moved the Simulate call button to the Calls toolbar so it's always visible.",
+    "commitSha": "2f9b709ee87406ec5b20356773e2b74615cee8f3"
+  },
+  {
+    "date": "2026-06-11",
+    "type": "Backend",
+    "description": "Improved call simulation with harder multi-turn scenarios to stress-test the AI.",
+    "commitSha": "b3253b09ef2e7ec4c182b4e1b26a6824870a07dc"
+  },
+  {
+    "date": "2026-06-11",
+    "type": "Backend",
+    "description": "Made the AI receptionist warmer and more natural, with better info collection and graceful handling of unknowns.",
+    "commitSha": "ba008caa55bfce8ae39d70b32eccb2e482554dfb"
+  },
+  {
+    "date": "2026-06-11",
+    "type": "Feature",
+    "description": "Added per-business AI Instructions (custom guidance for the receptionist), Calls list pagination, and an edit audit trail.",
+    "commitSha": "42c8fe5445e9a1832680125efd9080a272737edf"
+  },
+  {
+    "date": "2026-06-11",
+    "type": "Fix",
+    "description": "Fixed AI Instructions not pre-filling when the page loads.",
+    "commitSha": "82e0245982837beea6a279c52e8b8944d736b30b"
+  },
+  {
+    "date": "2026-06-11",
+    "type": "Backend",
+    "description": "Tuned the AI prompt so owner instructions take priority and calls close out properly on wrap-up.",
+    "commitSha": "e6e2cb17e3596fe12975c56af70bbddc57e11f67"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Fix",
+    "description": "Four fixes: calls finalize correctly on hang-up, Calls footer paging, an AI honesty rule, and AI Instructions panel alignment.",
+    "commitSha": "0f866f8f71ad9caf3911be0069d0d30ead9659fb"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Integration",
+    "description": "Added a Twilio status-callback helper needed for reliable call finalization.",
+    "commitSha": "319b4c87ee99db4e971f204e0a4459f0ba2cffa8"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Feature",
+    "description": "Added a per-business on/off toggle for the AI receptionist.",
+    "commitSha": "36ba5abc13d1108848677c0d5ca21e09b150751c"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "UI",
+    "description": "Three UI fixes: navigation refresh, the nav editor's Calls row, and Calls table rows.",
+    "commitSha": "53d2aa9caff67eafebf960ae2a47e11e5f35e0ab"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Feature",
+    "description": "Added an OWNER role (top tier above Super Admin), recognized across the back-end and front-end.",
+    "commitSha": "cda9a3c48f1b38b53cf297375ef942d77f96b79f"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Feature",
+    "description": "Added an AUDITOR role and 3-day account expiry for temporary access.",
+    "commitSha": "382d540fce1e9cf97fad0c0b8742122d70298bb9"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Feature",
+    "description": "Added a per-business Users button and fixed the Remove-link action.",
+    "commitSha": "d4a0203769dc9d9380defb2c39d07ed29a900068"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Backend",
+    "description": "Restricted master user creation to Super Admin and Auditor, and fixed the dialog opening in the wrong mode.",
+    "commitSha": "c6f1ea90e5a6d3147b3288d00b4e98017c0906dd"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Feature",
+    "description": "User creation now goes through email invitations, with no manual passwords.",
+    "commitSha": "856e1695ebd13eab2ad2e6fb4c3d9348f510731a"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Feature",
+    "description": "Added a configurable sender email, inline name editing, and carrying the invitee's name through the invite.",
+    "commitSha": "9d35d2bbf33e25ae168479d78374801d9c4425f2"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "UI",
+    "description": "Fixed sender-card spacing and the sidebar name updating on self-rename.",
+    "commitSha": "d19f57c24ff98c71513fc7185138b004eae55ac0"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Integration",
+    "description": "Added the premium voice path (Twilio ConversationRelay plus ElevenLabs) for natural-sounding calls.",
+    "commitSha": "960c2b57683f27e6311923e18f8b64ca1c710881"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Integration",
+    "description": "Premium voice: added full inbound-message logging and fixed partial-prompt handling.",
+    "commitSha": "0f3b1d8df0d8faa0c17ede6f97880eaaba343a01"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "UI",
+    "description": "The Calls page now auto-refreshes live for in-progress calls.",
+    "commitSha": "7e29c72ab199232b65f70532cffab9296cc59d8d"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Feature",
+    "description": "Added a per-business voice mode (Off, Standard, or Premium) controlling how calls are answered.",
+    "commitSha": "6084d33f269095a2d9126a69a041428f1c47e59e"
+  },
+  {
+    "date": "2026-06-13",
+    "type": "Integration",
+    "description": "Premium voice: added keepalive and better drop logging; the Calls page refreshes when you return to the tab.",
+    "commitSha": "44a1c58006584d486bb47ee070fabe6f04c8b43f"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "Fix",
+    "description": "More reliable call finalization — sweep stale calls, finalize on hang-up and close, show a live reason, and stop calls reverting to In progress.",
+    "commitSha": "bebecca62b9ae1d3d72a3cd039f71bd44a594981"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "Feature",
+    "description": "Added a premium voice picker so each business can choose the AI's voice.",
+    "commitSha": "eed9c13b3c720f8222008ea22d47621ae7f437ab"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "Infra",
+    "description": "Outbound email now sends from a verified domain (noreply@vaala.io).",
+    "commitSha": "a88f358df323d11e6a08cc1c96e64ad5843c9fae"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "Feature",
+    "description": "The per-business Team tab now uses the shared email-invite flow, with no temporary passwords.",
+    "commitSha": "bc5bab70368bd1f7a4d7770af348e70ec0174d28"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "UI",
+    "description": "Learning Center: added guides for Calls, Jobs, and all Settings, and removed master-only content.",
+    "commitSha": "66a6a650e0923b667f052477c9bd0e59433dec7c"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "Feature",
+    "description": "Businesses can upload their own logo (white-label) in Appearance; added a permanent 'A Vaala product' tag.",
+    "commitSha": "d9b018454ec2abb7bea92e3ae710471b00d7ced6"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "Feature",
+    "description": "Added Feedback ticketing — users submit tickets per business, and the master hub manages them.",
+    "commitSha": "18616a5454d17e26c900dcedd2ae416f41044d5f"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "UI",
+    "description": "New default Clarity branding and logo, rendered inline so it always shows in the header and on login; added a demo-portal seed script.",
+    "commitSha": "cf7a7cc1404186b482272b05511513cb8c3f36d6"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "Backend",
+    "description": "The master Users page now shows only your operator team, not business-scoped users.",
+    "commitSha": "6c18e118d2a1a1e555d9021ad232707a365a40ee"
+  },
+  {
+    "date": "2026-06-14",
+    "type": "Feature",
+    "description": "Auditor invitation emails now include a Quick-Reference Guide PDF.",
+    "commitSha": "028b8ddd99ea29cd6fd5ae760813e70521599adf"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "Feature",
+    "description": "Show pending invitees in user lists, fixed Feedback margins, and audited the Learning Center.",
+    "commitSha": "7838c3fc41bcb88b993f60d25b8d5c7960032049"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "UI",
+    "description": "The Feedback page now fills the full content width.",
+    "commitSha": "5a5d350610dfaeacec1b47bd0fc9d883b05cf098"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "Feature",
+    "description": "Time-based automations now run automatically every couple of minutes.",
+    "commitSha": "07b03f6bdecf68a6bcdd1397fe7ff770efc2871b"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "Feature",
+    "description": "Added a contact 'source' field and a 'New call lead' automation trigger.",
+    "commitSha": "47d9d3e67811acb613fceb6771053c16ab6b88ee"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "Feature",
+    "description": "Added a 'Notify the business' automation action — email or text the owner, not the lead.",
+    "commitSha": "5f664a7cacf46e4eeff8beac99c871b1bf00bc59"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "Feature",
+    "description": "Automations cleanup: renamed 'Intent' to 'Reason', removed filler templates, and added call-lead and notify-business templates.",
+    "commitSha": "8c582c70d5fb7883ee4f285148c71c0acfd6ebc0"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "Feature",
+    "description": "Added the Bookings foundation — a Booking record type with a real appointment date and time.",
+    "commitSha": "951042091ebda43323ec0bad277ca6bc3809fde0"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "Fix",
+    "description": "Fixed booking times to store and show exactly as entered (wall-clock), avoiding timezone shifts.",
+    "commitSha": "baac3399c300ff272600316a0c12f874e3767c8b"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "Feature",
+    "description": "The AI receptionist now captures appointment date/time and service into a Booking during calls.",
+    "commitSha": "a626f1dd7fc1e1a093fd471d406bdf20ea75048a"
+  },
+  {
+    "date": "2026-06-15",
+    "type": "Feature",
+    "description": "Added the availability engine that computes open booking slots from business hours, with a read-only slots preview.",
+    "commitSha": "40de50cf18297b7667ab489e97a3d4dfa40712ac"
+  },
+  {
+    "date": "2026-06-16",
+    "type": "Feature",
+    "description": "Added a scheduling editor to set business hours (including split shifts), per-service durations, and buffers.",
+    "commitSha": "a381673aa8d6001025414cc94042a4bb192447c5"
+  },
+  {
+    "date": "2026-06-16",
+    "type": "Feature",
+    "description": "Added a read-only week/day Bookings calendar with open-hours shading.",
+    "commitSha": "8f4fb71ccb1a2190f9471806a17eff78709e30d2"
+  },
+  {
+    "date": "2026-06-16",
+    "type": "UI",
+    "description": "Bookings calendar polish and fixes: colorblind-safe status colors, a legend, a now-line, closed-day labels, and nav highlighting.",
+    "commitSha": "9743ee1711ccda30e8822cc81d4979534e213e83"
+  },
+  {
+    "date": "2026-06-17",
+    "type": "Feature",
+    "description": "Bookings calendar: click a slot to create a prefilled booking or click a booking to edit, with a double-booking advisory lock.",
+    "commitSha": "9e0c346bb4e2dd29fd84769e1f2cd0b7a9a02025"
+  },
+  {
+    "date": "2026-06-17",
+    "type": "Feature",
+    "description": "Added a per-business double-booking toggle — allow overlaps, or warn manual users and hard-block the AI.",
+    "commitSha": "704271e64000dfc43933751e7a79ef4e007f31ca"
+  },
+  {
+    "date": "2026-06-17",
+    "type": "Feature",
+    "description": "Added Resources (staff and rooms) — manage and label them, and assign bookings to a resource.",
+    "commitSha": "d200dccd1f8bac3856975822e0bf6cc1d45c592c"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Feature",
+    "description": "The Bookings calendar is now resource-aware, with per-resource columns and a per-resource double-booking lock.",
+    "commitSha": "97c44904142034be85394863ca5a427a1b9f5510"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Feature",
+    "description": "Each resource can have its own working hours, falling back to business hours.",
+    "commitSha": "f5083e6db6c8725ba827a1dbc1280950b0923671"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Fix",
+    "description": "Fixes for the advisory lock, closed-day warn-with-override, the Closed header layout, and unassigned bookings.",
+    "commitSha": "c903a78d054646b462c6882f669176cad11b79a3"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Feature",
+    "description": "Added per-resource appointment durations and buffers across slot-finding, overlap checks, and calendar sizing.",
+    "commitSha": "64f5ad45b71968195de6924a6103e06fe8e20870"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "UI",
+    "description": "Surface the assigned resource as a Bookings list column and a small dot on calendar blocks.",
+    "commitSha": "4eb377bf2c6db46db04d8d0ad0719094f1521170"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Fix",
+    "description": "Calendar fixes: removed a 'Today' flash, smoother re-renders, and a two-step click-to-create.",
+    "commitSha": "1c49cde0ce6d4bee22658ccc2c9d9e7ee96c0f29"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Feature",
+    "description": "Bookings now drive automations — Booking Created and Status Changed triggers, plus confirmation and no-show templates.",
+    "commitSha": "daa546002c7552131818c2524887705ee8ac7070"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Feature",
+    "description": "Added hour-precise appointment reminders that send automatically before bookings.",
+    "commitSha": "f9cf5b1093c31e52517e7292f11f5ce4c46e3129"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Fix",
+    "description": "Appointment details now fill in correctly in confirmation and no-show messages.",
+    "commitSha": "bce9dbd8b3bb4fd88466c19d00ddb1c0d7599564"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Feature",
+    "description": "The AI receptionist now captures and honors the requested staff member when booking.",
+    "commitSha": "93c246009070ec5bb1f0973de7e620630c858c69"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Backend",
+    "description": "Added a read-only availability check the AI can use to see open slots.",
+    "commitSha": "e8e5b198ac1eae99e448157c82957ecaa0403163"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Feature",
+    "description": "The AI receptionist checks real availability mid-call and says 'let me check' while looking up.",
+    "commitSha": "a4059865e9a3b7243fc938138ca56ade54012417"
+  },
+  {
+    "date": "2026-06-19",
+    "type": "Fix",
+    "description": "The AI receptionist now knows and can state business and staff hours.",
+    "commitSha": "e6729e1d1fc7ff82cd6f901b36e0fd5b1a59ba23"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Fix",
+    "description": "The AI now offers actual bookable slots (not just open hours) and asks which staff member.",
+    "commitSha": "adbe844ba98b1c6539f104d6a66845437047324c"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Fix",
+    "description": "The AI no longer ends the call at booking confirmation — it captures the caller's name and number first.",
+    "commitSha": "aafc470fe532c886221743b4120ca751336154f8"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Fix",
+    "description": "The AI only asks which staff member when there's more than one, and stops repeating 'how can I assist.'",
+    "commitSha": "f371821390beaa6aad470a1570f7b192304197fc"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Fix",
+    "description": "The AI offers specific start times instead of ranges and handles noon/12 PM clearly.",
+    "commitSha": "ec041a2f993647b139c0a87c23667d8855ab86fb"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Fix",
+    "description": "The AI keeps the conversation on track after a caller interrupts (barge-in).",
+    "commitSha": "52d40d57ae470a2da33e5dc5f736bb7f2392a7e8"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Fix",
+    "description": "The AI gives honest availability reasons (booked vs closed) and stops inventing 'booked' or picking staff itself.",
+    "commitSha": "35b8a8763d697f739be5cfd422007bb2609b89dc"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Feature",
+    "description": "Added a verified Caller ID field (separate from the editable phone), shown in Calls; bookings follow the spoken number.",
+    "commitSha": "242c209cb56d6b318aba1eeb4dc82d0a81b8f324"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Fix",
+    "description": "The AI summarizes availability into natural ranges instead of listing every slot.",
+    "commitSha": "501e32c8167fb9c3858856b9dda12ded14b6cd3a"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "UI",
+    "description": "Contacts table: show all chosen columns with a sticky header and horizontal scroll (50 rows per page), with image thumbnails.",
+    "commitSha": "c9159b03c89f9d2c349aa4f939f7ad861df9f3a2"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Feature",
+    "description": "Owners and Super Admins can delete resolved feedback tickets in both views.",
+    "commitSha": "0cca9e8776a3af0bd22f7569809bc45052132fe9"
+  },
+  {
+    "date": "2026-06-20",
+    "type": "Feature",
+    "description": "Added feedback ticket CSV export (reusing the contacts export dialog), one row per reply, with sensible default columns.",
+    "commitSha": "fba203ee01fe6d54699a5f84ebb4e83038c93aca"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Feature",
+    "description": "Added all-portals feedback export from the master hub — export one or all businesses, with history.",
+    "commitSha": "aba5f32f7b8c35578ecbb3568578647aa62a0194"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Backend",
+    "description": "Restricted feedback export to Owner, Super Admin, and Auditor, and made it impersonation-safe.",
+    "commitSha": "c958c3f080a5daa327c0134bb05dd7d3442525d0"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Feature",
+    "description": "Feedback tickets now support attachment links (added on create or later), with URL validation and automatic https.",
+    "commitSha": "1bb3fc162db75591eda6352c0ca3a3f7a46c4e5a"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Feature",
+    "description": "Feedback export now includes numbered Attachment columns.",
+    "commitSha": "491c938ed2f59608ca65a97624089efb3d5b0837"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Feature",
+    "description": "Added a per-business timezone setting (a picker in Settings) so times display correctly.",
+    "commitSha": "6e29f4039be2b805cc8ffd2f0cb41f6efc0c4c51"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Added encrypted storage for Google Calendar connections and resource-to-calendar mappings.",
+    "commitSha": "3ef101fd369b676f12adbdb497574d007a90e8e4"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Added Google Calendar connect and disconnect (read-only OAuth) with token refresh and a connect screen.",
+    "commitSha": "fefd681db9d0fb7a0311a3fbc7573cf950081f9e"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Added Google calendar listing and resource-to-calendar mapping, with a mapping screen.",
+    "commitSha": "5eea9dc5b2fbc256de946d2c12ee415689497deb"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Added timezone conversion at the Google Calendar boundary.",
+    "commitSha": "365df7f3c1db8750a9cf5f641f93cfc9e0a8fecf"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Backend",
+    "description": "Bookings now honor an explicit end time across availability, overlap checks, and calendar sizing.",
+    "commitSha": "7a163be07b9223d841a0ec8345904fd1bd9b4aca"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Google-synced bookings are read-only in the app — only the sync can change them.",
+    "commitSha": "f94fec1ccdea7edb6be5c213ff08098345df9f39"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Added Google-to-Clarity sync that pulls external bookings in (read-only, gated off by default).",
+    "commitSha": "a2cdcb8adab710c4bee651573e15a3fcef4d8e90"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Added a read-only Google sync preview showing mappings, the window, and raw events.",
+    "commitSha": "7393dc906501b4b615abd860d511a278a01e4c87"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Request Google write access and detect when it's granted; expose sync health.",
+    "commitSha": "e0f079384a0feea298b52cf31fcbfb571a60d181"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Show Google-synced bookings as read-only with a badge, plus a sync-health card.",
+    "commitSha": "e1eadebdb8ee473a158e4c67fc9652825faf123c"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Added Google write-out push to mirror Clarity bookings to Google (create, update, delete), gated off by default.",
+    "commitSha": "7512c03ce12df94e79be965d5b3e8fb1cdbe4423"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Google push: richer event descriptions, accurate durations, and cleanup when bookings move between calendars.",
+    "commitSha": "679610944638efc9f557fb27f95a98b37b2e446d"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "The AI books cautiously when Google sync is stale or degraded.",
+    "commitSha": "8a2b07dd39242563f949de5e93cde07884f4d173"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Integration",
+    "description": "Added a two-way Google sync on/off toggle that auto-enables when you connect and map a calendar.",
+    "commitSha": "ec0f1ed66e0eec8a93de6d59bb95b5c199a17742"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Fix",
+    "description": "Fixed business-wide availability by combining each resource's openings (Unassigned no longer blocks named staff), and auto-assign a free resource when needed.",
+    "commitSha": "c09d97c73263905cd58fd017caf2f051d8b11719"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Fix",
+    "description": "The AI books with a free named staff member — it books if one is free and asks if several are.",
+    "commitSha": "e31d73a26629b0b5ecf9ff0b9ff0a3e22045f5b2"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Fix",
+    "description": "The AI records the staff member it announces and captures the spoken callback number.",
+    "commitSha": "5f0026e9fffe655f1ef2a05213bfad425c39af84"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Fix",
+    "description": "A single call can no longer create duplicate bookings (deduplicated by contact and time).",
+    "commitSha": "36528c21ec5db0709efbac66f68e7b64cc2bec6c"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Fix",
+    "description": "The AI records every booking detail it announces and confirms before announcing.",
+    "commitSha": "0bffcfd2bdbd9f470a9341ce5b6fe09758a133be"
+  },
+  {
+    "date": "2026-06-21",
+    "type": "Fix",
+    "description": "Bookings are no longer silently lost — rescue a named-but-unavailable staff member and log every failure.",
+    "commitSha": "147bb8654fad97039a970e75f4ed0a9860da768e"
+  },
+  {
+    "date": "2026-06-22",
+    "type": "Fix",
+    "description": "Booking-capture overhaul — the backend owns the final booking commit, carries the chosen staff forward, and never loses a booking.",
+    "commitSha": "417ad0c49ba3c361f5a07b9783f0fa75b7c6bcbb"
+  },
+  {
+    "date": "2026-06-22",
+    "type": "Integration",
+    "description": "Premium voice: if no caller audio arrives, the AI re-prompts and then ends the call gracefully.",
+    "commitSha": "52a9127565acb31bf198a41257af346985e082e4"
+  },
+  {
+    "date": "2026-06-22",
+    "type": "Integration",
+    "description": "Added an Integrations area (Twilio, OpenAI, and Google cards with role-based editing) under Settings, with brand logos; moved the timezone setting to Bookings.",
+    "commitSha": "b6bb02ddf240461377ee00de80f567ef3cd337a0"
+  },
+  {
+    "date": "2026-06-22",
+    "type": "UI",
+    "description": "Bookings calendar header redesign — an inline timezone, a 'Go to Today' button, a 2x2 legend, and a Calendar Sync block.",
+    "commitSha": "094369a2acd16711a11aa9f4d7403cdeb9b45d14"
+  },
+  {
+    "date": "2026-06-22",
+    "type": "Backend",
+    "description": "Recycle Bin foundation — record who deleted each contact and record.",
+    "commitSha": "a099ccfe85b77efa23511ed371673b7ea17b41f2"
+  },
+  {
+    "date": "2026-06-22",
+    "type": "Feature",
+    "description": "The Recycle Bin now covers records too, with per-type tables to view, restore, or permanently remove deleted items.",
+    "commitSha": "66412c12bfa62509b8f4a5b8e80ebf436f7081dc"
+  },
+  {
+    "date": "2026-06-23",
+    "type": "Feature",
+    "description": "Recycle Bin: a read-only preview of a deleted item that mirrors its real Contact, Job, or Booking page, showing who deleted it and when, with Restore.",
+    "commitSha": "5b3ecad6ac6e70306b9c7fcea7163771615983ea"
+  },
+  {
+    "date": "2026-06-23",
+    "type": "Feature",
+    "description": "Added the Change Log — a master-hub page listing every change shipped to the app.",
+    "commitSha": "2f616844bda0d1559557dcce76a183e5984a68b1"
+  }
+]
