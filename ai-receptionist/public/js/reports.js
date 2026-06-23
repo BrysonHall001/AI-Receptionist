@@ -24,15 +24,35 @@
     if (g === "week") { const j = new Date(d.getFullYear(), 0, 1); const wk = Math.ceil(((d - j) / 86400000 + j.getDay() + 1) / 7); return `${d.getFullYear()}-W${pad(wk)}`; }
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
   }
+  // WALL-CLOCK date bucketing for appointment times. appointmentAt is zoneless
+  // wall-clock digits parked in a UTC-slot ISO string ("2026-07-01T23:30:00.000Z").
+  // We bucket by SLICING those digits — never `new Date(iso)` + local getters, which
+  // would timezone-shift the date (e.g. roll an 11:30 PM appointment to the next or
+  // previous day). day/month/year are pure string slices; week derives its number
+  // from Date.UTC on the SLICED Y/M/D (UTC getters only), so it never drifts either.
+  function bucketWallClock(iso, g) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+    if (!m) return "(none)";
+    const Y = m[1], Mo = m[2], D = m[3];
+    if (g === "day") return `${Y}-${Mo}-${D}`;
+    if (g === "year") return Y;
+    if (g === "week") {
+      const d = new Date(Date.UTC(+Y, +Mo - 1, +D));
+      const j = new Date(Date.UTC(+Y, 0, 1));
+      const wk = Math.ceil(((d - j) / 86400000 + j.getUTCDay() + 1) / 7);
+      return `${Y}-W${pad(wk)}`;
+    }
+    return `${Y}-${Mo}`;
+  }
   function toDims(v, legacyDate) {
     if (Array.isArray(v)) return v.map((d) => (typeof d === "string" ? { key: d } : d)).filter((d) => d && d.key);
     if (typeof v === "string" && v) return [{ key: v, date: legacyDate }];
     return [];
   }
-  function dimMeta(fields, dim) { const f = fields.find((x) => x.key === dim.key) || { key: dim.key, label: dim.key, type: "text" }; return { key: f.key, label: f.label, type: f.type, bucket: dim.date, catOrder: f.catOrder || null }; }
+  function dimMeta(fields, dim) { const f = fields.find((x) => x.key === dim.key) || { key: dim.key, label: dim.key, type: "text" }; return { key: f.key, label: f.label, type: f.type, bucket: dim.date, catOrder: f.catOrder || null, wallClock: !!f.wallClock }; }
   function oneLabel(src, c, dm) {
     const v = valueOf(src, c, dm.key);
-    if (dm.type === "date") return v ? bucketDate(v, dm.bucket || "month") : "(none)";
+    if (dm.type === "date") return v ? (dm.wallClock ? bucketWallClock(v, dm.bucket || "month") : bucketDate(v, dm.bucket || "month")) : "(none)";
     if (v == null || v === "") return "(empty)";
     if (Array.isArray(v)) return v.length ? v.join(", ") : "(empty)";
     if (typeof v === "boolean") return v ? "Yes" : "No";
@@ -175,7 +195,7 @@
       ]);
       return { key: "contacts", label: "Contacts", topLevel: CONTACT_TOP, rows: contacts || [], reportFields: reportFields };
     }
-    function buildRecordSource(rt, rows, fields) {
+    function buildRecordSource(rt, rows, fields, resourcesById) {
       // Synthetic top-level fields mirror what Contacts get. Keys are the real
       // record properties (title/stageKey/subtypeKey/createdAt) so valueOf reads
       // them directly; labels are friendly. Status here is the RECORD-LEVEL
@@ -187,10 +207,23 @@
       ].concat(fields || []).concat([
         { key: "createdAt", label: "Time Created", type: "date" },
       ]);
+      const topLevel = ["title", "stageKey", "subtypeKey", "createdAt"];
+      // Bookings carry two extra real columns: the appointment time and the assigned
+      // resource (staff). Add them ONLY for the booking type. "appointmentAt" is a
+      // WALL-CLOCK date (wallClock:true routes it to the slicing bucketer, never the
+      // new Date() one). "resource" is resolved to the staff NAME (reusing the same
+      // resource list the calendar uses); unknown/absent → "Unassigned".
+      if (rt.key === "booking") {
+        reportFields.push({ key: "appointmentAt", label: "Appointment Date", type: "date", wallClock: true });
+        reportFields.push({ key: "resource", label: "Staff", type: "text" });
+        topLevel.push("appointmentAt", "resource");
+        const byId = resourcesById || {};
+        (rows || []).forEach((r) => { if (r) r.resource = r.resourceId ? (byId[r.resourceId] || "Unassigned") : "Unassigned"; });
+      }
       return {
         key: rt.key,
         label: rt.labelPlural || rt.label || rt.key,
-        topLevel: ["title", "stageKey", "subtypeKey", "createdAt"],
+        topLevel: topLevel,
         rows: rows || [],
         reportFields: reportFields,
       };
@@ -240,7 +273,7 @@
       host.innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`;
       try {
         const dashReq = opts.home ? App.portalApi("/api/dashboards/home") : App.portalApi("/api/dashboards");
-        const [d, contacts, contactFields, recordTypes, pipeline, calls] = await Promise.all([
+        const [d, contacts, contactFields, recordTypes, pipeline, calls, resources] = await Promise.all([
           dashReq,
           App.portalApi("/api/contacts"),
           App.portalApi("/api/fields"),
@@ -249,8 +282,13 @@
           // is simply empty rather than breaking the whole Reports page.
           App.portalApi("/api/pipeline").catch(() => []),
           App.portalApi("/api/calls").catch(() => []),
+          // Resources (staff) for the booking "Staff" dimension — id -> name.
+          App.portalApi("/api/resources").catch(() => []),
         ]);
         state.dashboards = opts.home ? [d] : d;
+        // id -> staff name, reused to resolve the booking source's resource column.
+        const resourcesById = {};
+        (Array.isArray(resources) ? resources : []).forEach((r) => { if (r && r.id) resourcesById[r.id] = r.name; });
 
         const sources = { contacts: buildContactSource(contacts, contactFields) };
         // Every record type except the built-in "contact" one becomes a source.
@@ -260,7 +298,7 @@
             App.portalApi("/api/records?type=" + encodeURIComponent(rt.key)),
             App.portalApi("/api/fields?recordType=" + encodeURIComponent(rt.key)),
           ]);
-          return buildRecordSource(rt, Array.isArray(rows) ? rows : [], Array.isArray(fields) ? fields : []);
+          return buildRecordSource(rt, Array.isArray(rows) ? rows : [], Array.isArray(fields) ? fields : [], resourcesById);
         }));
         loaded.forEach((s) => { sources[s.key] = s; });
         // Pipeline / Funnel source (one row per contact-in-a-policy link).
