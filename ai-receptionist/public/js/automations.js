@@ -1271,6 +1271,8 @@
     if (key === "title") return row.title;
     if (key === "subtypeKey") return row.subtypeKey;
     if (key === "createdAt") return row.createdAt;
+    if (key === "appointmentAt") return row.appointmentAt;
+    if (key === "resource") return row.resourceName != null ? row.resourceName : (row.resource && row.resource.name);
     return (row.customFields || {})[key];
   }
   function scalar(v) { return v == null ? "" : Array.isArray(v) ? v.join(", ") : String(v); }

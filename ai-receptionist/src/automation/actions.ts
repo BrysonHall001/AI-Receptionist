@@ -9,7 +9,7 @@ import { listLinksForRecord, updateLink } from "../services/recordLinkService";
 import { stagesForSubtype } from "../services/recordTypeService";
 import { log as logActivity } from "../services/activityService";
 import { FieldMeta, renderTemplate, templateContext, buildColumns, valueOf, conditionFields, loadFieldDefs } from "./contactRow";
-import { loadRecordFieldDefs, buildRecordColumns } from "./recordRow";
+import { loadRecordFieldDefs, buildRecordColumns, attachResourceNames } from "./recordRow";
 import { evalRules } from "./conditions";
 import { validateWebhookUrl, sendWebhook, buildContactPayload } from "./webhook";
 
@@ -551,6 +551,8 @@ const EXECUTORS: Record<string, Executor> = {
     try { rows = await listRecords(ctx.tenantId, typeKey); }
     catch (e) { return { type: "find_record_items", status: "failed", error: `Could not list records: ${(e as Error).message}` }; }
     const columns = buildRecordColumns(await loadRecordFieldDefs(ctx.tenantId, rt.id));
+    // Resolve staff names so a "resource" condition can match by name here too.
+    await attachResourceNames(ctx.tenantId, rows);
     const conditions = Array.isArray(cfg.conditions) ? cfg.conditions : [];
     const matched = rows.filter((r: any) => evalRules(r, conditions as any, columns)).slice(0, MAX_SEARCH_RESULTS).map((r: any) => r.id);
     ctx.recordWorkingSet = matched;

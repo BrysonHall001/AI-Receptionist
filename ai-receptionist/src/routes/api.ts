@@ -1516,6 +1516,11 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
   recCondMap.set("title", { label: "Title", type: "text" });
   recCondMap.set("subtypeKey", { label: "Type", type: "text" });
   recCondMap.set("createdAt", { label: "Time created", type: "date" });
+  // Booking columns (real Record columns; empty for non-booking types). "resource"
+  // resolves to the staff name at evaluation time. appointmentAt is a date field —
+  // see recordRow/evalRule for the wall-clock-safe comparison.
+  recCondMap.set("appointmentAt", { label: "Appointment date/time", type: "date" });
+  recCondMap.set("resource", { label: "Staff", type: "text" });
   for (const d of recFieldDefs as any[]) if (d.key && !String(d.key).startsWith("__")) recCondMap.set(String(d.key), { label: String(d.label ?? d.key), type: String(d.type || "text") });
   const recordConditionFields = Array.from(recCondMap, ([key, v]) => ({ key, label: v.label, type: v.type }));
   // Record TYPES (key + label + their statuses/subtypes) so the new record-acting

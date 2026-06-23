@@ -4,7 +4,7 @@ import { subscribe } from "../events/bus";
 import { DomainEvent, EventActor } from "../events/types";
 import { evalRules, ruleComplete, Rule } from "./conditions";
 import { buildColumns, loadFieldDefs } from "./contactRow";
-import { loadRecordFieldDefs, buildRecordColumns } from "./recordRow";
+import { loadRecordFieldDefs, buildRecordColumns, attachResourceNames } from "./recordRow";
 import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
 import { enqueueJob, fmtApptWall } from "./scheduler";
 
@@ -185,6 +185,9 @@ async function runRecordOne(auto: AutomationRow, event: DomainEvent, record: any
   // actually evaluate. The contact path (runOne) is untouched and still uses the
   // contact loader.
   const recCustom = await loadRecordFieldDefs(auto.tenantId, record.recordTypeId);
+  // Resolve the assigned staff name onto the record so a "resource" condition reads
+  // the name (not the raw id). No-op for records without a resource.
+  await attachResourceNames(auto.tenantId, [record]);
   const recCols = buildRecordColumns(recCustom);
   const activeRules = ((auto.conditions as Rule[]) || []).filter(ruleComplete);
   const knownKeys = new Set(recCols.map((c) => c.key));
