@@ -1,6 +1,6 @@
 (function (global) {
   const App = global.App || (global.App = {});
-  const { el, esc, fmtDate, statusBadge, roleLabel, toast } = App.util;
+  const { el, esc, fmtDate, fmtDateOnly, statusBadge, roleLabel, toast } = App.util;
 
   let current = "portals";
   let portalsCache = [];
@@ -642,7 +642,7 @@
     view().appendChild(host);
 
     const columns = [
-      { key: "date", label: "Date", type: "date", get: (r) => r.date, text: (r) => fmtDate(r.date), render: (r) => `<span class="cell-muted">${fmtDate(r.date)}</span>` },
+      { key: "date", label: "Date", type: "date", get: (r) => r.date, text: (r) => fmtDateOnly(r.date), render: (r) => `<span class="cell-muted">${fmtDateOnly(r.date)}</span>` },
       { key: "type", label: "Type", type: "text", get: (r) => r.type, cellClass: "cell-strong", render: (r) => esc(r.type || "—") },
       { key: "description", label: "Description", type: "text", get: (r) => r.description, render: (r) => esc(r.description || "—") },
     ];

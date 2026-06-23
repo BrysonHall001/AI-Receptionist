@@ -57,6 +57,17 @@
     if (d.toDateString() === now.toDateString()) return `Today, ${time}`;
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + `, ${time}`;
   }
+  // Date-only, wall-clock-safe: shows the calendar day from a date/ISO string with
+  // NO local-timezone conversion and NO time. Reads the Y-M-D digits and renders
+  // them in UTC, so a date stored at UTC midnight (e.g. the Change Log) never slips
+  // to the previous evening. Same UTC-slot pattern the booking calendar uses.
+  function fmtDateOnly(iso) {
+    if (!iso) return "—";
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
+    if (!m) return "—";
+    return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]))
+      .toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
+  }
 
   function statusBadge(status) {
     const map = {
@@ -129,7 +140,7 @@
     return api(url, opts);
   }
 
-  App.util = { $, $$, el, esc, fmtDate, statusBadge, roleLabel, toast, debounce };
+  App.util = { $, $$, el, esc, fmtDate, fmtDateOnly, statusBadge, roleLabel, toast, debounce };
   App.api = api;
   App.portalApi = portalApi;
 
