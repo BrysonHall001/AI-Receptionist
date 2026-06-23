@@ -11,6 +11,10 @@ import { randomValueForField } from "./contactService";
 import { RETENTION_DAYS } from "./readModels";
 import { emitEvent } from "../events/bus";
 import { EventActor, deletedByFromActor } from "../events/types";
+// Wall-clock appointment formatter — the SAME one the automations layer uses
+// (reads the UTC-slot digits verbatim, never zone-converts). Reused here so the
+// reschedule event's old/new values are wall-clock, per the wall-clock rule.
+import { fmtApptWall } from "../automation/scheduler";
 
 const db = prisma as any;
 
@@ -328,6 +332,12 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
     // Jobs. Reuses the engine's changes[] scoping → "BookingStatusChanged:status=<v>".
     const statusChange = changes.find((c) => c.field === "status");
     if (isBooking && statusChange) await emitBookingStatusChanged(tenantId, updated, statusChange, actor, chainDepth);
+    // Booking time change → its own trigger (so automations don't have to ride the
+    // generic RecordUpdated). old/new are wall-clock, via fmtApptWall.
+    if (isBooking && apptChanged) await emitBookingRescheduled(tenantId, updated, existing.appointmentAt, finalAppt, actor, chainDepth);
+    // Booking staff reassignment → its own event (previously emitted NOTHING, so it
+    // was invisible to automations and the event log). Carries old/new NAMES.
+    if (isBooking && resourceChanged) await emitBookingResourceChanged(tenantId, updated, existing.resourceId ?? null, finalResourceId, actor, chainDepth);
   } catch { /* never block the record save on event emission */ }
   // =================== END RECORD-UPDATED EVENT (Stage 2a) ===================
 
@@ -417,6 +427,58 @@ async function emitBookingStatusChanged(tenantId: string, record: any, statusCha
       new_status: statusChange.new ?? null,
       changes: [statusChange],
       changed_fields: ["status"],
+    },
+  });
+}
+
+// Booking-specific RESCHEDULE event. Subject = the booking; carries the appointment
+// change as changes[] (field "appointment") so the engine derives scoped triggers
+// exactly like BookingStatusChanged. old/new are WALL-CLOCK strings via fmtApptWall
+// (the UTC-slot digits verbatim) — never zone-converted.
+async function emitBookingRescheduled(tenantId: string, record: any, oldAppt: any, newAppt: any, actor: EventActor = { type: "user" }, chainDepth = 0) {
+  const oldStr = oldAppt ? fmtApptWall(new Date(oldAppt)) : null;
+  const newStr = newAppt ? fmtApptWall(new Date(newAppt)) : null;
+  await emitEvent({
+    tenantId,
+    type: "BookingRescheduled",
+    actor,
+    chainDepth,
+    subject: { type: "record", id: record.id },
+    payload: {
+      record_id: record.id,
+      record_title: record.title ?? null,
+      old_appointment: oldStr,
+      new_appointment: newStr,
+      changes: [{ field: "appointment", label: "Appointment", old: oldStr, new: newStr }],
+      changed_fields: ["appointment"],
+    },
+  });
+}
+
+// Booking-specific RESOURCE (staff) reassignment event. Subject = the booking;
+// carries the change as changes[] (field "resource") with resolved NAMES (not raw
+// ids). Unassigned shows as "Unassigned". Previously NO event fired on a resource
+// change, so it never reached automations or the event log — this closes that gap.
+async function emitBookingResourceChanged(tenantId: string, record: any, oldResourceId: string | null, newResourceId: string | null, actor: EventActor = { type: "user" }, chainDepth = 0) {
+  const nameOf = async (rid: string | null): Promise<string> => {
+    if (!rid) return "Unassigned";
+    const r = await loadBookingResource(tenantId, rid);
+    return r && r.name ? r.name : "Unassigned";
+  };
+  const [oldName, newName] = await Promise.all([nameOf(oldResourceId), nameOf(newResourceId)]);
+  await emitEvent({
+    tenantId,
+    type: "BookingResourceChanged",
+    actor,
+    chainDepth,
+    subject: { type: "record", id: record.id },
+    payload: {
+      record_id: record.id,
+      record_title: record.title ?? null,
+      old_resource: oldName,
+      new_resource: newName,
+      changes: [{ field: "resource", label: "Staff", old: oldName, new: newName }],
+      changed_fields: ["resource"],
     },
   });
 }

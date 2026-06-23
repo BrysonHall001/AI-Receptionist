@@ -99,6 +99,13 @@ export const EVENT_TYPES = {
   // triggers from its changes[] just like RecordUpdated.
   BookingCreated: "BookingCreated",
   BookingStatusChanged: "BookingStatusChanged",
+  // A booking's appointment date/time changed (subject = the booking). Mirrors
+  // BookingStatusChanged: carries a changes[] entry so the engine derives scoped
+  // variants the same way. old/new are WALL-CLOCK strings (never zone-converted).
+  BookingRescheduled: "BookingRescheduled",
+  // A booking's assigned resource (staff) changed (subject = the booking). Carries
+  // old/new resource NAMES (resolved, not raw ids) in changes[].
+  BookingResourceChanged: "BookingResourceChanged",
 } as const;
 
 export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
@@ -147,6 +154,13 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: stri
   // scoping the record triggers use: "BookingStatusChanged:status=<statusKey>".
   { type: EVENT_TYPES.BookingCreated, label: "Booking created", group: "Bookings", description: "Runs when a new booking is made for a contact — whether booked manually or by the AI receptionist." },
   { type: EVENT_TYPES.BookingStatusChanged, label: "Booking status changed", group: "Bookings", description: "Runs when a booking moves to a different status (e.g. Confirmed, Completed, No-show)." },
+  // Booking time change. Fires whenever a booking's appointment date/time is
+  // edited (subject = the booking); the event carries the old → new appointment
+  // as wall-clock text for use in messages and the log.
+  { type: EVENT_TYPES.BookingRescheduled, label: "Booking rescheduled (time changed)", group: "Bookings", description: "Runs when a booking's appointment date or time is changed." },
+  // Booking staff reassignment. Fires when a booking's assigned staff member
+  // (resource) is changed; carries the old → new staff names.
+  { type: EVENT_TYPES.BookingResourceChanged, label: "Booking staff reassigned", group: "Bookings", description: "Runs when a booking's assigned staff member is changed." },
   // Time-based booking trigger: queues a reminder a set time BEFORE the
   // appointment. Stored as "AppointmentReminder:<amount>:<unit>:before". Evaluated
   // by the scheduler sweep (not an instant event). Hour-precise.

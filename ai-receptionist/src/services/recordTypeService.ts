@@ -21,6 +21,11 @@ const DEFAULT_BOOKING_RECORD_STAGES = [
   { key: "confirmed", label: "Confirmed", order: 1 },
   { key: "completed", label: "Completed", order: 2 },
   { key: "no_show", label: "No-show", order: 3 },
+  // Cancellation is just a status: moving a booking here fires the existing
+  // "Booking status changed" trigger (scoped: status=cancelled), so no new event
+  // is needed. Seeded for NEW booking types only (existing portals keep their
+  // customized statuses untouched — they can add this on the Fields page).
+  { key: "cancelled", label: "Cancelled", order: 4 },
 ];
 
 // Sample "services" as subtypes (the Type mechanism). SAMPLE DATA ONLY — seeded
