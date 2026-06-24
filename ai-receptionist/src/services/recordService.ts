@@ -709,17 +709,44 @@ export async function syncUpsertGoogleBooking(
     deletedAt: null,
   };
   if (!existing) {
-    await db.record.create({ data: {
+    const createdRec = await db.record.create({ data: {
       tenantId, recordTypeId, subtypeKey: null, resourceId: p.resourceId,
       externalSource: "google", externalEventId: p.eventId, externalCalendarId: p.calendarId,
       ...common,
     }});
+    await emitSyncBookingEvent("BookingSyncedIn", tenantId, createdRec, p);
     return "created";
   }
   const unchanged = existing.deletedAt == null && existing.externalUpdatedAt === (p.externalUpdatedAt ?? null);
   if (unchanged) return "unchanged";
   await db.record.update({ where: { id: existing.id }, data: common });
+  await emitSyncBookingEvent("BookingSyncedUpdated", tenantId, { ...existing, ...common }, p);
   return "updated";
+}
+
+// Calendar-sync visibility: log a sync-attributed event when Google sync creates or
+// updates a booking. Log-only — these types are NOT triggerable, so a Google-driven
+// change can never misfire a user automation. The appointment time uses fmtApptWall
+// (the wall-clock digits verbatim, read in UTC), never re-converted. Best-effort:
+// a sync must never fail because of event emission.
+async function emitSyncBookingEvent(type: "BookingSyncedIn" | "BookingSyncedUpdated", tenantId: string, record: any, p: SyncBookingInput) {
+  try {
+    await emitEvent({
+      tenantId,
+      type,
+      actor: { type: "sync", name: "Calendar sync" },
+      subject: { type: "record", id: record.id },
+      payload: {
+        record_id: record.id,
+        record_title: record.title ?? null,
+        appointment: p.appointmentAt ? fmtApptWall(new Date(p.appointmentAt)) : null,
+        resource_id: p.resourceId,
+        calendar_id: p.calendarId,
+        external_event_id: p.eventId,
+        source: "google",
+      },
+    });
+  } catch { /* never block the sync on event emission */ }
 }
 
 /** Delete-on-disappear for ONE successfully-fetched (calendar, resource): soft-delete
@@ -738,7 +765,7 @@ export async function syncRemoveMissingGoogleBookings(
   const keep = new Set(keepEventIds);
   const toDelete = rows.filter((r: any) => !keep.has(r.externalEventId)).map((r: any) => r.id);
   if (!toDelete.length) return 0;
-  return softDeleteRecords(tenantId, toDelete, { type: "sync" });
+  return softDeleteRecords(tenantId, toDelete, { type: "sync", name: "Calendar sync" });
 }
 
 /** Mapping-cleanup: when a resource is unmapped/disconnected, soft-delete ALL its
@@ -750,7 +777,7 @@ export async function syncRemoveAllGoogleBookingsForResource(tenantId: string, r
   });
   const ids = rows.map((r: any) => r.id);
   if (!ids.length) return 0;
-  return softDeleteRecords(tenantId, ids, { type: "sync" });
+  return softDeleteRecords(tenantId, ids, { type: "sync", name: "Calendar sync" });
 }
 
 /** Disconnect-cleanup: soft-delete ALL of a tenant's Google-owned bookings (the
@@ -762,5 +789,5 @@ export async function syncRemoveAllGoogleBookingsForTenant(tenantId: string): Pr
   });
   const ids = rows.map((r: any) => r.id);
   if (!ids.length) return 0;
-  return softDeleteRecords(tenantId, ids, { type: "sync" });
+  return softDeleteRecords(tenantId, ids, { type: "sync", name: "Calendar sync" });
 }

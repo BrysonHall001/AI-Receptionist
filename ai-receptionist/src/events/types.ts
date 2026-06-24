@@ -117,6 +117,12 @@ export const EVENT_TYPES = {
   RecordDeleted: "RecordDeleted",
   ContactRestored: "ContactRestored",
   RecordRestored: "RecordRestored",
+  // Calendar-sync visibility (log-only; NOT in TRIGGERABLE_EVENT_TYPES, so a
+  // Google-driven change can never misfire a user automation). Attributed to the
+  // sync actor, shown as "Calendar sync". Removals reuse RecordDeleted (also sync-
+  // attributed) to avoid double-logging.
+  BookingSyncedIn: "BookingSyncedIn",
+  BookingSyncedUpdated: "BookingSyncedUpdated",
 } as const;
 
 export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
