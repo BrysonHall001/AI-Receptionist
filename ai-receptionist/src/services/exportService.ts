@@ -1,10 +1,11 @@
 import { prisma } from "../db/client";
 
 // Map a stored ExportRecord (now the shared import/export history) to the list DTO.
-function toListDTO(r: any) {
+function toListDTO(r: any, nameById: Record<string, string | null>) {
+  const kind = r.kind ?? "export";
   return {
     id: r.id,
-    kind: r.kind ?? "export",
+    kind,
     dataType: r.dataType ?? null,
     name: r.name,
     rowCount: r.rowCount,
@@ -12,11 +13,26 @@ function toListDTO(r: any) {
     failCount: r.failCount ?? null,
     fields: r.fields ?? [],
     scope: r.scope ?? null,
+    createdById: r.createdById ?? null,
+    createdByName: r.createdById ? (nameById[r.createdById] ?? null) : null,
+    // Download is per-row: exports produced a stored file; imports (and, later, the
+    // Data Backup) did not. Driven by kind so future non-export rows slot in cleanly.
+    downloadable: kind === "export",
     createdAt: r.createdAt.toISOString(),
   };
 }
 
-const LIST_SELECT = { id: true, kind: true, dataType: true, name: true, rowCount: true, okCount: true, failCount: true, fields: true, scope: true, createdAt: true };
+const LIST_SELECT = { id: true, kind: true, dataType: true, name: true, rowCount: true, okCount: true, failCount: true, fields: true, scope: true, createdById: true, createdAt: true };
+
+// Resolve the "who" for the history User column: map createdById -> display name.
+async function resolveCreatorNames(rows: any[]): Promise<Record<string, string | null>> {
+  const ids = Array.from(new Set(rows.map((r) => r.createdById).filter(Boolean))) as string[];
+  if (!ids.length) return {};
+  const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } });
+  const map: Record<string, string | null> = {};
+  users.forEach((u: any) => { map[u.id] = u.name || u.email || null; });
+  return map;
+}
 
 // Optional type-scoping: per-page history passes its own kind ("export"/"import")
 // and dataType ("contact"/"job"/…) so each page sees ONLY its own entries. Omitting
@@ -37,7 +53,8 @@ export async function listExports(tenantId: string, filter?: HistoryFilter) {
     select: LIST_SELECT,
     take: 100,
   });
-  return rows.map(toListDTO);
+  const nameById = await resolveCreatorNames(rows);
+  return rows.map((r: any) => toListDTO(r, nameById));
 }
 
 // Master-hub history (no single portal): master-hub-local + all-portals exports.
@@ -48,7 +65,8 @@ export async function listMasterExports(filter?: HistoryFilter) {
     select: LIST_SELECT,
     take: 100,
   });
-  return rows.map(toListDTO);
+  const nameById = await resolveCreatorNames(rows);
+  return rows.map((r: any) => toListDTO(r, nameById));
 }
 
 export async function createExport(input: {

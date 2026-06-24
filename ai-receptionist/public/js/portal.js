@@ -662,24 +662,20 @@
     setTab("import");
   }
 
-  function dataAdminPicker() {
-    const grid = el("div");
-    grid.style.cssText = "display:flex;flex-direction:column;gap:8px;align-items:flex-start;margin-top:12px;";
-    return grid;
-  }
-
-  // Import sub-tab: a "what do you want to import?" picker that opens the SAME import
-  // modal each page uses (openImport for contacts, openRecordImport for records).
+  // Importable types are Contacts + the record types (Jobs, Bookings, custom). The
+  // system "contact" record type is excluded here so Contacts isn't listed twice.
+  // Events and Feedback are export-only (no import path exists), so they're not here.
   async function tabImport(host) {
-    host.innerHTML = `<p class="cell-muted">Choose what to import. This opens the same importer used on each page; the import is recorded in the history.</p>`;
+    host.innerHTML = "";
     let types = [];
     try { types = await App.portalApi("/api/record-types"); } catch (e) { /* empty */ }
-    const grid = dataAdminPicker();
-    const cBtn = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> Import ${esc(App.label("contact", "many"))}`);
+    const grid = el("div");
+    grid.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;";
+    const cBtn = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(App.label("contact", "many"))}`);
     cBtn.onclick = () => openImport();
     grid.appendChild(cBtn);
-    (types || []).forEach((t) => {
-      const b = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> Import ${esc(t.labelPlural || t.label)}`);
+    (types || []).filter((t) => t.key !== "contact").forEach((t) => {
+      const b = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(t.labelPlural || t.label)}`);
       b.onclick = async () => {
         let fields = [];
         try { fields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(t.key)); } catch (e) { /* empty */ }
@@ -690,50 +686,89 @@
     host.appendChild(grid);
   }
 
-  // Export sub-tab: the mirror of Import — a picker that opens the SAME export modal
-  // each page uses, rebuilt from the existing column builders + record data.
+  // Export sub-tab: a type dropdown that renders the SAME export form inline (no
+  // popup) via openExport({ inline:true }). Includes Contacts, every record type,
+  // Events, and Feedback (Feedback only for owner/super-admin/auditor).
+  function dataEventExportOpts(events) {
+    return {
+      columns: [
+        { key: "type", label: "Event", type: "text", get: (r) => r.type },
+        { key: "actor", label: "By", type: "text", get: (r) => r.actorName || r.actorType || "" },
+        { key: "occurredAt", label: "When", type: "date", get: (r) => r.occurredAt, text: (r) => fmtDate(r.occurredAt) },
+      ],
+      rows: events,
+      title: "Export events", namePlaceholder: "e.g. June automation events",
+      filterLabel: "Which events to export", unitPlural: "events", sheetName: "Events",
+      dataType: "event", countText: (n) => n + " event" + (n === 1 ? "" : "s"), saveHistory: true,
+    };
+  }
+  function dataFeedbackExportOpts(rows) {
+    return {
+      columns: App.feedback.ticketExportColumns({ portal: false, rows }),
+      rows,
+      title: "Export feedback", namePlaceholder: "e.g. Resolved tickets — June",
+      filterLabel: "Which tickets to include", unitPlural: "rows", sheetName: "Tickets",
+      dataType: "feedback", savedFilters: false, countText: (n) => n + (n === 1 ? " row" : " rows"), saveHistory: true,
+    };
+  }
   async function tabExport(host) {
-    host.innerHTML = `<p class="cell-muted">Choose what to export. This opens the same exporter used on each page and saves to your export history.</p>`;
+    host.innerHTML = "";
     let types = [];
     try { types = await App.portalApi("/api/record-types"); } catch (e) { /* empty */ }
-    const grid = dataAdminPicker();
-    const cBtn = el("button", "btn btn-ghost", `<span class="btn-icon">&#8679;</span> Export ${esc(App.label("contact", "many"))}`);
-    cBtn.onclick = async () => {
-      cBtn.disabled = true;
-      try {
-        const [fields, contacts] = await Promise.all([
-          App.portalApi("/api/fields").catch(() => []),
-          App.portalApi("/api/contacts").catch(() => []),
+    const isAdmin = !!(App.state.me && App.isAdminTier(App.state.me.role));
+    const options = [{ value: "contact", label: App.label("contact", "many") }];
+    (types || []).filter((t) => t.key !== "contact").forEach((t) => options.push({ value: "rt:" + t.key, label: t.labelPlural || t.label }));
+    options.push({ value: "event", label: "Events" });
+    if (isAdmin) options.push({ value: "feedback", label: "Feedback" });
+
+    const picker = el("div");
+    picker.style.cssText = "max-width:340px;margin-bottom:8px;";
+    picker.innerHTML = `<label class="field-label">What to export</label>
+      <select id="da-ex-type" class="input"><option value="">— choose a type —</option>${options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</select>`;
+    const formHost = el("div");
+    host.appendChild(picker);
+    host.appendChild(formHost);
+
+    async function buildOpts(value) {
+      if (value === "contact") {
+        const [fields, contacts] = await Promise.all([App.portalApi("/api/fields").catch(() => []), App.portalApi("/api/contacts").catch(() => [])]);
+        return contactExportOpts(contactColumnDefs(fields), contacts);
+      }
+      if (value === "event") {
+        const events = await App.portalApi("/api/automations/events").catch(() => []);
+        return dataEventExportOpts(Array.isArray(events) ? events : []);
+      }
+      if (value === "feedback") {
+        const rows = await App.portalApi("/api/feedback/export-rows").catch(() => []);
+        return dataFeedbackExportOpts(Array.isArray(rows) ? rows : []);
+      }
+      if (value.indexOf("rt:") === 0) {
+        const key = value.slice(3);
+        const t = (types || []).find((x) => x.key === key) || { key, label: key, labelPlural: key };
+        const [records, fields, resources] = await Promise.all([
+          App.portalApi("/api/records?type=" + encodeURIComponent(key)).catch(() => []),
+          App.portalApi("/api/fields?recordType=" + encodeURIComponent(key)).catch(() => []),
+          key === "booking" ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
         ]);
-        openExport(contactExportOpts(contactColumnDefs(fields), contacts));
-      } catch (e) { toast(e.message, true); }
-      cBtn.disabled = false;
+        const resById = {}; (resources || []).forEach((r) => { resById[r.id] = r; });
+        return recordExportOpts(recordColumnDefs(fields, t, resById), records, t.labelPlural || t.label, key);
+      }
+      return null;
+    }
+
+    picker.querySelector("#da-ex-type").onchange = async (e) => {
+      const value = e.target.value;
+      formHost.innerHTML = value ? `<div class="cell-muted" style="padding:8px">Loading…</div>` : "";
+      if (!value) return;
+      let opts;
+      try { opts = await buildOpts(value); } catch (err) { formHost.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(err.message)}</div>`; return; }
+      if (!opts) { formHost.innerHTML = ""; return; }
+      openExport(Object.assign({}, opts, { inline: true, container: formHost }));
     };
-    grid.appendChild(cBtn);
-    (types || []).forEach((t) => {
-      const b = el("button", "btn btn-ghost", `<span class="btn-icon">&#8679;</span> Export ${esc(t.labelPlural || t.label)}`);
-      b.onclick = async () => {
-        b.disabled = true;
-        try {
-          const [records, fields, resources] = await Promise.all([
-            App.portalApi("/api/records?type=" + encodeURIComponent(t.key)).catch(() => []),
-            App.portalApi("/api/fields?recordType=" + encodeURIComponent(t.key)).catch(() => []),
-            t.key === "booking" ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
-          ]);
-          const resById = {}; (resources || []).forEach((r) => { resById[r.id] = r; });
-          const columns = recordColumnDefs(fields, t, resById);
-          openRecordExport(columns, records, t.labelPlural || t.label, t.key);
-        } catch (e) { toast(e.message, true); }
-        b.disabled = false;
-      };
-      grid.appendChild(b);
-    });
-    host.appendChild(grid);
   }
 
-  // Centralized cross-type history. Reads the combined import+export history from
-  // Batch A (GET /api/exports, no filter) and shows it through App.table. The All
-  // view labels each row with its type + kind; the sort tabs scope to one type.
+  // Centralized cross-type history with Type / User / Download columns. Reads the
+  // combined import+export history from Batch A (GET /api/exports, no filter).
   function dataHistoryTypeLabels(types) {
     const map = { contact: App.label("contact", "many"), feedback: "Feedback", event: "Event log" };
     (types || []).forEach((t) => { map[t.key] = t.labelPlural || t.label; });
@@ -757,12 +792,13 @@
 
     const columns = [
       { key: "createdAt", label: "When", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
-      { key: "what", label: "What", type: "text", get: (r) => dataHistoryWhat(r, typeLabels), render: (r) => `<span class="pill">${esc(dataHistoryWhat(r, typeLabels))}</span>` },
+      { key: "what", label: "Type", type: "text", get: (r) => dataHistoryWhat(r, typeLabels), render: (r) => `<span class="pill">${esc(dataHistoryWhat(r, typeLabels))}</span>` },
       { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => esc(r.name || "—") },
+      { key: "user", label: "User", type: "text", get: (r) => r.createdByName || "", render: (r) => `<span class="cell-muted">${esc(r.createdByName || "—")}</span>` },
       { key: "count", label: "Rows", type: "text", get: (r) => countOf(r), render: (r) => `<span class="cell-muted">${esc(countOf(r))}</span>` },
+      { key: "download", label: "Download", type: "text", get: () => "", render: (r) => (r.downloadable ? `<button class="btn btn-ghost btn-sm da-dl" data-id="${esc(r.id)}" data-name="${esc(r.name || "export")}">Download</button>` : "") },
     ];
 
-    // Sort tabs: All + one per dataType present.
     const present = [];
     rows.forEach((r) => { const dt = r.dataType || "other"; if (present.indexOf(dt) === -1) present.push(dt); });
     const tabDefs = [["all", "All"]].concat(present.map((dt) => [dt, dt === "other" ? "Other" : typeLabelOf(dt)]));
@@ -770,6 +806,14 @@
     host.innerHTML = "";
     const filterTabs = el("div", "tabs");
     const tableHost = el("div");
+    // Delegated download handler (survives App.table's internal re-renders).
+    tableHost.addEventListener("click", async (e) => {
+      const btn = e.target.closest ? e.target.closest(".da-dl") : null;
+      if (!btn) return;
+      e.stopPropagation();
+      try { const r = await App.portalApi("/api/exports/" + encodeURIComponent(btn.dataset.id) + "/download"); downloadCSV((btn.dataset.name || "export").replace(/[^a-z0-9]+/gi, "-") + ".csv", r.csv); }
+      catch (err) { toast(err.message, true); }
+    });
     let activeType = "all";
     function mountTable() {
       const data = activeType === "all" ? rows : rows.filter((r) => (r.dataType || "other") === activeType);
@@ -1479,9 +1523,11 @@
         <div id="ex-history" class="ex-history"><div class="cell-muted">Loading…</div></div>`
       : "";
 
-    const inner = el("div");
-    inner.innerHTML = `<div class="modal-head"><h2>${esc(opts.title || "Export")}</h2><button class="icon-btn" id="ex-close">&times;</button></div>
-      <div class="modal-body">
+    const inline = !!opts.inline;
+    const root = inline ? opts.container : el("div");
+    const exHead = inline ? "" : `<div class="modal-head"><h2>${esc(opts.title || "Export")}</h2><button class="icon-btn" id="ex-close">&times;</button></div>`;
+    root.innerHTML = exHead + `
+      <div class="${inline ? "ex-inline-body" : "modal-body"}">
         <label class="field-label">Export name *</label>
         <input id="ex-name" class="input" placeholder="${esc(opts.namePlaceholder || "")}" />
         ${savedBlock}
@@ -1496,14 +1542,16 @@
         ${opts.note ? `<p class="cell-muted" style="font-size:12px;margin:8px 0 0">${esc(opts.note)}</p>` : ""}
         ${historyBlock}
       </div>`;
-    const overlay = modal(inner);
-    inner.querySelector("#ex-close").onclick = () => overlay.remove();
+    if (!inline) {
+      const overlay = modal(root);
+      root.querySelector("#ex-close").onclick = () => overlay.remove();
+    }
 
     // saved filters dropdown to prefill criteria (contacts only)
     if (opts.savedFilters) {
       try {
         const saved = await App.portalApi(`/api/saved-filters?view=${encodeURIComponent(opts.savedFilterView || "contacts")}`);
-        const sel = inner.querySelector("#ex-saved");
+        const sel = root.querySelector("#ex-saved");
         saved.forEach((f) => { const o = el("option", null, esc(f.name)); o.value = f.id; sel.appendChild(o); });
         sel.onchange = () => {
           const f = saved.find((x) => x.id === sel.value);
@@ -1516,10 +1564,10 @@
       } catch (e) {}
     }
 
-    const rulesHost = inner.querySelector("#ex-rules");
+    const rulesHost = root.querySelector("#ex-rules");
     rulesHost.appendChild(App.table.ruleEditor(exportable, rows, exState.rules, () => updateCount()));
 
-    const fieldsHost = inner.querySelector("#ex-fields");
+    const fieldsHost = root.querySelector("#ex-fields");
     exportable.forEach((c) => {
       const id = "exf-" + c.key;
       const lab = el("label", "ex-field");
@@ -1531,13 +1579,13 @@
     function matching() { return App.table.pipeline(rows, exportable, exState); }
     function updateCount() {
       const n = matching().length;
-      inner.querySelector("#ex-count").textContent = `${n} of ${opts.countText(rows.length)} match.`;
+      root.querySelector("#ex-count").textContent = `${n} of ${opts.countText(rows.length)} match.`;
     }
     updateCount();
 
     async function loadHistory() {
       if (!showHistory) return;
-      const host = inner.querySelector("#ex-history");
+      const host = root.querySelector("#ex-history");
       try {
         const list = await historyApi(historyBase + "?kind=export" + (dataType ? "&dataType=" + encodeURIComponent(dataType) : ""));
         host.innerHTML = "";
@@ -1558,16 +1606,16 @@
     }
     loadHistory();
 
-    inner.querySelector("#ex-go").onclick = async () => {
-      const name = inner.querySelector("#ex-name").value.trim();
-      if (!name) { App.util.toast("Please give this export a name", true); inner.querySelector("#ex-name").focus(); return; }
+    root.querySelector("#ex-go").onclick = async () => {
+      const name = root.querySelector("#ex-name").value.trim();
+      if (!name) { App.util.toast("Please give this export a name", true); root.querySelector("#ex-name").focus(); return; }
       const cols = exportable.filter((c) => selected.has(c.key));
       if (!cols.length) { App.util.toast("Pick at least one field", true); return; }
       const out = matching();
       if (!out.length) { App.util.toast(("No " + opts.unitPlural.toLowerCase() + " match"), true); return; }
       const csv = buildCSV(cols, out);
       const fileBase = name.replace(/[^a-z0-9]+/gi, "-");
-      const format = inner.querySelector("#ex-format").value;
+      const format = root.querySelector("#ex-format").value;
       if (format === "xlsx") {
         if (typeof XLSX === "undefined") { App.util.toast("Excel needs internet — exporting CSV instead", true); downloadCSV(`${fileBase}.csv`, csv); }
         else {
@@ -4391,12 +4439,11 @@
     };
   }
 
-  function openRecordExport(columns, rows, typeLabel, dataType) {
-    // Unified onto the shared export modal so record exports now gain export history
-    // (this used to be a fork that built CSV inline and never saved). Saved filters
-    // stay off (records never had them); otherwise it's the same dialog Contacts use.
+  // Builds the export options for a record type — shared by the per-page modal
+  // (openRecordExport) and the inline Data Administration export form.
+  function recordExportOpts(columns, rows, typeLabel, dataType) {
     const label = typeLabel || App.label("record", "many");
-    App.exportModal({
+    return {
       columns, rows,
       title: "Export " + label,
       namePlaceholder: "e.g. Open " + String(label).toLowerCase(),
@@ -4406,7 +4453,12 @@
       countText: (n) => n + " " + String(label).toLowerCase(),
       dataType: dataType || null,
       saveHistory: true,
-    });
+    };
+  }
+
+  function openRecordExport(columns, rows, typeLabel, dataType) {
+    // Unified onto the shared export modal so record exports gain export history.
+    App.exportModal(recordExportOpts(columns, rows, typeLabel, dataType));
   }
 
   // ---------------- Single record (e.g. Job) detail ----------------

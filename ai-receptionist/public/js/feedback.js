@@ -450,5 +450,6 @@
   App.feedback = {
     renderPortal: (host) => mount(host, "portal"),
     renderMaster: (host) => mount(host, "master"),
+    ticketExportColumns,
   };
 })(typeof window !== "undefined" ? window : globalThis);
