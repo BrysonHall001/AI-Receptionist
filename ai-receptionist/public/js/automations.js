@@ -2130,18 +2130,44 @@
   // ---------------- Event log ----------------
   async function renderEvents(body) {
     body.innerHTML = `<div class="cell-muted" style="padding:24px">Loading…</div>`;
-    const events = await App.portalApi("/api/automations/events");
+    let events;
+    try { events = await App.portalApi("/api/automations/events"); }
+    catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:24px">${esc(e.message)}</div>`; return; }
     body.innerHTML = "";
-    if (!events.length) { body.appendChild(el("div", "cell-muted", "No events yet.")); return; }
-    const list = el("div", "log-list");
-    events.forEach((e) => {
-      const row = el("div", "log-item");
-      row.innerHTML = `<div class="log-line"><span class="pill">${esc(e.type)}</span>
-        <span class="cell-muted">by ${esc(e.actorName || e.actorType)}</span>
-        <span class="log-time">${fmt(e.occurredAt)}</span></div>`;
-      list.appendChild(row);
+    const host = el("div", "fade-in");
+    body.appendChild(host);
+
+    // Same columns the log always showed — event type, who/what triggered it, and
+    // when — but now rendered through the shared table so the Events tab filters,
+    // sorts, and exports exactly like Contacts, Calls, Feedback and the Recycle Bin.
+    const columns = [
+      { key: "type", label: "Event", type: "text", get: (r) => r.type, cellClass: "cell-strong", render: (r) => `<span class="pill">${esc(r.type)}</span>` },
+      { key: "actor", label: "By", type: "text", get: (r) => r.actorName || r.actorType || "", render: (r) => `<span class="cell-muted">${esc(r.actorName || r.actorType || "—")}</span>` },
+      { key: "occurredAt", label: "When", type: "date", get: (r) => r.occurredAt, text: (r) => fmt(r.occurredAt), render: (r) => `<span class="log-time">${esc(fmt(r.occurredAt))}</span>` },
+    ];
+    const handle = App.table.mount({
+      container: host, columns, rows: events,
+      defaultSort: "occurredAt", defaultSortDir: "desc",
+      emptyHtml: `<div class="card cell-muted" style="padding:18px">No events yet.</div>`,
+      pageSize: 50,
     });
-    body.appendChild(list);
+
+    // Export — the shared CSV/Excel export + export-history, identical to the other
+    // tables. The dialog re-filters over the full set with the same rule engine, then
+    // saves to this portal's export history (POST /api/exports).
+    if (handle && handle.toolbarRight) {
+      const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
+      exportBtn.onclick = () => App.exportModal({
+        columns, rows: events,
+        title: "Export events",
+        namePlaceholder: "e.g. June automation events",
+        filterLabel: "Which events to export",
+        unitPlural: "events",
+        sheetName: "Events",
+        countText: (n) => `${n} event${n === 1 ? "" : "s"}`,
+      });
+      handle.toolbarRight.insertBefore(exportBtn, handle.toolbarRight.firstChild);
+    }
   }
 
   // ---------------- Scheduled tab ----------------
