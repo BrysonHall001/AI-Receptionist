@@ -211,7 +211,8 @@ export async function createRecord(
   tenantId: string,
   recordType: string | null | undefined,
   input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null },
-  opts: { source?: "manual" | "ai" } = {}
+  opts: { source?: "manual" | "ai" } = {},
+  actor?: EventActor
 ) {
   const source = opts.source === "ai" ? "ai" : "manual";
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
@@ -222,7 +223,7 @@ export async function createRecord(
 
   // Bookings with a time go through the lock + double-booking policy inside a
   // transaction. Everything else uses the plain insert.
-  const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId }, select: { key: true } });
+  const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId }, select: { key: true, label: true } });
   const isBooking = rt && rt.key === BOOKING_RECORD_TYPE_KEY && appointmentAt != null;
   const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields: input.customFields ?? {} };
 
@@ -256,6 +257,22 @@ export async function createRecord(
   }
 
   const created = await db.record.create({ data: recData });
+  // Lifecycle event so a newly-created NON-booking record (e.g. a Job) appears in
+  // the event log. Bookings are intentionally excluded — they emit BookingCreated
+  // from the contact-link step, so gating on the record type avoids a double-log.
+  // Best-effort: never block the create on event emission.
+  if (!rt || rt.key !== BOOKING_RECORD_TYPE_KEY) {
+    const evActor: EventActor = actor ?? (source === "ai" ? { type: "system" } : { type: "user" });
+    try {
+      await emitEvent({
+        tenantId,
+        type: "RecordCreated",
+        actor: evActor,
+        subject: { type: "record", id: created.id },
+        payload: { record_id: created.id, record_title: created.title ?? null, record_type: rt?.label ?? null },
+      });
+    } catch { /* never block the record create on event emission */ }
+  }
   return serializeRecord(created);
 }
 
@@ -521,10 +538,17 @@ export async function softDeleteRecords(tenantId: string, ids: string[], actor: 
     if (protectedRows.length) throw externalReadOnlyError();
   }
   const { deletedBy, deletedByType } = deletedByFromActor(actor);
+  // Capture exactly which records are active-and-about-to-be-deleted (same filter
+  // as the update) so we log one RecordDeleted per real deletion, attributed to the
+  // actor already captured for the Recycle Bin (user / automation / sync).
+  const targets = await db.record.findMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, select: { id: true } });
   const r = await db.record.updateMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, data: { deletedAt: new Date(), deletedBy, deletedByType } });
   try {
     await db.recordLink.updateMany({ where: { tenantId, recordId: { in: ids }, deletedAt: null }, data: { deletedAt: new Date() } });
   } catch (_e) { /* links table absent pre-migration — ignore */ }
+  for (const t of targets) {
+    try { await emitEvent({ tenantId, type: "RecordDeleted", actor, subject: { type: "record", id: t.id }, payload: { record_id: t.id } }); } catch { /* never block the delete on event emission */ }
+  }
   return r.count;
 }
 
@@ -556,12 +580,18 @@ export async function listDeletedRecords(tenantId: string) {
  *  restoreContacts: flips deletedAt back to null (tenant-scoped, only rows that
  *  are actually deleted). Links are intentionally left as-is, matching how
  *  contact restore behaves today. */
-export async function restoreRecords(tenantId: string, ids: string[]): Promise<number> {
+export async function restoreRecords(tenantId: string, ids: string[], actor: EventActor = { type: "user" }): Promise<number> {
   if (!Array.isArray(ids) || !ids.length) return 0;
+  // Capture which records are actually in the bin (same filter as the update) so we
+  // log one RecordRestored per real restore, attributed to who restored it.
+  const targets = await db.record.findMany({ where: { id: { in: ids }, tenantId, deletedAt: { not: null } }, select: { id: true } });
   const r = await db.record.updateMany({
     where: { id: { in: ids }, tenantId, deletedAt: { not: null } },
     data: { deletedAt: null },
   });
+  for (const t of targets) {
+    try { await emitEvent({ tenantId, type: "RecordRestored", actor, subject: { type: "record", id: t.id }, payload: { record_id: t.id } }); } catch { /* never block the restore on event emission */ }
+  }
   return r.count;
 }
 

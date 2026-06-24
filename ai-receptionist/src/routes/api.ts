@@ -233,7 +233,7 @@ apiRouter.post("/contacts/restore", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   const ids = (req.body ?? {}).ids;
-  const count = await restoreContacts(tenantId, Array.isArray(ids) ? ids : []);
+  const count = await restoreContacts(tenantId, Array.isArray(ids) ? ids : [], actorOf(req));
   res.json({ ok: true, count });
 });
 
@@ -874,7 +874,7 @@ apiRouter.post("/records", async (req: Request, res: Response) => {
   if (!tenantId) return;
   try {
     const { type, title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap, allowClosed, resourceId } = (req.body ?? {}) as any;
-    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }, { source: "manual" }));
+    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }, { source: "manual" }, actorOf(req)));
   } catch (err) {
     const code = (err as any).code;
     if (code === "overlap" || code === "closed") { res.status(409).json({ error: (err as Error).message, code }); return; }
@@ -944,7 +944,7 @@ apiRouter.post("/records/restore", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   const ids = (req.body ?? {}).ids;
-  const count = await restoreRecords(tenantId, Array.isArray(ids) ? ids : []);
+  const count = await restoreRecords(tenantId, Array.isArray(ids) ? ids : [], actorOf(req));
   res.json({ ok: true, count });
 });
 

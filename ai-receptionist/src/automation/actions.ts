@@ -495,7 +495,7 @@ const EXECUTORS: Record<string, Executor> = {
         stageKey: cfg.stageKey ? String(cfg.stageKey) : null,
         subtypeKey: cfg.subtypeKey ? String(cfg.subtypeKey) : null,
         customFields: custom,
-      });
+      }, {}, ctx.actor);
       return { type: "create_record_item", status: "success", detail: `created record “${created.title || created.id}”` };
     } catch (e) {
       return { type: "create_record_item", status: "failed", error: `Could not create record: ${(e as Error).message}` };

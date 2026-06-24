@@ -106,6 +106,17 @@ export const EVENT_TYPES = {
   // A booking's assigned resource (staff) changed (subject = the booking). Carries
   // old/new resource NAMES (resolved, not raw ids) in changes[].
   BookingResourceChanged: "BookingResourceChanged",
+  // Lifecycle/audit events so create/delete/restore actions appear in the event
+  // log. RecordCreated fires for NON-booking records only — bookings already emit
+  // BookingCreated from the contact-link step, so they are never double-logged.
+  // The Deleted/Restored events carry the same actor captured for the Recycle Bin.
+  // NOTE: these are intentionally NOT in TRIGGERABLE_EVENT_TYPES — they are for the
+  // log only, so no automation can be configured to fire on them.
+  RecordCreated: "RecordCreated",
+  ContactDeleted: "ContactDeleted",
+  RecordDeleted: "RecordDeleted",
+  ContactRestored: "ContactRestored",
+  RecordRestored: "RecordRestored",
 } as const;
 
 export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];

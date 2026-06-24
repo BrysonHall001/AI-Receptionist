@@ -241,6 +241,10 @@ import { RETENTION_DAYS } from "./readModels";
 export async function softDeleteContacts(tenantId: string, ids: string[], actor?: ActorLike): Promise<number> {
   if (!Array.isArray(ids) || !ids.length) return 0;
   const { deletedBy, deletedByType } = deletedByFromActor(actor);
+  // Capture exactly which contacts are active-and-about-to-be-deleted (same filter
+  // as the update) so we log one ContactDeleted per real deletion, attributed to
+  // the actor already captured for the Recycle Bin.
+  const targets = await prisma.contact.findMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, select: { id: true } });
   const r = await prisma.contact.updateMany({
     where: { id: { in: ids }, tenantId, deletedAt: null },
     data: { deletedAt: new Date(), deletedBy, deletedByType } as any,
@@ -258,16 +262,25 @@ export async function softDeleteContacts(tenantId: string, ids: string[], actor?
   } catch (_e) {
     // RecordLink model not available yet (pre-migration) — safe to ignore.
   }
+  for (const t of targets) {
+    try { await emitEvent({ tenantId, type: EVENT_TYPES.ContactDeleted, actor: actorOf(actor as MutationActor), subject: { type: "contact", id: t.id }, payload: {} }); } catch { /* never block the delete on event emission */ }
+  }
   return r.count;
 }
 
 // Restore contacts from the recycle bin back into the active list.
-export async function restoreContacts(tenantId: string, ids: string[]): Promise<number> {
+export async function restoreContacts(tenantId: string, ids: string[], actor?: ActorLike): Promise<number> {
   if (!Array.isArray(ids) || !ids.length) return 0;
+  // Capture which contacts are actually in the bin (same filter as the update) so we
+  // log one ContactRestored per real restore, attributed to who restored it.
+  const targets = await prisma.contact.findMany({ where: { id: { in: ids }, tenantId, deletedAt: { not: null } }, select: { id: true } });
   const r = await prisma.contact.updateMany({
     where: { id: { in: ids }, tenantId, deletedAt: { not: null } },
     data: { deletedAt: null } as any,
   });
+  for (const t of targets) {
+    try { await emitEvent({ tenantId, type: EVENT_TYPES.ContactRestored, actor: actorOf(actor as MutationActor), subject: { type: "contact", id: t.id }, payload: {} }); } catch { /* never block the restore on event emission */ }
+  }
   return r.count;
 }
 
