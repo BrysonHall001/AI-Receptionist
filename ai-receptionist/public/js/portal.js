@@ -629,6 +629,170 @@
   }
 
 
+  // ---------------- Data Administration (Settings section) ----------------
+  // A centralized home for the EXISTING importers/exporters plus the combined
+  // import+export history (the data Batch A produced). Reuses every existing modal
+  // and column builder — no new import/export logic. Sub-tabs use the same .tabs
+  // strip the record detail view uses.
+  async function renderDataAdmin(panel) {
+    panel.innerHTML = "";
+    const wrap = el("div", "fade-in");
+    wrap.appendChild(el("h2", "settings-h", "Data Administration"));
+    const tabsBar = el("div", "tabs");
+    const tabBody = el("div", "tab-body");
+    const SUBS = [["import", "Import"], ["export", "Export"], ["history", "Import / Export History"]];
+    let active = "import";
+    function setTab(key) {
+      active = key;
+      App.util.$$(".tab", tabsBar).forEach((t) => t.classList.toggle("active", t.dataset.tab === key));
+      tabBody.innerHTML = "";
+      if (key === "import") tabImport(tabBody);
+      else if (key === "export") tabExport(tabBody);
+      else tabHistory(tabBody);
+    }
+    SUBS.forEach(([key, label]) => {
+      const t = el("button", "tab" + (key === active ? " active" : ""), esc(label));
+      t.dataset.tab = key;
+      t.onclick = () => setTab(key);
+      tabsBar.appendChild(t);
+    });
+    wrap.appendChild(tabsBar);
+    wrap.appendChild(tabBody);
+    panel.appendChild(wrap);
+    setTab("import");
+  }
+
+  function dataAdminPicker() {
+    const grid = el("div");
+    grid.style.cssText = "display:flex;flex-direction:column;gap:8px;align-items:flex-start;margin-top:12px;";
+    return grid;
+  }
+
+  // Import sub-tab: a "what do you want to import?" picker that opens the SAME import
+  // modal each page uses (openImport for contacts, openRecordImport for records).
+  async function tabImport(host) {
+    host.innerHTML = `<p class="cell-muted">Choose what to import. This opens the same importer used on each page; the import is recorded in the history.</p>`;
+    let types = [];
+    try { types = await App.portalApi("/api/record-types"); } catch (e) { /* empty */ }
+    const grid = dataAdminPicker();
+    const cBtn = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> Import ${esc(App.label("contact", "many"))}`);
+    cBtn.onclick = () => openImport();
+    grid.appendChild(cBtn);
+    (types || []).forEach((t) => {
+      const b = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> Import ${esc(t.labelPlural || t.label)}`);
+      b.onclick = async () => {
+        let fields = [];
+        try { fields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(t.key)); } catch (e) { /* empty */ }
+        openRecordImport(t.key, fields, t);
+      };
+      grid.appendChild(b);
+    });
+    host.appendChild(grid);
+  }
+
+  // Export sub-tab: the mirror of Import — a picker that opens the SAME export modal
+  // each page uses, rebuilt from the existing column builders + record data.
+  async function tabExport(host) {
+    host.innerHTML = `<p class="cell-muted">Choose what to export. This opens the same exporter used on each page and saves to your export history.</p>`;
+    let types = [];
+    try { types = await App.portalApi("/api/record-types"); } catch (e) { /* empty */ }
+    const grid = dataAdminPicker();
+    const cBtn = el("button", "btn btn-ghost", `<span class="btn-icon">&#8679;</span> Export ${esc(App.label("contact", "many"))}`);
+    cBtn.onclick = async () => {
+      cBtn.disabled = true;
+      try {
+        const [fields, contacts] = await Promise.all([
+          App.portalApi("/api/fields").catch(() => []),
+          App.portalApi("/api/contacts").catch(() => []),
+        ]);
+        openExport(contactExportOpts(contactColumnDefs(fields), contacts));
+      } catch (e) { toast(e.message, true); }
+      cBtn.disabled = false;
+    };
+    grid.appendChild(cBtn);
+    (types || []).forEach((t) => {
+      const b = el("button", "btn btn-ghost", `<span class="btn-icon">&#8679;</span> Export ${esc(t.labelPlural || t.label)}`);
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const [records, fields, resources] = await Promise.all([
+            App.portalApi("/api/records?type=" + encodeURIComponent(t.key)).catch(() => []),
+            App.portalApi("/api/fields?recordType=" + encodeURIComponent(t.key)).catch(() => []),
+            t.key === "booking" ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
+          ]);
+          const resById = {}; (resources || []).forEach((r) => { resById[r.id] = r; });
+          const columns = recordColumnDefs(fields, t, resById);
+          openRecordExport(columns, records, t.labelPlural || t.label, t.key);
+        } catch (e) { toast(e.message, true); }
+        b.disabled = false;
+      };
+      grid.appendChild(b);
+    });
+    host.appendChild(grid);
+  }
+
+  // Centralized cross-type history. Reads the combined import+export history from
+  // Batch A (GET /api/exports, no filter) and shows it through App.table. The All
+  // view labels each row with its type + kind; the sort tabs scope to one type.
+  function dataHistoryTypeLabels(types) {
+    const map = { contact: App.label("contact", "many"), feedback: "Feedback", event: "Event log" };
+    (types || []).forEach((t) => { map[t.key] = t.labelPlural || t.label; });
+    return map;
+  }
+  function dataHistoryWhat(r, typeLabels) {
+    const typeLabel = r.dataType ? (typeLabels[r.dataType] || r.dataType) : "Other";
+    return typeLabel + " · " + (r.kind === "import" ? "Import" : "Export");
+  }
+  async function tabHistory(host) {
+    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    let rows = [], types = [];
+    try { [rows, types] = await Promise.all([App.portalApi("/api/exports"), App.portalApi("/api/record-types").catch(() => [])]); }
+    catch (e) { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
+    rows = Array.isArray(rows) ? rows : [];
+    const typeLabels = dataHistoryTypeLabels(types);
+    const typeLabelOf = (dt) => (dt ? (typeLabels[dt] || dt) : "Other");
+    const countOf = (r) => (r.kind === "import"
+      ? (r.okCount != null ? r.okCount : r.rowCount) + (r.failCount ? " (skipped " + r.failCount + ")" : "")
+      : String(r.rowCount));
+
+    const columns = [
+      { key: "createdAt", label: "When", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
+      { key: "what", label: "What", type: "text", get: (r) => dataHistoryWhat(r, typeLabels), render: (r) => `<span class="pill">${esc(dataHistoryWhat(r, typeLabels))}</span>` },
+      { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => esc(r.name || "—") },
+      { key: "count", label: "Rows", type: "text", get: (r) => countOf(r), render: (r) => `<span class="cell-muted">${esc(countOf(r))}</span>` },
+    ];
+
+    // Sort tabs: All + one per dataType present.
+    const present = [];
+    rows.forEach((r) => { const dt = r.dataType || "other"; if (present.indexOf(dt) === -1) present.push(dt); });
+    const tabDefs = [["all", "All"]].concat(present.map((dt) => [dt, dt === "other" ? "Other" : typeLabelOf(dt)]));
+
+    host.innerHTML = "";
+    const filterTabs = el("div", "tabs");
+    const tableHost = el("div");
+    let activeType = "all";
+    function mountTable() {
+      const data = activeType === "all" ? rows : rows.filter((r) => (r.dataType || "other") === activeType);
+      tableHost.innerHTML = "";
+      App.table.mount({
+        container: tableHost, columns, rows: data,
+        defaultSort: "createdAt", defaultSortDir: "desc",
+        emptyHtml: `<div class="card cell-muted" style="padding:18px">No import or export activity yet.</div>`,
+        pageSize: 50,
+      });
+    }
+    tabDefs.forEach(([key, label]) => {
+      const t = el("button", "tab" + (key === "all" ? " active" : ""), esc(label));
+      t.dataset.t = key;
+      t.onclick = () => { activeType = key; App.util.$$(".tab", filterTabs).forEach((x) => x.classList.toggle("active", x.dataset.t === key)); mountTable(); };
+      filterTabs.appendChild(t);
+    });
+    host.appendChild(filterTabs);
+    host.appendChild(tableHost);
+    mountTable();
+  }
+
+
   // ---------------- Contacts ----------------
   // Build the full set of available columns from Fields (system + custom),
   // plus two synthetic columns (Calls, Time Created). Used by Contacts + Recycle Bin.
@@ -2530,6 +2694,7 @@
       // is gated inside the section, Google is editable by all. renderIntegrations
       // fills the panel directly (same build(panel) contract as the others).
       { key: "integrations", label: "Integrations", admin: false, build: renderIntegrations },
+      { key: "data", label: "Data Administration", admin: false, build: renderDataAdmin },
       { key: "account", label: "Your account", admin: false, build: secAccount },
       { key: "labels", label: "Labels", admin: true, build: secLabels },
       { key: "fields", label: "Fields", admin: true, build: secFields },
