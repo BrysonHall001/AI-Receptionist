@@ -99,6 +99,14 @@ function actorOf(req: Request) {
   return { id: real!.id, name, type: "user" as const };
 }
 
+// Audit-trail helper: log a security/settings change as a tenant-scoped event,
+// attributed to the acting user. Best-effort (never blocks the request). These
+// types are NOT triggerable, so they mirror AiInstructionsUpdated — logged, with
+// no automation firing. Subject defaults to the portal.
+function auditEvent(req: Request, tenantId: string, type: string, payload: Record<string, any>, subject?: { type: "portal" | "user"; id: string }) {
+  return emitEvent({ tenantId, type, actor: actorOf(req), subject: subject ?? { type: "portal", id: tenantId }, payload }).catch(() => { /* never block the request on audit logging */ });
+}
+
 // --- Impersonation: state + targets + start/exit. Real-super-admin gated. ---
 // Enforcement of view-only (Batch C) and role downgrade (Batch D) is NOT here yet;
 // the only behavior change in Batch B is the admin-surface lockout (see admin.ts).
@@ -565,7 +573,9 @@ apiRouter.patch("/account/voice", async (req: Request, res: Response) => {
     return;
   }
   try {
+    const prevVoice = ((await getPortal(tenantId)) as any)?.voiceId ?? null;
     await updatePortal(tenantId, { voiceId } as any);
+    auditEvent(req, tenantId, EVENT_TYPES.SettingChanged, { setting: "voice", old: prevVoice, new: voiceId });
     res.json({ ok: true, voiceId });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -589,7 +599,9 @@ export async function patchAccountTimezone(req: Request, res: Response) {
     return;
   }
   try {
+    const prevTz = ((await getPortal(tenantId)) as any)?.timezone ?? null;
     await updatePortal(tenantId, { timezone } as any);
+    auditEvent(req, tenantId, EVENT_TYPES.SettingChanged, { setting: "timezone", old: prevTz, new: timezone });
     res.json({ ok: true, timezone });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1023,7 +1035,9 @@ apiRouter.patch("/booking-config", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    res.json(await saveBookingConfig(tenantId, req.body ?? {}));
+    const saved = await saveBookingConfig(tenantId, req.body ?? {});
+    auditEvent(req, tenantId, EVENT_TYPES.SettingChanged, { setting: "booking_hours" });
+    res.json(saved);
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -1270,6 +1284,7 @@ apiRouter.patch("/settings", async (req: Request, res: Response) => {
     // NOTE: the email/phone identity rule (requireEmail) is intentionally NOT
     // accepted here. It can only be changed by a SUPER_ADMIN via /api/admin/portals.
     const updated = await updatePortal(tenantId, { name, businessType, phoneNumber, notifyEmail, greeting });
+    auditEvent(req, tenantId, EVENT_TYPES.SettingChanged, { setting: "business_info" });
     res.json({ ok: true, portal: { id: updated.id } });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1294,6 +1309,7 @@ export async function patchIntegrationsTwilio(req: Request, res: Response) {
   const phoneNumber = String((req.body ?? {}).phoneNumber ?? "").trim();
   try {
     await updatePortal(tenantId, { phoneNumber: phoneNumber || null });
+    auditEvent(req, tenantId, EVENT_TYPES.IntegrationSettingChanged, { provider: "twilio", setting: "phone_number", value: phoneNumber ? "set" : "cleared" });
     res.json({ ok: true, phoneNumber: phoneNumber || null });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1314,6 +1330,7 @@ export async function patchIntegrationsOpenai(req: Request, res: Response) {
     const curMode = (current as any)?.voiceMode || "OFF";
     const voiceMode = enabled ? (curMode === "OFF" ? "WALKIE" : curMode) : "OFF";
     await updatePortal(tenantId, { receptionistEnabled: enabled, voiceMode });
+    auditEvent(req, tenantId, EVENT_TYPES.IntegrationSettingChanged, { provider: "openai", setting: "receptionist_enabled", value: enabled });
     res.json({ ok: true, enabled });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1365,6 +1382,7 @@ apiRouter.post("/users", async (req: Request, res: Response) => {
   const safeRole = role === "PORTAL_ADMIN" ? "PORTAL_ADMIN" : "CLIENT_USER";
   try {
     const invite = await createInvite({ email, role: safeRole, tenantId, name: name || null, createdById: req.user?.id ?? null });
+    auditEvent(req, tenantId, EVENT_TYPES.UserInvited, { email, role: safeRole });
     const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
     const host = String(req.headers["x-forwarded-host"] || req.get("host") || "").trim();
     const link = inviteLink(proto + "://" + host, invite.token);
@@ -1392,7 +1410,7 @@ apiRouter.delete("/users/:id", async (req: Request, res: Response) => {
     return;
   }
   try {
-    await deleteUser(req.params.id, { id: req.user!.id, role: req.user!.role });
+    await deleteUser(req.params.id, { id: req.user!.id, role: req.user!.role, name: req.user!.name ?? null });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

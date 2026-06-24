@@ -123,6 +123,18 @@ export const EVENT_TYPES = {
   // attributed) to avoid double-logging.
   BookingSyncedIn: "BookingSyncedIn",
   BookingSyncedUpdated: "BookingSyncedUpdated",
+  // Admin / settings audit trail (log-only; NOT in TRIGGERABLE_EVENT_TYPES, so they
+  // never fire automations — exactly like AiInstructionsUpdated). Grouped:
+  //   user/permission: who was invited, joined, or removed;
+  //   integration:     connect / disconnect / setting toggles (Google/Twilio/OpenAI);
+  //   settings:        a portal setting changed (timezone, voice, hours, business).
+  UserInvited: "UserInvited",
+  UserCreated: "UserCreated",
+  UserDeleted: "UserDeleted",
+  IntegrationConnected: "IntegrationConnected",
+  IntegrationDisconnected: "IntegrationDisconnected",
+  IntegrationSettingChanged: "IntegrationSettingChanged",
+  SettingChanged: "SettingChanged",
 } as const;
 
 export type KnownEventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];

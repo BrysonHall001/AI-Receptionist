@@ -38,10 +38,15 @@ import {
   listResourceCalendarMaps,
 } from "../services/googleConnectionService";
 import { prisma } from "../db/client";
+import { emitEvent } from "../events/bus";
+import { EVENT_TYPES } from "../events/types";
 import { runGoogleCalendarSync, previewSync } from "../services/googleSyncService";
 import { syncRemoveAllGoogleBookingsForResource, syncRemoveAllGoogleBookingsForTenant } from "../services/recordService";
 
 const db = prisma as any;
+
+// Audit actor for integration events (mirrors api.ts actorOf): the acting user.
+const gActor = (req: Request) => ({ id: req.user!.id, name: (req.user as any)?.name || (req.user as any)?.email || null, type: "user" as const });
 
 export const googleRouter = Router();
 googleRouter.use(requireAuth);
@@ -211,6 +216,7 @@ googleRouter.get("/oauth/callback", async (req: Request, res: Response) => {
     // Reconnecting with the write scope (and mappings already present) flips push on
     // automatically — unless the owner has explicitly toggled sync off.
     await autoEnableOnConnect(tenantId);
+    void emitEvent({ tenantId, type: EVENT_TYPES.IntegrationConnected, actor: gActor(req), subject: { type: "portal", id: tenantId }, payload: { provider: "google", account_email: accountEmail ?? null } }).catch(() => { /* never block on audit */ });
     res.redirect(appReturn("connected"));
   } catch (e) {
     // Never log the code or any token.
@@ -245,6 +251,7 @@ googleRouter.post("/sync/settings", requireRole("OWNER", "SUPER_ADMIN"), async (
   try {
     await setSyncSettings(tenantId, body);
     const status = await getConnectionStatus(tenantId);
+    void emitEvent({ tenantId, type: EVENT_TYPES.IntegrationSettingChanged, actor: gActor(req), subject: { type: "portal", id: tenantId }, payload: { provider: "google", setting: "sync", syncEnabled: status.syncEnabled, pushEnabled: status.pushEnabled } }).catch(() => { /* never block on audit */ });
     res.json({ ok: true, syncEnabled: status.syncEnabled, pushEnabled: status.pushEnabled });
   } catch (e) {
     logger.error(`[google] sync settings update failed: ${(e as Error).message}`);
@@ -274,6 +281,7 @@ googleRouter.post("/disconnect", async (req: Request, res: Response) => {
   await disconnectGoogle(tenantId);
   // Disconnect-cleanup: none of this tenant's Google-owned bookings are authoritative now.
   await syncRemoveAllGoogleBookingsForTenant(tenantId);
+  void emitEvent({ tenantId, type: EVENT_TYPES.IntegrationDisconnected, actor: gActor(req), subject: { type: "portal", id: tenantId }, payload: { provider: "google" } }).catch(() => { /* never block on audit */ });
   res.json({ ok: true });
 });
 

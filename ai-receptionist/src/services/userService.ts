@@ -1,5 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "../db/client";
+import { emitEvent } from "../events/bus";
+import { EVENT_TYPES } from "../events/types";
 import { hashPassword } from "../auth/passwords";
 import { Role } from "../middleware/auth";
 
@@ -59,7 +61,7 @@ export async function updateUserName(id: string, name: string | null) {
   return prisma.user.update({ where: { id }, data: { name: name && name.trim() ? name.trim() : null } });
 }
 
-export async function deleteUser(id: string, actor?: { id: string; role: string }) {
+export async function deleteUser(id: string, actor?: { id: string; role: string; name?: string | null }) {
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) throw new Error("User not found");
   if (actor && actor.id === id) throw new Error("You can't delete your own account");
@@ -67,7 +69,19 @@ export async function deleteUser(id: string, actor?: { id: string; role: string 
   if (target.role === "SUPER_ADMIN" && actor?.role !== "OWNER") {
     throw new Error("Only an owner can delete a super-admin.");
   }
-  return prisma.user.delete({ where: { id } });
+  const deleted = await prisma.user.delete({ where: { id } });
+  // Audit: a user lost access. Tenant-scoped (portal users only), attributed to the
+  // admin who removed them. Log-only — no automation fires. Best-effort.
+  if (target.tenantId) {
+    void emitEvent({
+      tenantId: target.tenantId,
+      type: EVENT_TYPES.UserDeleted,
+      actor: { type: "user", id: actor?.id ?? null, name: actor?.name ?? null },
+      subject: { type: "user", id: target.id },
+      payload: { email: target.email, role: target.role },
+    }).catch(() => { /* never block the delete on audit */ });
+  }
+  return deleted;
 }
 
 export async function setPassword(userId: string, password: string) {

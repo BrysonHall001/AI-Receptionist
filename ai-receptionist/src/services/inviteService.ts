@@ -4,6 +4,8 @@ import path from "path";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { createUser } from "./userService";
+import { emitEvent } from "../events/bus";
+import { EVENT_TYPES } from "../events/types";
 import { sendRichEmail } from "./notificationService";
 import { env } from "../config/env";
 
@@ -220,5 +222,17 @@ export async function acceptInvite(token: string, password: string): Promise<Acc
   if (!consumed.count) return { ok: false }; // lost the race — already used
 
   const user = await createUser({ email: inv.email, password, name: inv.name ?? null, role: inv.role, tenantId: inv.tenantId });
+  // Audit: a user joined (accepted an invite). Tenant-scoped, so only for portal
+  // invites (master-scope super-admin/auditor invites have no tenant). Attributed
+  // to the new user; records the role granted and who invited them. Log-only.
+  if (inv.tenantId) {
+    void emitEvent({
+      tenantId: inv.tenantId,
+      type: EVENT_TYPES.UserCreated,
+      actor: { id: user.id, name: user.name ?? null, type: "user" },
+      subject: { type: "user", id: user.id },
+      payload: { email: user.email, role: user.role, invited_by: inv.createdById ?? null },
+    }).catch(() => { /* never block invite acceptance on audit */ });
+  }
   return { ok: true, user: { id: user.id } };
 }
