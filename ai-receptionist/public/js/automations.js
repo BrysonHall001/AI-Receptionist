@@ -2164,6 +2164,7 @@
         filterLabel: "Which events to export",
         unitPlural: "events",
         sheetName: "Events",
+        dataType: "event",
         countText: (n) => `${n} event${n === 1 ? "" : "s"}`,
       });
       handle.toolbarRight.insertBefore(exportBtn, handle.toolbarRight.firstChild);

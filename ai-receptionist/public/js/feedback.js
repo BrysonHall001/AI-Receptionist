@@ -139,6 +139,7 @@
         App.exportModal(Object.assign({
           columns: ticketExportColumns({ portal: !!(modalOpts && modalOpts.portal), rows }),
           rows,
+          dataType: "feedback",
           savedFilters: false,
           namePlaceholder: "e.g. Resolved tickets — June",
           filterLabel: "Which tickets to include",

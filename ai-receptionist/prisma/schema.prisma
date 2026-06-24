@@ -253,15 +253,20 @@ model ExportRecord {
   tenantId    String?
   tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   scope       String?  // null/"portal" = a portal export; "master" = master-hub; "all" = all-portals
+  kind        String   @default("export") // "export" | "import" — shared history model
+  dataType    String?  // "contact" | "job" | "booking" | "feedback" | "event" | custom record-type key
   name        String
   rowCount    Int      @default(0)
+  okCount     Int?     // import only: rows successfully imported
+  failCount   Int?     // import only: rows skipped/failed
   fields      Json     @default("[]")
-  csv         String
+  csv         String   // export CSV; "" for imports (nothing to download)
   createdById String?
   createdAt   DateTime @default(now())
 
   @@index([tenantId])
   @@index([scope])
+  @@index([tenantId, kind, dataType])
 }
 
 model FieldDef {

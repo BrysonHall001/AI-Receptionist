@@ -21,7 +21,7 @@ import { listTemplates, createTemplate, deleteTemplate } from "../services/templ
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
-import { listExports, createExport, getExportCsv } from "../services/exportService";
+import { listExports, createExport, createImportRecord, getExportCsv } from "../services/exportService";
 import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
 import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voices";
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
@@ -329,6 +329,10 @@ apiRouter.post("/contacts/import", async (req: Request, res: Response) => {
   }
   try {
     const result = await importContacts(tenantId, rows, actorOf(req));
+    // Import history (kind="import"), mirroring export history. Best-effort.
+    try {
+      await createImportRecord({ tenantId, dataType: "contact", name: "Contacts import", rowCount: result.imported + result.skipped, okCount: result.imported, failCount: result.skipped, createdById: req.user?.id ?? null });
+    } catch { /* never fail the import on history write */ }
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -938,6 +942,9 @@ apiRouter.post("/records/import", async (req: Request, res: Response) => {
   try {
     const { type, rows } = (req.body ?? {}) as any;
     const result = await bulkCreateRecords(tenantId, type ?? null, rows ?? []);
+    try {
+      await createImportRecord({ tenantId, dataType: type || "record", name: `${type || "record"} import`, rowCount: result.imported + result.skipped, okCount: result.imported, failCount: result.skipped, createdById: req.user?.id ?? null });
+    } catch { /* never fail the import on history write */ }
     res.json(result);
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
@@ -1452,13 +1459,17 @@ apiRouter.delete("/saved-filters/:id", async (req: Request, res: Response) => {
 apiRouter.get("/exports", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  res.json(await listExports(tenantId));
+  // Per-page history is type-scoped: callers pass kind ("export"/"import") and the
+  // page's dataType so each page sees only its own entries. No params = everything.
+  const kind = typeof req.query.kind === "string" ? req.query.kind : undefined;
+  const dataType = typeof req.query.dataType === "string" ? req.query.dataType : undefined;
+  res.json(await listExports(tenantId, { kind, dataType }));
 });
 
 apiRouter.post("/exports", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  const { name, rowCount, fields, csv } = (req.body ?? {}) as { name?: string; rowCount?: number; fields?: unknown; csv?: string };
+  const { name, rowCount, fields, csv, dataType } = (req.body ?? {}) as { name?: string; rowCount?: number; fields?: unknown; csv?: string; dataType?: string };
   if (!name || !name.trim()) {
     res.status(400).json({ error: "An export name is required" });
     return;
@@ -1467,7 +1478,7 @@ apiRouter.post("/exports", async (req: Request, res: Response) => {
     res.status(400).json({ error: "Nothing to export" });
     return;
   }
-  const rec = await createExport({ tenantId, name, rowCount: rowCount || 0, fields, csv, createdById: req.user!.id });
+  const rec = await createExport({ tenantId, name, rowCount: rowCount || 0, fields, csv, dataType: dataType || null, createdById: req.user!.id });
   res.json(rec);
 });
 

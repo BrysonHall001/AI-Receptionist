@@ -1304,6 +1304,7 @@
     const showHistory = opts.saveHistory !== false;
     const historyApi = opts.historyApi || App.portalApi;   // App.api for master/admin scope
     const historyBase = opts.historyBase || "/api/exports"; // "/api/admin/exports" for master
+    const dataType = opts.dataType || null; // type-scopes the history list + tags the saved row
 
     const savedBlock = opts.savedFilters
       ? `<label class="field-label">Start from a saved filter (optional)</label>
@@ -1374,7 +1375,7 @@
       if (!showHistory) return;
       const host = inner.querySelector("#ex-history");
       try {
-        const list = await historyApi(historyBase);
+        const list = await historyApi(historyBase + "?kind=export" + (dataType ? "&dataType=" + encodeURIComponent(dataType) : ""));
         host.innerHTML = "";
         if (!list.length) { host.appendChild(el("div", "cell-muted", "No exports yet.")); return; }
         list.forEach((ex) => {
@@ -1418,7 +1419,7 @@
       }
       if (opts.saveHistory === false) { App.util.toast(`Exported ${opts.countText(out.length)}`); return; }
       try {
-        await historyApi(historyBase, { method: "POST", body: JSON.stringify({ name, rowCount: out.length, fields: cols.map((c) => c.label), csv, scope: opts.scope }) });
+        await historyApi(historyBase, { method: "POST", body: JSON.stringify({ name, rowCount: out.length, fields: cols.map((c) => c.label), csv, scope: opts.scope, dataType }) });
         App.util.toast(`Exported ${opts.countText(out.length)}`);
         loadHistory();
       } catch (err) { App.util.toast("Downloaded, but couldn't save to history: " + err.message, true); }
@@ -1427,11 +1428,33 @@
   // Open the shared export modal from anywhere (e.g. feedback.js).
   App.exportModal = openExport;
 
+  // Per-type "Previous imports" list, mirroring the export modal's history. Read-only
+  // (imports have nothing to download). Scoped to ONE dataType so each import modal
+  // shows only its own type's imports.
+  async function renderImportHistory(host, dataType) {
+    if (!host) return;
+    host.innerHTML = `<div class="cell-muted">Loading…</div>`;
+    try {
+      const list = await App.portalApi("/api/exports?kind=import" + (dataType ? "&dataType=" + encodeURIComponent(dataType) : ""));
+      host.innerHTML = "";
+      if (!list.length) { host.appendChild(el("div", "cell-muted", "No imports yet.")); return; }
+      list.forEach((im) => {
+        const ok = im.okCount != null ? im.okCount : im.rowCount;
+        const fail = im.failCount != null ? im.failCount : 0;
+        const row = el("div", "ex-hist-row");
+        row.innerHTML = `<div class="ex-hist-main"><div class="ex-hist-name">${esc(im.name)}</div>
+          <div class="ex-hist-meta">imported ${ok}${fail ? ", skipped " + fail : ""} &middot; ${fmtDate(im.createdAt)}</div></div>`;
+        host.appendChild(row);
+      });
+    } catch (err) { host.innerHTML = `<div class="cell-muted">${esc(err.message)}</div>`; }
+  }
+
   // Contacts descriptor — reproduces the previous contacts-export behavior exactly.
   function contactExportOpts(columns, rows) {
     return {
       title: "Export contacts",
       columns, rows,
+      dataType: "contact",
       savedFilters: true,
       savedFilterView: "contacts",
       namePlaceholder: "e.g. June leads — HVAC",
@@ -3280,9 +3303,12 @@
         <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing.${requireEmail ? (" This CRM requires a unique email on every " + App.label("contact","one").toLowerCase() + ", so the Email column must be mapped.") : ""}</p>
         <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,text/csv" class="input" />
         <div id="imp-step2"></div>
+        <div class="ex-history-head" style="margin-top:16px">Previous imports</div>
+        <div id="imp-history" class="ex-history"><div class="cell-muted">Loading…</div></div>
       </div>`;
     const overlay = modal(inner);
     inner.querySelector("#imp-close").onclick = () => overlay.remove();
+    renderImportHistory(inner.querySelector("#imp-history"), "contact");
     inner.querySelector("#imp-file").onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -3894,7 +3920,7 @@
     const importBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8681;</span> Import ${esc(type.labelPlural || App.label("record","many").toLowerCase())}`);
     importBtn.onclick = () => openRecordImport(typeKey, fields, type);
     const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
-    exportBtn.onclick = () => openRecordExport(handle ? handle.getColumns() : columns, records, type.labelPlural || type.label);
+    exportBtn.onclick = () => openRecordExport(handle ? handle.getColumns() : columns, records, type.labelPlural || type.label, typeKey);
     bar.appendChild(dummyBtn);
     bar.appendChild(createBtn);
     bar.appendChild(importBtn);
@@ -3941,7 +3967,7 @@
     let msgTimer = null;
     function needSelection(text) { bulkMsg.textContent = text || `Select a ${(type.label || App.label("record","one").toLowerCase()).toLowerCase()} first.`; bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
     function bulkItem(label, fn) { const b = el("button", "bulk-item", label); b.onclick = () => fn(); return b; }
-    bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openRecordExport(handle.getColumns(), rows, type.labelPlural || type.label); }));
+    bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openRecordExport(handle.getColumns(), rows, type.labelPlural || type.label, typeKey); }));
     bulkMenu.appendChild(bulkItem("Update a field…", () => { const ids = handle.getSelected(); if (!ids.length) return needSelection(); bulkMenu.classList.add("hidden"); openRecordMassUpdate(ids, fields, type, typeKey); }));
     bulkMenu.appendChild(el("div", "pop-sep"));
     bulkMenu.appendChild(bulkItem("Delete selected", async () => {
@@ -4092,10 +4118,12 @@
         <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing. Each row needs a Title.</p>
         <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,text/csv" class="input" />
         <div id="imp-step2"></div>
+        <div class="ex-history-head" style="margin-top:16px">Previous imports</div>
+        <div id="imp-history" class="ex-history"><div class="cell-muted">Loading…</div></div>
       </div>`;
     const overlay = modal(inner);
     inner.querySelector("#imp-close").onclick = () => overlay.remove();
-
+    renderImportHistory(inner.querySelector("#imp-history"), typeKey);
     // Mapping targets: the record's Title plus each non-formula field of this type.
     const targets = [{ key: "__title__", label: "Title", required: true }].concat(
       (fields || []).filter((f) => f.type !== "formula").map((f) => ({ key: f.key, label: f.label }))
@@ -4198,62 +4226,22 @@
     };
   }
 
-  function openRecordExport(columns, rows, typeLabel) {
-    const exportable = columns.filter((c) => c.key);
-    const exState = { rules: [], search: "" };
-    const selected = new Set(exportable.map((c) => c.key));
-    const inner = el("div");
-    inner.innerHTML = `<div class="modal-head"><h2>Export ${esc(typeLabel || App.label("record","many").toLowerCase())}</h2><button class="icon-btn" id="ex-close">&times;</button></div>
-      <div class="modal-body">
-        <label class="field-label">Export name *</label>
-        <input id="ex-name" class="input" placeholder="e.g. Open roles" />
-        <label class="field-label">Who to export</label>
-        <div id="ex-rules"></div>
-        <label class="field-label" style="margin-top:14px">Fields to include</label>
-        <div id="ex-fields" class="ex-fields"></div>
-        <p class="cell-muted" id="ex-count"></p>
-        <label class="field-label">Format</label>
-        <select id="ex-format" class="input"><option value="csv">CSV (.csv)</option><option value="xlsx">Excel (.xlsx)</option></select>
-        <button id="ex-go" class="btn btn-primary btn-block">Export</button>
-      </div>`;
-    const overlay = modal(inner);
-    inner.querySelector("#ex-close").onclick = () => overlay.remove();
-    const rulesHost = inner.querySelector("#ex-rules");
-    rulesHost.appendChild(App.table.ruleEditor(exportable, rows, exState.rules, () => updateCount()));
-    const fieldsHost = inner.querySelector("#ex-fields");
-    exportable.forEach((c) => {
-      const lab = el("label", "ex-field");
-      lab.innerHTML = `<input type="checkbox" checked /> <span>${esc(c.label)}</span>`;
-      lab.querySelector("input").onchange = (e) => { if (e.target.checked) selected.add(c.key); else selected.delete(c.key); };
-      fieldsHost.appendChild(lab);
+  function openRecordExport(columns, rows, typeLabel, dataType) {
+    // Unified onto the shared export modal so record exports now gain export history
+    // (this used to be a fork that built CSV inline and never saved). Saved filters
+    // stay off (records never had them); otherwise it's the same dialog Contacts use.
+    const label = typeLabel || App.label("record", "many");
+    App.exportModal({
+      columns, rows,
+      title: "Export " + label,
+      namePlaceholder: "e.g. Open " + String(label).toLowerCase(),
+      filterLabel: "Who to export",
+      unitPlural: label,
+      sheetName: label,
+      countText: (n) => n + " " + String(label).toLowerCase(),
+      dataType: dataType || null,
+      saveHistory: true,
     });
-    function matching() { return App.table.pipeline(rows, exportable, exState); }
-    function updateCount() { inner.querySelector("#ex-count").textContent = `${matching().length} of ${rows.length} match.`; }
-    updateCount();
-    inner.querySelector("#ex-go").onclick = () => {
-      const name = inner.querySelector("#ex-name").value.trim();
-      if (!name) { toast("Please give this export a name", true); return; }
-      const cols = exportable.filter((c) => selected.has(c.key));
-      if (!cols.length) { toast("Pick at least one field", true); return; }
-      const out = matching();
-      if (!out.length) { toast("Nothing matches", true); return; }
-      const header = cols.map((c) => csvCell(c.label)).join(",");
-      const lines = out.map((row) => cols.map((c) => csvCell(c.text ? c.text(row) : c.get(row))).join(","));
-      const csv = [header, ...lines].join("\n");
-      const fileBase = name.replace(/[^a-z0-9]+/gi, "-");
-      const format = inner.querySelector("#ex-format").value;
-      if (format === "xlsx" && typeof XLSX !== "undefined") {
-        const aoa = [cols.map((c) => c.label), ...out.map((row) => cols.map((c) => (c.text ? c.text(row) : c.get(row)) ?? ""))];
-        const ws = XLSX.utils.aoa_to_sheet(aoa); const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, (type.labelPlural || App.label("record","many")));
-        const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-        downloadBlob(`${fileBase}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-      } else {
-        downloadCSV(`${fileBase}.csv`, csv);
-      }
-      toast(`Exported ${out.length}`);
-      overlay.remove();
-    };
   }
 
   // ---------------- Single record (e.g. Job) detail ----------------
