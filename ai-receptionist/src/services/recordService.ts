@@ -653,12 +653,80 @@ export async function generateDummyRecord(tenantId: string, recordType?: string 
 }
 
 /** Bulk-create records from mapped import rows. Rows without a title are skipped. */
+// Server-side mirror of the client's wall-clock normalizer (portal.js
+// normalizeApptInput) — keep the two in sync. Reads a date cell's DIGITS (regex or
+// Excel serial via UTC) into the zoneless "YYYY-MM-DDTHH:MM" string. Never new Date()
+// on a local string, so no timezone shift. Used to coerce custom DATE fields.
+function normalizeWallClock(val: any): string {
+  const s = String(val == null ? "" : val).trim();
+  if (!s) return "";
+  const pad = (n: any) => String(n).padStart(2, "0");
+  let m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}T${pad(m[4])}:${m[5]}`;
+  m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}T00:00`;
+  m = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})(?:[ T,]+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?)?$/.exec(s);
+  if (m) {
+    let mo = m[1], da = m[2], yr = m[3];
+    if (yr.length === 2) yr = (Number(yr) >= 70 ? "19" : "20") + yr;
+    let H = m[4] != null ? parseInt(m[4], 10) : 0;
+    const M = m[5] != null ? m[5] : "00";
+    if (m[6]) { const pm = /p/i.test(m[6]); if (pm && H < 12) H += 12; if (!pm && H === 12) H = 0; }
+    return `${yr}-${pad(mo)}-${pad(da)}T${pad(H)}:${M}`;
+  }
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const serial = parseFloat(s);
+    if (serial >= 20000 && serial <= 90000) {
+      const totalMin = Math.round(serial * 1440);
+      const d = new Date(Date.UTC(1899, 11, 30) + totalMin * 60000);
+      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    }
+  }
+  return "";
+}
+
+// Coerce one imported cell to a custom field's defined type. { empty } = nothing to
+// store; { error } = uncoercible (the value is dropped + reported, never a crash).
+function coerceCustomValue(def: any, raw: any): { value?: any; empty?: boolean; error?: string } {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return { empty: true };
+  const s = String(raw).trim();
+  switch (def.type || "text") {
+    case "number":
+    case "percent": {
+      const n = Number(s.replace(/,/g, ""));
+      if (!isFinite(n)) return { error: `"${s}" isn't a valid number` };
+      return { value: n };
+    }
+    case "date": {
+      const norm = normalizeWallClock(s);
+      if (!norm) return { error: `"${s}" isn't a recognizable date` };
+      return { value: norm.slice(0, 10) }; // date fields store YYYY-MM-DD (zoneless, date-only)
+    }
+    case "checkbox":
+      return { value: ["true", "yes", "y", "1", "x", "\u2713", "checked"].indexOf(s.toLowerCase()) >= 0 };
+    case "multi_select": {
+      const arr = s.split(/[;,]/).map((x) => x.trim()).filter(Boolean);
+      return arr.length ? { value: arr } : { empty: true };
+    }
+    case "formula":
+      return { empty: true }; // computed — never imported
+    default:
+      return { value: s }; // text / textarea / email / url / phone / single_select / image
+  }
+}
+
 export async function bulkCreateRecords(tenantId: string, recordType: string | null | undefined, rows: Array<{ title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; resourceName?: string | null; customFields?: any }>) {
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
   const rtRow = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
   const subtypes: any[] = (rtRow && rtRow.subtypes) || [];
   const defaultSubtype = subtypes.length ? subtypes[0].key : null;
   const isBooking = !!(rtRow && rtRow.key === BOOKING_RECORD_TYPE_KEY);
+
+  // Field definitions drive type coercion + required-field enforcement.
+  const fieldDefs: any[] = await db.fieldDef.findMany({ where: { tenantId, recordTypeId } });
+  const defByKey = new Map<string, any>();
+  fieldDefs.forEach((f) => defByKey.set(f.key, f));
+  const requiredFields = fieldDefs.filter((f) => f.required && f.type !== "formula");
 
   // Bookings only: resolve a resource NAME (what the file holds) -> its id. Built
   // once, case-insensitive. Unmatched names leave the booking's resource blank and
@@ -672,9 +740,14 @@ export async function bulkCreateRecords(tenantId: string, recordType: string | n
   let imported = 0;
   let skipped = 0;
   const resourceWarnings = new Set<string>();
+  const skippedRows: Array<{ row: number; title: string; reason: string }> = [];
+  const valueWarnings: Array<{ row: number; field: string; reason: string }> = [];
+
+  let rowNum = 0;
   for (const row of rows || []) {
+    rowNum++;
     const title = (row.title || "").toString().trim();
-    if (!title) { skipped++; continue; }
+    if (!title) { skipped++; skippedRows.push({ row: rowNum, title: "", reason: "no Title" }); continue; }
     const wanted = (row.subtypeKey || "").toString().trim();
     const subtypeKey = subtypes.length ? (subtypes.some((s) => s.key === wanted) ? wanted : defaultSubtype) : null;
 
@@ -686,7 +759,7 @@ export async function bulkCreateRecords(tenantId: string, recordType: string | n
       const apptRaw = row.appointmentAt;
       if (apptRaw !== undefined && apptRaw !== null && String(apptRaw).trim() !== "") {
         try { appointmentAt = parseAppointmentAt(apptRaw) ?? null; }
-        catch { skipped++; continue; } // unparseable time -> skip the row, never crash the import
+        catch { skipped++; skippedRows.push({ row: rowNum, title, reason: "invalid appointment time" }); continue; }
       }
       const rname = (row.resourceName || "").toString().trim();
       if (rname) {
@@ -696,10 +769,33 @@ export async function bulkCreateRecords(tenantId: string, recordType: string | n
       }
     }
 
-    await db.record.create({ data: { tenantId, recordTypeId, title, stageKey: row.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields: row.customFields || {} } });
+    // Coerce custom fields to their defined types; drop (and report) bad values.
+    const rawCF = row.customFields || {};
+    const coerced: any = {};
+    for (const k of Object.keys(rawCF)) {
+      const def = defByKey.get(k);
+      if (!def) { coerced[k] = rawCF[k]; continue; }
+      const c = coerceCustomValue(def, rawCF[k]);
+      if (c.error) { valueWarnings.push({ row: rowNum, field: def.label || k, reason: c.error }); continue; }
+      if (c.empty) continue;
+      coerced[k] = c.value;
+    }
+
+    // Required custom fields must be present after coercion, else skip the row.
+    const missing = requiredFields.filter((f) => {
+      const v = coerced[f.key];
+      return v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+    });
+    if (missing.length) {
+      skipped++;
+      skippedRows.push({ row: rowNum, title, reason: "missing required field" + (missing.length > 1 ? "s" : "") + ": " + missing.map((f) => f.label || f.key).join(", ") });
+      continue;
+    }
+
+    await db.record.create({ data: { tenantId, recordTypeId, title, stageKey: row.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields: coerced } });
     imported++;
   }
-  return { imported, skipped, resourceWarnings: Array.from(resourceWarnings) };
+  return { imported, skipped, resourceWarnings: Array.from(resourceWarnings), skippedRows, valueWarnings };
 }
 
 // ---------------------------------------------------------------------------

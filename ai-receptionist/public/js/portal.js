@@ -4599,6 +4599,30 @@
       return map;
     }
 
+    // Post-import summary shown in place of the mapping grid: counts + the clear
+    // reasons rows were skipped / values dropped / resources unmatched / columns
+    // ignored. Reuses the modal's existing muted-text + button styling.
+    function renderImportSummary(host, res, ignoredCols) {
+      const cap = (arr, n) => (arr.length > n ? arr.slice(0, n) : arr);
+      const listOf = (label, items, fmt) => {
+        if (!items.length) return "";
+        const shown = cap(items, 50).map((x) => `<li>${fmt(x)}</li>`).join("");
+        const more = items.length > 50 ? `<li>…and ${items.length - 50} more</li>` : "";
+        return `<p class="cell-muted" style="margin-top:8px">${esc(label)}</p><ul class="cell-muted" style="margin:4px 0 0 18px">${shown}${more}</ul>`;
+      };
+      const skippedRows = res.skippedRows || [];
+      const valueWarnings = res.valueWarnings || [];
+      const resourceWarnings = res.resourceWarnings || [];
+      let html = `<p><strong>Imported ${res.imported}</strong>${res.skipped ? ` · skipped ${res.skipped}` : ""}.</p>`;
+      html += listOf("Skipped rows:", skippedRows, (s) => `Row ${s.row}${s.title ? ` (${esc(s.title)})` : ""}: ${esc(s.reason)}`);
+      html += listOf("Values skipped (row kept, field left empty):", valueWarnings, (w) => `Row ${w.row}, ${esc(w.field)}: ${esc(w.reason)}`);
+      if (resourceWarnings.length) html += `<p class="cell-muted" style="margin-top:8px">${esc(App.label("resource", "many"))} not matched (left blank): ${esc(resourceWarnings.join(", "))}</p>`;
+      if (ignoredCols.length) html += `<p class="cell-muted" style="margin-top:8px">Columns ignored (not mapped): ${esc(ignoredCols.join(", "))}</p>`;
+      host.innerHTML = html + `<button class="btn btn-primary btn-block" id="imp-done" style="margin-top:14px">Done</button>`;
+      host.querySelector("#imp-done").onclick = () => { overlay.remove(); renderRecordList(typeKey); };
+      toast(`Imported ${res.imported}${res.skipped ? `, skipped ${res.skipped}` : ""}`);
+    }
+
     inner.querySelector("#imp-file").onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -4649,10 +4673,7 @@
           btn.disabled = true; btn.textContent = "Importing…";
           try {
             const res = await App.portalApi("/api/records/import", { method: "POST", body: JSON.stringify({ type: typeKey, rows: mappedRows }) });
-            const warn = (res.resourceWarnings || []);
-            toast(`Imported ${res.imported}${res.skipped ? `, skipped ${res.skipped}` : ""}${ignoredNow.length ? ` · ignored ${ignoredNow.length} column${ignoredNow.length === 1 ? "" : "s"}` : ""}${warn.length ? ` · ${warn.length} ${App.label("resource", "many").toLowerCase()} name${warn.length === 1 ? "" : "s"} not matched: ${warn.join(", ")}` : ""}`);
-            overlay.remove();
-            renderRecordList(typeKey);
+            renderImportSummary(host, res, ignoredNow);
           } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Import"; }
         };
       });
