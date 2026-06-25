@@ -27,6 +27,7 @@ import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voice
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns } from "../services/userService";
+import { can } from "../services/permissionService";
 import { createInvite, inviteLink, sendInvite, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
 import { testRunAutomation, runManualAutomation } from "../automation/engine";
@@ -1349,7 +1350,10 @@ apiRouter.patch("/integrations/openai", patchIntegrationsOpenai);
 apiRouter.get("/users", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  if (req.user!.role === "CLIENT_USER") {
+  // Proof-wiring of the permission resolver (Batch 1). For every system role this is
+  // identical to the old `role === "CLIENT_USER"` 403 (CLIENT_USER lacks users.view;
+  // PORTAL_ADMIN/owner/super-admin/auditor have it). Custom roles flow through can().
+  if (!(await can(req.user!, "users", "view"))) {
     res.status(403).json({ error: "Not authorized" });
     return;
   }
@@ -1376,7 +1380,8 @@ apiRouter.post("/invites/:inviteId/revoke", async (req: Request, res: Response) 
 apiRouter.post("/users", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  if (req.user!.role === "CLIENT_USER") {
+  // Proof-wiring (Batch 1): identical to the old CLIENT_USER 403 for all system roles.
+  if (!(await can(req.user!, "users", "edit"))) {
     res.status(403).json({ error: "Not authorized" });
     return;
   }

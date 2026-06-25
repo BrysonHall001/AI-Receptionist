@@ -122,12 +122,31 @@ model User {
   signature        String?
   themePrefs       Json      @default("{}")
   contactColumns   Json      @default("{}")
+  // When set, effective portal permissions come from this custom role (PortalRole);
+  // the base enum `role` still acts as the tier/ceiling reference. Null = use the
+  // built-in system-role permissions. Additive, no backfill.
+  customRoleId     String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   sessions         Session[]
   feedbackTickets  FeedbackTicket[]  @relation("FeedbackSubmitter")
   resolvedFeedback FeedbackTicket[]  @relation("FeedbackResolver")
   feedbackMessages FeedbackMessage[]
+
+  @@index([tenantId])
+}
+
+// A per-portal custom user role (a "class"): a named permission set scoped to one
+// tenant. `permissions` is an { area: { view/edit/delete } } (or { manage }) map,
+// validated against the rights catalog + super-admin ceiling in permissionService.
+// Tenant-scoped like FieldDef (bare tenantId, no FK relation) to match existing style.
+model PortalRole {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  permissions Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([tenantId])
 }

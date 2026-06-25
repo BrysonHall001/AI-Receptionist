@@ -61,14 +61,39 @@ export async function updateUserName(id: string, name: string | null) {
   return prisma.user.update({ where: { id }, data: { name: name && name.trim() ? name.trim() : null } });
 }
 
+/**
+ * Cap #2 — tier protection for ALL user-management actions (delete / role change /
+ * impersonate). No actor below super-admin tier may act on a super-admin-tier user.
+ * Generalizes the rules that previously lived inline in deleteUser; the "delete"
+ * messages are kept byte-identical, so existing behavior is unchanged. Custom roles
+ * route through here too: a custom-role actor's `role` is its BASE enum role
+ * (CLIENT_USER / PORTAL_ADMIN, never OWNER), so it is automatically blocked from
+ * acting on OWNER / SUPER_ADMIN targets. Fails closed.
+ */
+export type UserAction = "delete" | "role" | "impersonate";
+export function assertCanActOnUser(
+  actor: { id: string; role: string } | undefined,
+  target: { id: string; role: string },
+  action: UserAction,
+): void {
+  if (target.role === "OWNER") {
+    if (action === "delete") throw new Error("An owner account can't be deleted.");
+    if (actor?.role !== "OWNER") throw new Error("Only an owner can manage an owner account.");
+  }
+  if (target.role === "SUPER_ADMIN" && actor?.role !== "OWNER") {
+    throw new Error(
+      action === "delete"
+        ? "Only an owner can delete a super-admin."
+        : "Only an owner can manage a super-admin.",
+    );
+  }
+}
+
 export async function deleteUser(id: string, actor?: { id: string; role: string; name?: string | null }) {
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) throw new Error("User not found");
   if (actor && actor.id === id) throw new Error("You can't delete your own account");
-  if (target.role === "OWNER") throw new Error("An owner account can't be deleted.");
-  if (target.role === "SUPER_ADMIN" && actor?.role !== "OWNER") {
-    throw new Error("Only an owner can delete a super-admin.");
-  }
+  assertCanActOnUser(actor, { id: target.id, role: target.role }, "delete");
   const deleted = await prisma.user.delete({ where: { id } });
   // Audit: a user lost access. Tenant-scoped (portal users only), attributed to the
   // admin who removed them. Log-only — no automation fires. Best-effort.

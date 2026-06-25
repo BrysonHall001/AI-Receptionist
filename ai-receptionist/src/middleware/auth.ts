@@ -9,6 +9,9 @@ export interface AuthUser {
   name: string | null;
   role: Role;
   tenantId: string | null;
+  // Null unless a custom PortalRole is assigned. Read by the permission resolver
+  // (can()). Additive; null for everyone until custom roles are assigned.
+  customRoleId?: string | null;
 }
 
 declare global {
@@ -38,6 +41,7 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
         name: user.name,
         role: user.role as Role,
         tenantId: user.tenantId,
+        customRoleId: (user as any).customRoleId ?? null,
       };
     }
     // --- Batch A plumbing: additive only, NOTHING consumes these yet. ---
@@ -70,6 +74,7 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
         name: req.realUser.name,
         role: (req.impersonation.assumedRole as Role) || req.realUser.role, // effective role
         tenantId: req.impersonation.scopeTenantId || null, // pinned tenant (cross-tenant safe)
+        customRoleId: null, // impersonation always assumes a system role
       };
     }
   } catch {
