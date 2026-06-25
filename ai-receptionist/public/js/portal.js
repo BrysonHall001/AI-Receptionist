@@ -122,19 +122,45 @@
     window.addEventListener("focus", callsVisHandler);
   }
 
-  // Build (or rebuild) ONLY the Calls table into `container`, returning the table
-  // handle. Shared by the initial render and the live refresh so the two paint
-  // identically. Does not touch the AI Instructions editor.
-  function buildCallsTable(container, calls) {
-    container.innerHTML = "";
-    const columns = [
+  // Shared call column definitions — reused by the Calls table, the Calls-page
+  // export, the Data Administration export dropdown, and the Data Backup. The first
+  // six are what the Calls page shows; the rest are export-friendly extras hidden on
+  // the page (defaultOff) but available to include in an export. Timestamps use
+  // fmtDate — the SAME formatter the page already uses (no new timezone conversion).
+  function callColumnDefs() {
+    return [
       { key: "name", label: "Caller", type: "text", get: (r) => r.name, text: (r) => r.name || "Unknown caller", cellClass: "cell-strong", render: (r) => esc(r.name || "Unknown caller") },
       { key: "phone", label: "Phone", type: "text", get: (r) => r.phone || r.fromNumber, cellClass: "cell-mono" },
       { key: "fromNumber", label: "Caller ID", type: "text", get: (r) => r.fromNumber, cellClass: "cell-mono", render: (r) => esc(r.fromNumber || "—") },
       { key: "intent", label: "Reason", type: "text", get: (r) => r.intent, cellClass: "cell-muted cell-truncate", render: (r) => esc(r.intent || "—") },
       { key: "status", label: "Status", type: "status", get: (r) => r.status, text: (r) => ({ COMPLETED: "Completed", FAILED: "Missed", COLLECTING_INFO: "In progress", GREETING: "In progress", INIT: "New" }[r.status] || r.status), render: (r) => statusBadge(r.status) },
       { key: "createdAt", label: "When", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
+      { key: "email", label: "Email", type: "text", get: (r) => r.email, text: (r) => r.email || "", defaultOff: true },
+      { key: "turnCount", label: "Turns", type: "number", get: (r) => r.turnCount, text: (r) => (r.turnCount == null ? "" : String(r.turnCount)), defaultOff: true },
+      { key: "finalizedAt", label: "Finalized", type: "date", get: (r) => r.finalizedAt, text: (r) => (r.finalizedAt ? fmtDate(r.finalizedAt) : ""), defaultOff: true },
+      { key: "callSid", label: "Call ID", type: "text", get: (r) => r.callSid, text: (r) => r.callSid || "", defaultOff: true },
     ];
+  }
+  function callExportOpts(columns, rows) {
+    return {
+      title: "Export calls",
+      columns, rows,
+      dataType: "call",
+      namePlaceholder: "e.g. June calls",
+      filterLabel: "Which calls to export",
+      unitPlural: "Calls",
+      sheetName: "Calls",
+      countText: (n) => n + (n === 1 ? " call" : " calls"),
+      saveHistory: true,
+    };
+  }
+
+  // Build (or rebuild) ONLY the Calls table into `container`, returning the table
+  // handle. Shared by the initial render and the live refresh so the two paint
+  // identically. Does not touch the AI Instructions editor.
+  function buildCallsTable(container, calls) {
+    container.innerHTML = "";
+    const columns = callColumnDefs();
     const handle = App.table.mount({
       container, columns, rows: calls, onRowClick: (r) => openCall(r.id),
       defaultSort: "createdAt", defaultSortDir: "desc", highlightId: App._highlightCallId,
@@ -147,6 +173,10 @@
       sim.id = "simulate-btn";
       sim.onclick = simulate;
       handle.toolbarRight.insertBefore(sim, handle.toolbarRight.firstChild);
+      // Export calls — same shared exporter/history as Contacts (saves to history).
+      const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
+      exportBtn.onclick = () => openExport(callExportOpts(handle ? handle.getColumns() : columns, calls));
+      handle.toolbarRight.insertBefore(exportBtn, sim);
     }
     App._highlightCallId = null;
     return handle;
@@ -719,6 +749,7 @@
     const isAdmin = !!(App.state.me && App.isAdminTier(App.state.me.role));
     const options = [{ value: "contact", label: App.label("contact", "many") }];
     (types || []).filter((t) => t.key !== "contact").forEach((t) => options.push({ value: "rt:" + t.key, label: t.labelPlural || t.label }));
+    options.push({ value: "call", label: "Calls" });
     options.push({ value: "event", label: "Events" });
     if (isAdmin) options.push({ value: "feedback", label: "Feedback" });
 
@@ -738,6 +769,10 @@
       if (value === "event") {
         const events = await App.portalApi("/api/automations/events").catch(() => []);
         return dataEventExportOpts(Array.isArray(events) ? events : []);
+      }
+      if (value === "call") {
+        const calls = await App.portalApi("/api/calls").catch(() => []);
+        return callExportOpts(callColumnDefs(), Array.isArray(calls) ? calls : []);
       }
       if (value === "feedback") {
         const rows = await App.portalApi("/api/feedback/export-rows").catch(() => []);
@@ -815,7 +850,7 @@
     }
 
     const calls = await App.portalApi("/api/calls").catch(() => []);
-    sections.push({ label: "Calls", columns: backupGenericColumns(calls, ["tenantId", "endpointId"]), rows: calls || [] });
+    sections.push({ label: "Calls", columns: callColumnDefs(), rows: calls || [] });
 
     const events = await App.portalApi("/api/automations/events").catch(() => []);
     sections.push({ label: "Events", columns: dataEventExportOpts([]).columns, rows: events || [] });
@@ -925,7 +960,7 @@
   // Centralized cross-type history with Type / User / Download columns. Reads the
   // combined import+export history from Batch A (GET /api/exports, no filter).
   function dataHistoryTypeLabels(types) {
-    const map = { contact: App.label("contact", "many"), feedback: "Feedback", event: "Event log" };
+    const map = { contact: App.label("contact", "many"), feedback: "Feedback", event: "Event log", call: "Calls" };
     (types || []).forEach((t) => { map[t.key] = t.labelPlural || t.label; });
     return map;
   }
