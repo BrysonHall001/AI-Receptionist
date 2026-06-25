@@ -653,22 +653,53 @@ export async function generateDummyRecord(tenantId: string, recordType?: string 
 }
 
 /** Bulk-create records from mapped import rows. Rows without a title are skipped. */
-export async function bulkCreateRecords(tenantId: string, recordType: string | null | undefined, rows: Array<{ title?: string; stageKey?: string | null; subtypeKey?: string | null; customFields?: any }>) {
+export async function bulkCreateRecords(tenantId: string, recordType: string | null | undefined, rows: Array<{ title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; resourceName?: string | null; customFields?: any }>) {
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
   const rtRow = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
   const subtypes: any[] = (rtRow && rtRow.subtypes) || [];
   const defaultSubtype = subtypes.length ? subtypes[0].key : null;
+  const isBooking = !!(rtRow && rtRow.key === BOOKING_RECORD_TYPE_KEY);
+
+  // Bookings only: resolve a resource NAME (what the file holds) -> its id. Built
+  // once, case-insensitive. Unmatched names leave the booking's resource blank and
+  // are reported (we never drop the booking over a bad resource name).
+  const resByName = new Map<string, string>();
+  if (isBooking) {
+    const resources = await db.resource.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true } });
+    resources.forEach((r: any) => { if (r.name) resByName.set(String(r.name).trim().toLowerCase(), r.id); });
+  }
+
   let imported = 0;
   let skipped = 0;
+  const resourceWarnings = new Set<string>();
   for (const row of rows || []) {
     const title = (row.title || "").toString().trim();
     if (!title) { skipped++; continue; }
     const wanted = (row.subtypeKey || "").toString().trim();
     const subtypeKey = subtypes.length ? (subtypes.some((s) => s.key === wanted) ? wanted : defaultSubtype) : null;
-    await db.record.create({ data: { tenantId, recordTypeId, title, stageKey: row.stageKey ?? null, subtypeKey, customFields: row.customFields || {} } });
+
+    // Bookings only: appointment time (parked as zoneless wall-clock via the SAME
+    // parseAppointmentAt createRecord uses) + resource (name -> id).
+    let appointmentAt: Date | null = null;
+    let resourceId: string | null = null;
+    if (isBooking) {
+      const apptRaw = row.appointmentAt;
+      if (apptRaw !== undefined && apptRaw !== null && String(apptRaw).trim() !== "") {
+        try { appointmentAt = parseAppointmentAt(apptRaw) ?? null; }
+        catch { skipped++; continue; } // unparseable time -> skip the row, never crash the import
+      }
+      const rname = (row.resourceName || "").toString().trim();
+      if (rname) {
+        const hit = resByName.get(rname.toLowerCase());
+        if (hit) resourceId = hit;
+        else resourceWarnings.add(rname);
+      }
+    }
+
+    await db.record.create({ data: { tenantId, recordTypeId, title, stageKey: row.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields: row.customFields || {} } });
     imported++;
   }
-  return { imported, skipped };
+  return { imported, skipped, resourceWarnings: Array.from(resourceWarnings) };
 }
 
 // ---------------------------------------------------------------------------

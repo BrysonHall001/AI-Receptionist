@@ -4533,9 +4533,49 @@
     const stageList = (type && type.recordStages) || [];
     const subtypeList = (type && type.subtypes) || [];
     const targets = [{ key: "__title__", label: "Title", required: true }];
+    const isBooking = !!(type && type.key === "booking");
+    if (isBooking) {
+      targets.push({ key: "__appointment__", label: "Appointment" });
+      targets.push({ key: "__resource__", label: App.label("resource", "one") });
+    }
     if (stageList.length) targets.push({ key: "__stage__", label: "Status" });
     if (subtypeList.length) targets.push({ key: "__subtype__", label: "Type" });
     (fields || []).filter((f) => f.type !== "formula").forEach((f) => targets.push({ key: f.key, label: f.label }));
+    // WALL-CLOCK: normalize a file's appointment cell to the zoneless YYYY-MM-DDTHH:MM
+    // string by reading its DIGITS only (never new Date() on a local string). The
+    // server's parseAppointmentAt then parks those exact digits in the UTC slot, so
+    // "5:00 PM" in the file stays 5:00 PM in the booking regardless of timezone.
+    const pad2 = (n) => String(n).padStart(2, "0");
+    function normalizeApptInput(val) {
+      const s = String(val == null ? "" : val).trim();
+      if (!s) return "";
+      // Already zoneless ISO-like: YYYY-MM-DD, separated by T or space, optional secs.
+      let m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}T${pad2(m[4])}:${m[5]}`;
+      m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}T00:00`;
+      // M/D/YYYY (or - / .) with optional h:mm[:ss] and optional AM/PM.
+      m = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})(?:[ T,]+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?)?$/.exec(s);
+      if (m) {
+        let mo = m[1], da = m[2], yr = m[3];
+        if (yr.length === 2) yr = (Number(yr) >= 70 ? "19" : "20") + yr;
+        let H = m[4] != null ? parseInt(m[4], 10) : 0;
+        const M = m[5] != null ? m[5] : "00";
+        if (m[6]) { const pm = /p/i.test(m[6]); if (pm && H < 12) H += 12; if (!pm && H === 12) H = 0; }
+        return `${yr}-${pad2(mo)}-${pad2(da)}T${pad2(H)}:${M}`;
+      }
+      // Pure number => Excel serial date (days since 1899-12-30; fraction = time of
+      // day). Positioned via UTC so the wall-clock digits are read back unchanged.
+      if (/^\d+(\.\d+)?$/.test(s)) {
+        const serial = parseFloat(s);
+        if (serial >= 20000 && serial <= 90000) {
+          const totalMin = Math.round(serial * 1440);
+          const d = new Date(Date.UTC(1899, 11, 30) + totalMin * 60000);
+          return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+        }
+      }
+      return ""; // unrecognized -> leave blank (server skips/leaves it off; nothing crashes)
+    }
     // Map a file value to a canonical key by matching key OR label (case-insensitive),
     // so an exported "Status"/"Type" column (which holds labels) re-imports correctly.
     // Unmatched values are passed through as-is: the server validates subtype (falling
@@ -4597,8 +4637,10 @@
             const out = { title: r[map["__title__"]] };
             if (map["__stage__"] != null && map["__stage__"] >= 0) { const k = resolveChoice(stageList, r[map["__stage__"]]); if (k) out.stageKey = k; }
             if (map["__subtype__"] != null && map["__subtype__"] >= 0) { const k = resolveChoice(subtypeList, r[map["__subtype__"]]); if (k) out.subtypeKey = k; }
+            if (isBooking && map["__appointment__"] != null && map["__appointment__"] >= 0) { const norm = normalizeApptInput(r[map["__appointment__"]]); if (norm) out.appointmentAt = norm; }
+            if (isBooking && map["__resource__"] != null && map["__resource__"] >= 0) { const rn = r[map["__resource__"]]; if (rn != null && String(rn).trim() !== "") out.resourceName = String(rn).trim(); }
             const customFields = {};
-            targets.forEach((t) => { if (t.key === "__title__" || t.key === "__stage__" || t.key === "__subtype__") return; const idx = map[t.key]; if (idx != null && idx >= 0) { const v = r[idx]; if (v !== undefined && String(v).trim() !== "") customFields[t.key] = v; } });
+            targets.forEach((t) => { if (t.key === "__title__" || t.key === "__stage__" || t.key === "__subtype__" || t.key === "__appointment__" || t.key === "__resource__") return; const idx = map[t.key]; if (idx != null && idx >= 0) { const v = r[idx]; if (v !== undefined && String(v).trim() !== "") customFields[t.key] = v; } });
             out.customFields = customFields;
             return out;
           });
@@ -4607,7 +4649,8 @@
           btn.disabled = true; btn.textContent = "Importing…";
           try {
             const res = await App.portalApi("/api/records/import", { method: "POST", body: JSON.stringify({ type: typeKey, rows: mappedRows }) });
-            toast(`Imported ${res.imported}${res.skipped ? `, skipped ${res.skipped}` : ""}${ignoredNow.length ? ` · ignored ${ignoredNow.length} column${ignoredNow.length === 1 ? "" : "s"}` : ""}`);
+            const warn = (res.resourceWarnings || []);
+            toast(`Imported ${res.imported}${res.skipped ? `, skipped ${res.skipped}` : ""}${ignoredNow.length ? ` · ignored ${ignoredNow.length} column${ignoredNow.length === 1 ? "" : "s"}` : ""}${warn.length ? ` · ${warn.length} ${App.label("resource", "many").toLowerCase()} name${warn.length === 1 ? "" : "s"} not matched: ${warn.join(", ")}` : ""}`);
             overlay.remove();
             renderRecordList(typeKey);
           } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Import"; }
