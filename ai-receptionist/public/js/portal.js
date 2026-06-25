@@ -640,7 +640,7 @@
     wrap.appendChild(el("h2", "settings-h", "Data Administration"));
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const SUBS = [["import", "Import"], ["export", "Export"], ["history", "Import / Export History"]];
+    const SUBS = [["import", "Import"], ["export", "Export"], ["backup", "Data Backup"], ["history", "Import / Export History"]];
     let active = "import";
     function setTab(key) {
       active = key;
@@ -648,6 +648,7 @@
       tabBody.innerHTML = "";
       if (key === "import") tabImport(tabBody);
       else if (key === "export") tabExport(tabBody);
+      else if (key === "backup") tabBackup(tabBody);
       else tabHistory(tabBody);
     }
     SUBS.forEach(([key, label]) => {
@@ -767,6 +768,160 @@
     };
   }
 
+  // ---- Data Backup sub-tab: one-click blanket export of ALL portal data, as an
+  // Excel workbook (one sheet per type) or a ZIP of CSVs (one per type). Reuses the
+  // existing per-type read paths + column builders (so bookings keep wall-clock times
+  // via recordColumnDefs/fmtAppt). Download-only: the file is assembled in the browser
+  // and never stored; we only log that a backup happened (history row, no download).
+  function backupStamp() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; // filename label only
+  }
+  // Only Name / Email / Role for the team sheet — never anything credential-bearing.
+  function backupUserColumns() {
+    return [
+      { key: "name", label: "Name", type: "text", get: (r) => r.name || "", text: (r) => r.name || "" },
+      { key: "email", label: "Email", type: "text", get: (r) => r.email || "", text: (r) => r.email || "" },
+      { key: "role", label: "Role", type: "text", get: (r) => r.role || "", text: (r) => r.role || "" },
+    ];
+  }
+  // Generic columns from the union of row keys (for Calls/Resources/Automations —
+  // safe shapes with no credentials). Noise keys are dropped; objects are JSON'd.
+  function backupGenericColumns(rows, dropKeys) {
+    const drop = new Set(dropKeys || ["tenantId", "createdById"]);
+    const keys = [];
+    (rows || []).forEach((r) => { if (r && typeof r === "object") Object.keys(r).forEach((k) => { if (!drop.has(k) && keys.indexOf(k) === -1) keys.push(k); }); });
+    return keys.map((k) => ({
+      key: k, label: k, type: "text",
+      get: (r) => r[k],
+      text: (r) => { const v = r[k]; if (v == null) return ""; return typeof v === "object" ? JSON.stringify(v) : String(v); },
+    }));
+  }
+  async function gatherBackupSections(opts) {
+    const sections = [];
+    const [cFields, contacts] = await Promise.all([App.portalApi("/api/fields").catch(() => []), App.portalApi("/api/contacts").catch(() => [])]);
+    sections.push({ label: App.label("contact", "many"), columns: contactColumnDefs(cFields), rows: contacts || [] });
+
+    const types = await App.portalApi("/api/record-types").catch(() => []);
+    for (const t of (types || []).filter((x) => x.key !== "contact")) {
+      const [records, fields, resources] = await Promise.all([
+        App.portalApi("/api/records?type=" + encodeURIComponent(t.key)).catch(() => []),
+        App.portalApi("/api/fields?recordType=" + encodeURIComponent(t.key)).catch(() => []),
+        t.key === "booking" ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
+      ]);
+      const resById = {}; (resources || []).forEach((r) => { resById[r.id] = r; });
+      sections.push({ label: t.labelPlural || t.label, columns: recordColumnDefs(fields, t, resById), rows: records || [] });
+    }
+
+    const calls = await App.portalApi("/api/calls").catch(() => []);
+    sections.push({ label: "Calls", columns: backupGenericColumns(calls, ["tenantId", "endpointId"]), rows: calls || [] });
+
+    const events = await App.portalApi("/api/automations/events").catch(() => []);
+    sections.push({ label: "Events", columns: dataEventExportOpts([]).columns, rows: events || [] });
+
+    if (opts.isAdmin) {
+      const fb = await App.portalApi("/api/feedback/export-rows").catch(() => []);
+      sections.push({ label: "Feedback", columns: App.feedback.ticketExportColumns({ portal: false, rows: fb || [] }), rows: fb || [] });
+    }
+
+    const resources = await App.portalApi("/api/resources").catch(() => []);
+    sections.push({ label: App.label("resource", "many"), columns: backupGenericColumns(resources, ["tenantId"]), rows: resources || [] });
+
+    if (opts.includeAuto) {
+      const autos = await App.portalApi("/api/automations").catch(() => []);
+      sections.push({ label: "Automations", columns: backupGenericColumns(autos, ["tenantId"]), rows: autos || [] });
+    }
+    if (opts.includeTeam) {
+      const users = await App.portalApi("/api/users").catch(() => []);
+      sections.push({ label: "Team", columns: backupUserColumns(), rows: users || [] });
+    }
+    return sections;
+  }
+  function backupAOA(section) {
+    const cols = section.columns.filter((c) => c.key);
+    const header = cols.map((c) => c.label);
+    const body = (section.rows || []).map((row) => cols.map((c) => { const v = c.text ? c.text(row) : c.get(row); return v == null ? "" : v; }));
+    return [header, ...body];
+  }
+  function backupSheetName(label, used) {
+    let n = String(label).replace(/[\\/?*\[\]:]/g, "").slice(0, 28) || "Sheet";
+    const base = n; let i = 2;
+    while (used.has(n)) { n = base.slice(0, 26) + " " + i; i++; }
+    used.add(n);
+    return n;
+  }
+  function buildBackupXlsx(sections, stamp) {
+    if (typeof XLSX === "undefined") throw new Error("Excel needs internet — the spreadsheet library didn't load.");
+    const wb = XLSX.utils.book_new();
+    const used = new Set();
+    sections.forEach((s) => { XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(backupAOA(s)), backupSheetName(s.label, used)); });
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    downloadBlob(`portal-backup-${stamp}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  }
+  async function buildBackupZip(sections, stamp) {
+    if (typeof JSZip === "undefined") throw new Error("CSV backup needs internet — the zip library didn't load.");
+    const zip = new JSZip();
+    const used = new Set();
+    sections.forEach((s) => {
+      const cols = s.columns.filter((c) => c.key);
+      let fname = String(s.label).replace(/[\\/:*?"<>|]/g, "-").slice(0, 40) || "data";
+      const base = fname; let i = 2;
+      while (used.has(fname)) { fname = base + "-" + i; i++; }
+      used.add(fname);
+      zip.file(fname + ".csv", buildCSV(cols, s.rows || []));
+    });
+    downloadBlob(`portal-backup-${stamp}.zip`, await zip.generateAsync({ type: "blob" }));
+  }
+  async function tabBackup(host) {
+    host.innerHTML = "";
+    const isAdmin = !!(App.state.me && App.isAdminTier(App.state.me.role));
+    const wrap = el("div");
+    wrap.style.cssText = "max-width:540px;";
+    wrap.innerHTML = `
+      <p class="cell-muted" style="margin-top:4px">Download a complete backup of this portal's data — one tab (Excel) or file (CSV zip) per data type: ${esc(App.label("contact", "many"))}, every record type, Calls, Events, Resources${isAdmin ? ", Feedback" : ""}, and optionally automations and team. Sign-in credentials and connected-account tokens are never included.</p>
+      <label class="field-label" style="margin-top:12px">Format</label>
+      <select id="bk-format" class="input" style="max-width:340px">
+        <option value="xlsx">Excel workbook (.xlsx) — one sheet per type</option>
+        <option value="zip">CSV files (.zip) — one .csv per type</option>
+      </select>
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
+        <label class="ex-field"><input type="checkbox" id="bk-auto" checked /> <span>Include automation definitions</span></label>
+        <label class="ex-field"><input type="checkbox" id="bk-team" checked /> <span>Include team (names, emails, roles)</span></label>
+      </div>
+      <button id="bk-go" class="btn btn-primary" style="margin-top:14px">Download backup</button>
+      <div id="bk-status" class="cell-muted" style="margin-top:10px"></div>`;
+    host.appendChild(wrap);
+    const statusEl = wrap.querySelector("#bk-status");
+    const btn = wrap.querySelector("#bk-go");
+    btn.onclick = async () => {
+      const fmt = wrap.querySelector("#bk-format").value;
+      const includeAuto = wrap.querySelector("#bk-auto").checked;
+      const includeTeam = wrap.querySelector("#bk-team").checked;
+      btn.disabled = true;
+      statusEl.textContent = "Gathering your data…";
+      try {
+        const sections = await gatherBackupSections({ includeAuto, includeTeam, isAdmin });
+        const total = sections.reduce((n, s) => n + (s.rows ? s.rows.length : 0), 0);
+        const THRESHOLD = 50000; // assembled in-browser; warn past this before risking a freeze
+        if (total > THRESHOLD) {
+          const ok = await confirmModal({ title: "Large backup", message: `This backup has about ${total.toLocaleString()} rows. It's built in your browser, which can be slow or run out of memory at this size. Continue anyway?`, confirmText: "Continue" });
+          if (!ok) { statusEl.textContent = ""; btn.disabled = false; return; }
+        }
+        statusEl.textContent = "Assembling your " + (fmt === "zip" ? "ZIP" : "Excel file") + "… this may take a moment.";
+        await new Promise((r) => setTimeout(r, 30)); // let the status paint before the heavy work
+        const stamp = backupStamp();
+        if (fmt === "zip") await buildBackupZip(sections, stamp);
+        else buildBackupXlsx(sections, stamp);
+        try { await App.portalApi("/api/backups", { method: "POST", body: JSON.stringify({ name: "Data backup " + stamp, rowCount: total }) }); } catch (e) { /* logging is best-effort */ }
+        statusEl.textContent = `Backup downloaded — ${total.toLocaleString()} rows across ${sections.length} data types.`;
+      } catch (e) {
+        statusEl.textContent = "Backup failed: " + (e && e.message ? e.message : "unknown error");
+      }
+      btn.disabled = false;
+    };
+  }
+
   // Centralized cross-type history with Type / User / Download columns. Reads the
   // combined import+export history from Batch A (GET /api/exports, no filter).
   function dataHistoryTypeLabels(types) {
@@ -775,6 +930,7 @@
     return map;
   }
   function dataHistoryWhat(r, typeLabels) {
+    if (r.kind === "backup") return "Full backup";
     const typeLabel = r.dataType ? (typeLabels[r.dataType] || r.dataType) : "Other";
     return typeLabel + " · " + (r.kind === "import" ? "Import" : "Export");
   }

@@ -124,6 +124,31 @@ export async function createImportRecord(input: {
   return { id: rec.id, kind: "import", dataType: rec.dataType, name: rec.name, rowCount: rec.rowCount, okCount: rec.okCount, failCount: rec.failCount, createdAt: rec.createdAt.toISOString() };
 }
 
+// Log that a full Data Backup happened. Like imports, NO file is stored (the backup
+// is a large PII-heavy blob, download-only). kind="backup" => toListDTO marks it
+// downloadable:false, so the history Download column is blank for it.
+export async function createBackupRecord(input: {
+  tenantId: string;
+  name: string;
+  rowCount: number;
+  createdById?: string | null;
+}) {
+  const rec = await prisma.exportRecord.create({
+    data: {
+      tenantId: input.tenantId,
+      scope: null,
+      kind: "backup",
+      dataType: null,
+      name: input.name.trim(),
+      rowCount: input.rowCount,
+      fields: [],
+      csv: "",
+      createdById: input.createdById ?? null,
+    },
+  });
+  return { id: rec.id, kind: "backup", name: rec.name, rowCount: rec.rowCount, createdAt: rec.createdAt.toISOString() };
+}
+
 // Download a portal export (must belong to that portal).
 export async function getExportCsv(id: string, tenantId: string): Promise<{ name: string; csv: string } | null> {
   const rec = await prisma.exportRecord.findUnique({ where: { id } });

@@ -21,7 +21,7 @@ import { listTemplates, createTemplate, deleteTemplate } from "../services/templ
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
-import { listExports, createExport, createImportRecord, getExportCsv } from "../services/exportService";
+import { listExports, createExport, createImportRecord, createBackupRecord, getExportCsv } from "../services/exportService";
 import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
 import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voices";
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
@@ -1479,6 +1479,16 @@ apiRouter.post("/exports", async (req: Request, res: Response) => {
     return;
   }
   const rec = await createExport({ tenantId, name, rowCount: rowCount || 0, fields, csv, dataType: dataType || null, createdById: req.user!.id });
+  res.json(rec);
+});
+
+// Log that a full Data Backup happened. The backup file is assembled + downloaded
+// CLIENT-side; this only records that it occurred (no file stored, no download).
+apiRouter.post("/backups", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, rowCount } = (req.body ?? {}) as { name?: string; rowCount?: number };
+  const rec = await createBackupRecord({ tenantId, name: (name && name.trim()) || "Data backup", rowCount: rowCount || 0, createdById: req.user!.id });
   res.json(rec);
 });
 
