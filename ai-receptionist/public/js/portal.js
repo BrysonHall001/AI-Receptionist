@@ -4528,10 +4528,25 @@
     const overlay = modal(inner);
     inner.querySelector("#imp-close").onclick = () => overlay.remove();
     renderImportHistory(inner.querySelector("#imp-history"), typeKey);
-    // Mapping targets: the record's Title plus each non-formula field of this type.
-    const targets = [{ key: "__title__", label: "Title", required: true }].concat(
-      (fields || []).filter((f) => f.type !== "formula").map((f) => ({ key: f.key, label: f.label }))
-    );
+    // Mapping targets: Title, then Status + Type (when this type has them, since the
+    // server already stores stageKey/subtypeKey), then each non-formula custom field.
+    const stageList = (type && type.recordStages) || [];
+    const subtypeList = (type && type.subtypes) || [];
+    const targets = [{ key: "__title__", label: "Title", required: true }];
+    if (stageList.length) targets.push({ key: "__stage__", label: "Status" });
+    if (subtypeList.length) targets.push({ key: "__subtype__", label: "Type" });
+    (fields || []).filter((f) => f.type !== "formula").forEach((f) => targets.push({ key: f.key, label: f.label }));
+    // Map a file value to a canonical key by matching key OR label (case-insensitive),
+    // so an exported "Status"/"Type" column (which holds labels) re-imports correctly.
+    // Unmatched values are passed through as-is: the server validates subtype (falling
+    // back to the default) and stores stageKey as given.
+    function resolveChoice(list, val) {
+      const s = String(val == null ? "" : val).trim();
+      if (!s) return "";
+      const low = s.toLowerCase();
+      const hit = (list || []).find((o) => String(o.key).toLowerCase() === low || String(o.label).toLowerCase() === low);
+      return hit ? hit.key : s;
+    }
     const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
     function guessMapping(headers) {
       const map = {};
@@ -4558,22 +4573,41 @@
           <label class="field-label">${esc(t.label)}${t.required ? " (required)" : ""}</label>
           <select class="input map-sel" data-key="${esc(t.key)}">${optionsHtml(guess[t.key])}</select>`).join("")}</div>
           <p class="cell-muted">${dataRows.length} rows detected. Rows with no Title will be skipped.</p>
+          <p class="cell-muted" id="imp-ignored"></p>
           <button class="btn btn-primary btn-block" id="imp-go">Import ${dataRows.length} ${esc((type.labelPlural || App.label("record","many").toLowerCase()).toLowerCase())}</button>`;
+        // Which file columns aren't mapped to any field — surfaced live + after import,
+        // so it's clear those columns are ignored (they used to drop silently).
+        const selects = App.util.$$(".map-sel", host);
+        function ignoredColumns() {
+          const used = new Set();
+          selects.forEach((s) => { const i = parseInt(s.value, 10); if (i >= 0) used.add(i); });
+          return headers.filter((h, i) => !used.has(i) && h !== "");
+        }
+        function updateIgnoredNote() {
+          const ig = ignoredColumns();
+          host.querySelector("#imp-ignored").textContent = ig.length ? ("Columns not mapped (ignored on import): " + ig.join(", ")) : "";
+        }
+        selects.forEach((s) => s.addEventListener("change", updateIgnoredNote));
+        updateIgnoredNote();
         host.querySelector("#imp-go").onclick = async () => {
           const map = {};
-          App.util.$$(".map-sel", host).forEach((s) => { map[s.dataset.key] = parseInt(s.value, 10); });
+          selects.forEach((s) => { map[s.dataset.key] = parseInt(s.value, 10); });
           if (map["__title__"] == null || map["__title__"] < 0) { toast("Map the Title column", true); return; }
           const mappedRows = dataRows.map((r) => {
-            const title = r[map["__title__"]];
+            const out = { title: r[map["__title__"]] };
+            if (map["__stage__"] != null && map["__stage__"] >= 0) { const k = resolveChoice(stageList, r[map["__stage__"]]); if (k) out.stageKey = k; }
+            if (map["__subtype__"] != null && map["__subtype__"] >= 0) { const k = resolveChoice(subtypeList, r[map["__subtype__"]]); if (k) out.subtypeKey = k; }
             const customFields = {};
-            targets.forEach((t) => { if (t.key === "__title__") return; const idx = map[t.key]; if (idx != null && idx >= 0) { const v = r[idx]; if (v !== undefined && String(v).trim() !== "") customFields[t.key] = v; } });
-            return { title, customFields };
+            targets.forEach((t) => { if (t.key === "__title__" || t.key === "__stage__" || t.key === "__subtype__") return; const idx = map[t.key]; if (idx != null && idx >= 0) { const v = r[idx]; if (v !== undefined && String(v).trim() !== "") customFields[t.key] = v; } });
+            out.customFields = customFields;
+            return out;
           });
+          const ignoredNow = ignoredColumns();
           const btn = host.querySelector("#imp-go");
           btn.disabled = true; btn.textContent = "Importing…";
           try {
             const res = await App.portalApi("/api/records/import", { method: "POST", body: JSON.stringify({ type: typeKey, rows: mappedRows }) });
-            toast(`Imported ${res.imported}${res.skipped ? `, skipped ${res.skipped}` : ""}`);
+            toast(`Imported ${res.imported}${res.skipped ? `, skipped ${res.skipped}` : ""}${ignoredNow.length ? ` · ignored ${ignoredNow.length} column${ignoredNow.length === 1 ? "" : "s"}` : ""}`);
             overlay.remove();
             renderRecordList(typeKey);
           } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Import"; }
