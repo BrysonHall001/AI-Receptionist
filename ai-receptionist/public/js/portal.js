@@ -2998,7 +2998,11 @@
       let customRoles = [];
       try { const pr = await App.portalApi("/api/portal-roles"); customRoles = pr.customRoles || []; } catch (e) {}
       const customOpts = customRoles.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join("");
-      panel.innerHTML = `<h2 class="settings-h">Team members</h2>
+      panel.innerHTML = "";
+
+      // ---- Team Members panel ----
+      const membersCard = el("div", "settings-card card");
+      membersCard.innerHTML = `<h2 class="settings-h">Team members</h2>
         <table class="mini-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody id="users-tbody"></tbody></table>
         <div class="add-user">
           <input id="nu-name" class="input" placeholder="Name" />
@@ -3006,10 +3010,17 @@
           <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option>${customOpts ? `<optgroup label="Custom roles">${customOpts}</optgroup>` : ""}</select>
           <button id="nu-add" class="btn btn-primary btn-sm">Send invite</button>
         </div>
-        <p class="cell-muted" style="font-size:12px;margin-top:8px">They'll get an email with a link to set their own password — no temporary password needed.</p>
-        <div id="perm-panel" style="margin-top:28px;border-top:1px solid var(--border);padding-top:20px"></div>`;
+        <p class="cell-muted" style="font-size:12px;margin-top:8px">They'll get an email with a link to set their own password — no temporary password needed.</p>`;
+      panel.appendChild(membersCard);
+
+      // ---- Permissions panel (separate card) ----
+      const permCard = el("div", "settings-card card");
+      permCard.style.marginTop = "16px";
+      permCard.innerHTML = `<div id="perm-panel"></div>`;
+      panel.appendChild(permCard);
+
       fillUsers(users, customRoles);
-      renderPermissionsPanel(panel.querySelector("#perm-panel"));
+      renderPermissionsPanel(permCard.querySelector("#perm-panel"));
       App.util.$("#nu-add").onclick = async () => {
         const name = App.util.$("#nu-name").value.trim();
         const email = App.util.$("#nu-email").value.trim();
@@ -3089,7 +3100,7 @@
         const item = (active, label, sub, attrs) =>
           `<div class="perm-role-item${active ? " active" : ""}" ${attrs} style="padding:8px 10px;border-radius:8px;cursor:pointer;${active ? "background:var(--accent-weak,#eef);font-weight:600" : ""}">${esc(label)}${sub ? `<span class="cell-muted" style="font-size:11px;display:block;font-weight:400">${esc(sub)}</span>` : ""}</div>`;
         let html = `<div class="cell-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">System roles (reference)</div>`;
-        html += data.systemRoles.map((s) => item(sel.kind === "system" && sel.role === s.role, s.label, s.ceiling ? "ceiling — the maximum" : "read-only", `data-system="${s.role}"`)).join("");
+        html += data.systemRoles.map((s) => item(sel.kind === "system" && sel.role === s.role, s.label, "", `data-system="${s.role}"`)).join("");
         html += `<div class="cell-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px">Custom roles</div>`;
         html += (data.customRoles || []).length
           ? data.customRoles.map((r) => item(sel.kind === "custom" && sel.id === r.id, r.name, r.assignedCount ? `${r.assignedCount} user${r.assignedCount === 1 ? "" : "s"}` : "no users assigned", `data-custom="${r.id}"`)).join("")
@@ -3101,7 +3112,8 @@
       function gridHtml(role) {
         const rights = ["view", "edit", "delete", "manage"];
         const my = data.myPermissions || {};
-        const head = `<thead><tr><th style="text-align:left">Area</th>${rights.map((r) => `<th style="text-transform:capitalize">${r}</th>`).join("")}</tr></thead>`;
+        const colLabel = { view: "View", edit: "Edit", delete: "Delete", manage: "Manage Settings" };
+        const head = `<thead><tr><th style="text-align:left">Area</th>${rights.map((r) => `<th>${colLabel[r]}</th>`).join("")}</tr></thead>`;
         const cell = (area, right) => {
           // N/A: the area doesn't support this right.
           if (area.rights.indexOf(right) === -1) return `<td style="text-align:center;color:var(--muted);opacity:.3" title="Not applicable to this area">—</td>`;
@@ -3135,9 +3147,9 @@
           : `<h3 style="margin:0">${esc(role.name)}</h3>`;
         const actions = role.editable
           ? `<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" id="perm-save">${role.isNew ? "Create role" : "Save changes"}</button>${role.id ? `<button class="btn btn-sm" id="perm-delete">Delete</button>` : ""}</div>`
-          : `<span class="cell-muted" style="font-size:12px">${role.ceiling ? "This is the ceiling — no custom role can exceed it." : "Read-only reference."}</span>`;
+          : `<span class="cell-muted" style="font-size:12px">Shown for reference — system roles aren't edited here.</span>`;
         host.innerHTML = `<h2 class="settings-h">Permissions</h2>
-          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Pick a role on the left to see its rights. For your own custom roles, tick the rights to grant — you can grant up to your own permission level; cells beyond it, or that don't apply to an area, are greyed. System roles (✓ = granted) are read-only references.</p>
+          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Each row is an area, and its columns are the rights that area supports — View / Edit / Delete for data, View for read-only areas, and Manage Settings for settings. Greyed cells are rights that area doesn't support. For your own custom roles, tick the rights to grant; you can grant up to your own level.</p>
           <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
             <div style="width:210px;flex:0 0 auto">${roleListHtml()}</div>
             <div style="flex:1;min-width:320px">
