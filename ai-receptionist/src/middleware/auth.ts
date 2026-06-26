@@ -19,10 +19,10 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthUser;
-      // Batch A plumbing (additive; nothing consumes these yet):
-      // realUser = the authoritative real identity, never overwritten.
-      // impersonation = the overlay, or null when not impersonating (always null
-      // in Batch A). Effective identity today === real identity (req.user).
+      // realUser = the authoritative real identity, never overwritten. impersonation
+      // = the active overlay, or null when not impersonating. While impersonating,
+      // req.user is the EFFECTIVE identity (downgraded to the assumed role); realUser
+      // stays the actual logged-in admin (used for action stamping + the exit path).
       realUser?: AuthUser;
       impersonation?: ImpersonationOverlay | null;
     }
@@ -44,25 +44,23 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
         customRoleId: (user as any).customRoleId ?? null,
       };
     }
-    // --- Batch A plumbing: additive only, NOTHING consumes these yet. ---
-    // The real identity is authoritative and never overwritten. req.user is left
-    // EXACTLY as set above, so all existing code is unaffected (effective == real).
+    // The real identity is authoritative and never overwritten (req.realUser).
+    // req.user may be re-skinned below to the EFFECTIVE identity while impersonating.
     req.realUser = req.user;
     req.impersonation = null;
-    // Only a real SUPER_ADMIN can ever have an overlay; for everyone else we skip
-    // the lookup entirely (zero extra work, identical behavior). In Batch A this
-    // returns null regardless, since no overlay is ever written.
+    // Only a real admin-tier user can ever hold an overlay; skip the lookup entirely
+    // for everyone else (zero extra work, identical behavior).
     if (req.user && isAdminTier(req.user.role)) {
       req.impersonation = await getImpersonationForToken(token);
     }
-    // --- Batch D + view-as re-skin: BOTH impersonation modes render/enforce as the
-    // EFFECTIVE role + pinned tenant, so the UI and server treat the session exactly
-    // like a real user of that role in that one portal. We keep the REAL super-admin
-    // id (role-only re-skin: actions stamp honestly as the super-admin, and personal
-    // data stays the super-admin's), and leave req.realUser untouched (authoritative
-    // real identity, used only for exit + the "is a real super-admin impersonating"
-    // check). VIEW-AS-USER additionally stays READ-ONLY via the view-only middleware,
-    // which is keyed on the mode and is unaffected by this role swap.
+    // EFFECTIVE-ROLE DOWNGRADE: while impersonating (act-as-type OR view-as-user), the
+    // session must act with EXACTLY the assumed role's permissions — no more. We keep
+    // the real id/email/name (actions stamp honestly as the real admin, and personal
+    // data stays theirs), but swap role -> assumedRole, tenant -> the pinned portal,
+    // and clear customRoleId (impersonation always assumes a system role). This is what
+    // lets the permission gate enforce the assumed role on data routes; without it an
+    // impersonating admin would keep admin rights and pass every gate. (view-as-user
+    // additionally stays read-only via the view-only guard, which keys on the mode.)
     if (
       req.impersonation &&
       (req.impersonation.mode === "act-as-type" || req.impersonation.mode === "view-as-user") &&

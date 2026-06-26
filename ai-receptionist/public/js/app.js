@@ -372,7 +372,7 @@
       else item.onclick = async () => {
         closeImpMenu();
         const rl = roleLabel ? roleLabel(role) : role;
-        const ok = await App.ui.confirmModal({ title: "Act as " + rl + "?", message: "You’ll act as a " + rl + " in " + (portalName || "this portal") + ". Your actions stay recorded as you. (Permissions aren’t downgraded yet in this build.)", confirmText: "Start" });
+        const ok = await App.ui.confirmModal({ title: "Act as " + rl + "?", message: "You’ll act as a " + rl + " in " + (portalName || "this portal") + " with exactly that role’s permissions — anything the role can’t do is blocked. Your actions stay recorded as you.", confirmText: "Start" });
         if (ok) startImpersonation({ mode: "act-as-type", assumedRole: role, scopeTenantId: portalId });
       };
       menu.appendChild(item);

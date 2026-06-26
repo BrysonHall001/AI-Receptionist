@@ -116,8 +116,10 @@ function auditEvent(req: Request, tenantId: string, type: string, payload: Recor
 }
 
 // --- Impersonation: state + targets + start/exit. Real-super-admin gated. ---
-// Enforcement of view-only (Batch C) and role downgrade (Batch D) is NOT here yet;
-// the only behavior change in Batch B is the admin-surface lockout (see admin.ts).
+// Enforcement IS live: view-as-user is read-only via the view-only guard above, and
+// BOTH impersonation modes run with the assumed role's permissions — attachUser
+// downgrades the effective req.user and the permissionGate independently resolves the
+// assumed role from the overlay, so an impersonated session can't exceed that role.
 apiRouter.get("/impersonation", async (req: Request, res: Response) => {
   if (!req.realUser || !isAdminTier(req.realUser.role)) {
     res.status(403).json({ error: "Super-admin only" });

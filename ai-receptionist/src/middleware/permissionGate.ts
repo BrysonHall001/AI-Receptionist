@@ -100,7 +100,19 @@ export async function permissionGate(req: Request, res: Response, next: NextFunc
   try {
     const rule = ruleFor(req.method, req.path);
     if (!rule) { next(); return; }                 // ungated route
-    if (await can(req.user as any, rule.area, rule.right)) { next(); return; }
+    // Resolve the EFFECTIVE acting identity. While impersonating (act-as-type OR
+    // view-as-user), enforcement must use the ASSUMED role's rights — never the real
+    // admin's — so an impersonating owner/super-admin can't exceed the role they're
+    // acting as. attachUser also downgrades req.user; deriving it here too makes this
+    // chokepoint authoritative on its own, closing the hole where an un-downgraded
+    // admin identity would pass every gate. customRoleId is cleared because
+    // impersonation always assumes a system role.
+    const imp = (req as any).impersonation;
+    const u = (req.user as any) || {};
+    const actor = imp && (imp.mode === "act-as-type" || imp.mode === "view-as-user")
+      ? { id: u.id, role: imp.assumedRole || u.role, tenantId: imp.scopeTenantId ?? u.tenantId ?? null, customRoleId: null }
+      : u;
+    if (await can(actor, rule.area, rule.right)) { next(); return; }
     res.status(403).json({ error: "Not authorized" });
   } catch {
     res.status(403).json({ error: "Not authorized" }); // fail closed
