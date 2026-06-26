@@ -27,7 +27,7 @@ import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voice
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns } from "../services/userService";
-import { can } from "../services/permissionService";
+import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign } from "../services/permissionService";
 import { permissionGate } from "../middleware/permissionGate";
 import { createInvite, inviteLink, sendInvite, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
@@ -1434,6 +1434,51 @@ apiRouter.delete("/users/:id", async (req: Request, res: Response) => {
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
+});
+
+// ---- Custom roles for the Permissions UI (Batch 4). Read needs users.view, writes
+// need users.edit — i.e. owner/super-admin/auditor/portal-admin (matches Team).
+// Server-enforced, not just UI-hidden; CLIENT_USER is blocked. Tenant-scoped.
+apiRouter.get("/portal-roles", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!(await can(req.user!, "users", "view"))) { res.status(403).json({ error: "Not authorized" }); return; }
+  const customRoles = await listPortalRoles(tenantId);
+  const systemRoles = SYSTEM_ROLES.map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role) }));
+  res.json({ catalog: getPermissionCatalog(), sections: AREA_SECTIONS, systemRoles, customRoles });
+});
+
+apiRouter.post("/portal-roles", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!(await can(req.user!, "users", "edit"))) { res.status(403).json({ error: "Not authorized" }); return; }
+  const { name, permissions } = (req.body ?? {}) as { name?: string; permissions?: any };
+  try {
+    const role = await createPortalRole(tenantId, name || "", permissions || {});
+    res.json(role);
+  } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+});
+
+apiRouter.patch("/portal-roles/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!(await can(req.user!, "users", "edit"))) { res.status(403).json({ error: "Not authorized" }); return; }
+  const existing = await getPortalRole(req.params.id, tenantId);
+  if (!existing) { res.status(404).json({ error: "Role not found in this portal" }); return; }
+  const { name, permissions } = (req.body ?? {}) as { name?: string; permissions?: any };
+  try {
+    const role = await updatePortalRole(req.params.id, tenantId, name || "", permissions || {});
+    res.json(role);
+  } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+});
+
+apiRouter.delete("/portal-roles/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!(await can(req.user!, "users", "edit"))) { res.status(403).json({ error: "Not authorized" }); return; }
+  const r = await deletePortalRoleAndUnassign(req.params.id, tenantId);
+  if (!r.deleted) { res.status(404).json({ error: "Role not found in this portal" }); return; }
+  res.json({ ok: true, unassigned: r.unassigned });
 });
 
 // ---- Saved filters (shared across the portal's users) ----

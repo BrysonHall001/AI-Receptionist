@@ -2925,7 +2925,7 @@
     const SECTIONS = [
       { key: "general", label: "General", admin: true, build: secGeneral },
       { key: "appearance", label: "Appearance", admin: true, build: secAppearance },
-      { key: "team", label: "Team", admin: true, build: secTeam },
+      { key: "team", label: "Team & Permissions", admin: true, build: secTeam },
       { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
       { key: "scheduling", label: "Scheduling", admin: true, build: secScheduling },
       { key: "resources", label: App.label("resource", "many"), admin: true, build: secResources },
@@ -3003,8 +3003,10 @@
           <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option></select>
           <button id="nu-add" class="btn btn-primary btn-sm">Send invite</button>
         </div>
-        <p class="cell-muted" style="font-size:12px;margin-top:8px">They'll get an email with a link to set their own password — no temporary password needed.</p>`;
+        <p class="cell-muted" style="font-size:12px;margin-top:8px">They'll get an email with a link to set their own password — no temporary password needed.</p>
+        <div id="perm-panel" style="margin-top:28px;border-top:1px solid var(--border);padding-top:20px"></div>`;
       fillUsers(users);
+      renderPermissionsPanel(panel.querySelector("#perm-panel"));
       App.util.$("#nu-add").onclick = async () => {
         const name = App.util.$("#nu-name").value.trim();
         const email = App.util.$("#nu-email").value.trim();
@@ -3051,6 +3053,132 @@
           navigator.clipboard.writeText(link || "").then(done).catch(() => { try { document.execCommand("copy"); done(); } catch (e) {} });
         } else { try { document.execCommand("copy"); done(); } catch (e) {} }
       };
+    }
+
+    // ===== Permissions panel (Batch 4): two-pane role list + per-area rights grid. =====
+    // Reuses settings-h / mini-table / btn / cell-muted styling. System roles are shown
+    // read-only (reference); custom roles are created/edited/deleted here. N/A cells are
+    // greyed per the rights catalog — and because the super-admin ceiling IS the full
+    // catalog, those greyed cells are exactly what no role can ever be granted (Cap #1,
+    // also enforced server-side). Assigning users to roles is Batch 5; this only edits
+    // role definitions.
+    async function renderPermissionsPanel(host) {
+      if (!host) return;
+      host.innerHTML = `<h2 class="settings-h">Permissions</h2><p class="cell-muted" style="font-size:13px;margin:0 0 14px">Loading…</p>`;
+      let data;
+      try { data = await App.portalApi("/api/portal-roles"); }
+      catch (e) { host.innerHTML = `<h2 class="settings-h">Permissions</h2><p class="cell-muted">${esc(e.message)}</p>`; return; }
+
+      // selection: { kind:"system", role } | { kind:"custom", id } | { kind:"new" }
+      let sel = { kind: "system", role: data.systemRoles[0].role };
+
+      function selectedRole() {
+        if (sel.kind === "new") return { name: "", permissions: {}, editable: true, isNew: true };
+        if (sel.kind === "custom") {
+          const r = (data.customRoles || []).find((x) => x.id === sel.id);
+          return r ? { name: r.name, permissions: r.permissions || {}, editable: true, id: r.id } : null;
+        }
+        const s = data.systemRoles.find((x) => x.role === sel.role);
+        return { name: s.label, permissions: s.permissions || {}, editable: false, ceiling: s.ceiling, system: true };
+      }
+
+      function roleListHtml() {
+        const item = (active, label, sub, attrs) =>
+          `<div class="perm-role-item${active ? " active" : ""}" ${attrs} style="padding:8px 10px;border-radius:8px;cursor:pointer;${active ? "background:var(--accent-weak,#eef);font-weight:600" : ""}">${esc(label)}${sub ? `<span class="cell-muted" style="font-size:11px;display:block;font-weight:400">${esc(sub)}</span>` : ""}</div>`;
+        let html = `<div class="cell-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">System roles (reference)</div>`;
+        html += data.systemRoles.map((s) => item(sel.kind === "system" && sel.role === s.role, s.label, s.ceiling ? "ceiling — the maximum" : "read-only", `data-system="${s.role}"`)).join("");
+        html += `<div class="cell-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px">Custom roles</div>`;
+        html += (data.customRoles || []).length
+          ? data.customRoles.map((r) => item(sel.kind === "custom" && sel.id === r.id, r.name, "custom", `data-custom="${r.id}"`)).join("")
+          : `<p class="cell-muted" style="font-size:12px;margin:2px 0 0">None yet.</p>`;
+        html += `<button class="btn btn-sm" id="perm-new" style="margin-top:12px;width:100%">+ New role</button>`;
+        return html;
+      }
+
+      function gridHtml(role) {
+        const rights = ["view", "edit", "delete", "manage"];
+        const head = `<thead><tr><th style="text-align:left">Area</th>${rights.map((r) => `<th style="text-transform:capitalize">${r}</th>`).join("")}</tr></thead>`;
+        const cell = (area, right) => {
+          if (area.rights.indexOf(right) === -1) return `<td style="text-align:center;color:var(--muted);opacity:.35" title="Not applicable for this area">—</td>`;
+          const checked = !!(role.permissions[area.key] && role.permissions[area.key][right]);
+          return `<td style="text-align:center"><input type="checkbox" data-area="${area.key}" data-right="${right}" ${checked ? "checked" : ""} ${role.editable ? "" : "disabled"}/></td>`;
+        };
+        return (data.sections || []).map((section) => {
+          const areas = data.catalog.filter((a) => a.section === section);
+          if (!areas.length) return "";
+          const rows = areas.map((a) => `<tr><td>${esc(a.label)}</td>${rights.map((r) => cell(a, r)).join("")}</tr>`).join("");
+          return `<details open style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;padding:4px 0">${esc(section)}</summary>
+            <table class="mini-table">${head}<tbody>${rows}</tbody></table></details>`;
+        }).join("");
+      }
+
+      function render() {
+        const role = selectedRole();
+        if (!role) { sel = { kind: "system", role: data.systemRoles[0].role }; return render(); }
+        const titleBar = role.editable
+          ? `<input id="perm-name" class="input" placeholder="Role name" value="${esc(role.name)}" style="max-width:280px;font-weight:600" />`
+          : `<h3 style="margin:0">${esc(role.name)}</h3>`;
+        const actions = role.editable
+          ? `<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" id="perm-save">${role.isNew ? "Create role" : "Save changes"}</button>${role.id ? `<button class="btn btn-sm" id="perm-delete">Delete</button>` : ""}</div>`
+          : `<span class="cell-muted" style="font-size:12px">${role.ceiling ? "This is the ceiling — no custom role can exceed it." : "Read-only reference."}</span>`;
+        host.innerHTML = `<h2 class="settings-h">Permissions</h2>
+          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Create roles with view / edit / delete rights per area. Greyed cells don't apply to that area (and can't be granted to anyone). System roles are shown for reference.</p>
+          <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+            <div style="width:210px;flex:0 0 auto">${roleListHtml()}</div>
+            <div style="flex:1;min-width:320px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">${titleBar}${actions}</div>
+              ${gridHtml(role)}
+            </div>
+          </div>`;
+
+        host.querySelectorAll("[data-system]").forEach((n) => n.onclick = () => { sel = { kind: "system", role: n.getAttribute("data-system") }; render(); });
+        host.querySelectorAll("[data-custom]").forEach((n) => n.onclick = () => { sel = { kind: "custom", id: n.getAttribute("data-custom") }; render(); });
+        const newBtn = host.querySelector("#perm-new"); if (newBtn) newBtn.onclick = () => { sel = { kind: "new" }; render(); };
+        const saveBtn = host.querySelector("#perm-save"); if (saveBtn) saveBtn.onclick = onSave;
+        const delBtn = host.querySelector("#perm-delete"); if (delBtn) delBtn.onclick = onDelete;
+      }
+
+      function collectPermissions() {
+        const perms = {};
+        host.querySelectorAll('input[type="checkbox"][data-area]').forEach((cb) => {
+          if (cb.checked) { const a = cb.getAttribute("data-area"); (perms[a] = perms[a] || {})[cb.getAttribute("data-right")] = true; }
+        });
+        return perms;
+      }
+
+      async function onSave() {
+        const name = (host.querySelector("#perm-name").value || "").trim();
+        if (!name) { toast("Role name is required", true); return; }
+        const permissions = collectPermissions();
+        try {
+          if (sel.kind === "new") {
+            const created = await App.portalApi("/api/portal-roles", { method: "POST", body: JSON.stringify({ name, permissions }) });
+            data = await App.portalApi("/api/portal-roles");
+            sel = { kind: "custom", id: created.id };
+            toast("Role created");
+          } else {
+            await App.portalApi(`/api/portal-roles/${sel.id}`, { method: "PATCH", body: JSON.stringify({ name, permissions }) });
+            data = await App.portalApi("/api/portal-roles");
+            toast("Role saved");
+          }
+          render();
+        } catch (e) { toast(e.message, true); }
+      }
+
+      async function onDelete() {
+        if (sel.kind !== "custom") return;
+        const role = (data.customRoles || []).find((x) => x.id === sel.id);
+        if (!(await confirmModal({ title: "Delete role", message: `Delete the custom role "${role ? role.name : ""}"? Anyone currently assigned will fall back to their base role.`, confirmText: "Delete" }))) return;
+        try {
+          const r = await App.portalApi(`/api/portal-roles/${sel.id}`, { method: "DELETE" });
+          data = await App.portalApi("/api/portal-roles");
+          sel = { kind: "system", role: data.systemRoles[0].role };
+          toast(r && r.unassigned ? `Role deleted · ${r.unassigned} user(s) reset to base role` : "Role deleted");
+          render();
+        } catch (e) { toast(e.message, true); }
+      }
+
+      render();
     }
 
     async function secLeadCapture(panel) {

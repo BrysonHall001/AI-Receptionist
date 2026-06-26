@@ -15,7 +15,8 @@ export type Right = "view" | "edit" | "delete" | "manage";
 // pretend a read-only page has "delete", or that a settings pane is view/edit/delete.
 type AreaKind = "data" | "readonly" | "settings" | "users";
 
-interface AreaDef { key: string; label: string; kind: AreaKind; }
+// `section` groups areas into the collapsible blocks the Permissions UI renders.
+interface AreaDef { key: string; label: string; kind: AreaKind; section: string; }
 
 function rightsForKind(kind: AreaKind): Right[] {
   switch (kind) {
@@ -30,27 +31,30 @@ function rightsForKind(kind: AreaKind): Right[] {
 // (Record types are one "records" area for now; Batch 2 may split per type.)
 export const AREAS: AreaDef[] = [
   // ---- Data (view / edit / delete) ----
-  { key: "contacts", label: "Contacts", kind: "data" },
-  { key: "records", label: "Records (Jobs / Bookings / custom)", kind: "data" },
-  { key: "automations", label: "Automations", kind: "data" },
+  { key: "contacts", label: "Contacts", kind: "data", section: "Data" },
+  { key: "records", label: "Records (Jobs / Bookings / custom)", kind: "data", section: "Data" },
+  { key: "automations", label: "Automations", kind: "data", section: "Data" },
   // ---- Read-only (view only) ----
-  { key: "dashboard", label: "Dashboard", kind: "readonly" },
-  { key: "calls", label: "Calls", kind: "readonly" },
-  { key: "reports", label: "Reports", kind: "readonly" },
-  { key: "learn", label: "Learning Center", kind: "readonly" },
+  { key: "dashboard", label: "Dashboard", kind: "readonly", section: "Operations" },
+  { key: "calls", label: "Calls", kind: "readonly", section: "Operations" },
+  { key: "reports", label: "Reports", kind: "readonly", section: "Operations" },
+  { key: "learn", label: "Learning Center", kind: "readonly", section: "Operations" },
   // ---- Settings sub-areas (single Manage right each) ----
-  { key: "settings_general", label: "Settings · General", kind: "settings" },
-  { key: "settings_appearance", label: "Settings · Appearance", kind: "settings" },
-  { key: "settings_leadcapture", label: "Settings · Lead capture", kind: "settings" },
-  { key: "settings_scheduling", label: "Settings · Scheduling", kind: "settings" },
-  { key: "settings_resources", label: "Settings · Resources", kind: "settings" },
-  { key: "settings_integrations", label: "Settings · Integrations", kind: "settings" },
-  { key: "settings_data", label: "Settings · Data Administration", kind: "settings" },
-  { key: "settings_labels", label: "Settings · Labels", kind: "settings" },
-  { key: "settings_fields", label: "Settings · Fields", kind: "settings" },
+  { key: "settings_general", label: "General", kind: "settings", section: "Settings" },
+  { key: "settings_appearance", label: "Appearance", kind: "settings", section: "Settings" },
+  { key: "settings_leadcapture", label: "Lead capture", kind: "settings", section: "Settings" },
+  { key: "settings_scheduling", label: "Scheduling", kind: "settings", section: "Settings" },
+  { key: "settings_resources", label: "Resources", kind: "settings", section: "Settings" },
+  { key: "settings_integrations", label: "Integrations", kind: "settings", section: "Settings" },
+  { key: "settings_data", label: "Data Administration", kind: "settings", section: "Settings" },
+  { key: "settings_labels", label: "Labels", kind: "settings", section: "Settings" },
+  { key: "settings_fields", label: "Fields", kind: "settings", section: "Settings" },
   // ---- User management (its own shape: view team / change roles / remove) ----
-  { key: "users", label: "User management", kind: "users" },
+  { key: "users", label: "User management", kind: "users", section: "Admin" },
 ];
+
+// The section order the Permissions UI renders (collapsible blocks).
+export const AREA_SECTIONS = ["Data", "Operations", "Settings", "Admin"];
 
 const AREA_BY_KEY = new Map<string, AreaDef>(AREAS.map((a) => [a.key, a]));
 
@@ -209,4 +213,59 @@ export async function updatePortalRole(id: string, tenantId: string, name: strin
   const v = validateCustomRolePermissions(permissions);
   if (!v.ok) throw new Error(v.error || "Invalid permissions");
   return prisma.portalRole.update({ where: { id }, data: { tenantId, name: clean, permissions } } as any);
+}
+
+// ===========================================================================
+// Batch 4 — read models + CRUD for the Permissions UI.
+// ===========================================================================
+
+// The rights catalog the UI renders: every area with its supported rights + the
+// collapsible section it belongs to. Read-only areas expose only "view", settings
+// only "manage", etc., so the UI greys the N/A cells. Because the super-admin ceiling
+// is the FULL catalog, an area's supported rights ARE its ceiling — the greyed N/A
+// cells are exactly the cells no role (custom or system) can ever be granted.
+export function getPermissionCatalog() {
+  return AREAS.map((a) => ({ key: a.key, label: a.label, kind: a.kind, section: a.section, rights: rightsForKind(a.kind) }));
+}
+
+// The full permission matrix for a SYSTEM role (for read-only reference display in
+// the UI). Computed with the SAME systemCan the server enforces with.
+export function permissionMatrixForRole(role: string): Permissions {
+  const m: Permissions = {};
+  for (const a of AREAS) {
+    m[a.key] = {};
+    for (const r of rightsForKind(a.kind)) m[a.key][r] = systemCan(role, a.key, r);
+  }
+  return m;
+}
+
+// The system roles shown (read-only) in the role list, in display order. Super Admin
+// is flagged as the ceiling.
+export const SYSTEM_ROLES: Array<{ role: string; label: string; ceiling?: boolean }> = [
+  { role: "OWNER", label: "Owner" },
+  { role: "SUPER_ADMIN", label: "Super Admin", ceiling: true },
+  { role: "AUDITOR", label: "Auditor" },
+  { role: "PORTAL_ADMIN", label: "Portal Admin" },
+  { role: "CLIENT_USER", label: "Client User" },
+];
+
+export async function listPortalRoles(tenantId: string) {
+  return prisma.portalRole.findMany({ where: { tenantId }, orderBy: { name: "asc" } } as any);
+}
+
+export async function getPortalRole(id: string, tenantId: string) {
+  const r: any = await prisma.portalRole.findUnique({ where: { id } } as any).catch(() => null);
+  if (!r || r.tenantId !== tenantId) return null; // tenant-scoped: never touch another portal's role
+  return r;
+}
+
+// Delete a custom role. Any user currently assigned to it falls back to their base
+// system role (customRoleId -> null) — a safe default, never an escalation, since the
+// base enum role is unchanged. Returns how many users were unassigned.
+export async function deletePortalRoleAndUnassign(id: string, tenantId: string): Promise<{ deleted: boolean; unassigned: number }> {
+  const role = await getPortalRole(id, tenantId);
+  if (!role) return { deleted: false, unassigned: 0 };
+  const r = await prisma.user.updateMany({ where: { tenantId, customRoleId: id } as any, data: { customRoleId: null } as any });
+  await prisma.portalRole.delete({ where: { id } } as any);
+  return { deleted: true, unassigned: (r as any)?.count ?? 0 };
 }
