@@ -27,7 +27,7 @@ import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voice
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns, assignUserRole } from "../services/userService";
-import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign } from "../services/permissionService";
+import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign, effectiveMatrix } from "../services/permissionService";
 import { permissionGate } from "../middleware/permissionGate";
 import { createInvite, inviteLink, sendInvite, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
@@ -1471,7 +1471,8 @@ apiRouter.get("/portal-roles", async (req: Request, res: Response) => {
   counts.forEach((c) => { if (c.customRoleId) countMap.set(c.customRoleId, c._count?._all ?? 0); });
   const customWithCounts = customRoles.map((r: any) => ({ ...r, assignedCount: countMap.get(r.id) || 0 }));
   const systemRoles = SYSTEM_ROLES.map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role) }));
-  res.json({ catalog: getPermissionCatalog(), sections: AREA_SECTIONS, systemRoles, customRoles: customWithCounts });
+  const myPermissions = await effectiveMatrix(req.user as any); // the creator's own level (the grant ceiling)
+  res.json({ catalog: getPermissionCatalog(), sections: AREA_SECTIONS, systemRoles, customRoles: customWithCounts, myPermissions });
 });
 
 apiRouter.post("/portal-roles", async (req: Request, res: Response) => {
@@ -1480,7 +1481,8 @@ apiRouter.post("/portal-roles", async (req: Request, res: Response) => {
   if (!(await can(req.user!, "users", "edit"))) { res.status(403).json({ error: "Not authorized" }); return; }
   const { name, permissions } = (req.body ?? {}) as { name?: string; permissions?: any };
   try {
-    const role = await createPortalRole(tenantId, name || "", permissions || {});
+    const ceiling = await effectiveMatrix(req.user as any);
+    const role = await createPortalRole(tenantId, name || "", permissions || {}, ceiling);
     res.json(role);
   } catch (e) { res.status(400).json({ error: (e as Error).message }); }
 });
@@ -1493,7 +1495,8 @@ apiRouter.patch("/portal-roles/:id", async (req: Request, res: Response) => {
   if (!existing) { res.status(404).json({ error: "Role not found in this portal" }); return; }
   const { name, permissions } = (req.body ?? {}) as { name?: string; permissions?: any };
   try {
-    const role = await updatePortalRole(req.params.id, tenantId, name || "", permissions || {});
+    const ceiling = await effectiveMatrix(req.user as any);
+    const role = await updatePortalRole(req.params.id, tenantId, name || "", permissions || {}, ceiling);
     res.json(role);
   } catch (e) { res.status(400).json({ error: (e as Error).message }); }
 });

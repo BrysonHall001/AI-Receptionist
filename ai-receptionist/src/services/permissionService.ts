@@ -167,11 +167,14 @@ export async function can(user: PermUser | null | undefined, area: string, right
 }
 
 // ---------------------------------------------------------------------------
-// Cap #1 (save-time): validate a proposed custom-role permission set. Rejects any
-// unknown area, unsupported right, non-boolean value, or anything above the
-// super-admin ceiling. Returns { ok:false, error } so the caller can 400.
+// Cap #1 (save-time): validate a proposed custom-role permission set. Always rejects
+// unknown areas, area-unsupported rights, and non-boolean values. When a `ceiling`
+// matrix is supplied (the creating user's OWN effective permissions), every granted
+// right must also be within it — you can grant up to what you have, never more. When
+// no ceiling is supplied, the structural catalog is the only limit (used by internal
+// callers/tests; routes always pass the creator's matrix).
 // ---------------------------------------------------------------------------
-export function validateCustomRolePermissions(perms: any): { ok: boolean; error?: string } {
+export function validateCustomRolePermissions(perms: any, ceiling?: Permissions): { ok: boolean; error?: string } {
   if (!perms || typeof perms !== "object" || Array.isArray(perms)) {
     return { ok: false, error: "permissions must be an object" };
   }
@@ -189,30 +192,51 @@ export function validateCustomRolePermissions(perms: any): { ok: boolean; error?
       if (typeof val !== "boolean") {
         return { ok: false, error: `right "${area}.${r}" must be true or false` };
       }
-      if (val === true && !ceilingAllows(area, r as Right)) {
-        return { ok: false, error: `right "${area}.${r}" exceeds the super-admin ceiling` };
+      if (val === true) {
+        if (!ceilingAllows(area, r as Right)) {
+          return { ok: false, error: `right "${area}.${r}" isn't grantable for that area` };
+        }
+        if (ceiling && ceiling[area]?.[r as Right] !== true) {
+          return { ok: false, error: `right "${area}.${r}" exceeds your own permission level` };
+        }
       }
     }
   }
   return { ok: true };
 }
 
-// Create a custom role (Batch 1 has no UI; the self-test and a future Batch-4 route
-// call this). Enforces Cap #1 at save: throws on an invalid/over-ceiling set.
-export async function createPortalRole(tenantId: string, name: string, permissions: any) {
+// Create a custom role. `ceiling` (the creating user's own effective matrix) caps
+// what may be granted — see validateCustomRolePermissions.
+export async function createPortalRole(tenantId: string, name: string, permissions: any, ceiling?: Permissions) {
   const clean = (name || "").trim();
   if (!clean) throw new Error("Role name is required");
-  const v = validateCustomRolePermissions(permissions);
+  const v = validateCustomRolePermissions(permissions, ceiling);
   if (!v.ok) throw new Error(v.error || "Invalid permissions");
   return prisma.portalRole.create({ data: { tenantId, name: clean, permissions } } as any);
 }
 
-export async function updatePortalRole(id: string, tenantId: string, name: string, permissions: any) {
+export async function updatePortalRole(id: string, tenantId: string, name: string, permissions: any, ceiling?: Permissions) {
   const clean = (name || "").trim();
   if (!clean) throw new Error("Role name is required");
-  const v = validateCustomRolePermissions(permissions);
+  const v = validateCustomRolePermissions(permissions, ceiling);
   if (!v.ok) throw new Error(v.error || "Invalid permissions");
   return prisma.portalRole.update({ where: { id }, data: { tenantId, name: clean, permissions } } as any);
+}
+
+// The full effective permission matrix for ANY user (system or custom role) — used as
+// the creator's-own-level ceiling and sent to the UI so it can grey cells the creator
+// can't grant. For a custom-role user it's the role's stored set, capped to the catalog.
+export async function effectiveMatrix(user: PermUser | null | undefined): Promise<Permissions> {
+  if (user?.customRoleId) {
+    const role: any = await prisma.portalRole.findUnique({ where: { id: user.customRoleId } } as any).catch(() => null);
+    if (role && (!user.tenantId || role.tenantId === user.tenantId)) {
+      const capped = capToCeiling(role.permissions);
+      const m: Permissions = {};
+      for (const a of AREAS) { m[a.key] = {}; for (const r of rightsForKind(a.kind)) m[a.key][r] = capped[a.key]?.[r] === true; }
+      return m;
+    }
+  }
+  return permissionMatrixForRole(user?.role || "");
 }
 
 // ===========================================================================

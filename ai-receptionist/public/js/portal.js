@@ -3100,11 +3100,23 @@
 
       function gridHtml(role) {
         const rights = ["view", "edit", "delete", "manage"];
+        const my = data.myPermissions || {};
         const head = `<thead><tr><th style="text-align:left">Area</th>${rights.map((r) => `<th style="text-transform:capitalize">${r}</th>`).join("")}</tr></thead>`;
         const cell = (area, right) => {
-          if (area.rights.indexOf(right) === -1) return `<td style="text-align:center;color:var(--muted);opacity:.35" title="Not applicable for this area">—</td>`;
-          const checked = !!(role.permissions[area.key] && role.permissions[area.key][right]);
-          return `<td style="text-align:center"><input type="checkbox" data-area="${area.key}" data-right="${right}" ${checked ? "checked" : ""} ${role.editable ? "" : "disabled"}/></td>`;
+          // N/A: the area doesn't support this right.
+          if (area.rights.indexOf(right) === -1) return `<td style="text-align:center;color:var(--muted);opacity:.3" title="Not applicable to this area">—</td>`;
+          const granted = !!(role.permissions[area.key] && role.permissions[area.key][right]);
+          if (!role.editable) {
+            // Read-only reference (system roles): show a clear granted / not-granted mark
+            // — NOT a faint disabled checkbox, so roles are visibly different.
+            return granted
+              ? `<td style="text-align:center;color:var(--accent,#2563eb);font-weight:700" title="Granted">\u2713</td>`
+              : `<td style="text-align:center;color:var(--muted);opacity:.4" title="Not granted">\u00b7</td>`;
+          }
+          // Editable: only grantable up to the creator's OWN level (the ceiling).
+          const withinLevel = !!(my[area.key] && my[area.key][right] === true);
+          if (!withinLevel) return `<td style="text-align:center;color:var(--muted);opacity:.3" title="Beyond your own permission level — you can't grant this">\u00b7</td>`;
+          return `<td style="text-align:center"><input type="checkbox" data-area="${area.key}" data-right="${right}" ${granted ? "checked" : ""}/></td>`;
         };
         return (data.sections || []).map((section) => {
           const areas = data.catalog.filter((a) => a.section === section);
@@ -3125,7 +3137,7 @@
           ? `<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" id="perm-save">${role.isNew ? "Create role" : "Save changes"}</button>${role.id ? `<button class="btn btn-sm" id="perm-delete">Delete</button>` : ""}</div>`
           : `<span class="cell-muted" style="font-size:12px">${role.ceiling ? "This is the ceiling — no custom role can exceed it." : "Read-only reference."}</span>`;
         host.innerHTML = `<h2 class="settings-h">Permissions</h2>
-          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Create roles with view / edit / delete rights per area. Greyed cells don't apply to that area (and can't be granted to anyone). System roles are shown for reference.</p>
+          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Pick a role on the left to see its rights. For your own custom roles, tick the rights to grant — you can grant up to your own permission level; cells beyond it, or that don't apply to an area, are greyed. System roles (✓ = granted) are read-only references.</p>
           <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
             <div style="width:210px;flex:0 0 auto">${roleListHtml()}</div>
             <div style="flex:1;min-width:320px">
