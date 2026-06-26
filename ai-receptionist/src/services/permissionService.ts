@@ -37,7 +37,7 @@ export const AREAS: AreaDef[] = [
   // ---- Read-only (view only) ----
   { key: "dashboard", label: "Dashboard", kind: "readonly", section: "Operations" },
   { key: "calls", label: "Calls", kind: "readonly", section: "Operations" },
-  { key: "reports", label: "Reports", kind: "readonly", section: "Operations" },
+  { key: "reports", label: "Analytics", kind: "readonly", section: "Operations" },
   { key: "learn", label: "Learning Center", kind: "readonly", section: "Operations" },
   // ---- Settings sub-areas (single Manage right each) ----
   { key: "settings_general", label: "General", kind: "settings", section: "Settings" },

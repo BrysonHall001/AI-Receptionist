@@ -26,7 +26,7 @@
           blocks: [
             { p: "After you sign in, the screen has three parts: the left navigation, the top bar, and the main area." },
             { steps: [
-              "The left navigation lists the main sections: Home Dashboard, Calls, Contacts, Jobs, Fields, Reports, Automations, Learning Center, and Feedback.",
+              "The left navigation lists the main sections: Home Dashboard, Calls, Contacts, Jobs, Fields, Analytics, Automations, Learning Center, and Feedback.",
               "Settings isn't in the left menu — open it from the gear icon in the top-right.",
               "Near the bottom-left you'll find the Recycle Bin link and your user box with a Sign out button.",
               "The top bar shows where you are, with a Refresh button and the settings gear on the right.",
@@ -47,7 +47,7 @@
               "The numbers update automatically from your live calls, contacts, and jobs — no refresh needed.",
             ] },
             { shot: "Home Dashboard with a couple of widgets and the + Add widget button" },
-            { tip: "Everyone in your portal sees the same Home Dashboard, and portal admins can edit it. It uses the same builder as the Reports page, so anything you can chart there you can pin here." },
+            { tip: "Everyone in your portal sees the same Home Dashboard, and portal admins can edit it. It uses the same builder as the Analytics page, so anything you can chart there you can pin here." },
           ],
         },
       ],
@@ -336,21 +336,21 @@
       ],
     },
     {
-      cat: "Reports & dashboards",
+      cat: "Analytics & dashboards",
       items: [
         {
           id: "reports",
-          title: "Building reports and dashboards",
+          title: "Building analytics and dashboards",
           blocks: [
-            { p: "The Reports page hosts customizable dashboards built from your live data — calls, contacts, and jobs." },
+            { p: "The Analytics page hosts customizable dashboards built from your live data — calls, contacts, and jobs." },
             { steps: [
-              "Click 'Reports' in the left navigation.",
+              "Click 'Analytics' in the left navigation.",
               "Create a dashboard, then click 'Add widget'.",
               "Pick a widget type: KPI (a single number), bar, stacked bar, line, pie, heat map, or list/table.",
               "Choose a data source (calls, contacts, or jobs), a measure (count, sum, or average of a field), and how to group it.",
               "Drag widgets to reorder and resize them to arrange your dashboard.",
             ] },
-            { shot: "Reports page with a dashboard of a KPI and a chart" },
+            { shot: "Analytics page with a dashboard of a KPI and a chart" },
             { tip: "Your Home Dashboard uses this same builder — anything you can chart here you can pin to your landing page." },
           ],
         },

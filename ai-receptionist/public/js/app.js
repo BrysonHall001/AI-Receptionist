@@ -57,7 +57,7 @@
   // at render time via App.label(kind,"many") so renaming the contact/job record
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
-  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/fields", "Fields"], ["#/reports", "Reports"], ["#/automations", "Automations"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
+  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/fields", "Fields"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
   const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
   // Exposed so the Settings → Labels → "Pages & navigation" editor builds its rows
   // from the same canonical list the sidebar uses (no drift, no second definition).
@@ -504,7 +504,7 @@
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
     } else {
-      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/fields": "Fields", "#/reports": "Reports", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
+      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/fields": "Fields", "#/reports": "Analytics", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
       topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Home Dashboard"));
     }
     topbar.appendChild(topLeft);

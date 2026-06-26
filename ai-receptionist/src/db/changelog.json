@@ -912,13 +912,13 @@
     "commitSha": "094369a2acd16711a11aa9f4d7403cdeb9b45d14"
   },
   {
-    "date": "2026-06-22",
+    "date": "2026-06-23",
     "type": "Backend",
     "description": "Recycle Bin foundation — record who deleted each contact and record.",
     "commitSha": "a099ccfe85b77efa23511ed371673b7ea17b41f2"
   },
   {
-    "date": "2026-06-22",
+    "date": "2026-06-23",
     "type": "Feature",
     "description": "The Recycle Bin now covers records too, with per-type tables to view, restore, or permanently remove deleted items.",
     "commitSha": "66412c12bfa62509b8f4a5b8e80ebf436f7081dc"

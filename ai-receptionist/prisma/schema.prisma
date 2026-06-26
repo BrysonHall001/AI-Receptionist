@@ -104,6 +104,7 @@ model Tenant {
   stageHistory     StageHistory[]
   invites          Invite[]
   feedbackTickets  FeedbackTicket[]
+  scheduledReports ScheduledReport[]
 }
 
 model User {
@@ -275,7 +276,11 @@ model ExportRecord {
   tenantId    String?
   tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   scope       String?  // null/"portal" = a portal export; "master" = master-hub; "all" = all-portals
-  kind        String   @default("export") // "export" | "import" — shared history model
+  kind        String   @default("export") // "export" | "import" | "report" — shared history model
+  // For kind:"report" runs — which ScheduledReport produced this run. Null for plain
+  // exports/imports/backups. SetNull on report delete so run history is preserved.
+  reportId    String?
+  report      ScheduledReport? @relation(fields: [reportId], references: [id], onDelete: SetNull)
   dataType    String?  // "contact" | "job" | "booking" | "feedback" | "event" | custom record-type key
   name        String
   rowCount    Int      @default(0)
@@ -289,6 +294,41 @@ model ExportRecord {
   @@index([tenantId])
   @@index([scope])
   @@index([tenantId, kind, dataType])
+  @@index([reportId])
+}
+
+// A saved, schedulable report definition. FORWARD-COMPATIBLE BY DESIGN: the full
+// report spec lives in the opaque `definition` JSON so the builder form can evolve
+// next batch with NO migration. Only the columns the list table + scheduler need
+// are promoted to real columns. Report RUNS are NOT a second table — they reuse the
+// existing ExportRecord history (kind:"report"), downloadable like any export.
+model ScheduledReport {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  format      String   @default("csv") // "csv" | "xlsx"
+  // Opaque report spec: per-type selected fields + filter rules. Shape finalized
+  // next batch — kept as JSON so the form can change without a migration.
+  definition  Json     @default("{}")
+  // Array of recipient emails (empty for now; populated when delivery lands).
+  recipients  Json     @default("[]")
+  mode        String   @default("immediate") // "immediate" | "recurring"
+  // Recurrence spec; null until the recurring scheduler lands (batch 3).
+  cadence     Json?
+  active      Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+
+  // Report runs are ExportRecord rows (kind:"report") — NOT a second history table.
+  runs        ExportRecord[]
+
+  @@index([tenantId])
+  // Scheduler scan path: find a tenant's active reports that are due to run next.
+  @@index([tenantId, active, nextRunAt])
 }
 
 model FieldDef {

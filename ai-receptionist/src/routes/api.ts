@@ -22,6 +22,7 @@ import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listExports, createExport, createImportRecord, createBackupRecord, getExportCsv } from "../services/exportService";
+import { listReports } from "../services/reportService";
 import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
 import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voices";
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
@@ -1589,6 +1590,17 @@ apiRouter.get("/exports/:id/download", async (req: Request, res: Response) => {
     return;
   }
   res.json(result);
+});
+
+// ---- Scheduled Reports (Data Administration → Reports) ----
+// Every saved report for this portal (active AND inactive), each joined with its
+// latest ExportRecord run for the Rows + Download columns. Gated to settings_data
+// (manage) by permissionGate — the same tier that sees Data Administration / exports.
+// The Download button reuses GET /exports/:id/download with the run's exportRecordId.
+apiRouter.get("/reports", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listReports(tenantId));
 });
 
 // ---- Automations (event-driven workflows) ----

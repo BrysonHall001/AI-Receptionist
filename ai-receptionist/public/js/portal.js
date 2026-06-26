@@ -670,7 +670,7 @@
     wrap.appendChild(el("h2", "settings-h", "Data Administration"));
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const SUBS = [["import", "Import"], ["export", "Export"], ["backup", "Data Backup"], ["history", "Import / Export History"]];
+    const SUBS = [["import", "Import"], ["export", "Export"], ["backup", "Data Backup"], ["history", "Import / Export History"], ["reports", "Reports"]];
     let active = "import";
     function setTab(key) {
       active = key;
@@ -679,6 +679,7 @@
       if (key === "import") tabImport(tabBody);
       else if (key === "export") tabExport(tabBody);
       else if (key === "backup") tabBackup(tabBody);
+      else if (key === "reports") tabReports(tabBody);
       else tabHistory(tabBody);
     }
     SUBS.forEach(([key, label]) => {
@@ -1025,6 +1026,72 @@
     host.appendChild(filterTabs);
     host.appendChild(tableHost);
     mountTable();
+  }
+
+  // Data Administration → Reports. A LIST of every scheduled report (active AND
+  // inactive), closely mirroring the Import / Export History table: Date Created,
+  // Name, Created by, Rows, Download, and an Active/Inactive status pill. Below the
+  // list sits a clearly-labelled stub for the report builder (lands next batch).
+  // Reads GET /api/reports (each report joined with its latest ExportRecord run);
+  // the Download button reuses the export-download route with the run's record id.
+  async function tabReports(host) {
+    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    let rows = [];
+    try { rows = await App.portalApi("/api/reports"); }
+    catch (e) { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
+    rows = Array.isArray(rows) ? rows : [];
+
+    const rowsOf = (r) => (r.latestRun && r.latestRun.rowCount != null ? String(r.latestRun.rowCount) : "—");
+    const columns = [
+      { key: "createdAt", label: "Date Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
+      { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => esc(r.name || "—") },
+      { key: "user", label: "Created by", type: "text", get: (r) => r.createdByName || "", render: (r) => `<span class="cell-muted">${esc(r.createdByName || "—")}</span>` },
+      { key: "count", label: "Rows", type: "text", get: (r) => rowsOf(r), render: (r) => `<span class="cell-muted">${esc(rowsOf(r))}</span>` },
+      { key: "download", label: "Download", type: "text", get: () => "", render: (r) => (r.latestRun && r.latestRun.downloadable ? `<button class="btn btn-ghost btn-sm rp-dl" data-id="${esc(r.latestRun.exportRecordId)}" data-name="${esc(r.name || "report")}">Download</button>` : "") },
+      { key: "active", label: "Status", type: "text", get: (r) => (r.active ? "Active" : "Inactive"), render: (r) => (r.active ? `<span class="pill success">Active</span>` : `<span class="pill skipped">Inactive</span>`) },
+    ];
+
+    host.innerHTML = "";
+
+    // ----- (A) The list, with the same Filters affordance as the history table -----
+    const filterTabs = el("div", "tabs");
+    const tableHost = el("div");
+    // Delegated download — reuse the export-download route with the run's record id.
+    tableHost.addEventListener("click", async (e) => {
+      const btn = e.target.closest ? e.target.closest(".rp-dl") : null;
+      if (!btn) return;
+      e.stopPropagation();
+      try { const r = await App.portalApi("/api/exports/" + encodeURIComponent(btn.dataset.id) + "/download"); downloadCSV((btn.dataset.name || "report").replace(/[^a-z0-9]+/gi, "-") + ".csv", r.csv); }
+      catch (err) { toast(err.message, true); }
+    });
+    let activeFilter = "all";
+    function mountTable() {
+      const data = activeFilter === "all" ? rows
+        : rows.filter((r) => (activeFilter === "active" ? r.active : !r.active));
+      tableHost.innerHTML = "";
+      App.table.mount({
+        container: tableHost, columns, rows: data,
+        defaultSort: "createdAt", defaultSortDir: "desc",
+        emptyHtml: `<div class="card cell-muted" style="padding:18px">No reports yet.</div>`,
+        pageSize: 50,
+      });
+    }
+    [["all", "All"], ["active", "Active"], ["inactive", "Inactive"]].forEach(([key, label]) => {
+      const t = el("button", "tab" + (key === "all" ? " active" : ""), esc(label));
+      t.dataset.t = key;
+      t.onclick = () => { activeFilter = key; App.util.$$(".tab", filterTabs).forEach((x) => x.classList.toggle("active", x.dataset.t === key)); mountTable(); };
+      filterTabs.appendChild(t);
+    });
+    host.appendChild(filterTabs);
+    host.appendChild(tableHost);
+    mountTable();
+
+    // ----- (B) "Create a report" stub — the real builder lands next batch ----------
+    const stub = el("div", "card");
+    stub.style.cssText = "margin-top:18px; padding:18px";
+    stub.appendChild(el("h3", "settings-sub", "Create a report"));
+    stub.appendChild(el("p", "cell-muted", "Coming next — build a multi-source report here."));
+    host.appendChild(stub);
   }
 
 
