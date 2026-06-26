@@ -273,6 +273,14 @@ export const SYSTEM_ROLES: Array<{ role: string; label: string; ceiling?: boolea
   { role: "CLIENT_USER", label: "Client User" },
 ];
 
+// The system roles shown in an INDIVIDUAL portal's Permissions reference list. Owner /
+// Super Admin / Auditor are cross-portal/global tiers and don't belong in a single
+// portal's list. This is DISPLAY-ONLY: it does not affect who can create roles or the
+// cap/ceiling logic, which is driven by each creating user's own effective permissions
+// (effectiveMatrix). An owner/super-admin acting in the portal still creates roles and
+// grants up to their level even though they aren't listed here.
+export const PER_PORTAL_SYSTEM_ROLES = ["PORTAL_ADMIN", "CLIENT_USER"];
+
 export async function listPortalRoles(tenantId: string) {
   return prisma.portalRole.findMany({ where: { tenantId }, orderBy: { name: "asc" } } as any);
 }

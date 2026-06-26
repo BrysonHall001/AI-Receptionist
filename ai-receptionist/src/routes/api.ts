@@ -27,7 +27,7 @@ import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voice
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns, assignUserRole } from "../services/userService";
-import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign, effectiveMatrix } from "../services/permissionService";
+import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, PER_PORTAL_SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign, effectiveMatrix } from "../services/permissionService";
 import { permissionGate } from "../middleware/permissionGate";
 import { createInvite, inviteLink, sendInvite, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
@@ -1470,7 +1470,7 @@ apiRouter.get("/portal-roles", async (req: Request, res: Response) => {
   const countMap = new Map<string, number>();
   counts.forEach((c) => { if (c.customRoleId) countMap.set(c.customRoleId, c._count?._all ?? 0); });
   const customWithCounts = customRoles.map((r: any) => ({ ...r, assignedCount: countMap.get(r.id) || 0 }));
-  const systemRoles = SYSTEM_ROLES.map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role) }));
+  const systemRoles = SYSTEM_ROLES.filter((s) => PER_PORTAL_SYSTEM_ROLES.includes(s.role)).map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role) }));
   const myPermissions = await effectiveMatrix(req.user as any); // the creator's own level (the grant ceiling)
   res.json({ catalog: getPermissionCatalog(), sections: AREA_SECTIONS, systemRoles, customRoles: customWithCounts, myPermissions });
 });
