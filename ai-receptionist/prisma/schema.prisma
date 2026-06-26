@@ -182,6 +182,9 @@ model Invite {
   email       String
   name        String?
   role        Role
+  // Set when the invite assigns a per-portal custom role: the account is created with
+  // base role CLIENT_USER + this customRoleId. Null = a plain system-role invite.
+  customRoleId String?
   tenantId    String?
   tenant      Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   expiresAt   DateTime

@@ -2995,17 +2995,20 @@
 
     async function secTeam(panel) {
       const users = await App.portalApi("/api/users");
+      let customRoles = [];
+      try { const pr = await App.portalApi("/api/portal-roles"); customRoles = pr.customRoles || []; } catch (e) {}
+      const customOpts = customRoles.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join("");
       panel.innerHTML = `<h2 class="settings-h">Team members</h2>
         <table class="mini-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody id="users-tbody"></tbody></table>
         <div class="add-user">
           <input id="nu-name" class="input" placeholder="Name" />
           <input id="nu-email" class="input" placeholder="email@company.com" />
-          <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option></select>
+          <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option>${customOpts ? `<optgroup label="Custom roles">${customOpts}</optgroup>` : ""}</select>
           <button id="nu-add" class="btn btn-primary btn-sm">Send invite</button>
         </div>
         <p class="cell-muted" style="font-size:12px;margin-top:8px">They'll get an email with a link to set their own password — no temporary password needed.</p>
         <div id="perm-panel" style="margin-top:28px;border-top:1px solid var(--border);padding-top:20px"></div>`;
-      fillUsers(users);
+      fillUsers(users, customRoles);
       renderPermissionsPanel(panel.querySelector("#perm-panel"));
       App.util.$("#nu-add").onclick = async () => {
         const name = App.util.$("#nu-name").value.trim();
@@ -3089,7 +3092,7 @@
         html += data.systemRoles.map((s) => item(sel.kind === "system" && sel.role === s.role, s.label, s.ceiling ? "ceiling — the maximum" : "read-only", `data-system="${s.role}"`)).join("");
         html += `<div class="cell-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px">Custom roles</div>`;
         html += (data.customRoles || []).length
-          ? data.customRoles.map((r) => item(sel.kind === "custom" && sel.id === r.id, r.name, "custom", `data-custom="${r.id}"`)).join("")
+          ? data.customRoles.map((r) => item(sel.kind === "custom" && sel.id === r.id, r.name, r.assignedCount ? `${r.assignedCount} user${r.assignedCount === 1 ? "" : "s"}` : "no users assigned", `data-custom="${r.id}"`)).join("")
           : `<p class="cell-muted" style="font-size:12px;margin:2px 0 0">None yet.</p>`;
         html += `<button class="btn btn-sm" id="perm-new" style="margin-top:12px;width:100%">+ New role</button>`;
         return html;
@@ -3168,7 +3171,9 @@
       async function onDelete() {
         if (sel.kind !== "custom") return;
         const role = (data.customRoles || []).find((x) => x.id === sel.id);
-        if (!(await confirmModal({ title: "Delete role", message: `Delete the custom role "${role ? role.name : ""}"? Anyone currently assigned will fall back to their base role.`, confirmText: "Delete" }))) return;
+        const n = role ? role.assignedCount || 0 : 0;
+        const warn = n ? ` ${n} user${n === 1 ? "" : "s"} currently assigned will be reassigned to Client User (the most restricted role).` : "";
+        if (!(await confirmModal({ title: "Delete role", message: `Delete the custom role "${role ? role.name : ""}"?${warn}`, confirmText: "Delete" }))) return;
         try {
           const r = await App.portalApi(`/api/portal-roles/${sel.id}`, { method: "DELETE" });
           data = await App.portalApi("/api/portal-roles");
@@ -3565,13 +3570,29 @@
     }
   }
 
-  function fillUsers(users) {
+  function fillUsers(users, customRoles) {
+    customRoles = customRoles || [];
     const tb = App.util.$("#users-tbody");
     if (!tb) return;
+    const isAdminTier = (r) => r === "OWNER" || r === "SUPER_ADMIN" || r === "AUDITOR";
     tb.innerHTML = "";
     users.forEach((u) => {
       const tr = el("tr");
-      const roleCell = esc(roleLabel(u.role)) + (u.pending ? ' <span class="badge badge-progress">Pending</span>' : "");
+      // Role cell: an editable dropdown for ordinary portal members; a plain label for
+      // pending invites, yourself, and super-admin-tier users (Cap #2 — can't reassign
+      // them; the server also enforces this).
+      const editable = !u.pending && u.id !== App.state.me.id && !isAdminTier(u.role);
+      let roleCell;
+      if (u.pending) {
+        roleCell = esc(roleLabel(u.role)) + ' <span class="badge badge-progress">Pending</span>';
+      } else if (editable) {
+        const sysOpt = (val, label) => `<option value="${val}"${!u.customRoleId && u.role === val ? " selected" : ""}>${label}</option>`;
+        const custOpts = customRoles.map((r) => `<option value="${r.id}"${u.customRoleId === r.id ? " selected" : ""}>${esc(r.name)}</option>`).join("");
+        roleCell = `<select class="input role-sel" data-uid="${esc(u.id)}" style="padding:4px 6px;font-size:13px">${sysOpt("CLIENT_USER", "Client User")}${sysOpt("PORTAL_ADMIN", "Portal Admin")}${custOpts ? `<optgroup label="Custom roles">${custOpts}</optgroup>` : ""}</select>`;
+      } else {
+        const cr = u.customRoleId ? customRoles.find((r) => r.id === u.customRoleId) : null;
+        roleCell = esc(cr ? cr.name : roleLabel(u.role));
+      }
       tr.innerHTML = `<td>${esc(u.name || "—")}</td><td class="cell-muted">${esc(u.email)}</td><td>${roleCell}</td><td></td>`;
       const actions = tr.lastChild;
       if (u.pending) {
@@ -3584,6 +3605,15 @@
         actions.appendChild(del);
       }
       tb.appendChild(tr);
+    });
+    // Wire role dropdowns: assigning a custom role sets the member's effective
+    // permissions to that role (server sets base CLIENT_USER + customRoleId).
+    tb.querySelectorAll(".role-sel").forEach((sel) => {
+      const prev = sel.value;
+      sel.onchange = async () => {
+        try { await App.portalApi(`/api/users/${sel.getAttribute("data-uid")}/role`, { method: "PATCH", body: JSON.stringify({ role: sel.value }) }); toast("Role updated"); }
+        catch (e) { toast(e.message, true); sel.value = prev; }
+      };
     });
   }
 

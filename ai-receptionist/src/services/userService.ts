@@ -4,6 +4,7 @@ import { emitEvent } from "../events/bus";
 import { EVENT_TYPES } from "../events/types";
 import { hashPassword } from "../auth/passwords";
 import { Role } from "../middleware/auth";
+import { getPortalRole } from "./permissionService";
 
 export interface CreateUserInput {
   email: string;
@@ -11,6 +12,7 @@ export interface CreateUserInput {
   name?: string | null;
   role: Role;
   tenantId?: string | null;
+  customRoleId?: string | null;
 }
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
@@ -33,6 +35,7 @@ export async function createUser(input: CreateUserInput) {
       name: input.name ?? null,
       role: input.role,
       tenantId: input.tenantId ?? null,
+      customRoleId: input.customRoleId ?? null,
       expiresAt,
     },
   });
@@ -109,6 +112,39 @@ export async function deleteUser(id: string, actor?: { id: string; role: string;
   return deleted;
 }
 
+// Assign a user's role — the Batch 5 "edit a user's permissions" mechanism. Reuses
+// the Cap #2 tier guard (a sub-super-admin actor can't touch a super-admin-tier user)
+// and clamps what can be granted: only CLIENT_USER / PORTAL_ADMIN, or a per-portal
+// CUSTOM role (which sets base CLIENT_USER + customRoleId, so the fallback on role
+// deletion is the restricted default). Admin-tier roles can never be granted here, so
+// no one can elevate a user above what a portal admin may grant. A custom role is
+// tenant-scoped and already ceiling-capped (validated on save), so this can't exceed it.
+export async function assignUserRole(
+  targetId: string,
+  tenantId: string,
+  actor: { id: string; role: string },
+  role: string,
+): Promise<{ id: string; role: string; customRoleId: string | null }> {
+  const target = await prisma.user.findUnique({ where: { id: targetId } });
+  if (!target || target.tenantId !== tenantId) throw new Error("User not found in this portal");
+  if (actor.id === targetId) throw new Error("You can't change your own role");
+  assertCanActOnUser(actor, { id: target.id, role: target.role }, "role");
+
+  let baseRole: string;
+  let customRoleId: string | null;
+  if (role === "CLIENT_USER" || role === "PORTAL_ADMIN") {
+    baseRole = role; customRoleId = null;
+  } else if (role === "OWNER" || role === "SUPER_ADMIN" || role === "AUDITOR") {
+    throw new Error("That role can't be granted here");
+  } else {
+    const cr = await getPortalRole(role, tenantId); // tenant-scoped custom role
+    if (!cr) throw new Error("Unknown role");
+    baseRole = "CLIENT_USER"; customRoleId = (cr as any).id;
+  }
+  const updated: any = await prisma.user.update({ where: { id: targetId }, data: { role: baseRole as any, customRoleId } as any });
+  return { id: updated.id, role: updated.role, customRoleId: updated.customRoleId ?? null };
+}
+
 export async function setPassword(userId: string, password: string) {
   const passwordHash = await hashPassword(password);
   return prisma.user.update({ where: { id: userId }, data: { passwordHash, resetToken: null, resetTokenExpiry: null } });
@@ -138,6 +174,7 @@ export function publicUser(u: any) {
     email: u.email,
     name: u.name ?? null,
     role: u.role,
+    customRoleId: u.customRoleId ?? null,
     tenantId: u.tenantId ?? null,
     tenantName: u.tenant?.name ?? null,
     lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,

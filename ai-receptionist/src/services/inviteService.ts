@@ -110,6 +110,7 @@ export async function createInvite(input: {
   tenantId: string | null;
   name?: string | null;
   createdById?: string | null;
+  customRoleId?: string | null;
 }) {
   const email = normEmail(input.email);
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("A valid email address is required");
@@ -133,7 +134,7 @@ export async function createInvite(input: {
   const token = crypto.randomBytes(32).toString("hex"); // 256-bit, unguessable
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 86400000);
   return db.invite.create({
-    data: { token, email, name: input.name ?? null, role: input.role, tenantId: input.tenantId, expiresAt, createdById: input.createdById ?? null },
+    data: { token, email, name: input.name ?? null, role: input.role, tenantId: input.tenantId, expiresAt, createdById: input.createdById ?? null, customRoleId: input.customRoleId ?? null },
   });
 }
 
@@ -221,7 +222,7 @@ export async function acceptInvite(token: string, password: string): Promise<Acc
   const consumed = await db.invite.updateMany({ where: { id: inv.id, usedAt: null }, data: { usedAt: new Date() } });
   if (!consumed.count) return { ok: false }; // lost the race — already used
 
-  const user = await createUser({ email: inv.email, password, name: inv.name ?? null, role: inv.role, tenantId: inv.tenantId });
+  const user = await createUser({ email: inv.email, password, name: inv.name ?? null, role: inv.role, tenantId: inv.tenantId, customRoleId: (inv as any).customRoleId ?? null });
   // Audit: a user joined (accepted an invite). Tenant-scoped, so only for portal
   // invites (master-scope super-admin/auditor invites have no tenant). Attributed
   // to the new user; records the role granted and who invited them. Log-only.

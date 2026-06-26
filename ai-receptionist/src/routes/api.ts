@@ -26,7 +26,7 @@ import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme,
 import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voices";
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
 import { PRESETS, FONTS } from "../theme/themes";
-import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns } from "../services/userService";
+import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns, assignUserRole } from "../services/userService";
 import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign } from "../services/permissionService";
 import { permissionGate } from "../middleware/permissionGate";
 import { createInvite, inviteLink, sendInvite, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
@@ -1397,11 +1397,18 @@ apiRouter.post("/users", async (req: Request, res: Response) => {
     res.status(400).json({ error: "email is required" });
     return;
   }
-  // Portal admins may only invite users inside their own portal, never super admins.
-  const safeRole = role === "PORTAL_ADMIN" ? "PORTAL_ADMIN" : "CLIENT_USER";
+  // role can be a system role (PORTAL_ADMIN/CLIENT_USER) or a per-portal custom role
+  // id. A custom role invites at base CLIENT_USER + customRoleId (so deletion falls
+  // them back to the restricted default). Admin tiers are never invitable here.
+  let safeRole: "PORTAL_ADMIN" | "CLIENT_USER" = role === "PORTAL_ADMIN" ? "PORTAL_ADMIN" : "CLIENT_USER";
+  let inviteCustomRoleId: string | null = null;
+  if (role && role !== "PORTAL_ADMIN" && role !== "CLIENT_USER") {
+    const cr = await getPortalRole(role, tenantId);
+    if (cr) { safeRole = "CLIENT_USER"; inviteCustomRoleId = (cr as any).id; }
+  }
   try {
-    const invite = await createInvite({ email, role: safeRole, tenantId, name: name || null, createdById: req.user?.id ?? null });
-    auditEvent(req, tenantId, EVENT_TYPES.UserInvited, { email, role: safeRole });
+    const invite = await createInvite({ email, role: safeRole, tenantId, name: name || null, createdById: req.user?.id ?? null, customRoleId: inviteCustomRoleId });
+    auditEvent(req, tenantId, EVENT_TYPES.UserInvited, { email, role: inviteCustomRoleId ? "custom" : safeRole });
     const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
     const host = String(req.headers["x-forwarded-host"] || req.get("host") || "").trim();
     const link = inviteLink(proto + "://" + host, invite.token);
@@ -1436,6 +1443,20 @@ apiRouter.delete("/users/:id", async (req: Request, res: Response) => {
   }
 });
 
+// Change an existing member's role (system or custom) — the Batch 5 assignment path.
+// Cap #2 + tier clamping live in assignUserRole. users.edit gated.
+apiRouter.patch("/users/:id/role", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!(await can(req.user!, "users", "edit"))) { res.status(403).json({ error: "Not authorized" }); return; }
+  const { role } = (req.body ?? {}) as { role?: string };
+  if (!role) { res.status(400).json({ error: "role is required" }); return; }
+  try {
+    const updated = await assignUserRole(req.params.id, tenantId, { id: req.user!.id, role: req.user!.role }, role);
+    res.json({ ok: true, ...updated });
+  } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+});
+
 // ---- Custom roles for the Permissions UI (Batch 4). Read needs users.view, writes
 // need users.edit — i.e. owner/super-admin/auditor/portal-admin (matches Team).
 // Server-enforced, not just UI-hidden; CLIENT_USER is blocked. Tenant-scoped.
@@ -1444,8 +1465,13 @@ apiRouter.get("/portal-roles", async (req: Request, res: Response) => {
   if (!tenantId) return;
   if (!(await can(req.user!, "users", "view"))) { res.status(403).json({ error: "Not authorized" }); return; }
   const customRoles = await listPortalRoles(tenantId);
+  // How many users are assigned to each custom role (so the UI can warn before delete).
+  const counts: any[] = await (prisma as any).user.groupBy({ by: ["customRoleId"], where: { tenantId, customRoleId: { not: null } }, _count: { _all: true } }).catch(() => []);
+  const countMap = new Map<string, number>();
+  counts.forEach((c) => { if (c.customRoleId) countMap.set(c.customRoleId, c._count?._all ?? 0); });
+  const customWithCounts = customRoles.map((r: any) => ({ ...r, assignedCount: countMap.get(r.id) || 0 }));
   const systemRoles = SYSTEM_ROLES.map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role) }));
-  res.json({ catalog: getPermissionCatalog(), sections: AREA_SECTIONS, systemRoles, customRoles });
+  res.json({ catalog: getPermissionCatalog(), sections: AREA_SECTIONS, systemRoles, customRoles: customWithCounts });
 });
 
 apiRouter.post("/portal-roles", async (req: Request, res: Response) => {
