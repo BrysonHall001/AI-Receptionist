@@ -38,6 +38,7 @@ export const AREAS: AreaDef[] = [
   { key: "dashboard", label: "Dashboard", kind: "readonly", section: "Operations" },
   { key: "calls", label: "Calls", kind: "readonly", section: "Operations" },
   { key: "reports", label: "Analytics", kind: "readonly", section: "Operations" },
+  { key: "communication", label: "Communication", kind: "readonly", section: "Operations" },
   { key: "learn", label: "Learning Center", kind: "readonly", section: "Operations" },
   // ---- Settings sub-areas (single Manage right each) ----
   { key: "settings_general", label: "General", kind: "settings", section: "Settings" },
@@ -62,7 +63,7 @@ const AREA_BY_KEY = new Map<string, AreaDef>(AREAS.map((a) => [a.key, a]));
 // from real permissions (Batch 3). Fields and Feedback are always-visible on the
 // client (their page-load isn't permission-gated / Feedback has its own role logic),
 // and Dashboard is never hideable — so the client handles those three specially.
-export const NAV_VIEW_AREAS = ["contacts", "records", "automations", "calls", "reports", "learn", "dashboard"];
+export const NAV_VIEW_AREAS = ["contacts", "records", "automations", "calls", "reports", "communication", "learn", "dashboard"];
 
 export type Permissions = Record<string, Partial<Record<Right, boolean>>>;
 

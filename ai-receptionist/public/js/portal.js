@@ -56,6 +56,7 @@
     if (v === "recycle") return renderRecycleBin();
     if (v === "fields") return renderFields();
     if (v === "reports") return App.reports.render(view());
+    if (v === "communication") return App.communication.render(view());
     if (v === "automations") return App.automations.render(view());
     if (v === "learn") return App.learn.render(view());
     if (v === "feedback") return App.feedback.renderPortal(view());
@@ -5814,7 +5815,7 @@
     if (!ro) loadLinks();
   }
 
-  App.portal = { render, refresh, simulate, renderContact, renderRecord, renderRecycledPreview, current: () => current };
+  App.portal = { render, refresh, simulate, renderContact, renderRecord, renderRecycledPreview, current: () => current, contactColumnDefs };
   // Mountable labels editor (the SAME secLabels used by Settings > Labels), so the
   // portal setup screen can render it for a just-created portal. It targets whatever
   // App.state.currentPortalId is set to (via App.portalApi), like the in-portal pane.

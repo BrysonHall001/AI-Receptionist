@@ -35,6 +35,7 @@ export const PERM_RULES: PermRule[] = [
   { m: "POST", re: /^\/contacts(\/(restore|bulk-update|merge|dummy|import))?$/, area: "contacts", right: "edit" },
   { m: "PATCH", re: /^\/contacts\/[^/]+$/, area: "contacts", right: "edit" },
   { m: "POST", re: /^\/contacts\/[^/]+\/(email|text)$/, area: "contacts", right: "edit" },
+  { m: "POST", re: /^\/communication\/email$/, area: "contacts", right: "edit" },
   { m: "GET", re: /^\/contacts(\/|$)/, area: "contacts", right: "view" },
 
   // ---- Records: Jobs / Bookings / custom share one "records" area (Batch-1 catalog) ----

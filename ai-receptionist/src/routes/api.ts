@@ -16,6 +16,7 @@ import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDe
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
+import { sendEmailBlast } from "../services/communicationService";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
@@ -407,6 +408,32 @@ apiRouter.post("/contacts/:id/email", async (req: Request, res: Response) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Communication page — manual email blast. Reuses the SAME outbound path + role gate
+// (contacts:edit, via permissionGate) as bulk-emailing from Contacts. The client sends
+// the picker's resolved contact ids (+ optional excludes); the server re-resolves the
+// emailable set, fans out sendRichEmail, and logs ONE CommunicationSend row.
+apiRouter.post("/communication/email", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const body = (req.body ?? {}) as { subject?: string; html?: string; contactIds?: unknown; excludeIds?: unknown };
+  const subject = String(body.subject || "").trim();
+  if (!subject) { res.status(400).json({ error: "A subject is required" }); return; }
+  const contactIds = Array.isArray(body.contactIds) ? body.contactIds.map((x) => String(x)) : [];
+  const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds.map((x) => String(x)) : [];
+  if (!contactIds.length) { res.status(400).json({ error: "No recipients selected" }); return; }
+  try {
+    const result = await sendEmailBlast({
+      tenantId, subject, html: String(body.html || ""),
+      contactIds, excludeIds,
+      fromEmail: req.user!.email, fromName: req.user!.name,
+      createdById: req.user!.id,
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 
