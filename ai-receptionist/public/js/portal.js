@@ -1062,9 +1062,17 @@
     recordTypes = Array.isArray(recordTypes) ? recordTypes : [];
     const portalTz = (settings && settings.timezone) || "America/New_York";
 
-    const nextRunText = (r) => (!r.active ? "Paused" : (r.mode === "recurring" && r.nextRunAt ? fmtDate(r.nextRunAt) : "—"));
+    const nextRunText = (r) => (r.mode !== "recurring" ? "—" : (!r.active ? "Paused" : (r.nextRunAt ? fmtDate(r.nextRunAt) : "—")));
     const lastRunText = (r) => (r.lastRunAt ? fmtDate(r.lastRunAt) : "—");
     const rowsOf = (r) => (r.latestRun && r.latestRun.rowCount != null ? String(r.latestRun.rowCount) : "—");
+    // Derived three-state status: immediate => One-Time; recurring => Active/Inactive.
+    const statusOf = (r) => (r.mode !== "recurring" ? "onetime" : (r.active ? "active" : "inactive"));
+    const statusCell = (r) => {
+      const s = statusOf(r);
+      if (s === "onetime") return `<span class="pill">One-Time</span>`; // neutral, not a toggle
+      const active = s === "active";
+      return `<button class="pill ${active ? "success" : "skipped"} rp-toggle" data-id="${esc(r.id)}" data-active="${active ? "1" : "0"}" title="Click to ${active ? "pause" : "activate"}">${active ? "Active" : "Inactive"}</button>`;
+    };
     const columns = [
       { key: "createdAt", label: "Date Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
       { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => esc(r.name || "—") },
@@ -1073,7 +1081,7 @@
       { key: "nextRun", label: "Next run", type: "text", get: (r) => nextRunText(r), render: (r) => `<span class="cell-muted">${esc(nextRunText(r))}</span>` },
       { key: "lastRun", label: "Last run", type: "text", get: (r) => lastRunText(r), render: (r) => `<span class="cell-muted">${esc(lastRunText(r))}</span>` },
       { key: "download", label: "Download", type: "text", get: () => "", render: (r) => (r.latestRun && r.latestRun.downloadable ? `<button class="btn btn-ghost btn-sm rp-dl" data-id="${esc(r.latestRun.exportRecordId)}" data-name="${esc(r.name || "report")}">Download</button>` : "") },
-      { key: "active", label: "Status", type: "text", get: (r) => (r.active ? "Active" : "Inactive"), render: (r) => `<button class="pill ${r.active ? "success" : "skipped"} rp-toggle" data-id="${esc(r.id)}" data-active="${r.active ? "1" : "0"}" title="Click to ${r.active ? "pause" : "activate"}">${r.active ? "Active" : "Inactive"}</button>` },
+      { key: "active", label: "Status", type: "text", get: (r) => (statusOf(r) === "onetime" ? "One-Time" : statusOf(r) === "active" ? "Active" : "Inactive"), render: (r) => statusCell(r) },
     ];
 
     host.innerHTML = "";
@@ -1102,28 +1110,41 @@
     });
     let activeFilter = "all";
     function mountTable() {
-      const data = activeFilter === "all" ? rows
-        : rows.filter((r) => (activeFilter === "active" ? r.active : !r.active));
+      const data = activeFilter === "all" ? rows : rows.filter((r) => statusOf(r) === activeFilter);
       tableHost.innerHTML = "";
       App.table.mount({
         container: tableHost, columns, rows: data,
         defaultSort: "createdAt", defaultSortDir: "desc",
+        onRowClick: (r) => openEdit(r.id),
         emptyHtml: `<div class="card cell-muted" style="padding:18px">No reports yet.</div>`,
         pageSize: 50,
       });
     }
-    [["all", "All"], ["active", "Active"], ["inactive", "Inactive"]].forEach(([key, label]) => {
+    [["all", "All"], ["active", "Active"], ["inactive", "Inactive"], ["onetime", "One-Time"]].forEach(([key, label]) => {
       const t = el("button", "tab" + (key === "all" ? " active" : ""), esc(label));
       t.dataset.t = key;
       t.onclick = () => { activeFilter = key; App.util.$$(".tab", filterTabs).forEach((x) => x.classList.toggle("active", x.dataset.t === key)); mountTable(); };
       filterTabs.appendChild(t);
     });
     host.appendChild(filterTabs);
+    const editHint = el("div", "cell-muted", "Click a report to edit its fields, filters, email body, or schedule.");
+    editHint.style.cssText = "font-size:13px; margin:4px 2px 8px";
+    host.appendChild(editHint);
     host.appendChild(tableHost);
     mountTable();
 
     // ----- (B) The Create-a-report form -----------------------------------------
-    host.appendChild(reportBuilder(rows, recordTypes, portalTz, () => tabReports(host)));
+    const builder = reportBuilder(rows, recordTypes, portalTz, () => tabReports(host));
+    host.appendChild(builder);
+
+    // Click-to-edit: load the saved spec and prefill the SAME form bound to this id.
+    async function openEdit(id) {
+      try {
+        const full = await App.portalApi("/api/reports/" + encodeURIComponent(id));
+        builder.prefillReport(full);
+        builder.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (e) { toast(e.message, true); }
+    }
   }
 
   // The Create-a-report form: name + format + "start from saved" ABOVE a per-type
@@ -1132,7 +1153,11 @@
   function reportBuilder(savedReports, recordTypes, portalTz, onSent) {
     const card = el("div", "card");
     card.style.cssText = "margin-top:18px; padding:18px";
-    card.appendChild(el("h3", "settings-sub", "Create a report"));
+    const headRow = el("div"); headRow.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:6px";
+    const heading = el("h3", "settings-sub", "Create a report"); heading.style.margin = "0";
+    const newBtn = el("button", "btn btn-ghost btn-sm", "New report"); newBtn.style.display = "none";
+    headRow.appendChild(heading); headRow.appendChild(newBtn);
+    card.appendChild(headRow);
 
     // Per-type working state. fields = Set of checked column KEYS (never labels).
     const state = { id: null, byType: {} };
@@ -1255,6 +1280,14 @@
     recipWrap.appendChild(recipInput);
     card.appendChild(recipWrap);
 
+    // Email body — REUSES the app's rich-text composer. Empty => executor uses its
+    // default attachment-notice text. Round-trips on edit via getHTML()/setBody().
+    const bodyWrap = el("div", "field"); bodyWrap.style.marginTop = "12px";
+    bodyWrap.appendChild(el("span", "field-label", "Email body (optional)"));
+    const bodyHost = el("div"); bodyWrap.appendChild(bodyHost);
+    card.appendChild(bodyWrap);
+    const bodyApi = App.compose.mount(bodyHost, { kind: "richtext" });
+
     // --- Delivery: Send now vs Send on a schedule ----------------------------
     const delivWrap = el("div"); delivWrap.style.cssText = "margin-top:14px";
     delivWrap.appendChild(el("div", "field-label", "Delivery"));
@@ -1336,11 +1369,28 @@
     actions.appendChild(submitBtn);
     card.appendChild(actions);
 
+    function setEditMode(editing) {
+      heading.textContent = editing ? "Edit report" : "Create a report";
+      newBtn.style.display = editing ? "" : "none";
+    }
+    function resetForm() {
+      state.id = null;
+      nameInput.value = ""; recipInput.value = ""; fmtSel.value = "csv";
+      bodyApi.setBody("");
+      recordTypes.forEach((t) => { const st = state.byType[t.key]; st.fields = new Set(); st.rules.length = 0; });
+      cad.days = new Set(); cad.times = {}; cad.weekInterval = 1; intervalInput.value = "1";
+      DOW.forEach(([n]) => { const b = dayRow.querySelector(`[data-d="${n}"]`); if (b) b.classList.remove("active"); });
+      renderTimes(); renderCadSummary(); setDelivery("now"); setEditMode(false);
+      updateSummary(); if (activeType) showType(activeType);
+    }
+    newBtn.onclick = resetForm;
+
     function prefill(full) {
       state.id = full.id || null;
       nameInput.value = full.name || "";
       fmtSel.value = full.format === "xlsx" ? "xlsx" : "csv";
       recipInput.value = (full.recipients || []).join(", ");
+      bodyApi.setBody(full.emailBody || "");
       const types = (full.definition && full.definition.types) || {};
       recordTypes.forEach((t) => {
         const st = state.byType[t.key];
@@ -1365,6 +1415,7 @@
         renderTimes(); renderCadSummary();
         setDelivery("now");
       }
+      setEditMode(!!state.id);
       updateSummary();
       if (activeType) showType(activeType);
     }
@@ -1379,7 +1430,7 @@
       if (!recipients.length || !recipients.every((e) => emailRe.test(e))) { toast("Enter one or more valid emails.", true); return null; }
       const definition = { types: {} };
       inc.forEach((t) => { const st = state.byType[t.key]; definition.types[t.key] = { fields: Array.from(st.fields), rules: st.rules.slice() }; });
-      return { name, recipients, definition, format: fmtSel.value };
+      return { name, recipients, definition, format: fmtSel.value, emailBody: bodyApi.getHTML() };
     }
 
     submitBtn.onclick = async () => {
@@ -1414,6 +1465,7 @@
 
     updateSummary();
     if (activeType) showType(activeType);
+    card.prefillReport = prefill;
     return card;
   }
 

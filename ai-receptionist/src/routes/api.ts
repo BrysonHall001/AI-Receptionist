@@ -1629,6 +1629,7 @@ apiRouter.post("/reports/run", async (req: Request, res: Response) => {
   const recipients = Array.isArray(body.recipients)
     ? body.recipients.map((e: any) => String(e).trim()).filter(Boolean)
     : [];
+  const emailBody = typeof body.emailBody === "string" ? body.emailBody : null;
 
   if (!name) { res.status(400).json({ error: "Report name is required." }); return; }
   const types = definition.types || {};
@@ -1640,9 +1641,9 @@ apiRouter.post("/reports/run", async (req: Request, res: Response) => {
     return;
   }
 
-  const saved = await upsertScheduledReport({ tenantId, id: body.id || null, name, format, definition, recipients, createdById: req.user!.id });
+  const saved = await upsertScheduledReport({ tenantId, id: body.id || null, name, format, definition, recipients, emailBody, createdById: req.user!.id });
   try {
-    const run = await runAndDeliverReport({ tenantId, reportId: saved.id, name, format, definition, recipients, createdById: req.user!.id });
+    const run = await runAndDeliverReport({ tenantId, reportId: saved.id, name, format, definition, recipients, emailBody, createdById: req.user!.id });
     res.json({ ok: true, reportId: saved.id, ...run });
   } catch (e) {
     res.status(500).json({ error: "Report run failed: " + (e as Error).message });
@@ -1660,6 +1661,7 @@ apiRouter.post("/reports/save", async (req: Request, res: Response) => {
   const format = body.format === "xlsx" ? "xlsx" : "csv";
   const definition = (body.definition && typeof body.definition === "object") ? body.definition : { types: {} };
   const recipients = Array.isArray(body.recipients) ? body.recipients.map((e: any) => String(e).trim()).filter(Boolean) : [];
+  const emailBody = typeof body.emailBody === "string" ? body.emailBody : null;
 
   if (!name) { res.status(400).json({ error: "Report name is required." }); return; }
   const types = definition.types || {};
@@ -1680,7 +1682,7 @@ apiRouter.post("/reports/save", async (req: Request, res: Response) => {
   const nextRunAt = computeNextRunAt(cadence, new Date(), zone);
   if (!nextRunAt) { res.status(400).json({ error: "This schedule never lands on a valid time — check the days and times." }); return; }
 
-  const saved = await upsertScheduledReport({ tenantId, id: body.id || null, name, format, definition, recipients, mode: "recurring", cadence, nextRunAt, createdById: req.user!.id });
+  const saved = await upsertScheduledReport({ tenantId, id: body.id || null, name, format, definition, recipients, emailBody, mode: "recurring", cadence, nextRunAt, createdById: req.user!.id });
   res.json({ ok: true, reportId: saved.id, nextRunAt: nextRunAt.toISOString(), summary: describeCadence(cadence, zone) });
 });
 

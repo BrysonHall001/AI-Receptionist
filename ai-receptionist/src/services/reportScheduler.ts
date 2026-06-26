@@ -53,6 +53,7 @@ export async function processDueReports(now: Date = new Date()): Promise<{ swept
         format: r.format,
         definition: (r.definition || { types: {} }) as any,
         recipients: Array.isArray(r.recipients) ? r.recipients : [],
+        emailBody: r.emailBody ?? null,
         createdById: r.createdById ?? null,
       });
       ran++;

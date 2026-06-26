@@ -313,6 +313,9 @@ model ScheduledReport {
   definition  Json     @default("{}")
   // Array of recipient emails (empty for now; populated when delivery lands).
   recipients  Json     @default("[]")
+  // Custom rich-text email body (Quill HTML). Null/empty => executor uses the
+  // default attachment-notice text. Round-trips through the builder on edit.
+  emailBody   String?
   mode        String   @default("immediate") // "immediate" | "recurring"
   // Recurrence spec; null until the recurring scheduler lands (batch 3).
   cadence     Json?

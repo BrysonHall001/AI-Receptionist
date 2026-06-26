@@ -100,6 +100,7 @@ export async function upsertScheduledReport(input: {
   format?: string;
   definition?: unknown;
   recipients?: unknown;
+  emailBody?: string | null;
   mode?: string;                 // "immediate" | "recurring"
   cadence?: unknown;             // recurrence spec (recurring only); null for immediate
   nextRunAt?: Date | null;       // first due instant (recurring only)
@@ -111,6 +112,7 @@ export async function upsertScheduledReport(input: {
     format: input.format === "xlsx" ? "xlsx" : "csv",
     definition: (input.definition ?? {}) as any,
     recipients: (input.recipients ?? []) as any,
+    emailBody: input.emailBody != null ? String(input.emailBody) : null,
     mode: recurring ? "recurring" : "immediate",
     // Cadence/nextRunAt only carry meaning for recurring reports; clear them for
     // immediate ones so flipping a report back to "Send now" can't leave a stale slot.
@@ -158,6 +160,7 @@ export async function getScheduledReport(tenantId: string, id: string) {
     active: r.active,
     definition: r.definition ?? { types: {} },
     recipients: Array.isArray(r.recipients) ? r.recipients : [],
+    emailBody: r.emailBody ?? "",
     cadence: r.cadence ?? null,
     nextRunAt: r.nextRunAt ? r.nextRunAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),

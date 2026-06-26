@@ -296,7 +296,7 @@
             td.innerHTML = c.render ? c.render(row) : esc(colText(c, row) || "—");
             tr.appendChild(td);
           });
-          if (onRowClick) tr.addEventListener("click", () => onRowClick(row));
+          if (onRowClick) tr.addEventListener("click", (e) => { if (e.target && e.target.closest("button, a, input, select, label, .rp-toggle, .rp-dl")) return; onRowClick(row); });
           tb.appendChild(tr);
         });
         // Render only as many rows as there are real records on this page — no

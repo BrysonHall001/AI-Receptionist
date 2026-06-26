@@ -224,6 +224,7 @@ export async function runAndDeliverReport(input: {
   format: string;
   definition: ReportDefinition;
   recipients: string[];
+  emailBody?: string | null;
   createdById?: string | null;
 }): Promise<{ exportRecordId: string; rowCount: number; filename: string; perType: Array<{ typeKey: string; rowCount: number }> }> {
   const { tenantId, reportId, name, format, definition, recipients } = input;
@@ -236,7 +237,14 @@ export async function runAndDeliverReport(input: {
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const subject = `Report: ${name} — ${today}`;
   const sheetList = built.map((b) => `${b.label} (${b.rows.length})`).join(", ") || "no rows";
-  const html = `<p>Your report <strong>${escapeHtml(name)}</strong> is attached (${escapeHtml(artifact.ext.toUpperCase())}).</p><p>Included: ${escapeHtml(sheetList)}.</p>`;
+  // Custom rich-text body (from the report builder) when present; otherwise the
+  // default attachment notice. "Present" = has real text OR an embedded image, not
+  // an empty Quill doc (e.g. "<p><br></p>"). The report file is attached either way.
+  const bodyText = (input.emailBody || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").trim();
+  const bodyHasEmbed = /<img\b/i.test(input.emailBody || "");
+  const html = (bodyText || bodyHasEmbed)
+    ? (input.emailBody as string)
+    : `<p>Your report <strong>${escapeHtml(name)}</strong> is attached (${escapeHtml(artifact.ext.toUpperCase())}).</p><p>Included: ${escapeHtml(sheetList)}.</p>`;
   for (const to of recipients) {
     await sendRichEmail({ to, subject, html, fromEmail: portal?.notifyEmail || "", fromName: portal?.name || null, attachments: [{ filename: artifact.filename, content: artifact.content }] });
   }
