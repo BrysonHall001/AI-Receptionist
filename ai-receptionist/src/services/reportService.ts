@@ -86,3 +86,51 @@ export async function createScheduledReport(input: {
   });
   return { id: rec.id, name: rec.name, active: rec.active, createdAt: rec.createdAt.toISOString() };
 }
+
+// Create OR update a report (used by "Send now"): if `id` belongs to this tenant we
+// update its definition/format/recipients/name in place (so re-saving a report
+// started from a saved one doesn't fork a duplicate); otherwise we create. Returns
+// the row id either way. mode stays "immediate" (recurring is a later batch).
+export async function upsertScheduledReport(input: {
+  tenantId: string;
+  id?: string | null;
+  name: string;
+  format?: string;
+  definition?: unknown;
+  recipients?: unknown;
+  createdById?: string | null;
+}): Promise<{ id: string }> {
+  const data: any = {
+    name: (input.name || "").trim() || "Untitled report",
+    format: input.format === "xlsx" ? "xlsx" : "csv",
+    definition: (input.definition ?? {}) as any,
+    recipients: (input.recipients ?? []) as any,
+    mode: "immediate",
+  };
+  if (input.id) {
+    const existing = await db.scheduledReport.findFirst({ where: { id: input.id, tenantId: input.tenantId } });
+    if (existing) {
+      const rec = await db.scheduledReport.update({ where: { id: existing.id }, data });
+      return { id: rec.id };
+    }
+  }
+  const rec = await db.scheduledReport.create({ data: { ...data, tenantId: input.tenantId, active: true, createdById: input.createdById ?? null } });
+  return { id: rec.id };
+}
+
+// The full saved report (definition + recipients + format + name) for the form's
+// "Start from a saved report" prefill. Scoped to the tenant.
+export async function getScheduledReport(tenantId: string, id: string) {
+  const r = await db.scheduledReport.findFirst({ where: { id, tenantId } });
+  if (!r) return null;
+  return {
+    id: r.id,
+    name: r.name,
+    format: r.format,
+    mode: r.mode,
+    active: r.active,
+    definition: r.definition ?? { types: {} },
+    recipients: Array.isArray(r.recipients) ? r.recipients : [],
+    createdAt: r.createdAt.toISOString(),
+  };
+}

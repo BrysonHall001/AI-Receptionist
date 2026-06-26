@@ -1034,12 +1034,31 @@
   // list sits a clearly-labelled stub for the report builder (lands next batch).
   // Reads GET /api/reports (each report joined with its latest ExportRecord run);
   // the Download button reuses the export-download route with the run's record id.
+  // Format-aware download: plain CSV (text) or xlsx/zip (base64 -> bytes), rebuilding
+  // the exact emailed file with the right extension. Reused by the reports list.
+  function downloadArtifact(meta, fallbackName) {
+    const base = String(fallbackName || meta.name || "report").replace(/[^a-z0-9]+/gi, "-");
+    if (meta && meta.base64) {
+      const bin = atob(meta.csv || "");
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      downloadBlob(`${base}.${meta.ext || "bin"}`, new Blob([bytes], { type: meta.mime || "application/octet-stream" }));
+    } else {
+      downloadBlob(`${base}.${(meta && meta.ext) || "csv"}`, new Blob([(meta && meta.csv) || ""], { type: (meta && meta.mime) || "text/csv;charset=utf-8;" }));
+    }
+  }
+
   async function tabReports(host) {
     host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
-    let rows = [];
-    try { rows = await App.portalApi("/api/reports"); }
-    catch (e) { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
+    let rows = [], recordTypes = [];
+    try {
+      [rows, recordTypes] = await Promise.all([
+        App.portalApi("/api/reports"),
+        App.portalApi("/api/record-types").catch(() => []),
+      ]);
+    } catch (e) { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
     rows = Array.isArray(rows) ? rows : [];
+    recordTypes = Array.isArray(recordTypes) ? recordTypes : [];
 
     const rowsOf = (r) => (r.latestRun && r.latestRun.rowCount != null ? String(r.latestRun.rowCount) : "—");
     const columns = [
@@ -1056,12 +1075,11 @@
     // ----- (A) The list, with the same Filters affordance as the history table -----
     const filterTabs = el("div", "tabs");
     const tableHost = el("div");
-    // Delegated download — reuse the export-download route with the run's record id.
     tableHost.addEventListener("click", async (e) => {
       const btn = e.target.closest ? e.target.closest(".rp-dl") : null;
       if (!btn) return;
       e.stopPropagation();
-      try { const r = await App.portalApi("/api/exports/" + encodeURIComponent(btn.dataset.id) + "/download"); downloadCSV((btn.dataset.name || "report").replace(/[^a-z0-9]+/gi, "-") + ".csv", r.csv); }
+      try { const r = await App.portalApi("/api/exports/" + encodeURIComponent(btn.dataset.id) + "/download"); downloadArtifact(r, btn.dataset.name); }
       catch (err) { toast(err.message, true); }
     });
     let activeFilter = "all";
@@ -1086,12 +1104,185 @@
     host.appendChild(tableHost);
     mountTable();
 
-    // ----- (B) "Create a report" stub — the real builder lands next batch ----------
-    const stub = el("div", "card");
-    stub.style.cssText = "margin-top:18px; padding:18px";
-    stub.appendChild(el("h3", "settings-sub", "Create a report"));
-    stub.appendChild(el("p", "cell-muted", "Coming next — build a multi-source report here."));
-    host.appendChild(stub);
+    // ----- (B) The Create-a-report form -----------------------------------------
+    host.appendChild(reportBuilder(rows, recordTypes, () => tabReports(host)));
+  }
+
+  // The Create-a-report form: name + format + "start from saved" ABOVE a per-type
+  // tab strip (one tab per reportable type), each with a field checklist + the
+  // existing filter rule editor; recipients + "Send now" + a schedule stub BELOW.
+  function reportBuilder(savedReports, recordTypes, onSent) {
+    const card = el("div", "card");
+    card.style.cssText = "margin-top:18px; padding:18px";
+    card.appendChild(el("h3", "settings-sub", "Create a report"));
+
+    // Per-type working state. fields = Set of checked column KEYS (never labels).
+    const state = { id: null, byType: {} };
+    recordTypes.forEach((t) => { state.byType[t.key] = { fields: new Set(), rules: [], loaded: false, cols: [], rows: [], bodyEl: null }; });
+
+    // --- ABOVE: name, format, start-from-saved -------------------------------
+    const top = el("div");
+    top.style.cssText = "display:grid; gap:12px; grid-template-columns:1fr 160px; align-items:end; margin-bottom:14px";
+    const nameWrap = el("label", "field");
+    nameWrap.innerHTML = `<span class="field-label">Report name</span>`;
+    const nameInput = el("input", "input"); nameInput.type = "text"; nameInput.placeholder = "e.g. Weekly leads";
+    nameWrap.appendChild(nameInput);
+    const fmtWrap = el("label", "field");
+    fmtWrap.innerHTML = `<span class="field-label">Format</span>`;
+    const fmtSel = el("select", "input"); fmtSel.innerHTML = `<option value="csv">CSV</option><option value="xlsx">Excel</option>`;
+    fmtWrap.appendChild(fmtSel);
+    top.appendChild(nameWrap); top.appendChild(fmtWrap);
+    card.appendChild(top);
+
+    if ((savedReports || []).length) {
+      const startWrap = el("label", "field"); startWrap.style.marginBottom = "14px";
+      startWrap.innerHTML = `<span class="field-label">Start from a saved report (optional)</span>`;
+      const sel = el("select", "input");
+      sel.innerHTML = `<option value="">— start blank —</option>` + savedReports.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join("");
+      sel.onchange = async () => {
+        const id = sel.value;
+        if (!id) { state.id = null; return; }
+        try {
+          const full = await App.portalApi("/api/reports/" + encodeURIComponent(id));
+          prefill(full);
+        } catch (e) { toast(e.message, true); }
+      };
+      startWrap.appendChild(sel);
+      card.appendChild(startWrap);
+    }
+
+    // --- TABS: one per reportable type ---------------------------------------
+    const tabStrip = el("div", "tabs");
+    const tabBody = el("div"); tabBody.style.marginTop = "10px";
+    let activeType = recordTypes.length ? recordTypes[0].key : null;
+
+    recordTypes.forEach((t, i) => {
+      const tb = el("button", "tab" + (i === 0 ? " active" : ""), esc(t.labelPlural || t.label || t.key));
+      tb.dataset.k = t.key;
+      tb.onclick = () => { activeType = t.key; App.util.$$(".tab", tabStrip).forEach((x) => x.classList.toggle("active", x.dataset.k === t.key)); showType(t.key); };
+      tabStrip.appendChild(tb);
+    });
+    card.appendChild(tabStrip);
+    card.appendChild(tabBody);
+
+    async function loadType(typeKey) {
+      const st = state.byType[typeKey];
+      if (st.loaded) return;
+      const type = recordTypes.find((t) => t.key === typeKey) || { key: typeKey, label: typeKey };
+      try {
+        if (typeKey === "contact") {
+          const [fields, contacts] = await Promise.all([App.portalApi("/api/fields").catch(() => []), App.portalApi("/api/contacts").catch(() => [])]);
+          st.cols = contactColumnDefs(fields || []);
+          st.rows = Array.isArray(contacts) ? contacts : [];
+        } else {
+          const [fields, records, resources] = await Promise.all([
+            App.portalApi("/api/fields?recordType=" + encodeURIComponent(typeKey)).catch(() => []),
+            App.portalApi("/api/records?type=" + encodeURIComponent(typeKey)).catch(() => []),
+            typeKey === "booking" ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
+          ]);
+          const resById = {}; (resources || []).forEach((r) => { resById[r.id] = r; });
+          st.cols = recordColumnDefs(fields || [], type, resById);
+          st.rows = Array.isArray(records) ? records : [];
+        }
+      } catch (e) { st.cols = []; st.rows = []; }
+      st.loaded = true;
+    }
+
+    async function showType(typeKey) {
+      tabBody.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+      await loadType(typeKey);
+      const st = state.byType[typeKey];
+      tabBody.innerHTML = "";
+      st.bodyEl = tabBody;
+
+      // Field checklist (stored as KEYS).
+      const fieldsCard = el("div");
+      fieldsCard.innerHTML = `<div class="field-label" style="margin-bottom:6px">Fields to include</div>`;
+      const grid = el("div"); grid.style.cssText = "display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:6px 14px; margin-bottom:12px";
+      st.cols.forEach((c) => {
+        const lab = el("label"); lab.style.cssText = "display:flex; gap:7px; align-items:center; font-size:13px; cursor:pointer";
+        const cb = el("input"); cb.type = "checkbox"; cb.checked = st.fields.has(c.key);
+        cb.onchange = () => { if (cb.checked) st.fields.add(c.key); else st.fields.delete(c.key); updateSummary(); };
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(c.label));
+        grid.appendChild(lab);
+      });
+      fieldsCard.appendChild(grid);
+      tabBody.appendChild(fieldsCard);
+
+      // Existing filter rule editor = "who to include" for this type.
+      const rulesLabel = el("div", "field-label", "Who to include (filters)"); rulesLabel.style.marginBottom = "6px";
+      tabBody.appendChild(rulesLabel);
+      const rulesHost = el("div");
+      rulesHost.appendChild(App.table.ruleEditor(st.cols, st.rows, st.rules, () => {}));
+      tabBody.appendChild(rulesHost);
+    }
+
+    // --- BELOW: recipients, Send now, schedule stub --------------------------
+    const summary = el("div", "cell-muted"); summary.style.cssText = "margin:14px 0 6px; font-size:13px";
+    function includedTypes() { return recordTypes.filter((t) => state.byType[t.key].fields.size > 0); }
+    function updateSummary() {
+      const inc = includedTypes();
+      summary.textContent = inc.length
+        ? "This report includes: " + inc.map((t) => `${t.labelPlural || t.label} (${state.byType[t.key].fields.size} field${state.byType[t.key].fields.size === 1 ? "" : "s"})`).join(", ")
+        : "Check at least one field in a tab to include that type.";
+    }
+    card.appendChild(summary);
+
+    const recipWrap = el("label", "field");
+    recipWrap.innerHTML = `<span class="field-label">Recipients (comma-separated emails)</span>`;
+    const recipInput = el("input", "input"); recipInput.type = "text"; recipInput.placeholder = "you@example.com, teammate@example.com";
+    recipWrap.appendChild(recipInput);
+    card.appendChild(recipWrap);
+
+    const actions = el("div"); actions.style.cssText = "display:flex; gap:12px; align-items:center; margin-top:14px";
+    const sendBtn = el("button", "btn btn-primary", "Send now");
+    actions.appendChild(sendBtn);
+    const schedStub = el("span", "cell-muted", "or send on a schedule — coming next.");
+    schedStub.style.fontSize = "13px";
+    actions.appendChild(schedStub);
+    card.appendChild(actions);
+
+    function prefill(full) {
+      state.id = full.id || null;
+      nameInput.value = full.name || "";
+      fmtSel.value = full.format === "xlsx" ? "xlsx" : "csv";
+      recipInput.value = (full.recipients || []).join(", ");
+      const types = (full.definition && full.definition.types) || {};
+      recordTypes.forEach((t) => {
+        const st = state.byType[t.key];
+        const d = types[t.key] || {};
+        st.fields = new Set(Array.isArray(d.fields) ? d.fields : []);
+        st.rules.length = 0; (Array.isArray(d.rules) ? d.rules : []).forEach((r) => st.rules.push(r));
+      });
+      updateSummary();
+      if (activeType) showType(activeType);
+    }
+
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    sendBtn.onclick = async () => {
+      const name = nameInput.value.trim();
+      if (!name) { toast("Give the report a name.", true); return; }
+      const inc = includedTypes();
+      if (!inc.length) { toast("Check at least one field to include.", true); return; }
+      const recipients = recipInput.value.split(",").map((s) => s.trim()).filter(Boolean);
+      if (!recipients.length || !recipients.every((e) => emailRe.test(e))) { toast("Enter one or more valid emails.", true); return; }
+      const definition = { types: {} };
+      inc.forEach((t) => { const st = state.byType[t.key]; definition.types[t.key] = { fields: Array.from(st.fields), rules: st.rules.slice() }; });
+
+      sendBtn.disabled = true; sendBtn.textContent = "Sending…";
+      try {
+        const res = await App.portalApi("/api/reports/run", { method: "POST", body: JSON.stringify({ id: state.id, name, format: fmtSel.value, definition, recipients }) });
+        toast(`Report sent (${res.rowCount} row${res.rowCount === 1 ? "" : "s"}) to ${recipients.length} recipient${recipients.length === 1 ? "" : "s"}.`);
+        onSent && onSent();
+      } catch (e) {
+        toast(e.message, true);
+        sendBtn.disabled = false; sendBtn.textContent = "Send now";
+      }
+    };
+
+    updateSummary();
+    if (activeType) showType(activeType);
+    return card;
   }
 
 

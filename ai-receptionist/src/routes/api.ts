@@ -21,8 +21,9 @@ import { listTemplates, createTemplate, deleteTemplate } from "../services/templ
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
-import { listExports, createExport, createImportRecord, createBackupRecord, getExportCsv } from "../services/exportService";
-import { listReports } from "../services/reportService";
+import { listExports, createExport, createImportRecord, createBackupRecord, getExportCsv, getExportArtifact } from "../services/exportService";
+import { listReports, getScheduledReport, upsertScheduledReport } from "../services/reportService";
+import { runAndDeliverReport } from "../services/reportExecutor";
 import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
 import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voices";
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
@@ -1584,7 +1585,9 @@ apiRouter.post("/backups", async (req: Request, res: Response) => {
 apiRouter.get("/exports/:id/download", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  const result = await getExportCsv(req.params.id, tenantId);
+  // Format-aware: plain exports return CSV text; report runs may return xlsx/zip
+  // (base64 + ext + mime) so the client rebuilds the exact emailed file.
+  const result = await getExportArtifact(req.params.id, tenantId);
   if (!result) {
     res.status(404).json({ error: "Export not found" });
     return;
@@ -1601,6 +1604,48 @@ apiRouter.get("/reports", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await listReports(tenantId));
+});
+
+// Full saved report (definition + recipients + format) for the form's
+// "Start from a saved report" prefill.
+apiRouter.get("/reports/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const r = await getScheduledReport(tenantId, req.params.id);
+  if (!r) { res.status(404).json({ error: "Report not found" }); return; }
+  res.json(r);
+});
+
+// "Send now": save/update the report, then run it server-side, email it to all
+// recipients, and log the run. Same role gate as exports (settings_data/manage).
+apiRouter.post("/reports/run", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const body = (req.body || {}) as any;
+  const name = String(body.name || "").trim();
+  const format = body.format === "xlsx" ? "xlsx" : "csv";
+  const definition = (body.definition && typeof body.definition === "object") ? body.definition : { types: {} };
+  const recipients = Array.isArray(body.recipients)
+    ? body.recipients.map((e: any) => String(e).trim()).filter(Boolean)
+    : [];
+
+  if (!name) { res.status(400).json({ error: "Report name is required." }); return; }
+  const types = definition.types || {};
+  const includedCount = Object.keys(types).filter((k) => Array.isArray(types[k]?.fields) && types[k].fields.length).length;
+  if (!includedCount) { res.status(400).json({ error: "Select at least one field to include." }); return; }
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!recipients.length || !recipients.every((e: string) => emailRe.test(e))) {
+    res.status(400).json({ error: "Enter one or more valid recipient email addresses." });
+    return;
+  }
+
+  const saved = await upsertScheduledReport({ tenantId, id: body.id || null, name, format, definition, recipients, createdById: req.user!.id });
+  try {
+    const run = await runAndDeliverReport({ tenantId, reportId: saved.id, name, format, definition, recipients, createdById: req.user!.id });
+    res.json({ ok: true, reportId: saved.id, ...run });
+  } catch (e) {
+    res.status(500).json({ error: "Report run failed: " + (e as Error).message });
+  }
 });
 
 // ---- Automations (event-driven workflows) ----

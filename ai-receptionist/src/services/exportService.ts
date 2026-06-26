@@ -156,6 +156,20 @@ export async function getExportCsv(id: string, tenantId: string): Promise<{ name
   return { name: rec.name, csv: rec.csv };
 }
 
+// Format-aware download. Plain exports stay CSV text (base64:false). Report runs may
+// be xlsx/zip — the {ext, mime, base64} hint lives in the `fields` JSON and the
+// payload (`csv` column) is base64 for those. The route returns whichever applies so
+// the client rebuilds the EXACT emailed file with the right bytes + extension.
+export async function getExportArtifact(id: string, tenantId: string): Promise<{ name: string; csv: string; ext: string; mime: string; base64: boolean } | null> {
+  const rec = await prisma.exportRecord.findUnique({ where: { id } });
+  if (!rec || rec.tenantId !== tenantId) return null;
+  const hint = (rec.fields && !Array.isArray(rec.fields) ? rec.fields : {}) as any;
+  const base64 = hint.base64 === true;
+  const ext = typeof hint.ext === "string" ? hint.ext : "csv";
+  const mime = typeof hint.mime === "string" ? hint.mime : "text/csv;charset=utf-8;";
+  return { name: rec.name, csv: rec.csv, ext, mime, base64 };
+}
+
 // Download a master-hub export (no tenant). Route-gated to master roles.
 export async function getMasterExportCsv(id: string): Promise<{ name: string; csv: string } | null> {
   const rec = await prisma.exportRecord.findUnique({ where: { id } });
