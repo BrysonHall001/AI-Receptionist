@@ -74,6 +74,32 @@
       labels: (n.labels && typeof n.labels === "object") ? n.labels : {},
     };
   };
+  // Batch 3 — each portal nav item's required VIEW area. The sidebar derives from
+  // these: an item shows only if the user has View for its area. null = always-visible
+  // (Fields/Learning page-load isn't permission-gated; Feedback has its own role
+  // logic; Dashboard is never hideable). View comes from the server (me.permView),
+  // computed by the SAME resolver the server enforces with — so menus can never show
+  // a page the user can't access, and system-role menus are unchanged (they have View
+  // on every area). Cosmetic nav-hide is applied on top, separately.
+  App.NAV_VIEW_AREA = {
+    "#/dashboard": null,
+    "#/calls": "calls",
+    "#/contacts": "contacts",
+    "#/jobs": "records",
+    "#/bookings": "records",
+    "#/fields": null,
+    "#/reports": "reports",
+    "#/automations": "automations",
+    "#/learn": "learn",
+    "#/feedback": null,
+  };
+  App.canViewNav = function (href) {
+    var area = App.NAV_VIEW_AREA[href];
+    if (!area) return true; // always-visible items (page-load not permission-gated)
+    var pv = App.state.me && App.state.me.permView;
+    if (!pv) return true; // permissions not loaded yet -> don't hide (matches old default)
+    return pv[area] === true;
+  };
   // Home Dashboard is never hideable, so there's always a landing page.
   App.isNavHidden = function (href) {
     if (href === "#/dashboard") return false;
@@ -89,15 +115,20 @@
   };
   // Apply order + hide to a nav list. Items named in cfg.order come first in that
   // order; any remaining default items keep their original relative order (so a
-  // newly-shipped nav item still shows even under an older saved order). Hidden
-  // items are dropped — except Home Dashboard, which always stays.
+  // newly-shipped nav item still shows even under an older saved order). An item is
+  // shown only when the user has VIEW for it (access) AND it isn't portal-hidden
+  // (cosmetic) — Home Dashboard always stays.
   App.applyNavConfig = function (navList) {
     const cfg = App.navConfig();
     const byHref = {}; navList.forEach((it) => { byHref[it[0]] = it; });
     const seen = {}; const ordered = [];
     cfg.order.forEach((href) => { if (byHref[href] && !seen[href]) { ordered.push(byHref[href]); seen[href] = true; } });
     navList.forEach((it) => { if (!seen[it[0]]) { ordered.push(it); seen[it[0]] = true; } });
-    return ordered.filter((it) => it[0] === "#/dashboard" || cfg.hidden.indexOf(it[0]) === -1);
+    return ordered.filter((it) => {
+      if (it[0] === "#/dashboard") return true;          // always a landing page
+      if (cfg.hidden.indexOf(it[0]) !== -1) return false; // portal-hidden (cosmetic)
+      return App.canViewNav(it[0]);                        // must have View (access)
+    });
   };
 
   // ---- Writers: both go through the EXISTING admin-gated PATCH /api/labels, then
@@ -585,9 +616,12 @@
     const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/bookings": "bookings", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
     if (portalViews[path]) {
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
-      // If this page has been hidden from the nav for this portal, send the user
-      // to the always-present Home Dashboard rather than a page with no way back.
-      if (App.isNavHidden && App.isNavHidden("#" + path)) return App.go("#/dashboard");
+      // Batch 3: hide is now COSMETIC — a hidden page the user can View still loads by
+      // URL (reachable, just not in the menu). Access is governed by VIEW: a page the
+      // user has no View permission for sends them to the always-present Home Dashboard.
+      // For system roles this never triggers (they have View everywhere), so a hidden
+      // page that used to redirect now loads.
+      if (App.canViewNav && App.canViewNav("#" + path) === false) return App.go("#/dashboard");
       buildShell("portal", path === "/settings" ? "#/settings" : "#" + path);
       return App.portal.render(portalViews[path]);
     }

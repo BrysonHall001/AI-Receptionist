@@ -54,6 +54,12 @@ export const AREAS: AreaDef[] = [
 
 const AREA_BY_KEY = new Map<string, AreaDef>(AREAS.map((a) => [a.key, a]));
 
+// The areas whose VIEW right backs a sidebar item, so the client menu can derive
+// from real permissions (Batch 3). Fields and Feedback are always-visible on the
+// client (their page-load isn't permission-gated / Feedback has its own role logic),
+// and Dashboard is never hideable — so the client handles those three specially.
+export const NAV_VIEW_AREAS = ["contacts", "records", "automations", "calls", "reports", "learn", "dashboard"];
+
 export type Permissions = Record<string, Partial<Record<Right, boolean>>>;
 
 // ---------------------------------------------------------------------------

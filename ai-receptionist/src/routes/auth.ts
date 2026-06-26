@@ -7,6 +7,7 @@ import { sendPlainEmail } from "../services/notificationService";
 import { env } from "../config/env";
 import { logger } from "../utils/logger";
 import { rateLimit } from "../middleware/rateLimit";
+import { can, NAV_VIEW_AREAS } from "../services/permissionService";
 
 export const authRouter = Router();
 
@@ -54,7 +55,7 @@ authRouter.post("/logout", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-authRouter.get("/me", (req: Request, res: Response) => {
+authRouter.get("/me", async (req: Request, res: Response) => {
   if (!req.user) {
     res.status(401).json({ error: "Not authenticated" });
     return;
@@ -64,7 +65,14 @@ authRouter.get("/me", (req: Request, res: Response) => {
   // During act-as-type it carries the effective role + pinned tenant, so the whole
   // UI renders as that role. The persistent banner + Exit (driven by the server's
   // /api/impersonation, which checks the REAL identity) stay on top regardless.
-  res.json({ user: req.user });
+  //
+  // Batch 3 (nav reconciliation): also send the per-area VIEW map the sidebar derives
+  // from, computed by the SAME resolver the server enforces with. For system roles
+  // every nav area is true (so menus are unchanged); custom roles get a correct menu
+  // automatically. Cosmetic nav-hide is applied separately on the client.
+  const permView: Record<string, boolean> = {};
+  for (const area of NAV_VIEW_AREAS) permView[area] = await can(req.user as any, area, "view");
+  res.json({ user: { ...req.user, permView } });
 });
 
 authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => {
