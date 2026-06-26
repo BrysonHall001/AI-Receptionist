@@ -754,12 +754,31 @@
     options.push({ value: "event", label: "Events" });
     if (isAdmin) options.push({ value: "feedback", label: "Feedback" });
 
-    const picker = el("div");
-    picker.style.cssText = "max-width:340px;margin-bottom:8px;";
-    picker.innerHTML = `<label class="field-label">What to export</label>
-      <select id="da-ex-type" class="input"><option value="">— choose a type —</option>${options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</select>`;
+    // Button row mirroring the Import tab (same flex-wrap btn-ghost row with the ⇩
+    // icon); each button renders that type's export form INLINE below via the SAME
+    // buildOpts(value) + openExport({ inline:true }) the dropdown used.
+    const grid = el("div");
+    grid.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;margin-bottom:8px;";
     const formHost = el("div");
-    host.appendChild(picker);
+
+    let activeBtn = null;
+    async function select(value, btn) {
+      if (activeBtn) activeBtn.classList.remove("active");
+      activeBtn = btn || null;
+      if (btn) btn.classList.add("active");
+      formHost.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+      let opts;
+      try { opts = await buildOpts(value); } catch (err) { formHost.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(err.message)}</div>`; return; }
+      if (!opts) { formHost.innerHTML = ""; return; }
+      openExport(Object.assign({}, opts, { inline: true, container: formHost }));
+    }
+
+    options.forEach((o) => {
+      const b = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(o.label)}`);
+      b.onclick = () => select(o.value, b);
+      grid.appendChild(b);
+    });
+    host.appendChild(grid);
     host.appendChild(formHost);
 
     async function buildOpts(value) {
@@ -792,16 +811,6 @@
       }
       return null;
     }
-
-    picker.querySelector("#da-ex-type").onchange = async (e) => {
-      const value = e.target.value;
-      formHost.innerHTML = value ? `<div class="cell-muted" style="padding:8px">Loading…</div>` : "";
-      if (!value) return;
-      let opts;
-      try { opts = await buildOpts(value); } catch (err) { formHost.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(err.message)}</div>`; return; }
-      if (!opts) { formHost.innerHTML = ""; return; }
-      openExport(Object.assign({}, opts, { inline: true, container: formHost }));
-    };
   }
 
   // ---- Data Backup sub-tab: one-click blanket export of ALL portal data, as an
@@ -913,20 +922,25 @@
     host.innerHTML = "";
     const isAdmin = !!(App.state.me && App.isAdminTier(App.state.me.role));
     const wrap = el("div");
-    wrap.style.cssText = "max-width:540px;";
     wrap.innerHTML = `
       <p class="cell-muted" style="margin-top:4px">Download a complete backup of this portal's data — one tab (Excel) or file (CSV zip) per data type: ${esc(App.label("contact", "many"))}, every record type, Calls, Events, Resources${isAdmin ? ", Feedback" : ""}, and optionally automations and team. Sign-in credentials and connected-account tokens are never included.</p>
-      <label class="field-label" style="margin-top:12px">Format</label>
-      <select id="bk-format" class="input" style="max-width:340px">
-        <option value="xlsx">Excel workbook (.xlsx) — one sheet per type</option>
-        <option value="zip">CSV files (.zip) — one .csv per type</option>
-      </select>
-      <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
-        <label class="ex-field"><input type="checkbox" id="bk-auto" checked /> <span>Include automation definitions</span></label>
-        <label class="ex-field"><input type="checkbox" id="bk-team" checked /> <span>Include team (names, emails, roles)</span></label>
-      </div>
-      <button id="bk-go" class="btn btn-primary" style="margin-top:14px">Download backup</button>
-      <div id="bk-status" class="cell-muted" style="margin-top:10px"></div>`;
+      <div style="max-width:640px">
+        <div style="display:flex;gap:36px;flex-wrap:wrap;align-items:flex-start;margin-top:14px">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <label class="ex-field"><input type="checkbox" id="bk-auto" checked /> <span>Include automation definitions</span></label>
+            <label class="ex-field"><input type="checkbox" id="bk-team" checked /> <span>Include team (names, emails, roles)</span></label>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:300px">
+            <label class="field-label" style="margin:0">Format</label>
+            <select id="bk-format" class="input" style="max-width:340px">
+              <option value="xlsx">Excel workbook (.xlsx) — one sheet per type</option>
+              <option value="zip">CSV files (.zip) — one .csv per type</option>
+            </select>
+          </div>
+        </div>
+        <button id="bk-go" class="btn btn-primary" style="margin-top:18px">Download backup</button>
+        <div id="bk-status" class="cell-muted" style="margin-top:10px"></div>
+      </div>`;
     host.appendChild(wrap);
     const statusEl = wrap.querySelector("#bk-status");
     const btn = wrap.querySelector("#bk-go");
@@ -967,6 +981,10 @@
   }
   function dataHistoryWhat(r, typeLabels) {
     if (r.kind === "backup") return "Full backup";
+    if (r.kind === "report") {
+      // Single-source report -> "<Type> · Report"; multi-source -> just "Report".
+      return r.dataType ? ((typeLabels[r.dataType] || r.dataType) + " · Report") : "Report";
+    }
     const typeLabel = r.dataType ? (typeLabels[r.dataType] || r.dataType) : "Other";
     return typeLabel + " · " + (r.kind === "import" ? "Import" : "Export");
   }
@@ -984,7 +1002,7 @@
 
     const columns = [
       { key: "createdAt", label: "When", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
-      { key: "what", label: "Type", type: "text", get: (r) => dataHistoryWhat(r, typeLabels), render: (r) => `<span class="pill">${esc(dataHistoryWhat(r, typeLabels))}</span>` },
+      { key: "what", label: "Type", type: "text", get: (r) => dataHistoryWhat(r, typeLabels), render: (r) => `<span class="pill${r.kind === "report" ? " report" : ""}">${esc(dataHistoryWhat(r, typeLabels))}</span>` },
       { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => esc(r.name || "—") },
       { key: "user", label: "User", type: "text", get: (r) => r.createdByName || "", render: (r) => `<span class="cell-muted">${esc(r.createdByName || "—")}</span>` },
       { key: "count", label: "Rows", type: "text", get: (r) => countOf(r), render: (r) => `<span class="cell-muted">${esc(countOf(r))}</span>` },
@@ -1134,8 +1152,19 @@
     mountTable();
 
     // ----- (B) The Create-a-report form -----------------------------------------
+    // Wrap the builder in the SAME .table-layout/.table-area structure App.table.mount
+    // uses for the list above, so both panels share identical left/right edges and
+    // width (the closed filter-rail's flex gap offsets both the same way). This is an
+    // OUTER alignment only — the list table itself is untouched (no inner spacing,
+    // column, or density change).
     const builder = reportBuilder(rows, recordTypes, portalTz, () => tabReports(host));
-    host.appendChild(builder);
+    const builderLayout = el("div", "table-layout");
+    const builderRail = el("aside", "filter-rail"); // empty + closed (width:0), mirrors the list
+    const builderArea = el("div", "table-area");
+    builderArea.appendChild(builder);
+    builderLayout.appendChild(builderRail);
+    builderLayout.appendChild(builderArea);
+    host.appendChild(builderLayout);
 
     // Click-to-edit: load the saved spec and prefill the SAME form bound to this id.
     async function openEdit(id) {
