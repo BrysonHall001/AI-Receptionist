@@ -1,4 +1,6 @@
 import { prisma } from "../db/client";
+import { getPortal } from "./portalService";
+import { computeNextRunAt } from "./reportSchedule";
 
 // ScheduledReport service. The Data Administration → Reports tab lists every saved
 // report (active AND inactive) joined with its LATEST run. Runs are ExportRecord
@@ -98,14 +100,22 @@ export async function upsertScheduledReport(input: {
   format?: string;
   definition?: unknown;
   recipients?: unknown;
+  mode?: string;                 // "immediate" | "recurring"
+  cadence?: unknown;             // recurrence spec (recurring only); null for immediate
+  nextRunAt?: Date | null;       // first due instant (recurring only)
   createdById?: string | null;
 }): Promise<{ id: string }> {
+  const recurring = input.mode === "recurring";
   const data: any = {
     name: (input.name || "").trim() || "Untitled report",
     format: input.format === "xlsx" ? "xlsx" : "csv",
     definition: (input.definition ?? {}) as any,
     recipients: (input.recipients ?? []) as any,
-    mode: "immediate",
+    mode: recurring ? "recurring" : "immediate",
+    // Cadence/nextRunAt only carry meaning for recurring reports; clear them for
+    // immediate ones so flipping a report back to "Send now" can't leave a stale slot.
+    cadence: (recurring ? (input.cadence ?? null) : null) as any,
+    nextRunAt: recurring ? (input.nextRunAt ?? null) : null,
   };
   if (input.id) {
     const existing = await db.scheduledReport.findFirst({ where: { id: input.id, tenantId: input.tenantId } });
@@ -116,6 +126,23 @@ export async function upsertScheduledReport(input: {
   }
   const rec = await db.scheduledReport.create({ data: { ...data, tenantId: input.tenantId, active: true, createdById: input.createdById ?? null } });
   return { id: rec.id };
+}
+
+// Toggle a recurring report's Active state. Reactivating a recurring report
+// RECOMPUTES nextRunAt from `now` so it resumes at the next future slot instead of
+// firing a backlog of missed runs; pausing leaves nextRunAt untouched (the sweep
+// excludes inactive reports regardless). Scoped to the tenant.
+export async function setReportActive(tenantId: string, id: string, active: boolean): Promise<{ id: string; active: boolean; nextRunAt: string | null } | null> {
+  const r = await db.scheduledReport.findFirst({ where: { id, tenantId } });
+  if (!r) return null;
+  const data: any = { active };
+  if (active && r.mode === "recurring" && r.cadence) {
+    const portal = await getPortal(tenantId);
+    const zone = (portal as any)?.timezone || "America/New_York";
+    data.nextRunAt = computeNextRunAt(r.cadence, new Date(), zone);
+  }
+  const updated = await db.scheduledReport.update({ where: { id: r.id }, data });
+  return { id: updated.id, active: updated.active, nextRunAt: updated.nextRunAt ? updated.nextRunAt.toISOString() : null };
 }
 
 // The full saved report (definition + recipients + format + name) for the form's
@@ -131,6 +158,8 @@ export async function getScheduledReport(tenantId: string, id: string) {
     active: r.active,
     definition: r.definition ?? { types: {} },
     recipients: Array.isArray(r.recipients) ? r.recipients : [],
+    cadence: r.cadence ?? null,
+    nextRunAt: r.nextRunAt ? r.nextRunAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
   };
 }

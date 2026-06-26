@@ -81,6 +81,8 @@ export const PERM_RULES: PermRule[] = [
   { m: "GET", re: /^\/exports(\/|$)/, area: "settings_data", right: "manage" },
   { m: "GET", re: /^\/reports(\/|$)/, area: "settings_data", right: "manage" },
   { m: "POST", re: /^\/reports\/run$/, area: "settings_data", right: "manage" },
+  { m: "POST", re: /^\/reports\/save$/, area: "settings_data", right: "manage" },
+  { m: "PATCH", re: /^\/reports\/[^/]+\/active$/, area: "settings_data", right: "manage" },
   { m: "POST", re: /^\/backups$/, area: "settings_data", right: "manage" },
 
   // ---- User management (Team) ----

@@ -7,6 +7,7 @@ import { attachConversationRelay } from "./telephony/conversationRelayWs";
 import { sweepStaleCalls } from "./services/callOrchestrator";
 import { sweepResolvedFeedback } from "./services/feedbackService";
 import { processDueJobs } from "./automation/scheduler";
+import { processDueReports } from "./services/reportScheduler";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -88,6 +89,30 @@ async function main(): Promise<void> {
   };
   const automationSweepTimer = setInterval(() => { void runAutomationSweep(); }, 2 * 60_000);
   automationSweepTimer.unref();
+
+  // Recurring-reports heartbeat: same 2-minute in-process cadence as the automation
+  // sweep above. processDueReports() claims each due report atomically (conditional
+  // nextRunAt advance) and reuses the SAME executor/email path "Send now" uses, so
+  // nothing double-sends and there's no forked delivery. The `reportsSweeping` guard
+  // prevents a slow sweep from overlapping the next tick; errors are caught/logged so
+  // a bad report can never crash the server; .unref() lets the process exit cleanly.
+  let reportsSweeping = false;
+  const runReportsSweep = async () => {
+    if (reportsSweeping) return; // previous tick still running — skip this one
+    reportsSweeping = true;
+    try {
+      const r = await processDueReports(); // no scope = all tenants
+      if (r.ran || r.failed) {
+        logger.info(`[reports] heartbeat: swept ${r.swept}, ran ${r.ran}, failed ${r.failed}`);
+      }
+    } catch (e) {
+      logger.error(`[reports] heartbeat sweep failed (will retry next tick): ${(e as Error).message}`);
+    } finally {
+      reportsSweeping = false;
+    }
+  };
+  const reportsSweepTimer = setInterval(() => { void runReportsSweep(); }, 2 * 60_000);
+  reportsSweepTimer.unref();
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`Received ${signal}; shutting down…`);

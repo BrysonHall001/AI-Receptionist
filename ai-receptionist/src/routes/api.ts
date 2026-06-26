@@ -22,8 +22,9 @@ import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listExports, createExport, createImportRecord, createBackupRecord, getExportCsv, getExportArtifact } from "../services/exportService";
-import { listReports, getScheduledReport, upsertScheduledReport } from "../services/reportService";
+import { listReports, getScheduledReport, upsertScheduledReport, setReportActive } from "../services/reportService";
 import { runAndDeliverReport } from "../services/reportExecutor";
+import { validateCadence, computeNextRunAt, describeCadence, currentAnchorWeekStart } from "../services/reportSchedule";
 import { updatePortal, getPortal, setTenantLabels, setTenantNav, getPortalTheme, setPortalTheme, MASTER_DEFAULT_THEME } from "../services/portalService";
 import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voices";
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
@@ -1646,6 +1647,52 @@ apiRouter.post("/reports/run", async (req: Request, res: Response) => {
   } catch (e) {
     res.status(500).json({ error: "Report run failed: " + (e as Error).message });
   }
+});
+
+// Save a report on a recurring SCHEDULE (does NOT run now). Stores mode:"recurring"
+// + the cadence and computes the first nextRunAt in the portal's timezone. The
+// 2-minute heartbeat then delivers it on cadence via the same executor "Send now" uses.
+apiRouter.post("/reports/save", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const body = (req.body || {}) as any;
+  const name = String(body.name || "").trim();
+  const format = body.format === "xlsx" ? "xlsx" : "csv";
+  const definition = (body.definition && typeof body.definition === "object") ? body.definition : { types: {} };
+  const recipients = Array.isArray(body.recipients) ? body.recipients.map((e: any) => String(e).trim()).filter(Boolean) : [];
+
+  if (!name) { res.status(400).json({ error: "Report name is required." }); return; }
+  const types = definition.types || {};
+  const includedCount = Object.keys(types).filter((k) => Array.isArray(types[k]?.fields) && types[k].fields.length).length;
+  if (!includedCount) { res.status(400).json({ error: "Select at least one field to include." }); return; }
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!recipients.length || !recipients.every((e: string) => emailRe.test(e))) {
+    res.status(400).json({ error: "Enter one or more valid recipient email addresses." });
+    return;
+  }
+  const v = validateCadence(body.cadence);
+  if (!v.ok) { res.status(400).json({ error: v.error }); return; }
+
+  const portal = await getPortal(tenantId);
+  const zone = (portal as any)?.timezone || "America/New_York";
+  // Stamp the phase anchor (week 1 = the week this schedule is saved, portal-local).
+  const cadence = { ...v.cadence, anchorWeekStart: currentAnchorWeekStart(zone) };
+  const nextRunAt = computeNextRunAt(cadence, new Date(), zone);
+  if (!nextRunAt) { res.status(400).json({ error: "This schedule never lands on a valid time — check the days and times." }); return; }
+
+  const saved = await upsertScheduledReport({ tenantId, id: body.id || null, name, format, definition, recipients, mode: "recurring", cadence, nextRunAt, createdById: req.user!.id });
+  res.json({ ok: true, reportId: saved.id, nextRunAt: nextRunAt.toISOString(), summary: describeCadence(cadence, zone) });
+});
+
+// Toggle a report's Active state (the list's Active/Inactive control). Reactivating
+// a recurring report resumes it at the next future slot (no missed-run backlog).
+apiRouter.patch("/reports/:id/active", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const active = (req.body || {}).active !== false;
+  const updated = await setReportActive(tenantId, req.params.id, active);
+  if (!updated) { res.status(404).json({ error: "Report not found" }); return; }
+  res.json(updated);
 });
 
 // ---- Automations (event-driven workflows) ----

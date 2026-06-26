@@ -1050,24 +1050,30 @@
 
   async function tabReports(host) {
     host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
-    let rows = [], recordTypes = [];
+    let rows = [], recordTypes = [], settings = {};
     try {
-      [rows, recordTypes] = await Promise.all([
+      [rows, recordTypes, settings] = await Promise.all([
         App.portalApi("/api/reports"),
         App.portalApi("/api/record-types").catch(() => []),
+        App.portalApi("/api/settings").catch(() => ({})),
       ]);
     } catch (e) { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
     rows = Array.isArray(rows) ? rows : [];
     recordTypes = Array.isArray(recordTypes) ? recordTypes : [];
+    const portalTz = (settings && settings.timezone) || "America/New_York";
 
+    const nextRunText = (r) => (!r.active ? "Paused" : (r.mode === "recurring" && r.nextRunAt ? fmtDate(r.nextRunAt) : "—"));
+    const lastRunText = (r) => (r.lastRunAt ? fmtDate(r.lastRunAt) : "—");
     const rowsOf = (r) => (r.latestRun && r.latestRun.rowCount != null ? String(r.latestRun.rowCount) : "—");
     const columns = [
       { key: "createdAt", label: "Date Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
       { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => esc(r.name || "—") },
       { key: "user", label: "Created by", type: "text", get: (r) => r.createdByName || "", render: (r) => `<span class="cell-muted">${esc(r.createdByName || "—")}</span>` },
       { key: "count", label: "Rows", type: "text", get: (r) => rowsOf(r), render: (r) => `<span class="cell-muted">${esc(rowsOf(r))}</span>` },
+      { key: "nextRun", label: "Next run", type: "text", get: (r) => nextRunText(r), render: (r) => `<span class="cell-muted">${esc(nextRunText(r))}</span>` },
+      { key: "lastRun", label: "Last run", type: "text", get: (r) => lastRunText(r), render: (r) => `<span class="cell-muted">${esc(lastRunText(r))}</span>` },
       { key: "download", label: "Download", type: "text", get: () => "", render: (r) => (r.latestRun && r.latestRun.downloadable ? `<button class="btn btn-ghost btn-sm rp-dl" data-id="${esc(r.latestRun.exportRecordId)}" data-name="${esc(r.name || "report")}">Download</button>` : "") },
-      { key: "active", label: "Status", type: "text", get: (r) => (r.active ? "Active" : "Inactive"), render: (r) => (r.active ? `<span class="pill success">Active</span>` : `<span class="pill skipped">Inactive</span>`) },
+      { key: "active", label: "Status", type: "text", get: (r) => (r.active ? "Active" : "Inactive"), render: (r) => `<button class="pill ${r.active ? "success" : "skipped"} rp-toggle" data-id="${esc(r.id)}" data-active="${r.active ? "1" : "0"}" title="Click to ${r.active ? "pause" : "activate"}">${r.active ? "Active" : "Inactive"}</button>` },
     ];
 
     host.innerHTML = "";
@@ -1081,6 +1087,18 @@
       e.stopPropagation();
       try { const r = await App.portalApi("/api/exports/" + encodeURIComponent(btn.dataset.id) + "/download"); downloadArtifact(r, btn.dataset.name); }
       catch (err) { toast(err.message, true); }
+    });
+    // Active/Inactive toggle — flips ScheduledReport.active and refreshes the list.
+    tableHost.addEventListener("click", async (e) => {
+      const btn = e.target.closest ? e.target.closest(".rp-toggle") : null;
+      if (!btn) return;
+      e.stopPropagation();
+      const makeActive = btn.dataset.active !== "1";
+      btn.disabled = true;
+      try {
+        await App.portalApi("/api/reports/" + encodeURIComponent(btn.dataset.id) + "/active", { method: "PATCH", body: JSON.stringify({ active: makeActive }) });
+        tabReports(host);
+      } catch (err) { toast(err.message, true); btn.disabled = false; }
     });
     let activeFilter = "all";
     function mountTable() {
@@ -1105,19 +1123,22 @@
     mountTable();
 
     // ----- (B) The Create-a-report form -----------------------------------------
-    host.appendChild(reportBuilder(rows, recordTypes, () => tabReports(host)));
+    host.appendChild(reportBuilder(rows, recordTypes, portalTz, () => tabReports(host)));
   }
 
   // The Create-a-report form: name + format + "start from saved" ABOVE a per-type
   // tab strip (one tab per reportable type), each with a field checklist + the
   // existing filter rule editor; recipients + "Send now" + a schedule stub BELOW.
-  function reportBuilder(savedReports, recordTypes, onSent) {
+  function reportBuilder(savedReports, recordTypes, portalTz, onSent) {
     const card = el("div", "card");
     card.style.cssText = "margin-top:18px; padding:18px";
     card.appendChild(el("h3", "settings-sub", "Create a report"));
 
     // Per-type working state. fields = Set of checked column KEYS (never labels).
     const state = { id: null, byType: {} };
+    // Recurring cadence working state (used only when delivery = "schedule").
+    const cad = { delivery: "now", days: new Set(), weekInterval: 1, times: {}, lastTime: "09:00" };
+    const DOW = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"]];
     recordTypes.forEach((t) => { state.byType[t.key] = { fields: new Set(), rules: [], loaded: false, cols: [], rows: [], bodyEl: null }; });
 
     // --- ABOVE: name, format, start-from-saved -------------------------------
@@ -1234,12 +1255,85 @@
     recipWrap.appendChild(recipInput);
     card.appendChild(recipWrap);
 
+    // --- Delivery: Send now vs Send on a schedule ----------------------------
+    const delivWrap = el("div"); delivWrap.style.cssText = "margin-top:14px";
+    delivWrap.appendChild(el("div", "field-label", "Delivery"));
+    const seg = el("div", "tabs"); seg.style.marginBottom = "8px";
+    const nowTab = el("button", "tab active", "Send now");
+    const schedTab = el("button", "tab", "Send on a schedule");
+    seg.appendChild(nowTab); seg.appendChild(schedTab);
+    delivWrap.appendChild(seg);
+    card.appendChild(delivWrap);
+
+    // --- Cadence builder (hidden until "Send on a schedule") ------------------
+    const cadPanel = el("div", "card"); cadPanel.style.cssText = "padding:14px; margin-bottom:10px; display:none";
+    cadPanel.appendChild(el("div", "field-label", "Which days"));
+    const dayRow = el("div"); dayRow.style.cssText = "display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px";
+    DOW.forEach(([n, label]) => {
+      const b = el("button", "tab", label); b.dataset.d = String(n);
+      b.onclick = () => {
+        if (cad.days.has(n)) { cad.days.delete(n); delete cad.times[n]; }
+        else { cad.days.add(n); if (!cad.times[n]) cad.times[n] = cad.lastTime; }
+        b.classList.toggle("active", cad.days.has(n));
+        renderTimes(); renderCadSummary();
+      };
+      dayRow.appendChild(b);
+    });
+    cadPanel.appendChild(dayRow);
+
+    const intervalWrap = el("div"); intervalWrap.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:12px";
+    intervalWrap.appendChild(el("span", "", "Every"));
+    const intervalInput = el("input", "input"); intervalInput.type = "number"; intervalInput.min = "1"; intervalInput.value = "1"; intervalInput.style.width = "70px";
+    intervalInput.onchange = () => { cad.weekInterval = Math.max(1, Math.floor(Number(intervalInput.value) || 1)); intervalInput.value = String(cad.weekInterval); renderCadSummary(); };
+    intervalWrap.appendChild(intervalInput);
+    intervalWrap.appendChild(el("span", "cell-muted", "week(s) — week 1 is the week you save this."));
+    cadPanel.appendChild(intervalWrap);
+
+    const timesLabel = el("div", "field-label", "Time per day"); cadPanel.appendChild(timesLabel);
+    const timesHost = el("div"); timesHost.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-bottom:6px"; cadPanel.appendChild(timesHost);
+    function renderTimes() {
+      timesHost.innerHTML = "";
+      const sel = Array.from(cad.days).sort((a, b) => a - b);
+      if (!sel.length) { timesHost.appendChild(el("div", "cell-muted", "Pick one or more days above.")); return; }
+      const labelOf = (n) => (DOW.find((d) => d[0] === n) || [, ""])[1];
+      sel.forEach((n) => {
+        const row = el("div"); row.style.cssText = "display:flex; align-items:center; gap:10px";
+        const lab = el("span"); lab.style.cssText = "width:42px"; lab.textContent = labelOf(n);
+        const ti = el("input", "input"); ti.type = "time"; ti.value = cad.times[n] || cad.lastTime; ti.style.width = "140px";
+        ti.onchange = () => { cad.times[n] = ti.value || "09:00"; cad.lastTime = cad.times[n]; renderCadSummary(); };
+        const tz = el("span", "cell-muted"); tz.textContent = portalTz;
+        row.appendChild(lab); row.appendChild(ti); row.appendChild(tz);
+        timesHost.appendChild(row);
+      });
+    }
+    const cadSummary = el("div"); cadSummary.style.cssText = "font-size:13px; margin-top:8px; font-weight:600";
+    cadPanel.appendChild(cadSummary);
+    function ord(n) { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+    function fmt12(hhmm) { const [h, m] = (hhmm || "00:00").split(":").map(Number); const ap = h < 12 ? "AM" : "PM"; const h12 = h % 12 === 0 ? 12 : h % 12; return `${h12}:${String(m).padStart(2, "0")} ${ap}`; }
+    function renderCadSummary() {
+      const sel = Array.from(cad.days).sort((a, b) => a - b);
+      if (!sel.length) { cadSummary.textContent = "No schedule set yet."; return; }
+      const every = cad.weekInterval === 1 ? "Every week" : `Every ${ord(cad.weekInterval)} week`;
+      const labelOf = (n) => (DOW.find((d) => d[0] === n) || [, ""])[1];
+      const parts = sel.map((n) => `${labelOf(n)} ${fmt12(cad.times[n] || cad.lastTime)}`);
+      cadSummary.textContent = `${every} on ${parts.join(", ")} (${portalTz})`;
+    }
+    card.appendChild(cadPanel);
+    renderTimes(); renderCadSummary();
+
+    function setDelivery(mode) {
+      cad.delivery = mode;
+      nowTab.classList.toggle("active", mode === "now");
+      schedTab.classList.toggle("active", mode === "schedule");
+      cadPanel.style.display = mode === "schedule" ? "" : "none";
+      submitBtn.textContent = mode === "schedule" ? "Save schedule" : "Send now";
+    }
+    nowTab.onclick = () => setDelivery("now");
+    schedTab.onclick = () => setDelivery("schedule");
+
     const actions = el("div"); actions.style.cssText = "display:flex; gap:12px; align-items:center; margin-top:14px";
-    const sendBtn = el("button", "btn btn-primary", "Send now");
-    actions.appendChild(sendBtn);
-    const schedStub = el("span", "cell-muted", "or send on a schedule — coming next.");
-    schedStub.style.fontSize = "13px";
-    actions.appendChild(schedStub);
+    const submitBtn = el("button", "btn btn-primary", "Send now");
+    actions.appendChild(submitBtn);
     card.appendChild(actions);
 
     function prefill(full) {
@@ -1254,29 +1348,67 @@
         st.fields = new Set(Array.isArray(d.fields) ? d.fields : []);
         st.rules.length = 0; (Array.isArray(d.rules) ? d.rules : []).forEach((r) => st.rules.push(r));
       });
+      // Restore cadence if this saved report is recurring.
+      cad.days = new Set(); cad.times = {}; cad.weekInterval = 1;
+      const c = full.cadence;
+      if (full.mode === "recurring" && c && Array.isArray(c.daysOfWeek)) {
+        c.daysOfWeek.forEach((n) => cad.days.add(Number(n)));
+        cad.weekInterval = Math.max(1, Math.floor(Number(c.weekInterval) || 1));
+        Object.keys(c.times || {}).forEach((k) => { cad.times[Number(k)] = c.times[k]; });
+        const firstTime = Object.values(cad.times)[0]; if (firstTime) cad.lastTime = firstTime;
+        intervalInput.value = String(cad.weekInterval);
+        DOW.forEach(([n]) => { const b = dayRow.querySelector(`[data-d="${n}"]`); if (b) b.classList.toggle("active", cad.days.has(n)); });
+        renderTimes(); renderCadSummary();
+        setDelivery("schedule");
+      } else {
+        DOW.forEach(([n]) => { const b = dayRow.querySelector(`[data-d="${n}"]`); if (b) b.classList.remove("active"); });
+        renderTimes(); renderCadSummary();
+        setDelivery("now");
+      }
       updateSummary();
       if (activeType) showType(activeType);
     }
 
     const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    sendBtn.onclick = async () => {
+    function collect() {
       const name = nameInput.value.trim();
-      if (!name) { toast("Give the report a name.", true); return; }
+      if (!name) { toast("Give the report a name.", true); return null; }
       const inc = includedTypes();
-      if (!inc.length) { toast("Check at least one field to include.", true); return; }
+      if (!inc.length) { toast("Check at least one field to include.", true); return null; }
       const recipients = recipInput.value.split(",").map((s) => s.trim()).filter(Boolean);
-      if (!recipients.length || !recipients.every((e) => emailRe.test(e))) { toast("Enter one or more valid emails.", true); return; }
+      if (!recipients.length || !recipients.every((e) => emailRe.test(e))) { toast("Enter one or more valid emails.", true); return null; }
       const definition = { types: {} };
       inc.forEach((t) => { const st = state.byType[t.key]; definition.types[t.key] = { fields: Array.from(st.fields), rules: st.rules.slice() }; });
+      return { name, recipients, definition, format: fmtSel.value };
+    }
 
-      sendBtn.disabled = true; sendBtn.textContent = "Sending…";
+    submitBtn.onclick = async () => {
+      const payload = collect();
+      if (!payload) return;
+
+      if (cad.delivery === "schedule") {
+        const days = Array.from(cad.days).sort((a, b) => a - b);
+        if (!days.length) { toast("Pick at least one day for the schedule.", true); return; }
+        if (!days.every((n) => cad.times[n])) { toast("Set a time for each selected day.", true); return; }
+        const cadence = { daysOfWeek: days, weekInterval: cad.weekInterval, times: {} };
+        days.forEach((n) => { cadence.times[n] = cad.times[n]; });
+        submitBtn.disabled = true; submitBtn.textContent = "Saving…";
+        try {
+          const res = await App.portalApi("/api/reports/save", { method: "POST", body: JSON.stringify({ id: state.id, ...payload, cadence }) });
+          toast(`Schedule saved — ${res.summary}. Next run ${fmtDate(res.nextRunAt)}.`);
+          onSent && onSent();
+        } catch (e) { toast(e.message, true); submitBtn.disabled = false; submitBtn.textContent = "Save schedule"; }
+        return;
+      }
+
+      submitBtn.disabled = true; submitBtn.textContent = "Sending…";
       try {
-        const res = await App.portalApi("/api/reports/run", { method: "POST", body: JSON.stringify({ id: state.id, name, format: fmtSel.value, definition, recipients }) });
-        toast(`Report sent (${res.rowCount} row${res.rowCount === 1 ? "" : "s"}) to ${recipients.length} recipient${recipients.length === 1 ? "" : "s"}.`);
+        const res = await App.portalApi("/api/reports/run", { method: "POST", body: JSON.stringify({ id: state.id, ...payload }) });
+        toast(`Report sent (${res.rowCount} row${res.rowCount === 1 ? "" : "s"}) to ${payload.recipients.length} recipient${payload.recipients.length === 1 ? "" : "s"}.`);
         onSent && onSent();
       } catch (e) {
         toast(e.message, true);
-        sendBtn.disabled = false; sendBtn.textContent = "Send now";
+        submitBtn.disabled = false; submitBtn.textContent = "Send now";
       }
     };
 
