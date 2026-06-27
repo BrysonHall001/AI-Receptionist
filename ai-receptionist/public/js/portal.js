@@ -573,10 +573,18 @@
     intro.style.cssText = "margin:0 0 16px;";
     wrap.appendChild(intro);
 
-    // Shared card: brand logo + title header; returns the body element to fill.
+    // Responsive tile grid: tiles never shrink below 320px — they wrap to fewer
+    // columns instead (auto-fill + minmax), so controls never get compressed.
+    // Equal-height rows via align-items:stretch; 16px gutters.
+    const grid = el("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;align-items:stretch;";
+    wrap.appendChild(grid);
+
+    // Shared tile: brand logo + title header; returns the body element to fill.
+    // Controls inside render at full, normal size — the grid wraps, never narrows them.
     function card(logo, title) {
       const c = el("div", "card");
-      c.style.cssText = "padding:18px;margin-bottom:18px;";
+      c.style.cssText = "padding:18px;margin:0;display:flex;flex-direction:column;min-width:0;";
       const head = el("div");
       head.style.cssText = "display:flex;align-items:center;gap:10px;margin:0 0 12px;";
       const img = el("img"); img.src = logo; img.alt = title + " logo";
@@ -584,8 +592,8 @@
       const h = el("h3", null, esc(title)); h.style.cssText = "margin:0;";
       head.appendChild(img); head.appendChild(h);
       c.appendChild(head);
-      const body = el("div"); c.appendChild(body);
-      wrap.appendChild(c);
+      const body = el("div"); body.style.cssText = "flex:1 1 auto;"; c.appendChild(body);
+      grid.appendChild(c);
       return body;
     }
 
@@ -596,7 +604,7 @@
       label.style.cssText = "font-size:13px;font-weight:600;display:block;margin:0 0 6px;";
       body.appendChild(label);
       const inp = el("input", "input"); inp.value = s.phoneNumber || ""; inp.placeholder = "+1 555 555 5555";
-      inp.style.cssText = "width:100%;max-width:320px;";
+      inp.style.cssText = "width:100%;"; // full tile inner width — never narrowed to fit
       body.appendChild(inp);
       if (!canEditTO) {
         inp.disabled = true;
