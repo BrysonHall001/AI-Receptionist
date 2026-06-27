@@ -175,13 +175,14 @@
     // Tab strip (same .tabs component Data Administration uses). One tab for now.
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const TABS = [["email", "Email"]]; // future: ["texts","Texts"], ["surveys","Surveys"], ["templates","Templates"]
+    const TABS = [["email", "Email"], ["templates", "Templates"]]; // future: ["texts","Texts"], ["surveys","Surveys"]
     let active = "email";
     function setTab(key) {
       active = key;
       App.util.$$(".tab", tabsBar).forEach((t) => t.classList.toggle("active", t.dataset.tab === key));
       tabBody.innerHTML = "";
       if (key === "email") emailTab(tabBody);
+      else if (key === "templates") templatesTab(tabBody);
     }
     TABS.forEach(([key, label]) => {
       const t = el("button", "tab" + (key === active ? " active" : ""), esc(label));
@@ -342,6 +343,109 @@
   function composeTo(ids) {
     pendingPreload = Array.isArray(ids) ? ids.slice() : [];
     App.go("#/communication");
+  }
+
+  // The Templates tab — manage the SAME EmailTemplate library the composer's
+  // start-from / save-as-template actions use (one shared store, via templateService).
+  function templatesTab(host) {
+    const { el, esc, fmtDate, toast } = App.util;
+    host.innerHTML = "";
+    let rows = [];
+    const state = { id: null };
+
+    const listHost = el("div");
+    host.appendChild(listHost);
+
+    // ----- create / edit form (reuses the rich-text composer for the body) -----
+    const card = el("div", "card");
+    card.style.cssText = "margin-top:18px;padding:18px";
+    const headRow = el("div"); headRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px";
+    const heading = el("h3", "settings-sub", "New template"); heading.style.margin = "0";
+    const newBtn = el("button", "btn btn-ghost btn-sm", "New template"); newBtn.style.display = "none";
+    headRow.appendChild(heading); headRow.appendChild(newBtn);
+    card.appendChild(headRow);
+
+    const nameWrap = el("label", "field");
+    nameWrap.innerHTML = `<span class="field-label">Template name</span>`;
+    const nameInput = el("input", "input"); nameInput.type = "text"; nameInput.placeholder = "e.g. Monthly newsletter";
+    nameWrap.appendChild(nameInput); card.appendChild(nameWrap);
+
+    const subjWrap = el("label", "field"); subjWrap.style.marginTop = "10px";
+    subjWrap.innerHTML = `<span class="field-label">Subject</span>`;
+    const subjInput = el("input", "input"); subjInput.type = "text"; subjInput.placeholder = "Email subject";
+    subjWrap.appendChild(subjInput); card.appendChild(subjWrap);
+
+    const bodyWrap = el("div", "field"); bodyWrap.style.marginTop = "10px";
+    bodyWrap.appendChild(el("span", "field-label", "Body"));
+    const bodyHost = el("div"); bodyWrap.appendChild(bodyHost);
+    card.appendChild(bodyWrap);
+    const bodyApi = App.compose.mount(bodyHost, { kind: "richtext" });
+
+    const actions = el("div"); actions.style.cssText = "margin-top:14px";
+    const saveBtn = el("button", "btn btn-primary", "Save template");
+    actions.appendChild(saveBtn); card.appendChild(actions);
+    host.appendChild(card);
+
+    function setEdit(t) {
+      state.id = t ? t.id : null;
+      heading.textContent = t ? "Edit template" : "New template";
+      newBtn.style.display = t ? "" : "none";
+      nameInput.value = t ? (t.name || "") : "";
+      subjInput.value = t ? (t.subject || "") : "";
+      bodyApi.setBody(t ? (t.body || "") : "");
+    }
+    newBtn.onclick = () => setEdit(null);
+
+    saveBtn.onclick = async () => {
+      const name = nameInput.value.trim();
+      if (!name) { toast("Give the template a name.", true); return; }
+      const payload = { name, subject: subjInput.value, body: bodyApi.getHTML() };
+      saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+      try {
+        if (state.id) await App.portalApi("/api/templates/" + encodeURIComponent(state.id), { method: "PATCH", body: JSON.stringify(payload) });
+        else await App.portalApi("/api/templates", { method: "POST", body: JSON.stringify(Object.assign({ kind: "email" }, payload)) });
+        toast(state.id ? "Template updated." : "Template created.");
+        setEdit(null);
+        await load();
+      } catch (e) { toast(e.message, true); }
+      finally { saveBtn.disabled = false; saveBtn.textContent = "Save template"; }
+    };
+
+    // ----- list -----
+    listHost.addEventListener("click", async (e) => {
+      const ed = e.target.closest ? e.target.closest(".tpl-edit") : null;
+      const dl = e.target.closest ? e.target.closest(".tpl-del") : null;
+      if (ed) { e.stopPropagation(); const t = rows.find((r) => r.id === ed.dataset.id); if (t) { setEdit(t); card.scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
+      if (dl) {
+        e.stopPropagation();
+        const t = rows.find((r) => r.id === dl.dataset.id);
+        if (!(await App.ui.confirmModal({ title: "Delete template", message: `Delete this template${t ? ` “${t.name}”` : ""}?`, confirmText: "Delete template" }))) return;
+        try { await App.portalApi("/api/templates/" + encodeURIComponent(dl.dataset.id), { method: "DELETE" }); toast("Template deleted."); if (state.id === dl.dataset.id) setEdit(null); await load(); }
+        catch (err) { toast(err.message, true); }
+      }
+    });
+
+    async function load() {
+      listHost.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+      try { rows = await App.portalApi("/api/templates?kind=email"); } catch (e) { listHost.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
+      rows = Array.isArray(rows) ? rows : [];
+      listHost.innerHTML = "";
+      const columns = [
+        { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => `<span class="cell-strong">${esc(r.name || "—")}</span>` },
+        { key: "subject", label: "Subject", type: "text", get: (r) => r.subject || "", render: (r) => `<span class="cell-muted">${esc(r.subject || "—")}</span>` },
+        { key: "updatedAt", label: "Last updated", type: "date", get: (r) => r.updatedAt, text: (r) => (r.updatedAt ? fmtDate(r.updatedAt) : ""), render: (r) => `<span class="cell-muted">${r.updatedAt ? fmtDate(r.updatedAt) : "—"}</span>` },
+        { key: "by", label: "Updated by", type: "text", get: (r) => r.createdByName || "", render: (r) => `<span class="cell-muted">${esc(r.createdByName || "—")}</span>` },
+        { key: "actions", label: "", type: "text", get: () => "", render: (r) => `<button class="btn btn-ghost btn-sm tpl-edit" data-id="${esc(r.id)}">Edit</button> <button class="btn btn-ghost btn-sm tpl-del" data-id="${esc(r.id)}">Delete</button>` },
+      ];
+      App.table.mount({
+        container: listHost, columns, rows,
+        defaultSort: "name", defaultSortDir: "asc",
+        emptyHtml: `<div class="card cell-muted" style="padding:18px">No templates yet — create one below or save one from a draft in the Email tab.</div>`,
+        pageSize: 50,
+      });
+    }
+
+    load();
   }
 
   App.communication = { render: renderCommunication, composeTo };

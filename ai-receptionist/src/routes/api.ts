@@ -18,7 +18,7 @@ import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
 import { sendEmailBlast, listSends } from "../services/communicationService";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
-import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
+import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
@@ -497,6 +497,16 @@ apiRouter.post("/templates", async (req: Request, res: Response) => {
     return;
   }
   res.json(await createTemplate({ tenantId, name, kind, subject, body: body || "", createdById: req.user!.id }));
+});
+
+apiRouter.patch("/templates/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, subject, body } = (req.body ?? {}) as any;
+  if (name != null && !String(name).trim()) { res.status(400).json({ error: "A template name is required" }); return; }
+  const updated = await updateTemplate(req.params.id, tenantId, { name, subject, body });
+  if (!updated) { res.status(404).json({ error: "Template not found" }); return; }
+  res.json(updated);
 });
 
 apiRouter.delete("/templates/:id", async (req: Request, res: Response) => {
