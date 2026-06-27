@@ -732,9 +732,14 @@
       const questions = state.qs.map((q) => ({ type: q.type, label: q.label.trim(), helpText: q.helpText || "", required: !!q.required, config: q.config || {}, mapFieldKey: q.mapFieldKey || null }));
       saveBtn.disabled = true; saveBtn.textContent = "Saving…";
       try {
-        const res = await App.portalApi("/api/surveys", { method: "POST", body: JSON.stringify({ id: state.id, name, description: descInput.value, status: statusSel.value, mapTargetType: "contact", questions }) });
-        toast(state.id ? "Survey updated." : "Survey created.");
-        state.id = res.id; heading.textContent = "Edit survey"; newBtn.style.display = "";
+        const wasCreate = !state.id;
+        const res = await App.portalApi("/api/surveys", { method: "POST", body: JSON.stringify({ id: state.id || null, name, description: descInput.value, status: statusSel.value, mapTargetType: "contact", questions }) });
+        toast(wasCreate ? "Survey created." : "Survey updated.");
+        // After a CREATE, fully reset the builder so the bound id is cleared and the NEXT
+        // save inserts a brand-new survey instead of overwriting the one we just made.
+        // After a real EDIT, stay on that survey (its id stays bound; only that row updates).
+        if (wasCreate) setEdit(null);
+        else state.id = res.id;
         await load();
       } catch (e) { toast(e.message, true); }
       finally { saveBtn.disabled = false; saveBtn.textContent = "Save survey"; }
