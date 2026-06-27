@@ -57,7 +57,7 @@
   // at render time via App.label(kind,"many") so renaming the contact/job record
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
-  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/fields", "Fields"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
+  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
   const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
   // Exposed so the Settings → Labels → "Pages & navigation" editor builds its rows
   // from the same canonical list the sidebar uses (no drift, no second definition).
@@ -87,7 +87,6 @@
     "#/contacts": "contacts",
     "#/jobs": "records",
     "#/bookings": "records",
-    "#/fields": null,
     "#/reports": "reports",
     "#/communication": "communication",
     "#/automations": "automations",
@@ -505,7 +504,7 @@
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
     } else {
-      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/fields": "Fields", "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
+      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
       topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Home Dashboard"));
     }
     topbar.appendChild(topLeft);
@@ -604,6 +603,9 @@
     // Old Inbound link now lives inside Settings.
     if (path === "/inbound") return App.go("#/settings/leadcapture");
 
+    // Old Fields page now lives inside Settings.
+    if (path === "/fields") return App.go("#/settings/fields");
+
     // Settings (with optional sub-section, e.g. #/settings/appearance) — the
     // sub-section drives the in-view sub-shell; refresh/back keep their place.
     if (path === "/settings" || path.indexOf("/settings/") === 0) {
@@ -614,7 +616,7 @@
     }
 
     // Portal section
-    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/bookings": "bookings", "/recycle": "recycle", "/fields": "fields", "/reports": "reports", "/communication": "communication", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
+    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/bookings": "bookings", "/recycle": "recycle", "/reports": "reports", "/communication": "communication", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
     if (portalViews[path]) {
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       // Batch 3: hide is now COSMETIC — a hidden page the user can View still loads by

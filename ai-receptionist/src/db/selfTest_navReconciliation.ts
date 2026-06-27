@@ -32,7 +32,7 @@ function check(cond: boolean, label: string) {
 // ---- Mirror of public/js/app.js (NAV_VIEW_AREA + applyNavConfig + navLabel) ----
 const NAV: Array<[string, string | null]> = [
   ["#/dashboard", null], ["#/calls", "calls"], ["#/contacts", "contacts"],
-  ["#/jobs", "records"], ["#/bookings", "records"], ["#/fields", null],
+  ["#/jobs", "records"], ["#/bookings", "records"],
   ["#/reports", "reports"], ["#/automations", "automations"], ["#/learn", "learn"],
   ["#/feedback", null],
 ];

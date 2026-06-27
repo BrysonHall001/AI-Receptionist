@@ -2349,8 +2349,14 @@
   }
 
   // ---------------- Fields tab ----------------
-  async function renderFields(refresh) {
-    if (!refresh) loading(); // on refresh we hold the current view until the rebuilt one is ready — no blink
+  // When Fields is hosted inside Settings → Fields, renders AND the many internal
+  // renderFields(true) refreshes must target the settings panel, not the main #view.
+  // Stored once (set by secFields) and reused on every refresh; null = standalone.
+  let fieldsMount = null;
+  function fieldsView() { return fieldsMount || view(); }
+  async function renderFields(refresh, mountEl) {
+    if (mountEl) fieldsMount = mountEl; // set on first mount; persists across refresh(true)
+    if (!refresh && !fieldsMount) loading(); // on refresh we hold the current view until the rebuilt one is ready — no blink
     const types = await App.portalApi("/api/record-types");
     if (!App.state.fieldsType || !types.some((t) => t.key === App.state.fieldsType)) App.state.fieldsType = "contact";
     const selectedKey = App.state.fieldsType;
@@ -2405,7 +2411,7 @@
       card.appendChild(el("div", "cell-muted", "No fields yet for this type. Click “+ Add field” to create one."));
       wrap.appendChild(card);
       if (canEdit && selectedType && selectedType.key !== "contact") { wrap.appendChild(subtypesCard()); wrap.appendChild(statusesCard()); }
-      view().innerHTML = ""; view().appendChild(wrap); return;
+      fieldsView().innerHTML = ""; fieldsView().appendChild(wrap); return;
     }
 
     const sorted = sections.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -2659,8 +2665,8 @@
     if (ungrouped.length || !sorted.length) wrap.appendChild(ungroupedCard(ungrouped));
     if (canEdit && selectedType && selectedType.key !== "contact") { wrap.appendChild(subtypesCard()); wrap.appendChild(statusesCard()); }
 
-    view().innerHTML = "";
-    view().appendChild(wrap);
+    fieldsView().innerHTML = "";
+    fieldsView().appendChild(wrap);
   }
 
   function fieldRow(f, canEdit, allFields, recordTypeKey, sections, currentSectionId) {
@@ -3399,8 +3405,7 @@
       { key: "appearance", label: "Appearance", admin: true, build: secAppearance },
       { key: "team", label: "Team & Permissions", admin: true, build: secTeam },
       { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
-      { key: "scheduling", label: "Scheduling", admin: true, build: secScheduling },
-      { key: "resources", label: App.label("resource", "many"), admin: true, build: secResources },
+      { key: "scheduling", label: "Scheduling & Resources", admin: true, build: secSchedulingResources },
       // Integrations is visible to EVERY role (admin:false) — Twilio/OpenAI edit
       // is gated inside the section, Google is editable by all. renderIntegrations
       // fills the panel directly (same build(panel) contract as the others).
@@ -3443,7 +3448,7 @@
           <label class="field-label">Business name</label><input id="set-name" class="input" value="${esc(portal.name)}" />
           <label class="field-label">Notify email</label><input id="set-email" class="input" value="${esc(portal.notifyEmail)}" />
         </div>
-        <p class="cell-muted" style="font-size:12.5px;margin:6px 0 14px">Notify email is where call summaries and business notifications are sent, and the reply-to address on emails to your contacts.</p>
+        <p class="cell-muted" style="font-size:12.5px;margin:6px 0 14px">Where call summaries and business notifications are sent.</p>
         <button id="set-save" class="btn btn-primary btn-sm">Save changes</button>`;
       App.util.$("#set-save").onclick = async () => {
         try {
@@ -3925,6 +3930,20 @@
       load();
     }
 
+    async function secSchedulingResources(panel) {
+      // Combined tab: render the two EXISTING panels stacked, each into its own
+      // container so their innerHTML writes and #sched-host/#res-host lookups never
+      // collide. Both builders keep their own Save wiring — no save logic is merged.
+      panel.innerHTML = "";
+      const schedWrap = el("div");
+      const resWrap = el("div");
+      resWrap.style.marginTop = "32px";
+      panel.appendChild(schedWrap);
+      panel.appendChild(resWrap);
+      await secScheduling(schedWrap);
+      await secResources(resWrap);
+    }
+
     async function secScheduling(panel) {
       panel.innerHTML = `<h2 class="settings-h">Scheduling</h2>
         <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Set your open hours, how long each service takes, and a buffer between appointments. These drive the Availability Preview on the Bookings page. Services themselves are managed on the Fields page.</p>
@@ -4056,9 +4075,15 @@
 
     // RESERVED — links out to the existing Fields route (not moved in this step).
     async function secFields(panel) {
-      panel.innerHTML = `<h2 class="settings-h">Fields</h2>
-        <p class="cell-muted" style="font-size:13.5px;margin-bottom:14px">Add and organize the fields and pipelines for your ${esc(App.label("contact", "many").toLowerCase())} and ${esc(App.label("job", "many").toLowerCase())}. Field settings open on their own page for now.</p>
-        <a class="btn btn-primary btn-sm" href="#/fields">Open field settings &rarr;</a>`;
+      // Host the full Fields editor inline here (relocated from the old #/fields page).
+      // Reuse renderFields verbatim; only its mount target changes. refresh=true skips
+      // loading() so the surrounding settings shell isn't wiped, and routes every
+      // internal renderFields(true) refresh back into this panel.
+      panel.innerHTML = "";
+      const host = el("div");
+      panel.appendChild(host);
+      fieldsMount = host;
+      await renderFields(true, host);
     }
   }
 
