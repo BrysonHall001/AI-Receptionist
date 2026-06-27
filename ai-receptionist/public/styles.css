@@ -573,6 +573,45 @@ textarea.input { resize: vertical; }
 .ql-font-trebuchet-ms { font-family: 'Trebuchet MS', sans-serif; }
 .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="trebuchet-ms"]::before, .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="trebuchet-ms"]::before { content: "Trebuchet MS"; font-family: 'Trebuchet MS', sans-serif; }
 
+/* ---------- Composer overhaul (shared App.compose) ---------- */
+/* The message editing surface is ALWAYS white with dark text — a true preview of how
+   recipients see the email — regardless of the (possibly dark) portal theme. The
+   surrounding toolbar/chrome stay themed. */
+.composer-editor .ql-container.ql-snow { background: #ffffff; }
+.composer-editor .ql-editor { background: #ffffff; color: #1a1a1e; caret-color: #1a1a1e; }
+.composer-editor .ql-editor a { color: #2552c0; }
+.composer-editor .ql-editor.ql-blank::before { color: #9aa3b2; font-style: normal; }
+.composer-editor .ql-editor.ql-blank::after { color: #9aa3b2; }
+
+/* Toolbar wraps cleanly so NOTHING (font name, size, link button, custom buttons)
+   clips past the edge at narrow widths. */
+.ql-toolbar.email-toolbar { display: flex; flex-wrap: wrap; align-items: center; row-gap: 4px; }
+.ql-toolbar.email-toolbar .ql-formats { margin-right: 8px; }
+/* Fixed-width font + size selectors that contain their longest option (e.g. "Times New
+   Roman"); overflow truncates with an ellipsis instead of spilling. */
+.composer-editor .ql-snow .ql-picker.ql-font { width: 134px; }
+.composer-editor .ql-snow .ql-picker.ql-size { width: 84px; }
+.composer-editor .ql-snow .ql-picker.ql-font .ql-picker-label,
+.composer-editor .ql-snow .ql-picker.ql-size .ql-picker-label {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 20px;
+}
+.composer-editor .ql-snow .ql-picker.ql-font .ql-picker-options { width: 168px; }
+/* Stop the font/size pickers showing a colored "active" state at random — the label
+   text already shows the current value, which is the real indicator. */
+.composer-editor .ql-snow .ql-picker.ql-font:not(.ql-expanded) .ql-picker-label,
+.composer-editor .ql-snow .ql-picker.ql-size:not(.ql-expanded) .ql-picker-label { color: var(--ink); }
+.composer-editor .ql-snow .ql-picker.ql-font:not(.ql-expanded) .ql-picker-label.ql-active,
+.composer-editor .ql-snow .ql-picker.ql-size:not(.ql-expanded) .ql-picker-label.ql-active { color: var(--ink); }
+/* Custom toolbar buttons (continue numbering, insert button) sit inside the toolbar
+   and never push controls off the edge. */
+.ql-toolbar.email-toolbar button.ql-cta,
+.ql-toolbar.email-toolbar button.ql-continue { width: auto; padding: 0 7px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.ql-toolbar.email-toolbar button.ql-cta:hover,
+.ql-toolbar.email-toolbar button.ql-continue:hover { color: var(--accent); }
+/* In-editor CTA button chrome (the SENT html uses inline styles; this is just so it
+   looks/behaves right inside the white editor). */
+.composer-editor .ql-editor a.cta-btn { cursor: pointer; }
+
 /* ---------- Reports ---------- */
 .reports-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .reports-bar-left { display: flex; align-items: center; gap: 10px; }

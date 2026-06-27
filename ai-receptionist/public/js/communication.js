@@ -902,7 +902,7 @@
 
       // email composer (reuse App.compose; its Templates menu = start-from / save-as)
       const composerHost = el("div"); composerHost.style.marginTop = "12px"; body.appendChild(composerHost);
-      const composer = App.compose.mount(composerHost, { kind: "email" });
+      const composer = App.compose.mount(composerHost, { kind: "email", surveyLinkMode: "token" });
 
       // insert {{survey_link}} merge token
       const linkBar = el("div"); linkBar.style.cssText = "margin-top:8px;display:flex;gap:8px;align-items:center";
