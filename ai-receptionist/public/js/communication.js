@@ -530,6 +530,21 @@
 
     host.appendChild(card);
 
+    // Build / Results switch (shown when a saved survey is open).
+    const viewToggle = el("div", "tabs"); viewToggle.style.cssText = "margin-top:14px;display:none";
+    const resultsCard = el("div", "card"); resultsCard.style.cssText = "margin-top:14px;padding:18px;display:none";
+    function setView(v) {
+      App.util.$$(".tab", viewToggle).forEach((t) => t.classList.toggle("active", t.dataset.v === v));
+      card.style.display = v === "build" ? "" : "none";
+      resultsCard.style.display = v === "results" ? "" : "none";
+      if (v === "results" && state.survey) renderResults(resultsCard, state.survey);
+    }
+    [["build", "Build"], ["results", "Results"]].forEach(([v, label]) => {
+      const t = el("button", "tab" + (v === "build" ? " active" : ""), label); t.dataset.v = v; t.onclick = () => setView(v); viewToggle.appendChild(t);
+    });
+    host.insertBefore(viewToggle, card);
+    host.appendChild(resultsCard);
+
     function blankQuestion() { return { lid: lidSeq++, type: "short_text", label: "", helpText: "", required: false, config: {}, mapFieldKey: null }; }
     function defaultConfigFor(type, prev) {
       if (type === "single_select" || type === "multi_select") return { options: (prev && Array.isArray(prev.options) && prev.options.length) ? prev.options.slice() : ["Option 1", "Option 2"] };
@@ -647,6 +662,7 @@
 
     function setEdit(survey) {
       state.id = survey ? survey.id : null;
+      state.survey = survey || null;
       heading.textContent = survey ? "Edit survey" : "New survey";
       newBtn.style.display = survey ? "" : "none";
       nameInput.value = survey ? (survey.name || "") : "";
@@ -678,9 +694,14 @@
           activateHint.textContent = "Set the survey to Active and save to send it to contacts.";
         }
         loadResponses(survey.id);
+        viewToggle.style.display = "";
+        setView("build");
       } else {
         shareWrap.style.display = "none";
         responsesHost.innerHTML = "";
+        viewToggle.style.display = "none";
+        resultsCard.style.display = "none";
+        card.style.display = "";
       }
     }
     let qLabelById = {};
@@ -718,6 +739,147 @@
       } catch (e) { toast(e.message, true); }
       finally { saveBtn.disabled = false; saveBtn.textContent = "Save survey"; }
     };
+
+    // ---- results view ----
+    function bar(pct) {
+      return `<div style="background:var(--panel-2,#eef1f6);border-radius:6px;height:10px;overflow:hidden;flex:1"><div style="background:var(--accent,#3257d6);height:10px;width:${Math.max(0, Math.min(100, pct))}%"></div></div>`;
+    }
+    function optionBars(opts) {
+      return `<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">` + (opts || []).map((o) =>
+        `<div style="display:flex;align-items:center;gap:10px"><div style="width:160px" class="cell-muted">${esc(String(o.value))}</div>${bar(o.pct)}<div style="width:90px;text-align:right" class="cell-muted">${o.count} · ${o.pct}%</div></div>`
+      ).join("") + `</div>`;
+    }
+    function renderResults(host, survey) {
+      host.innerHTML = `<div class="cell-muted">Loading results…</div>`;
+      Promise.all([
+        App.portalApi("/api/surveys/" + encodeURIComponent(survey.id) + "/results"),
+        App.portalApi("/api/surveys/" + encodeURIComponent(survey.id) + "/responses").catch(() => []),
+      ]).then(([r, responses]) => {
+        host.innerHTML = "";
+        responses = Array.isArray(responses) ? responses : [];
+
+        // header summary
+        const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap";
+        const stat = (label, val) => `<div style="min-width:120px"><div class="cell-muted" style="font-size:12px">${esc(label)}</div><div class="cell-strong" style="font-size:18px">${esc(String(val))}</div></div>`;
+        const summary = el("div"); summary.style.cssText = "display:flex;gap:18px;flex-wrap:wrap";
+        let summaryHtml = stat("Responses", r.total) + stat("Tied to a contact", r.tied) + stat("Anonymous", r.anonymous);
+        if (r.sent > 0) summaryHtml += stat("Sent", r.sent) + stat("Response rate", r.responseRate != null ? r.responseRate + "%" : "—");
+        if (r.firstAt) summaryHtml += stat("First / last", fmtDate(r.firstAt) + " → " + fmtDate(r.lastAt));
+        summary.innerHTML = summaryHtml;
+        head.appendChild(summary);
+
+        // lifecycle controls
+        const life = el("div"); life.style.cssText = "display:flex;gap:8px;align-items:center";
+        const pill = el("span", "pill " + (r.status === "active" ? "success" : r.status === "closed" ? "skipped" : ""), r.status.charAt(0).toUpperCase() + r.status.slice(1));
+        life.appendChild(pill);
+        const lifeBtn = (label, to) => { const b = el("button", "btn btn-ghost btn-sm", label); b.onclick = () => changeStatus(survey, to); return b; };
+        if (r.status === "draft") life.appendChild(lifeBtn("Activate", "active"));
+        else if (r.status === "active") life.appendChild(lifeBtn("Close", "closed"));
+        else if (r.status === "closed") life.appendChild(lifeBtn("Reopen", "active"));
+        head.appendChild(life);
+        host.appendChild(head);
+
+        // export
+        const exportRow = el("div"); exportRow.style.cssText = "margin-top:12px";
+        const exportBtn = el("button", "btn btn-ghost btn-sm", "Export responses");
+        exportBtn.onclick = () => exportResponses(survey);
+        exportRow.appendChild(exportBtn); host.appendChild(exportRow);
+
+        if (!r.total) { host.appendChild(el("div", "cell-muted", "No responses yet.")).style.marginTop = "16px"; return; }
+
+        // per-question breakdown
+        const qWrap = el("div"); qWrap.style.cssText = "margin-top:18px;display:flex;flex-direction:column;gap:18px";
+        (r.questions || []).forEach((q) => {
+          const block = el("div", "card"); block.style.cssText = "padding:14px;background:var(--panel-2)";
+          const qh = el("div"); qh.style.cssText = "display:flex;justify-content:space-between;align-items:baseline";
+          qh.innerHTML = `<div class="cell-strong">${esc(q.label)}</div><div class="cell-muted" style="font-size:12px">${q.answered} answered</div>`;
+          block.appendChild(qh);
+          if (q.type === "single_select" || q.type === "yes_no" || q.type === "multi_select") {
+            block.insertAdjacentHTML("beforeend", optionBars(q.options));
+          } else if (q.type === "rating") {
+            block.insertAdjacentHTML("beforeend", `<div class="cell-muted" style="margin:6px 0">Average: <span class="cell-strong">${q.average}</span></div>` + optionBars((q.distribution || []).map((d) => ({ value: d.value, count: d.count, pct: q.answered ? Math.round((d.count / q.answered) * 100) : 0 }))));
+          } else if (q.type === "nps") {
+            block.insertAdjacentHTML("beforeend",
+              `<div style="display:flex;gap:18px;margin:8px 0"><div><div class="cell-muted" style="font-size:12px">NPS score</div><div class="cell-strong" style="font-size:22px">${q.score}</div></div>` +
+              `<div class="cell-muted" style="align-self:center">Promoters ${q.promoters} · Passives ${q.passives} · Detractors ${q.detractors} · Avg ${q.average}</div></div>` +
+              optionBars((q.distribution || []).map((d) => ({ value: d.value, count: d.count, pct: q.answered ? Math.round((d.count / q.answered) * 100) : 0 }))));
+          } else if (q.type === "short_text" || q.type === "long_text") {
+            const list = el("div"); list.style.cssText = "margin-top:8px;max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:6px";
+            (q.texts || []).forEach((t) => { const row = el("div"); row.style.cssText = "border-left:2px solid var(--border,#e3e8ef);padding:2px 0 2px 10px"; row.innerHTML = `<div>${esc(t.value)}</div><div class="cell-muted" style="font-size:11.5px">${esc(t.contactName)}</div>`; list.appendChild(row); });
+            if (!(q.texts || []).length) list.appendChild(el("div", "cell-muted", "No text answers."));
+            block.appendChild(list);
+          } else if (q.type === "date") {
+            const list = el("div"); list.style.cssText = "margin-top:8px;max-height:180px;overflow:auto";
+            (q.dates || []).forEach((t) => { const row = el("div", "cell-muted"); row.textContent = t.value + " — " + t.contactName; list.appendChild(row); });
+            if (!(q.dates || []).length) list.appendChild(el("div", "cell-muted", "No dates."));
+            block.appendChild(list);
+          }
+          qWrap.appendChild(block);
+        });
+        host.appendChild(qWrap);
+
+        // individual responses table
+        host.appendChild(el("div", "field-label", "Individual responses")).style.marginTop = "18px";
+        const tableHost = el("div"); host.appendChild(tableHost);
+        const cols = [
+          { key: "submittedAt", label: "Submitted", type: "date", get: (x) => x.submittedAt, text: (x) => fmtDate(x.submittedAt), render: (x) => `<span class="cell-muted">${fmtDate(x.submittedAt)}</span>` },
+          { key: "who", label: "Respondent", type: "text", get: (x) => x.contactName, render: (x) => `<span class="${x.contactId ? "cell-strong" : "cell-muted"}">${esc(x.contactName)}</span>` },
+          { key: "n", label: "Answered", type: "text", get: (x) => String((x.answers || []).length), render: (x) => `<span class="cell-muted">${(x.answers || []).length}</span>` },
+        ];
+        App.table.mount({ container: tableHost, columns: cols, rows: responses, defaultSort: "submittedAt", defaultSortDir: "desc", onRowClick: (x) => openRespDetail(x), pageSize: 25, emptyHtml: `<div class="cell-muted" style="padding:10px">No responses yet.</div>` });
+      }).catch((e) => { host.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; });
+    }
+
+    async function changeStatus(survey, to) {
+      try {
+        await App.portalApi("/api/surveys/" + encodeURIComponent(survey.id) + "/status", { method: "PATCH", body: JSON.stringify({ status: to }) });
+        toast("Survey " + (to === "active" ? "is now active" : to === "closed" ? "closed" : "updated") + ".");
+        survey.status = to; state.survey.status = to; statusSel.value = to;
+        renderResults(resultsCard, survey);
+        load();
+      } catch (e) { toast(e.message, true); }
+    }
+
+    function openRespDetail(resp) {
+      const overlay = el("div", "modal-overlay");
+      const modal = el("div", "modal");
+      modal.innerHTML = `<div class="modal-head"><h2>Response</h2><button class="icon-btn" id="rd-close">&times;</button></div>`;
+      const body = el("div", "modal-body");
+      const meta = el("div", "cell-muted"); meta.style.marginBottom = "10px";
+      meta.innerHTML = `${esc(fmtDate(resp.submittedAt))} · ${resp.contactId ? esc(resp.contactName) : "Anonymous"}`;
+      if (resp.contactId) { const a = el("a", "link"); a.href = "#/contact/" + encodeURIComponent(resp.contactId); a.textContent = " — view contact"; a.onclick = () => overlay.remove(); meta.appendChild(a); }
+      body.appendChild(meta);
+      const fmtVal = (v) => Array.isArray(v) ? v.join(", ") : (v === true ? "Yes" : v === false ? "No" : String(v));
+      (resp.answers || []).forEach((a) => {
+        const row = el("div"); row.style.cssText = "padding:8px 0;border-top:1px solid var(--border,#e3e8ef)";
+        row.innerHTML = `<div class="cell-muted" style="font-size:12px">${esc(qLabelById[a.questionId] || "Question")}</div><div>${esc(fmtVal(a.value))}</div>`;
+        body.appendChild(row);
+      });
+      if (!(resp.answers || []).length) body.appendChild(el("div", "cell-muted", "No answers recorded."));
+      const foot = el("div", "modal-foot"); const close = el("button", "btn btn-ghost btn-sm", "Close"); foot.appendChild(close);
+      modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal); document.body.appendChild(overlay);
+      const dismiss = () => overlay.remove();
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) dismiss(); });
+      modal.querySelector("#rd-close").onclick = dismiss; close.onclick = dismiss;
+    }
+
+    async function exportResponses(survey) {
+      let ex;
+      try { ex = await App.portalApi("/api/surveys/" + encodeURIComponent(survey.id) + "/response-export"); }
+      catch (e) { toast(e.message, true); return; }
+      if (!ex.rows || !ex.rows.length) { toast("No responses to export yet.", true); return; }
+      App.exportModal({
+        title: "Export responses",
+        columns: (ex.columns || []).map((c) => ({ key: c.key, label: c.label, get: (row) => row[c.key] != null ? row[c.key] : "" })),
+        rows: ex.rows,
+        countText: (n) => `${n} response${n === 1 ? "" : "s"}`,
+        unitPlural: "Responses",
+        dataType: "survey",
+        sheetName: "Responses",
+        namePlaceholder: ex.name + " responses",
+        filterLabel: "Which responses",
+      });
+    }
 
     // ---- send flow (audience -> email with per-recipient link -> confirm) ----
     function openSendFlow(survey) {

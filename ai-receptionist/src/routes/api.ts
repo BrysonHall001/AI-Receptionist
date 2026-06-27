@@ -17,7 +17,8 @@ import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
 import { sendEmailBlast, listSends } from "../services/communicationService";
-import { listSurveys, getSurvey, upsertSurvey, deleteSurvey } from "../services/surveyService";
+import { listSurveys, getSurvey, upsertSurvey, deleteSurvey, setSurveyStatus } from "../services/surveyService";
+import { aggregateResults, getResponseExport } from "../services/surveyResultsService";
 import { listResponses, createRecipient } from "../services/surveyResponseService";
 import { sendSurveyBlast, sendSurveyTest } from "../services/surveyBlastService";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
@@ -499,6 +500,38 @@ apiRouter.get("/surveys/:id/responses", async (req: Request, res: Response) => {
   const rows = await listResponses(tenantId, req.params.id);
   if (rows === null) { res.status(404).json({ error: "Survey not found" }); return; }
   res.json(rows);
+});
+
+// Results view — summary + per-question breakdown (counts/%, rating avg, NPS score).
+apiRouter.get("/surveys/:id/results", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const r = await aggregateResults(tenantId, req.params.id);
+  if (!r) { res.status(404).json({ error: "Survey not found" }); return; }
+  res.json(r);
+});
+
+// Flattened rows for the response export (the client builds CSV/xlsx + logs history,
+// reusing the shared export machinery).
+apiRouter.get("/surveys/:id/response-export", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const r = await getResponseExport(tenantId, req.params.id);
+  if (!r) { res.status(404).json({ error: "Survey not found" }); return; }
+  res.json(r);
+});
+
+// Lifecycle: activate / close / reopen. Does not delete responses.
+apiRouter.patch("/surveys/:id/status", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const r = await setSurveyStatus(tenantId, req.params.id, String(((req.body ?? {}) as any).status || ""));
+    if (!r) { res.status(404).json({ error: "Survey not found" }); return; }
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 // Mint a per-recipient tokenized link for one contact (personal link). The blast batch

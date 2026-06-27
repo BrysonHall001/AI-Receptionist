@@ -162,3 +162,13 @@ export async function deleteSurvey(tenantId: string, id: string): Promise<boolea
   await db.survey.delete({ where: { id } }); // cascades to questions (+ any responses)
   return true;
 }
+
+// Lightweight status toggle (activate / close / reopen) that does NOT touch questions
+// or responses. Closing only stops new submissions; existing responses are retained.
+export async function setSurveyStatus(tenantId: string, id: string, status: string): Promise<{ id: string; status: string } | null> {
+  if (!["draft", "active", "closed"].includes(status)) throw new Error("Invalid status.");
+  const s = await db.survey.findFirst({ where: { id, tenantId } });
+  if (!s) return null;
+  const upd = await db.survey.update({ where: { id }, data: { status } });
+  return { id: upd.id, status: upd.status };
+}
