@@ -19,6 +19,7 @@ import { sendRichEmail } from "../services/notificationService";
 import { sendEmailBlast, listSends } from "../services/communicationService";
 import { listSurveys, getSurvey, upsertSurvey, deleteSurvey } from "../services/surveyService";
 import { listResponses, createRecipient } from "../services/surveyResponseService";
+import { sendSurveyBlast, sendSurveyTest } from "../services/surveyBlastService";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
@@ -510,6 +511,48 @@ apiRouter.post("/surveys/:id/recipients", async (req: Request, res: Response) =>
   if (!r) { res.status(404).json({ error: "Survey not found" }); return; }
   const origin = `${req.protocol}://${req.get("host")}`;
   res.json({ id: r.id, token: r.token, url: `${origin}/survey.html?token=${encodeURIComponent(r.token)}` });
+});
+
+// Send a survey to a chosen audience — each recipient gets their OWN per-recipient link.
+apiRouter.post("/surveys/:id/send", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const body = (req.body ?? {}) as any;
+  const subject = String(body.subject || "").trim();
+  if (!subject) { res.status(400).json({ error: "A subject is required" }); return; }
+  const contactIds = Array.isArray(body.contactIds) ? body.contactIds.map((x: any) => String(x)) : [];
+  const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds.map((x: any) => String(x)) : [];
+  if (!contactIds.length) { res.status(400).json({ error: "No recipients selected" }); return; }
+  try {
+    const result = await sendSurveyBlast({
+      tenantId, surveyId: req.params.id, subject, html: String(body.html || ""),
+      contactIds, excludeIds,
+      fromEmail: req.user!.email, fromName: req.user!.name, createdById: req.user!.id,
+      origin: `${req.protocol}://${req.get("host")}`,
+    });
+    res.json({ ok: true, recipientCount: result.recipientCount, sentCount: result.sentCount, failCount: result.failCount });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Send one preview copy to the current user (sample link), to eyeball before blasting.
+apiRouter.post("/surveys/:id/send-test", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const body = (req.body ?? {}) as any;
+  const subject = String(body.subject || "").trim();
+  if (!subject) { res.status(400).json({ error: "A subject is required" }); return; }
+  try {
+    await sendSurveyTest({
+      tenantId, surveyId: req.params.id, subject, html: String(body.html || ""),
+      toEmail: req.user!.email, fromEmail: req.user!.email, fromName: req.user!.name,
+      origin: `${req.protocol}://${req.get("host")}`,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 apiRouter.post("/contacts/:id/text", async (req: Request, res: Response) => {

@@ -861,7 +861,10 @@ model CommunicationSend {
   id             String   @id @default(cuid())
   tenantId       String
   tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  channel        String   @default("email") // "email" (texts/surveys later)
+  channel        String   @default("email") // "email" | "survey" (texts later)
+  // Set when channel = "survey": which survey this blast was for (forward-compatible
+  // link to the results view). Null for plain email blasts.
+  surveyId       String?
   subject        String   @default("")
   // Rich-text body HTML of the blast, persisted so the Sent-log detail view is
   // faithful. Nullable/forward-compatible.

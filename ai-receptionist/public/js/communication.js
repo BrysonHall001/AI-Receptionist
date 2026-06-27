@@ -453,6 +453,8 @@
   // Surveys tab — builder (model + question types + field mapping). No public
   // response page / sending in this batch.
   // ======================================================================
+  // Mirror of src/services/surveyBlastService.SURVEY_LINK_TOKEN.
+  const SURVEY_LINK_TOKEN = "{{survey_link}}";
   const Q_TYPES = [
     ["short_text", "Short text"], ["long_text", "Long text"],
     ["single_select", "Single choice"], ["multi_select", "Multiple choice"],
@@ -517,6 +519,11 @@
     const copyBtn = el("button", "btn btn-ghost btn-sm", "Copy");
     copyBtn.onclick = () => { linkInput.select(); try { document.execCommand("copy"); App.util.toast("Link copied."); } catch (e) { /* noop */ } };
     linkRow.appendChild(linkInput); linkRow.appendChild(copyBtn); shareWrap.appendChild(linkRow);
+    const sendRowWrap = el("div"); sendRowWrap.style.cssText = "margin-top:10px";
+    const sendSurveyBtn = el("button", "btn btn-primary btn-sm", "Send survey");
+    const activateHint = el("span", "cell-muted"); activateHint.style.cssText = "font-size:13px";
+    sendRowWrap.appendChild(sendSurveyBtn); sendRowWrap.appendChild(activateHint);
+    shareWrap.appendChild(sendRowWrap);
     const respHead = el("div", "field-label", "Responses"); respHead.style.marginTop = "16px"; shareWrap.appendChild(respHead);
     const responsesHost = el("div"); shareWrap.appendChild(responsesHost);
     card.appendChild(shareWrap);
@@ -662,6 +669,14 @@
             ? "Anyone with this link can respond anonymously. Per-recipient links (which tie answers to a contact) come with the send step."
             : "This survey is " + survey.status + " — the link won't accept responses until it's Active.";
         }
+        // Send is only available on an active survey (server re-checks too).
+        if (survey.status === "active") {
+          sendSurveyBtn.style.display = ""; activateHint.textContent = "";
+          sendSurveyBtn.onclick = () => openSendFlow(survey);
+        } else {
+          sendSurveyBtn.style.display = "none";
+          activateHint.textContent = "Set the survey to Active and save to send it to contacts.";
+        }
         loadResponses(survey.id);
       } else {
         shareWrap.style.display = "none";
@@ -703,6 +718,86 @@
       } catch (e) { toast(e.message, true); }
       finally { saveBtn.disabled = false; saveBtn.textContent = "Save survey"; }
     };
+
+    // ---- send flow (audience -> email with per-recipient link -> confirm) ----
+    function openSendFlow(survey) {
+      const overlay = el("div", "modal-overlay");
+      const modal = el("div", "modal"); modal.style.maxWidth = "640px";
+      modal.innerHTML = `<div class="modal-head"><h2>Send “${esc(survey.name)}”</h2><button class="icon-btn" id="sf-close">&times;</button></div>`;
+      const body = el("div", "modal-body");
+
+      body.appendChild(el("div", "cell-muted", "Each recipient gets their own personal link, so their answers tie back to them and fill their fields. Pick who to send to, write the email, and include the survey link.")).style.marginBottom = "12px";
+
+      // audience (reuse the same picker the Email tab uses)
+      body.appendChild(el("div", "field-label", "Audience"));
+      const audienceHost = el("div"); body.appendChild(audienceHost);
+      const audience = App.audiencePicker.mount(audienceHost, {});
+
+      // email composer (reuse App.compose; its Templates menu = start-from / save-as)
+      const composerHost = el("div"); composerHost.style.marginTop = "12px"; body.appendChild(composerHost);
+      const composer = App.compose.mount(composerHost, { kind: "email" });
+
+      // insert {{survey_link}} merge token
+      const linkBar = el("div"); linkBar.style.cssText = "margin-top:8px;display:flex;gap:8px;align-items:center";
+      const insertBtn = el("button", "btn btn-ghost btn-sm", "Insert survey link");
+      insertBtn.onclick = () => { composer.appendHtml("<p>" + SURVEY_LINK_TOKEN + "</p>"); composer.focus(); };
+      linkBar.appendChild(insertBtn);
+      linkBar.appendChild(el("span", "cell-muted", "Adds " + SURVEY_LINK_TOKEN + " — replaced with each person's unique link at send time.")).style.fontSize = "12.5px";
+      body.appendChild(linkBar);
+
+      const foot = el("div", "modal-foot"); foot.style.cssText = "display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap";
+      const leftFoot = el("div");
+      const testBtn = el("button", "btn btn-ghost btn-sm", "Send test to myself");
+      leftFoot.appendChild(testBtn);
+      const rightFoot = el("div"); rightFoot.style.cssText = "display:flex;gap:8px";
+      const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+      const send = el("button", "btn btn-primary btn-sm", "Send survey");
+      rightFoot.appendChild(cancel); rightFoot.appendChild(send);
+      foot.appendChild(leftFoot); foot.appendChild(rightFoot);
+
+      modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+      modal.querySelector("#sf-close").onclick = close;
+      cancel.onclick = close;
+
+      function checks() {
+        const subject = composer.getSubject();
+        if (!subject || !subject.trim()) { toast("Add a subject.", true); return null; }
+        const html = composer.getHTML();
+        if (html.indexOf(SURVEY_LINK_TOKEN) === -1) { toast("Your email doesn't include the survey link — add it before sending.", true); return null; }
+        return { subject: subject.trim(), html };
+      }
+
+      testBtn.onclick = async () => {
+        const c = checks(); if (!c) return;
+        testBtn.disabled = true; testBtn.textContent = "Sending…";
+        try { await App.portalApi("/api/surveys/" + encodeURIComponent(survey.id) + "/send-test", { method: "POST", body: JSON.stringify(c) }); toast("Test sent to your email."); }
+        catch (e) { toast(e.message, true); }
+        finally { testBtn.disabled = false; testBtn.textContent = "Send test to myself"; }
+      };
+
+      send.onclick = async () => {
+        const c = checks(); if (!c) return;
+        const recipientIds = audience.getRecipientIds();
+        if (!recipientIds.length) { toast("No emailable recipients in this audience.", true); return; }
+        const ok = await App.ui.confirmModal({
+          title: "Send this survey?",
+          message: `You're about to send “${survey.name}” to ${recipientIds.length} ${recipientIds.length === 1 ? "person" : "people"}. Each gets their own link. Send?`,
+          confirmText: "Send",
+        });
+        if (!ok) return;
+        send.disabled = true; send.textContent = "Sending…";
+        try {
+          const res = await App.portalApi("/api/surveys/" + encodeURIComponent(survey.id) + "/send", { method: "POST", body: JSON.stringify({ subject: c.subject, html: c.html, contactIds: recipientIds }) });
+          if (res.failCount) toast(`Sent to ${res.sentCount} of ${res.recipientCount} — ${res.failCount} failed.`);
+          else toast(`Sent to ${res.sentCount} ${res.sentCount === 1 ? "person" : "people"}.`);
+          close();
+          loadResponses(survey.id);
+        } catch (e) { toast(e.message, true); send.disabled = false; send.textContent = "Send survey"; }
+      };
+    }
 
     // ---- list ----
     listHost.addEventListener("click", async (e) => {
