@@ -35,6 +35,11 @@ export async function resolveTenantId(toNumber?: string | null): Promise<string 
   return first?.id ?? null;
 }
 
+// The deterministic opening line spoken before the AI engages. NOT sourced from a
+// per-tenant greeting field (removed) — the business-specific intro comes from the
+// Calls-page instruction box via the AI prompt. Generic by design; the fallback.
+const DEFAULT_GREETING = "Hello, how can I help you?";
+
 /** LAYER 2/5: create the call session and produce the deterministic greeting. */
 export async function startCall(params: {
   callSid: string;
@@ -44,16 +49,16 @@ export async function startCall(params: {
 }): Promise<TurnResult> {
   const existing = await getCallSession(params.callSid);
   if (existing) {
-    // Duplicate inbound webhook for a known call -> idempotent re-greet.
-    const tenant = await prisma.tenant.findUnique({ where: { id: existing.tenantId } });
-    const msg = tenant?.greeting ?? "Hello, how can I help you?";
+    // Duplicate inbound webhook for a known call -> idempotent re-greet. The opener
+    // is the generic line; the business-specific intro comes from the AI prompt
+    // (Calls-page instructions), not a stored greeting field.
     const state = existing.status as CallState;
-    return { messageToSpeak: msg, state, done: isTerminal(state) };
+    return { messageToSpeak: DEFAULT_GREETING, state, done: isTerminal(state) };
   }
 
   const tenantId = params.tenantId || (await resolveTenantId(params.to));
   if (!tenantId) throw new Error("No tenant configured. Run `npm run seed` first.");
-  const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+  await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } }); // ensure the tenant exists
 
   await createCallSession({
     callSid: params.callSid,
@@ -61,11 +66,14 @@ export async function startCall(params: {
     fromNumber: params.from,
     toNumber: params.to ?? null,
   });
-  const transcript = appendTurn([], "assistant", tenant.greeting);
+  // Deterministic opener: the generic line, NOT a stored greeting. The receptionist's
+  // own intro (business name, opening style) comes from the Calls-page instructions
+  // via the AI prompt on its turns — a single source of truth.
+  const transcript = appendTurn([], "assistant", DEFAULT_GREETING);
   await updateCallSession(params.callSid, { transcript, status: "GREETING" });
 
   logger.info(`Call ${params.callSid} started for tenant ${tenantId}`);
-  return { messageToSpeak: tenant.greeting, state: "GREETING", done: false };
+  return { messageToSpeak: DEFAULT_GREETING, state: "GREETING", done: false };
 }
 
 /** LAYER 2/3: process one caller utterance through the AI + state machine. */
@@ -149,8 +157,8 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
     const ai = await runAITurn({
       tenantId: tenant.id,
       context: {
-        businessName: tenant.name,
-        businessType: tenant.businessType,
+        // businessName/businessType are no longer injected into the prompt; the
+        // business identity comes solely from aiInstructions now.
         currentState: state,
         alreadyExtracted: extracted,
         callerPhone: session.fromNumber,

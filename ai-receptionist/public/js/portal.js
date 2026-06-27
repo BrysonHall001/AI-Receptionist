@@ -3395,7 +3395,7 @@
     // "Your account"). Each builder relocates the EXISTING content + wiring
     // unchanged; "labels" and "fields" are reserved placeholders for later steps.
     const SECTIONS = [
-      { key: "general", label: "General", admin: true, build: secGeneral },
+      { key: "general", label: "Business Profile", admin: true, build: secGeneral },
       { key: "appearance", label: "Appearance", admin: true, build: secAppearance },
       { key: "team", label: "Team & Permissions", admin: true, build: secTeam },
       { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
@@ -3438,21 +3438,17 @@
     // ---- Section builders (existing content + behavior, relocated verbatim) ----
     async function secGeneral(panel) {
       const portal = await App.portalApi("/api/settings");
-      panel.innerHTML = `<h2 class="settings-h">General</h2>
+      panel.innerHTML = `<h2 class="settings-h">Business Profile</h2>
         <div class="settings-grid">
           <label class="field-label">Business name</label><input id="set-name" class="input" value="${esc(portal.name)}" />
-          <label class="field-label">Business type</label><input id="set-type" class="input" value="${esc(portal.businessType)}" />
-          <label class="field-label">Phone number</label><input id="set-phone" class="input" value="${esc(portal.phoneNumber || "")}" />
           <label class="field-label">Notify email</label><input id="set-email" class="input" value="${esc(portal.notifyEmail)}" />
-          <label class="field-label">Greeting</label><textarea id="set-greet" class="input" rows="2">${esc(portal.greeting)}</textarea>
         </div>
+        <p class="cell-muted" style="font-size:12.5px;margin:6px 0 14px">Notify email is where call summaries and business notifications are sent, and the reply-to address on emails to your contacts.</p>
         <button id="set-save" class="btn btn-primary btn-sm">Save changes</button>`;
       App.util.$("#set-save").onclick = async () => {
         try {
           await App.portalApi("/api/settings", { method: "PATCH", body: JSON.stringify({
-            name: App.util.$("#set-name").value, businessType: App.util.$("#set-type").value,
-            phoneNumber: App.util.$("#set-phone").value, notifyEmail: App.util.$("#set-email").value,
-            greeting: App.util.$("#set-greet").value }) });
+            name: App.util.$("#set-name").value, notifyEmail: App.util.$("#set-email").value }) });
           toast("Settings saved");
         } catch (err) { toast(err.message, true); }
       };
