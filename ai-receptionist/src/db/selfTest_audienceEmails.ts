@@ -71,8 +71,8 @@ async function main() {
     const comm = readFileSync(resolve(__dirname, "../../public/js/communication.js"), "utf8");
     check(/getTypedEmails:/.test(comm), "audiencePicker exposes getTypedEmails() in its API");
     check(/tablePreview: true, allowTypedEmails: true/.test(comm), "email compose opts into the table preview + typed emails");
-    check(/App\.audiencePicker\.mount\(audienceHost, \{\}\)/.test(comm), "survey-send mount still uses the compact picker (opts preserved)");
-    check(/hasPreload \? \{ preloadIds \}/.test(comm), "preload (Contacts deep-link) mount path preserved");
+    check(/App\.audiencePicker\.mount\(audienceHost, \{\}\)/.test(comm), "survey-send reuses the shared picker (pick-mode)");
+    check(/if \(hasPreload\) audOpts\.preloadIds = preloadIds/.test(comm), "preload (Contacts deep-link) mount path preserved");
   } catch (e) {
     console.error("\nUNEXPECTED ERROR:", e);
     failures.push("unexpected error: " + (e as Error).message);

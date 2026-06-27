@@ -51,7 +51,7 @@ async function main() {
 
     // ---------- (2) flag OFF + REAL-looking creds → still no send, no throw ----------
     console.log("\n(2) gate off (non-placeholder creds — the critical case):");
-    (env as any).TWILIO_AUTH_TOKEN = "unit-test-token-not-real-2026"; // looks real → useMockSms() === false
+    (env as any).TWILIO_AUTH_TOKEN = "unit-test-token-not-real-2026"; // non-placeholder → useMockSms() === false if reached
     reset();
     let threw = false;
     try { await sendSms({ to: "+15551230002", body: "must not transmit", from: "+15550000000" }); }
