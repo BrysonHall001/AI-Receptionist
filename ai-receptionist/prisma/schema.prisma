@@ -885,6 +885,8 @@ model Survey {
   name          String
   description   String?
   status        String   @default("draft")   // "draft" | "active" | "closed"
+  // Public, unguessable slug for the anonymous shareable link (?s=<publicId>).
+  publicId      String   @unique
   // Which record kind answers map onto. "contact" for v1; structured so record-type
   // keys (job/booking/custom) can be added later without a migration.
   mapTargetType String   @default("contact")
@@ -894,8 +896,25 @@ model Survey {
 
   questions     SurveyQuestion[]
   responses     SurveyResponse[]
+  recipients    SurveyRecipient[]
 
   @@index([tenantId])
+}
+
+// A per-recipient tokenized link (identity). Resolves SERVER-SIDE to {survey, contact}
+// — the contactId is never read from the request. The blast batch creates these en
+// masse; this batch can mint one per contact for a personal link.
+model SurveyRecipient {
+  id          String    @id @default(cuid())
+  surveyId    String
+  survey      Survey    @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  tenantId    String
+  contactId   String?
+  token       String    @unique
+  createdAt   DateTime  @default(now())
+  respondedAt DateTime?
+
+  @@index([surveyId])
 }
 
 model SurveyQuestion {
@@ -923,6 +942,9 @@ model SurveyResponse {
   tenantId    String
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   contactId   String?
+  // The per-recipient link this came through (null for anonymous). Unique so a
+  // per-recipient token can produce at most ONE response (idempotent re-submit).
+  recipientId String?  @unique
   submittedAt DateTime @default(now())
   raw         Json     @default("{}")
 

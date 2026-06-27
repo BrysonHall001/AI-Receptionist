@@ -7,6 +7,7 @@ import { conversationRelayRouter } from "./routes/conversationRelayWebhook";
 import { internalRouter } from "./routes/internal";
 import { inboundRouter } from "./routes/inbound";
 import { inviteRouter } from "./routes/invites";
+import { surveyRouter } from "./routes/surveyPublic";
 import { authRouter } from "./routes/auth";
 import { adminRouter } from "./routes/admin";
 import { apiRouter } from "./routes/api";
@@ -59,6 +60,7 @@ export function createApp(): express.Express {
   app.use("/internal", internalRouter);
   app.use("/hooks/in", inboundRouter); // PUBLIC inbound webhook ingest (tenant from token)
   app.use("/invites", inviteRouter); // PUBLIC account-activation surface (gated by invite token only)
+  app.use("/survey", surveyRouter); // PUBLIC survey response surface (gated by survey token / publicId only)
 
   // Auth (login/forgot/reset are open; /me reads the session)
   app.use("/api/auth", authRouter);

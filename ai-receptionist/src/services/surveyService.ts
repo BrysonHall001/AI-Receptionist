@@ -1,4 +1,5 @@
 import { prisma } from "../db/client";
+import crypto from "crypto";
 import { listFields } from "./fieldService";
 import { isQuestionType, isMappingCompatible } from "./surveyTypes";
 
@@ -40,7 +41,7 @@ export async function listSurveys(tenantId: string) {
   const rows = await db.survey.findMany({
     where: { tenantId },
     orderBy: { updatedAt: "desc" },
-    include: { _count: { select: { questions: true } } },
+    include: { _count: { select: { questions: true, responses: true } } },
   });
   const names = await resolveCreatorNames(rows.map((r: any) => r.createdById));
   return rows.map((r: any) => ({
@@ -48,8 +49,10 @@ export async function listSurveys(tenantId: string) {
     name: r.name,
     description: r.description ?? "",
     status: r.status,
+    publicId: r.publicId,
     mapTargetType: r.mapTargetType,
     questionCount: r._count?.questions ?? 0,
+    responseCount: r._count?.responses ?? 0,
     createdById: r.createdById ?? null,
     createdByName: r.createdById ? (names[r.createdById] ?? null) : null,
     createdAt: r.createdAt.toISOString(),
@@ -66,6 +69,7 @@ export async function getSurvey(tenantId: string, id: string) {
     name: s.name,
     description: s.description ?? "",
     status: s.status,
+    publicId: s.publicId,
     mapTargetType: s.mapTargetType,
     questions: (s.questions || []).map(questionDto),
   };
@@ -131,7 +135,7 @@ export async function upsertSurvey(input: {
     await db.survey.update({ where: { id: surveyId }, data });
     await db.surveyQuestion.deleteMany({ where: { surveyId } });
   } else {
-    const created = await db.survey.create({ data: { ...data, tenantId: input.tenantId, createdById: input.createdById ?? null } });
+    const created = await db.survey.create({ data: { ...data, tenantId: input.tenantId, createdById: input.createdById ?? null, publicId: crypto.randomBytes(9).toString("hex") } });
     surveyId = created.id;
   }
 

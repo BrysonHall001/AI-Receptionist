@@ -18,6 +18,7 @@ import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
 import { sendEmailBlast, listSends } from "../services/communicationService";
 import { listSurveys, getSurvey, upsertSurvey, deleteSurvey } from "../services/surveyService";
+import { listResponses, createRecipient } from "../services/surveyResponseService";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
@@ -488,6 +489,27 @@ apiRouter.delete("/surveys/:id", async (req: Request, res: Response) => {
   const ok = await deleteSurvey(tenantId, req.params.id);
   if (!ok) { res.status(404).json({ error: "Survey not found" }); return; }
   res.json({ ok: true });
+});
+
+// Minimal "view responses" so submissions are verifiable (full results view is later).
+apiRouter.get("/surveys/:id/responses", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const rows = await listResponses(tenantId, req.params.id);
+  if (rows === null) { res.status(404).json({ error: "Survey not found" }); return; }
+  res.json(rows);
+});
+
+// Mint a per-recipient tokenized link for one contact (personal link). The blast batch
+// will mint these in bulk. Returns a ready-to-share URL built from the request origin.
+apiRouter.post("/surveys/:id/recipients", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const contactId = ((req.body ?? {}) as any).contactId || null;
+  const r = await createRecipient(tenantId, req.params.id, contactId);
+  if (!r) { res.status(404).json({ error: "Survey not found" }); return; }
+  const origin = `${req.protocol}://${req.get("host")}`;
+  res.json({ id: r.id, token: r.token, url: `${origin}/survey.html?token=${encodeURIComponent(r.token)}` });
 });
 
 apiRouter.post("/contacts/:id/text", async (req: Request, res: Response) => {

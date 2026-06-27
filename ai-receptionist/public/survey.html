@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Survey</title>
+  <style>
+    :root { --ink:#1a2230; --ink-soft:#5b6678; --border:#e3e8ef; --bg:#f5f7fa; --accent:#3257d6; --danger:#c0392b; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--ink); }
+    .wrap { min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:24px; }
+    .card { width:100%; max-width:560px; background:#fff; border:1px solid var(--border); border-radius:14px; padding:28px; box-shadow:0 8px 30px rgba(20,30,50,.06); margin:24px 0; }
+    h1 { font-size:22px; margin:0 0 6px; }
+    .sub { color:var(--ink-soft); font-size:14px; margin:0 0 18px; line-height:1.5; }
+    .q { padding:16px 0; border-top:1px solid var(--border); }
+    .q:first-of-type { border-top:0; }
+    .q-label { font-size:15px; font-weight:600; margin:0 0 4px; }
+    .q-help { color:var(--ink-soft); font-size:13px; margin:0 0 10px; line-height:1.45; }
+    .req { color:var(--danger); margin-left:3px; }
+    input[type=text], textarea, input[type=date] { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:9px; font-size:15px; font-family:inherit; }
+    textarea { min-height:90px; resize:vertical; }
+    .opt { display:flex; align-items:center; gap:9px; padding:7px 0; font-size:15px; cursor:pointer; }
+    .opt input { width:auto; }
+    .scale { display:flex; flex-wrap:wrap; gap:8px; }
+    .pip { border:1px solid var(--border); border-radius:9px; padding:9px 14px; cursor:pointer; background:#fff; font-size:15px; min-width:44px; text-align:center; }
+    .pip.sel { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .q.invalid .q-label { color:var(--danger); }
+    button.submit { width:100%; margin-top:22px; padding:12px; border:0; border-radius:9px; background:var(--accent); color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
+    button.submit:disabled { opacity:.55; cursor:default; }
+    .msg { margin-top:14px; font-size:14px; line-height:1.5; }
+    .msg.err { color:var(--danger); }
+    .center { text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="card">
+      <div class="center"><p class="sub">Loading…</p></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var card = document.getElementById("card");
+      var qp = new URLSearchParams(window.location.search);
+      var token = qp.get("token") || "";
+      var publicId = qp.get("s") || "";
+
+      function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]; }); }
+      function unavailable(message){
+        card.innerHTML = '<h1>This survey isn\u2019t available</h1>' +
+          '<p class="sub">' + esc(message || "The link may be expired or the survey may be closed.") + '</p>';
+      }
+
+      if (!token && !publicId) { unavailable("This link is missing its survey reference."); return; }
+
+      var qs = token ? "token=" + encodeURIComponent(token) : "s=" + encodeURIComponent(publicId);
+      fetch("/survey/resolve?" + qs, { headers: { "Accept": "application/json" } })
+        .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
+        .then(function(res){
+          if (!res.ok || res.d.available === false) { unavailable(res.d && res.d.error); return; }
+          render(res.d);
+        })
+        .catch(function(){ unavailable(); });
+
+      var survey = null;
+      var values = {}; // questionId -> value
+
+      function render(data){
+        survey = data;
+        var html = '<h1>' + esc(data.name) + '</h1>';
+        if (data.description) html += '<p class="sub">' + esc(data.description) + '</p>';
+        html += '<div id="questions"></div>';
+        html += '<button class="submit" id="submit">Submit response</button>';
+        html += '<div class="msg" id="msg"></div>';
+        card.innerHTML = html;
+        var host = document.getElementById("questions");
+        (data.questions || []).forEach(function(q){ host.appendChild(renderQuestion(q)); });
+        document.getElementById("submit").onclick = submit;
+      }
+
+      function renderQuestion(q){
+        var wrap = document.createElement("div");
+        wrap.className = "q"; wrap.dataset.qid = q.id;
+        var lab = document.createElement("p"); lab.className = "q-label";
+        lab.innerHTML = esc(q.label) + (q.required ? '<span class="req">*</span>' : "");
+        wrap.appendChild(lab);
+        if (q.help || q.helpText) { var h = document.createElement("p"); h.className="q-help"; h.textContent = q.helpText || q.help; wrap.appendChild(h); }
+        var cfg = q.config || {};
+
+        if (q.type === "short_text") {
+          var i = inp("text"); i.oninput = function(){ values[q.id] = i.value; }; wrap.appendChild(i);
+        } else if (q.type === "long_text") {
+          var t = document.createElement("textarea"); t.oninput = function(){ values[q.id] = t.value; }; wrap.appendChild(t);
+        } else if (q.type === "single_select") {
+          (cfg.options || []).forEach(function(opt){
+            var l = document.createElement("label"); l.className="opt";
+            var r = document.createElement("input"); r.type="radio"; r.name="q_"+q.id; r.value=opt;
+            r.onchange = function(){ values[q.id] = opt; };
+            l.appendChild(r); l.appendChild(document.createTextNode(opt)); wrap.appendChild(l);
+          });
+        } else if (q.type === "multi_select") {
+          values[q.id] = [];
+          (cfg.options || []).forEach(function(opt){
+            var l = document.createElement("label"); l.className="opt";
+            var c = document.createElement("input"); c.type="checkbox"; c.value=opt;
+            c.onchange = function(){ var a = values[q.id] || []; if (c.checked) a.push(opt); else a = a.filter(function(x){ return x!==opt; }); values[q.id] = a; };
+            l.appendChild(c); l.appendChild(document.createTextNode(opt)); wrap.appendChild(l);
+          });
+        } else if (q.type === "rating" || q.type === "nps") {
+          var min = q.type === "nps" ? 0 : (cfg.min != null ? cfg.min : 1);
+          var max = q.type === "nps" ? 10 : (cfg.max != null ? cfg.max : 5);
+          var step = q.type === "nps" ? 1 : (cfg.step != null ? cfg.step : 1);
+          var scale = document.createElement("div"); scale.className="scale";
+          for (var n = min; n <= max; n += step) {
+            (function(val){
+              var b = document.createElement("div"); b.className="pip"; b.textContent = String(val);
+              b.onclick = function(){ values[q.id] = val; Array.prototype.forEach.call(scale.children, function(ch){ ch.classList.remove("sel"); }); b.classList.add("sel"); };
+              scale.appendChild(b);
+            })(n);
+          }
+          wrap.appendChild(scale);
+        } else if (q.type === "yes_no") {
+          [["Yes", true], ["No", false]].forEach(function(pair){
+            var l = document.createElement("label"); l.className="opt";
+            var r = document.createElement("input"); r.type="radio"; r.name="q_"+q.id;
+            r.onchange = function(){ values[q.id] = pair[1]; };
+            l.appendChild(r); l.appendChild(document.createTextNode(pair[0])); wrap.appendChild(l);
+          });
+        } else if (q.type === "date") {
+          var d = inp("date"); d.onchange = function(){ values[q.id] = d.value; }; wrap.appendChild(d);
+        }
+        return wrap;
+      }
+
+      function inp(type){ var i = document.createElement("input"); i.type = type; return i; }
+
+      function isEmpty(v){ return v === undefined || v === null || (typeof v === "string" && v.trim() === "") || (Array.isArray(v) && v.length === 0); }
+
+      function submit(){
+        var msg = document.getElementById("msg");
+        msg.className = "msg"; msg.textContent = "";
+        // Client-side required validation.
+        var firstBad = null;
+        (survey.questions || []).forEach(function(q){
+          var el = document.querySelector('.q[data-qid="' + q.id + '"]');
+          el.classList.remove("invalid");
+          if (q.required && isEmpty(values[q.id])) { el.classList.add("invalid"); if (!firstBad) firstBad = el; }
+        });
+        if (firstBad) { msg.className = "msg err"; msg.textContent = "Please answer the required questions."; firstBad.scrollIntoView({ behavior:"smooth", block:"center" }); return; }
+
+        var btn = document.getElementById("submit");
+        btn.disabled = true; btn.textContent = "Submitting…";
+        var body = { answers: values };
+        if (token) body.token = token; else body.s = publicId;
+        fetch("/survey/submit", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) })
+          .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
+          .then(function(res){
+            if (!res.ok) { btn.disabled = false; btn.textContent = "Submit response"; msg.className = "msg err"; msg.textContent = (res.d && res.d.error) || "Something went wrong. Please try again."; return; }
+            card.innerHTML = '<h1>Thanks!</h1><p class="sub">Your response was recorded.</p>';
+          })
+          .catch(function(){ btn.disabled = false; btn.textContent = "Submit response"; msg.className = "msg err"; msg.textContent = "Something went wrong. Please try again."; });
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -507,6 +507,20 @@
 
     const saveRow = el("div"); saveRow.style.cssText = "margin-top:16px";
     const saveBtn = el("button", "btn btn-primary", "Save survey"); saveRow.appendChild(saveBtn); card.appendChild(saveRow);
+
+    // Share + responses (shown when editing an existing survey).
+    const shareWrap = el("div"); shareWrap.style.cssText = "margin-top:18px;display:none";
+    shareWrap.appendChild(el("div", "field-label", "Share")).style.marginTop = "0";
+    const shareNote = el("div", "cell-muted"); shareNote.style.cssText = "font-size:13px;margin-bottom:6px"; shareWrap.appendChild(shareNote);
+    const linkRow = el("div"); linkRow.style.cssText = "display:flex;gap:8px;align-items:center";
+    const linkInput = el("input", "input"); linkInput.type = "text"; linkInput.readOnly = true; linkInput.style.flex = "1";
+    const copyBtn = el("button", "btn btn-ghost btn-sm", "Copy");
+    copyBtn.onclick = () => { linkInput.select(); try { document.execCommand("copy"); App.util.toast("Link copied."); } catch (e) { /* noop */ } };
+    linkRow.appendChild(linkInput); linkRow.appendChild(copyBtn); shareWrap.appendChild(linkRow);
+    const respHead = el("div", "field-label", "Responses"); respHead.style.marginTop = "16px"; shareWrap.appendChild(respHead);
+    const responsesHost = el("div"); shareWrap.appendChild(responsesHost);
+    card.appendChild(shareWrap);
+
     host.appendChild(card);
 
     function blankQuestion() { return { lid: lidSeq++, type: "short_text", label: "", helpText: "", required: false, config: {}, mapFieldKey: null }; }
@@ -636,6 +650,40 @@
         config: q.config && typeof q.config === "object" ? JSON.parse(JSON.stringify(q.config)) : {}, mapFieldKey: q.mapFieldKey || null,
       }));
       paintQuestions();
+
+      // Share + responses only make sense for a saved survey.
+      if (survey && survey.id) {
+        qLabelById = {};
+        (survey.questions || []).forEach((q) => { qLabelById[q.id] = q.label; });
+        shareWrap.style.display = "";
+        if (survey.publicId) {
+          linkInput.value = location.origin + "/survey.html?s=" + encodeURIComponent(survey.publicId);
+          shareNote.textContent = survey.status === "active"
+            ? "Anyone with this link can respond anonymously. Per-recipient links (which tie answers to a contact) come with the send step."
+            : "This survey is " + survey.status + " — the link won't accept responses until it's Active.";
+        }
+        loadResponses(survey.id);
+      } else {
+        shareWrap.style.display = "none";
+        responsesHost.innerHTML = "";
+      }
+    }
+    let qLabelById = {};
+    async function loadResponses(id) {
+      responsesHost.innerHTML = `<div class="cell-muted" style="padding:6px 0">Loading responses…</div>`;
+      let rows;
+      try { rows = await App.portalApi("/api/surveys/" + encodeURIComponent(id) + "/responses"); }
+      catch (e) { responsesHost.innerHTML = `<div class="cell-muted" style="padding:6px 0">${esc(e.message)}</div>`; return; }
+      rows = Array.isArray(rows) ? rows : [];
+      responsesHost.innerHTML = "";
+      if (!rows.length) { responsesHost.appendChild(el("div", "cell-muted", "No responses yet.")); return; }
+      const fmtVal = (v) => Array.isArray(v) ? v.join(", ") : (v === true ? "Yes" : v === false ? "No" : String(v));
+      const columns = [
+        { key: "submittedAt", label: "When", type: "date", get: (r) => r.submittedAt, text: (r) => fmtDate(r.submittedAt), render: (r) => `<span class="cell-muted">${fmtDate(r.submittedAt)}</span>` },
+        { key: "who", label: "From", type: "text", get: (r) => r.contactName, render: (r) => `<span class="${r.contactId ? "cell-strong" : "cell-muted"}">${esc(r.contactName)}</span>` },
+        { key: "answers", label: "Answers", type: "text", get: () => "", render: (r) => `<span class="cell-muted">${esc((r.answers || []).map((a) => (qLabelById[a.questionId] || "?") + ": " + fmtVal(a.value)).join(" · ")) || "—"}</span>` },
+      ];
+      App.table.mount({ container: responsesHost, columns, rows, defaultSort: "submittedAt", defaultSortDir: "desc", pageSize: 25 });
     }
     newBtn.onclick = () => setEdit(null);
     addBtn.onclick = () => { state.qs.push(blankQuestion()); paintQuestions(); };
@@ -688,6 +736,7 @@
         { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => `<span class="cell-strong">${esc(r.name || "—")}</span>` },
         { key: "status", label: "Status", type: "text", get: (r) => r.status, render: (r) => statusPill(r.status) },
         { key: "questionCount", label: "Questions", type: "text", get: (r) => String(r.questionCount), render: (r) => `<span class="cell-muted">${r.questionCount}</span>` },
+        { key: "responseCount", label: "Responses", type: "text", get: (r) => String(r.responseCount || 0), render: (r) => `<span class="cell-muted">${r.responseCount || 0}</span>` },
         { key: "by", label: "Created by", type: "text", get: (r) => r.createdByName || "", render: (r) => `<span class="cell-muted">${esc(r.createdByName || "—")}</span>` },
         { key: "updatedAt", label: "Updated", type: "date", get: (r) => r.updatedAt, text: (r) => fmtDate(r.updatedAt), render: (r) => `<span class="cell-muted">${fmtDate(r.updatedAt)}</span>` },
         { key: "actions", label: "", type: "text", get: () => "", render: (r) => `<button class="btn btn-ghost btn-sm sv-del" data-id="${esc(r.id)}">Delete</button>` },

@@ -687,7 +687,7 @@ function normalizeWallClock(val: any): string {
 
 // Coerce one imported cell to a custom field's defined type. { empty } = nothing to
 // store; { error } = uncoercible (the value is dropped + reported, never a crash).
-function coerceCustomValue(def: any, raw: any): { value?: any; empty?: boolean; error?: string } {
+export function coerceCustomValue(def: any, raw: any): { value?: any; empty?: boolean; error?: string } {
   if (raw === undefined || raw === null || String(raw).trim() === "") return { empty: true };
   const s = String(raw).trim();
   switch (def.type || "text") {
