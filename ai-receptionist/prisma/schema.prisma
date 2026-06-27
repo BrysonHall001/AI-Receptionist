@@ -934,6 +934,9 @@ model SurveyQuestion {
   config      Json    @default("{}")
   // The field this answer writes to (stable KEY, never the label). Null = unmapped.
   mapFieldKey String?
+  // Which record type the mapped field belongs to: "contact" | "job" | "booking".
+  // Null when unmapped. Existing contact-only mappings migrate to "contact".
+  mapRecordType String?
 
   @@index([surveyId, order])
 }

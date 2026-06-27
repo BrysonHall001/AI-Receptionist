@@ -114,7 +114,10 @@ function normalizeAnswer(q: any, v: any): any {
 // is coerced to the field's type with the SAME coercer the import/record system uses.
 // A value that can't coerce is skipped + reported — never crashes, never loses the row.
 async function writeMappedAnswers(tenantId: string, contactId: string, survey: any, answersByQid: Record<string, any>): Promise<Array<{ questionId: string; key: string; reason: string }>> {
-  const fields = await listFields(tenantId, survey.mapTargetType || "contact");
+  // Only CONTACT-mapped answers are written: a blast's per-recipient link identifies a
+  // contact, not a specific job/booking. Job/booking-mapped answers are still STORED on
+  // the response (above) but written to no record yet.
+  const fields = await listFields(tenantId, "contact");
   const defByKey: Record<string, any> = {};
   (fields || []).forEach((f: any) => { defByKey[f.key] = f; });
 
@@ -124,6 +127,7 @@ async function writeMappedAnswers(tenantId: string, contactId: string, survey: a
 
   for (const q of survey.questions || []) {
     if (!q.mapFieldKey) continue;                       // unmapped → write nothing
+    if ((q.mapRecordType || "contact") !== "contact") continue; // job/booking → inert
     if (!(q.id in answersByQid)) continue;              // unanswered → nothing to write
     const def = defByKey[q.mapFieldKey];
     if (!def) { skipped.push({ questionId: q.id, key: q.mapFieldKey, reason: "mapped field no longer exists" }); continue; }

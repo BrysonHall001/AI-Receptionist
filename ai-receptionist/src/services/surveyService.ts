@@ -12,6 +12,7 @@ export interface QuestionInput {
   required?: boolean;
   config?: any;
   mapFieldKey?: string | null;
+  mapRecordType?: string | null;
 }
 
 function questionDto(q: any) {
@@ -24,6 +25,7 @@ function questionDto(q: any) {
     required: !!q.required,
     config: q.config ?? {},
     mapFieldKey: q.mapFieldKey ?? null,
+    mapRecordType: q.mapFieldKey ? (q.mapRecordType ?? "contact") : (q.mapRecordType ?? null),
   };
 }
 
@@ -78,31 +80,51 @@ export async function getSurvey(tenantId: string, id: string) {
 // Validate questions: known type, has a label, and any mapFieldKey is a real field of
 // the target type whose field-type is compatible with the question type. Returns a
 // normalized question list or throws a user-facing Error.
-async function validateQuestions(tenantId: string, mapTargetType: string, questions: QuestionInput[]): Promise<QuestionInput[]> {
-  const fields = await listFields(tenantId, mapTargetType || "contact");
-  const fieldByKey: Record<string, any> = {};
-  (fields || []).forEach((f: any) => { fieldByKey[f.key] = f; });
+const MAP_RECORD_TYPES = ["contact", "job", "booking"];
 
-  return (questions || []).map((q, i) => {
+async function validateQuestions(tenantId: string, mapTargetType: string, questions: QuestionInput[]): Promise<QuestionInput[]> {
+  // Fields are loaded per record type, lazily + cached, so a survey can mix
+  // contact/job/booking mappings without re-fetching.
+  const fieldCache: Record<string, Record<string, any>> = {};
+  async function fieldsFor(rt: string): Promise<Record<string, any>> {
+    if (!fieldCache[rt]) {
+      const list = await listFields(tenantId, rt).catch(() => []);
+      const byKey: Record<string, any> = {};
+      (list || []).forEach((f: any) => { byKey[f.key] = f; });
+      fieldCache[rt] = byKey;
+    }
+    return fieldCache[rt];
+  }
+
+  const out: QuestionInput[] = [];
+  for (let i = 0; i < (questions || []).length; i++) {
+    const q = questions[i];
     const where = `Question ${i + 1}`;
     if (!isQuestionType(q.type)) throw new Error(`${where}: unknown question type "${q.type}".`);
     const label = String(q.label || "").trim();
     if (!label) throw new Error(`${where}: a question label is required.`);
+
     let mapFieldKey: string | null = q.mapFieldKey ? String(q.mapFieldKey) : null;
+    let mapRecordType: string | null = null;
     if (mapFieldKey) {
-      const f = fieldByKey[mapFieldKey];
-      if (!f) throw new Error(`${where}: mapped field "${mapFieldKey}" doesn't exist for ${mapTargetType || "contact"}.`);
+      mapRecordType = MAP_RECORD_TYPES.includes(String(q.mapRecordType || "")) ? String(q.mapRecordType) : "contact";
+      const byKey = await fieldsFor(mapRecordType);
+      const f = byKey[mapFieldKey];
+      if (!f) throw new Error(`${where}: mapped field "${mapFieldKey}" doesn't exist for ${mapRecordType}.`);
       if (!isMappingCompatible(q.type, f.type)) throw new Error(`${where}: field "${f.label}" (${f.type}) isn't compatible with a ${q.type} question.`);
     }
-    return {
+
+    out.push({
       type: q.type,
       label,
       helpText: q.helpText ? String(q.helpText) : null,
       required: !!q.required,
       config: q.config && typeof q.config === "object" ? q.config : {},
       mapFieldKey,
-    };
-  });
+      mapRecordType,
+    });
+  }
+  return out;
 }
 
 // Create or update a survey + replace its questions (stored in given order). Editing
@@ -150,10 +172,37 @@ export async function upsertSurvey(input: {
         required: !!q.required,
         config: (q.config ?? {}) as any,
         mapFieldKey: q.mapFieldKey ?? null,
+        mapRecordType: q.mapRecordType ?? null,
       })),
     });
   }
   return { id: surveyId as string };
+}
+
+// Duplicate a survey as a brand-new draft row (INSERT — never overwrites the original).
+// Copies name ("Copy of …"), description, questions, and their mappings.
+export async function duplicateSurvey(tenantId: string, id: string, createdById?: string | null): Promise<{ id: string } | null> {
+  const src = await db.survey.findFirst({ where: { id, tenantId }, include: { questions: { orderBy: { order: "asc" } } } });
+  if (!src) return null;
+  const questions: QuestionInput[] = (src.questions || []).map((q: any) => ({
+    type: q.type,
+    label: q.label,
+    helpText: q.helpText ?? null,
+    required: !!q.required,
+    config: q.config ?? {},
+    mapFieldKey: q.mapFieldKey ?? null,
+    mapRecordType: q.mapFieldKey ? (q.mapRecordType ?? "contact") : null,
+  }));
+  return upsertSurvey({
+    tenantId,
+    id: null, // force INSERT
+    name: `Copy of ${src.name}`,
+    description: src.description ?? null,
+    status: "draft",
+    mapTargetType: src.mapTargetType ?? "contact",
+    questions,
+    createdById: createdById ?? null,
+  });
 }
 
 export async function deleteSurvey(tenantId: string, id: string): Promise<boolean> {

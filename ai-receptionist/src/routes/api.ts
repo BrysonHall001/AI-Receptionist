@@ -17,7 +17,7 @@ import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
 import { sendEmailBlast, listSends } from "../services/communicationService";
-import { listSurveys, getSurvey, upsertSurvey, deleteSurvey, setSurveyStatus } from "../services/surveyService";
+import { listSurveys, getSurvey, upsertSurvey, deleteSurvey, setSurveyStatus, duplicateSurvey } from "../services/surveyService";
 import { aggregateResults, getResponseExport } from "../services/surveyResultsService";
 import { listResponses, createRecipient } from "../services/surveyResponseService";
 import { sendSurveyBlast, sendSurveyTest } from "../services/surveyBlastService";
@@ -520,6 +520,15 @@ apiRouter.get("/surveys/:id/response-export", async (req: Request, res: Response
   const r = await getResponseExport(tenantId, req.params.id);
   if (!r) { res.status(404).json({ error: "Survey not found" }); return; }
   res.json(r);
+});
+
+// Duplicate a survey as a new draft (INSERT — never overwrites the source).
+apiRouter.post("/surveys/:id/duplicate", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const r = await duplicateSurvey(tenantId, req.params.id, req.user!.id);
+  if (!r) { res.status(404).json({ error: "Survey not found" }); return; }
+  res.json({ ok: true, ...r });
 });
 
 // Lifecycle: activate / close / reopen. Does not delete responses.
