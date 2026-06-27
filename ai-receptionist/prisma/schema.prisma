@@ -106,6 +106,8 @@ model Tenant {
   feedbackTickets  FeedbackTicket[]
   scheduledReports ScheduledReport[]
   communicationSends CommunicationSend[]
+  surveys          Survey[]
+  surveyResponses  SurveyResponse[]
 }
 
 model User {
@@ -871,4 +873,71 @@ model CommunicationSend {
   createdAt      DateTime @default(now())
 
   @@index([tenantId, createdAt])
+}
+
+// ===================== Surveys (Communication → Surveys) =====================
+// Phase 3 Batch 1: the model + builder. Responses/answers are defined now so the
+// response-page batch can write to them, but NOTHING in this batch creates them.
+model Survey {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  status        String   @default("draft")   // "draft" | "active" | "closed"
+  // Which record kind answers map onto. "contact" for v1; structured so record-type
+  // keys (job/booking/custom) can be added later without a migration.
+  mapTargetType String   @default("contact")
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  questions     SurveyQuestion[]
+  responses     SurveyResponse[]
+
+  @@index([tenantId])
+}
+
+model SurveyQuestion {
+  id          String  @id @default(cuid())
+  surveyId    String
+  survey      Survey  @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  order       Int     @default(0)
+  type        String  // short_text|long_text|single_select|multi_select|rating|nps|yes_no|date
+  label       String
+  helpText    String?
+  required    Boolean @default(false)
+  // Type-specific: options[] for choice types, min/max/step for rating, etc.
+  config      Json    @default("{}")
+  // The field this answer writes to (stable KEY, never the label). Null = unmapped.
+  mapFieldKey String?
+
+  @@index([surveyId, order])
+}
+
+// Defined now, wired for real in the response-page batch. No rows created this batch.
+model SurveyResponse {
+  id          String   @id @default(cuid())
+  surveyId    String
+  survey      Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId   String?
+  submittedAt DateTime @default(now())
+  raw         Json     @default("{}")
+
+  answers     SurveyAnswer[]
+
+  @@index([surveyId])
+  @@index([tenantId])
+}
+
+model SurveyAnswer {
+  id         String         @id @default(cuid())
+  responseId String
+  response   SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  questionId String
+  value      Json           @default("null")
+
+  @@index([responseId])
 }

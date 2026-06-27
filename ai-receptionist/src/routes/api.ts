@@ -17,6 +17,7 @@ import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
 import { sendEmailBlast, listSends } from "../services/communicationService";
+import { listSurveys, getSurvey, upsertSurvey, deleteSurvey } from "../services/surveyService";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
@@ -443,6 +444,50 @@ apiRouter.get("/communication/sends", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await listSends(tenantId));
+});
+
+// ---- Surveys (Communication → Surveys) — builder CRUD ----
+apiRouter.get("/surveys", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listSurveys(tenantId));
+});
+
+apiRouter.get("/surveys/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const survey = await getSurvey(tenantId, req.params.id);
+  if (!survey) { res.status(404).json({ error: "Survey not found" }); return; }
+  res.json(survey);
+});
+
+apiRouter.post("/surveys", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const body = (req.body ?? {}) as any;
+  try {
+    const saved = await upsertSurvey({
+      tenantId,
+      id: body.id || null,
+      name: body.name,
+      description: body.description,
+      status: body.status,
+      mapTargetType: body.mapTargetType,
+      questions: Array.isArray(body.questions) ? body.questions : [],
+      createdById: req.user!.id,
+    });
+    res.json({ ok: true, ...saved });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+apiRouter.delete("/surveys/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ok = await deleteSurvey(tenantId, req.params.id);
+  if (!ok) { res.status(404).json({ error: "Survey not found" }); return; }
+  res.json({ ok: true });
 });
 
 apiRouter.post("/contacts/:id/text", async (req: Request, res: Response) => {

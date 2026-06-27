@@ -175,7 +175,7 @@
     // Tab strip (same .tabs component Data Administration uses). One tab for now.
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const TABS = [["email", "Email"], ["templates", "Templates"]]; // future: ["texts","Texts"], ["surveys","Surveys"]
+    const TABS = [["email", "Email"], ["templates", "Templates"], ["surveys", "Surveys"]]; // future: ["texts","Texts"]
     let active = "email";
     function setTab(key) {
       active = key;
@@ -183,6 +183,7 @@
       tabBody.innerHTML = "";
       if (key === "email") emailTab(tabBody);
       else if (key === "templates") templatesTab(tabBody);
+      else if (key === "surveys") surveysTab(tabBody);
     }
     TABS.forEach(([key, label]) => {
       const t = el("button", "tab" + (key === active ? " active" : ""), esc(label));
@@ -445,6 +446,262 @@
       });
     }
 
+    load();
+  }
+
+  // ======================================================================
+  // Surveys tab — builder (model + question types + field mapping). No public
+  // response page / sending in this batch.
+  // ======================================================================
+  const Q_TYPES = [
+    ["short_text", "Short text"], ["long_text", "Long text"],
+    ["single_select", "Single choice"], ["multi_select", "Multiple choice"],
+    ["rating", "Rating"], ["nps", "NPS (0–10)"], ["yes_no", "Yes / No"], ["date", "Date"],
+  ];
+  // Mirror of src/services/surveyTypes.MAP_COMPAT (question type -> mappable field types).
+  const MAP_COMPAT = {
+    short_text: ["text", "textarea", "phone", "url", "email"],
+    long_text: ["textarea", "text"],
+    single_select: ["single_select", "text", "textarea"],
+    multi_select: ["multi_select", "text"],
+    rating: ["number", "percent", "text"],
+    nps: ["number", "text"],
+    yes_no: ["checkbox", "text"],
+    date: ["date"],
+  };
+
+  function surveysTab(host) {
+    const { el, esc, fmtDate, toast } = App.util;
+    host.innerHTML = "";
+    let surveys = [];
+    let contactFields = [];
+    let lidSeq = 1;
+    const state = { id: null, qs: [] };
+
+    const listHost = el("div");
+    host.appendChild(listHost);
+
+    // ---- builder card ----
+    const card = el("div", "card");
+    card.style.cssText = "margin-top:18px;padding:18px";
+    const headRow = el("div"); headRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:8px";
+    const heading = el("h3", "settings-sub", "New survey"); heading.style.margin = "0";
+    const newBtn = el("button", "btn btn-ghost btn-sm", "New survey"); newBtn.style.display = "none";
+    headRow.appendChild(heading); headRow.appendChild(newBtn);
+    card.appendChild(headRow);
+
+    const top = el("div"); top.style.cssText = "display:grid;gap:12px;grid-template-columns:1fr 160px;align-items:end";
+    const nameWrap = el("label", "field"); nameWrap.innerHTML = `<span class="field-label">Survey name</span>`;
+    const nameInput = el("input", "input"); nameInput.type = "text"; nameInput.placeholder = "e.g. Post-visit feedback"; nameWrap.appendChild(nameInput);
+    const statusWrap = el("label", "field"); statusWrap.innerHTML = `<span class="field-label">Status</span>`;
+    const statusSel = el("select", "input"); statusSel.innerHTML = `<option value="draft">Draft</option><option value="active">Active</option><option value="closed">Closed</option>`; statusWrap.appendChild(statusSel);
+    top.appendChild(nameWrap); top.appendChild(statusWrap); card.appendChild(top);
+
+    const descWrap = el("label", "field"); descWrap.style.marginTop = "10px"; descWrap.innerHTML = `<span class="field-label">Description (optional)</span>`;
+    const descInput = el("input", "input"); descInput.type = "text"; descInput.placeholder = "Shown to recipients on the survey"; descWrap.appendChild(descInput);
+    card.appendChild(descWrap);
+
+    card.appendChild(el("div", "field-label", "Questions")).style.marginTop = "14px";
+    const qListHost = el("div"); qListHost.style.cssText = "display:flex;flex-direction:column;gap:10px"; card.appendChild(qListHost);
+    const addBtn = el("button", "btn btn-ghost btn-sm", "+ Add question"); addBtn.style.marginTop = "10px"; card.appendChild(addBtn);
+
+    const saveRow = el("div"); saveRow.style.cssText = "margin-top:16px";
+    const saveBtn = el("button", "btn btn-primary", "Save survey"); saveRow.appendChild(saveBtn); card.appendChild(saveRow);
+    host.appendChild(card);
+
+    function blankQuestion() { return { lid: lidSeq++, type: "short_text", label: "", helpText: "", required: false, config: {}, mapFieldKey: null }; }
+    function defaultConfigFor(type, prev) {
+      if (type === "single_select" || type === "multi_select") return { options: (prev && Array.isArray(prev.options) && prev.options.length) ? prev.options.slice() : ["Option 1", "Option 2"] };
+      if (type === "rating") return { min: (prev && prev.min) || 1, max: (prev && prev.max) || 5, step: (prev && prev.step) || 1 };
+      return {};
+    }
+    function compatFieldsFor(type) { const allow = MAP_COMPAT[type] || []; return contactFields.filter((f) => allow.includes(f.type)); }
+
+    function paintQuestions() {
+      qListHost.innerHTML = "";
+      if (!state.qs.length) { qListHost.appendChild(el("div", "cell-muted", "No questions yet — add one below.")); return; }
+      state.qs.forEach((q, idx) => {
+        const row = el("div", "card"); row.style.cssText = "padding:12px;background:var(--panel-2)"; row.draggable = true; row.dataset.lid = String(q.lid);
+        row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.setData("text/plain", String(q.lid)); });
+        row.addEventListener("dragend", () => row.classList.remove("dragging"));
+        row.addEventListener("dragover", (e) => e.preventDefault());
+        row.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const from = Number(e.dataTransfer.getData("text/plain")); const to = q.lid;
+          if (from === to) return;
+          const fromIdx = state.qs.findIndex((x) => x.lid === from);
+          const moved = state.qs.splice(fromIdx, 1)[0];
+          const toIdx = state.qs.findIndex((x) => x.lid === to);
+          state.qs.splice(toIdx, 0, moved);
+          paintQuestions();
+        });
+
+        const hdr = el("div"); hdr.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:8px";
+        const left = el("div"); left.style.cssText = "display:flex;align-items:center;gap:8px";
+        left.appendChild(el("span", "mc-drag", "⠿"));
+        left.appendChild(el("span", "cell-strong", `Question ${idx + 1}`));
+        const rm = el("button", "btn btn-ghost btn-sm", "Remove");
+        rm.onclick = () => { state.qs = state.qs.filter((x) => x.lid !== q.lid); paintQuestions(); };
+        hdr.appendChild(left); hdr.appendChild(rm); row.appendChild(hdr);
+
+        const grid = el("div"); grid.style.cssText = "display:grid;gap:10px;grid-template-columns:200px 1fr";
+        // type
+        const typeWrap = el("label", "field"); typeWrap.innerHTML = `<span class="field-label">Type</span>`;
+        const typeSel = el("select", "input");
+        Q_TYPES.forEach(([v, lab]) => { const o = el("option", null, lab); o.value = v; if (v === q.type) o.selected = true; typeSel.appendChild(o); });
+        typeSel.onchange = () => { q.type = typeSel.value; q.config = defaultConfigFor(q.type, q.config); if (q.mapFieldKey && !compatFieldsFor(q.type).some((f) => f.key === q.mapFieldKey)) q.mapFieldKey = null; paintQuestions(); };
+        typeWrap.appendChild(typeSel);
+        // label
+        const labWrap = el("label", "field"); labWrap.innerHTML = `<span class="field-label">Question label</span>`;
+        const labInput = el("input", "input"); labInput.type = "text"; labInput.value = q.label || ""; labInput.placeholder = "What would you like to ask?";
+        labInput.oninput = () => { q.label = labInput.value; };
+        labWrap.appendChild(labInput);
+        grid.appendChild(typeWrap); grid.appendChild(labWrap);
+        row.appendChild(grid);
+
+        // help + required
+        const hr = el("div"); hr.style.cssText = "display:grid;gap:10px;grid-template-columns:1fr 140px;align-items:end;margin-top:8px";
+        const helpWrap = el("label", "field"); helpWrap.innerHTML = `<span class="field-label">Help text (optional)</span>`;
+        const helpInput = el("input", "input"); helpInput.type = "text"; helpInput.value = q.helpText || ""; helpInput.oninput = () => { q.helpText = helpInput.value; };
+        helpWrap.appendChild(helpInput);
+        const reqWrap = el("label", "ex-field"); reqWrap.style.cssText = "display:flex;align-items:center;gap:7px";
+        const reqCb = el("input"); reqCb.type = "checkbox"; reqCb.checked = !!q.required; reqCb.onchange = () => { q.required = reqCb.checked; };
+        reqWrap.appendChild(reqCb); reqWrap.appendChild(el("span", null, "Required"));
+        hr.appendChild(helpWrap); hr.appendChild(reqWrap); row.appendChild(hr);
+
+        // type-specific config
+        if (q.type === "single_select" || q.type === "multi_select") {
+          row.appendChild(optionsEditor(q));
+        } else if (q.type === "rating") {
+          const rg = el("div"); rg.style.cssText = "display:grid;gap:10px;grid-template-columns:repeat(3,1fr);margin-top:8px";
+          ["min", "max", "step"].forEach((k) => {
+            const w = el("label", "field"); w.innerHTML = `<span class="field-label">${k[0].toUpperCase() + k.slice(1)}</span>`;
+            const inp = el("input", "input"); inp.type = "number"; inp.value = (q.config && q.config[k] != null) ? q.config[k] : (k === "min" ? 1 : k === "max" ? 5 : 1);
+            inp.onchange = () => { q.config = q.config || {}; q.config[k] = Number(inp.value); };
+            w.appendChild(inp); rg.appendChild(w);
+          });
+          row.appendChild(rg);
+        } else if (q.type === "nps") {
+          row.appendChild(el("div", "cell-muted", "Scored 0–10 (Net Promoter Score).")).style.marginTop = "8px";
+        } else if (q.type === "yes_no") {
+          row.appendChild(el("div", "cell-muted", "Answer is Yes or No.")).style.marginTop = "8px";
+        }
+
+        // field mapping
+        const mapWrap = el("label", "field"); mapWrap.style.marginTop = "8px"; mapWrap.innerHTML = `<span class="field-label">Saves answer to</span>`;
+        const mapSel = el("select", "input");
+        const none = el("option", null, "— don't map (collect only) —"); none.value = ""; mapSel.appendChild(none);
+        const compat = compatFieldsFor(q.type);
+        compat.forEach((f) => { const o = el("option", null, `${f.label} (${f.type})`); o.value = f.key; if (q.mapFieldKey === f.key) o.selected = true; mapSel.appendChild(o); });
+        if (!compat.length) { const o = el("option", null, "No compatible fields"); o.value = ""; o.disabled = true; mapSel.appendChild(o); }
+        mapSel.onchange = () => { q.mapFieldKey = mapSel.value || null; };
+        mapWrap.appendChild(mapSel);
+        row.appendChild(mapWrap);
+
+        qListHost.appendChild(row);
+      });
+    }
+
+    function optionsEditor(q) {
+      q.config = q.config || {}; if (!Array.isArray(q.config.options)) q.config.options = ["Option 1", "Option 2"];
+      const box = el("div"); box.style.marginTop = "8px";
+      box.appendChild(el("div", "field-label", "Choices"));
+      const listEl = el("div"); listEl.style.cssText = "display:flex;flex-direction:column;gap:6px"; box.appendChild(listEl);
+      function repaint() {
+        listEl.innerHTML = "";
+        q.config.options.forEach((opt, i) => {
+          const r = el("div"); r.style.cssText = "display:flex;gap:8px;align-items:center";
+          const inp = el("input", "input"); inp.type = "text"; inp.value = opt; inp.oninput = () => { q.config.options[i] = inp.value; };
+          const del = el("button", "btn btn-ghost btn-sm", "✕"); del.title = "Remove choice";
+          del.onclick = () => { q.config.options.splice(i, 1); repaint(); };
+          r.appendChild(inp); r.appendChild(del); listEl.appendChild(r);
+        });
+        const add = el("button", "btn btn-ghost btn-sm", "+ Add choice");
+        add.onclick = () => { q.config.options.push("Option " + (q.config.options.length + 1)); repaint(); };
+        listEl.appendChild(add);
+      }
+      repaint();
+      return box;
+    }
+
+    function setEdit(survey) {
+      state.id = survey ? survey.id : null;
+      heading.textContent = survey ? "Edit survey" : "New survey";
+      newBtn.style.display = survey ? "" : "none";
+      nameInput.value = survey ? (survey.name || "") : "";
+      descInput.value = survey ? (survey.description || "") : "";
+      statusSel.value = (survey && survey.status) || "draft";
+      state.qs = (survey && Array.isArray(survey.questions) ? survey.questions : []).map((q) => ({
+        lid: lidSeq++, type: q.type, label: q.label || "", helpText: q.helpText || "", required: !!q.required,
+        config: q.config && typeof q.config === "object" ? JSON.parse(JSON.stringify(q.config)) : {}, mapFieldKey: q.mapFieldKey || null,
+      }));
+      paintQuestions();
+    }
+    newBtn.onclick = () => setEdit(null);
+    addBtn.onclick = () => { state.qs.push(blankQuestion()); paintQuestions(); };
+
+    saveBtn.onclick = async () => {
+      const name = nameInput.value.trim();
+      if (!name) { toast("Give the survey a name.", true); return; }
+      if (!state.qs.length) { toast("Add at least one question.", true); return; }
+      if (state.qs.some((q) => !String(q.label || "").trim())) { toast("Every question needs a label.", true); return; }
+      const questions = state.qs.map((q) => ({ type: q.type, label: q.label.trim(), helpText: q.helpText || "", required: !!q.required, config: q.config || {}, mapFieldKey: q.mapFieldKey || null }));
+      saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+      try {
+        const res = await App.portalApi("/api/surveys", { method: "POST", body: JSON.stringify({ id: state.id, name, description: descInput.value, status: statusSel.value, mapTargetType: "contact", questions }) });
+        toast(state.id ? "Survey updated." : "Survey created.");
+        state.id = res.id; heading.textContent = "Edit survey"; newBtn.style.display = "";
+        await load();
+      } catch (e) { toast(e.message, true); }
+      finally { saveBtn.disabled = false; saveBtn.textContent = "Save survey"; }
+    };
+
+    // ---- list ----
+    listHost.addEventListener("click", async (e) => {
+      const del = e.target.closest ? e.target.closest(".sv-del") : null;
+      if (!del) return;
+      e.stopPropagation();
+      const s = surveys.find((x) => x.id === del.dataset.id);
+      if (!(await App.ui.confirmModal({ title: "Delete survey", message: `Delete survey${s ? ` “${s.name}”` : ""}? This removes its questions too.`, confirmText: "Delete survey" }))) return;
+      try { await App.portalApi("/api/surveys/" + encodeURIComponent(del.dataset.id), { method: "DELETE" }); toast("Survey deleted."); if (state.id === del.dataset.id) setEdit(null); await load(); }
+      catch (err) { toast(err.message, true); }
+    });
+
+    async function openEdit(id) {
+      try { const full = await App.portalApi("/api/surveys/" + encodeURIComponent(id)); setEdit(full); card.scrollIntoView({ behavior: "smooth", block: "start" }); }
+      catch (e) { toast(e.message, true); }
+    }
+
+    async function load() {
+      listHost.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+      try {
+        const [sv, fields] = await Promise.all([
+          App.portalApi("/api/surveys"),
+          App.portalApi("/api/fields").catch(() => []),
+        ]);
+        surveys = Array.isArray(sv) ? sv : [];
+        contactFields = Array.isArray(fields) ? fields : [];
+      } catch (e) { listHost.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
+      listHost.innerHTML = "";
+      const statusPill = (s) => `<span class="pill ${s === "active" ? "success" : s === "closed" ? "skipped" : ""}">${esc(s.charAt(0).toUpperCase() + s.slice(1))}</span>`;
+      const columns = [
+        { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => `<span class="cell-strong">${esc(r.name || "—")}</span>` },
+        { key: "status", label: "Status", type: "text", get: (r) => r.status, render: (r) => statusPill(r.status) },
+        { key: "questionCount", label: "Questions", type: "text", get: (r) => String(r.questionCount), render: (r) => `<span class="cell-muted">${r.questionCount}</span>` },
+        { key: "by", label: "Created by", type: "text", get: (r) => r.createdByName || "", render: (r) => `<span class="cell-muted">${esc(r.createdByName || "—")}</span>` },
+        { key: "updatedAt", label: "Updated", type: "date", get: (r) => r.updatedAt, text: (r) => fmtDate(r.updatedAt), render: (r) => `<span class="cell-muted">${fmtDate(r.updatedAt)}</span>` },
+        { key: "actions", label: "", type: "text", get: () => "", render: (r) => `<button class="btn btn-ghost btn-sm sv-del" data-id="${esc(r.id)}">Delete</button>` },
+      ];
+      App.table.mount({
+        container: listHost, columns, rows: surveys,
+        defaultSort: "updatedAt", defaultSortDir: "desc",
+        onRowClick: (r) => openEdit(r.id),
+        emptyHtml: `<div class="card cell-muted" style="padding:18px">No surveys yet.</div>`,
+        pageSize: 50,
+      });
+    }
+
+    setEdit(null);
     load();
   }
 
