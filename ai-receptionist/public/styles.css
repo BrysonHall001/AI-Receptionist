@@ -554,6 +554,8 @@ textarea.input { resize: vertical; }
 /* Audience panel — give the criteria/table room to breathe. */
 .audience-picker .field-label { margin-top: 12px; }
 .audience-picker .audience-summary:first-child { margin-top: 0; }
+/* Disabled sub-tabs (e.g. Build/Results before a survey is open). */
+.tabs .tab:disabled, .tabs .tab.tab-disabled { opacity: 0.45; cursor: default; }
 
 /* ---------- Quill editor ---------- */
 .composer-editor .ql-container { min-height: 180px; font-family: var(--font-ui); font-size: 14px; }

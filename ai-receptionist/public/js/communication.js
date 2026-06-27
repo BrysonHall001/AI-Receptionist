@@ -572,8 +572,16 @@
     const { el, esc, fmtDate, toast } = App.util;
     host.innerHTML = "";
     let surveys = [];
-    let mapFields = { contact: [], job: [], booking: [] };
-    let mapTypes = [["contact", "Contact"]];
+    const fieldCache = {};   // recordType -> field defs (fetched lazily, cached)
+    function rtLabel(k) { const d = { contact: "Contact", job: "Job", booking: "Booking" }; return (App.label ? App.label(k, "one") : null) || d[k]; }
+    const MAP_TYPES = [["contact", rtLabel("contact")], ["job", rtLabel("job")], ["booking", rtLabel("booking")]];
+    async function ensureFields(rt) {
+      if (fieldCache[rt]) return fieldCache[rt];
+      let list = [];
+      try { list = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(rt)); } catch (e) { list = []; }
+      fieldCache[rt] = Array.isArray(list) ? list : [];
+      return fieldCache[rt];
+    }
     let lidSeq = 1;
     const state = { id: null, qs: [] };
 
@@ -636,17 +644,23 @@
 
     host.appendChild(card);
 
-    // Build / Results switch (shown when a saved survey is open).
-    const viewToggle = el("div", "tabs"); viewToggle.style.cssText = "margin-top:14px;display:none";
+    // New Survey / Build / Results switch.
+    const viewToggle = el("div", "tabs"); viewToggle.style.cssText = "margin-top:14px";
     const resultsCard = el("div", "card"); resultsCard.style.cssText = "margin-top:14px;padding:18px;display:none";
     function setView(v) {
+      if (v === "new") setEdit(null); // always start clean — no stale id / carried-over questions
       App.util.$$(".tab", viewToggle).forEach((t) => t.classList.toggle("active", t.dataset.v === v));
-      card.style.display = v === "build" ? "" : "none";
+      card.style.display = v === "results" ? "none" : "";
       resultsCard.style.display = v === "results" ? "" : "none";
       if (v === "results" && state.survey) renderResults(resultsCard, state.survey);
     }
-    [["build", "Build"], ["results", "Results"]].forEach(([v, label]) => {
-      const t = el("button", "tab" + (v === "build" ? " active" : ""), label); t.dataset.v = v; t.onclick = () => setView(v); viewToggle.appendChild(t);
+    function setBuildResultsEnabled(on) {
+      App.util.$$(".tab", viewToggle).forEach((t) => { if (t.dataset.v !== "new") { t.disabled = !on; t.classList.toggle("tab-disabled", !on); } });
+    }
+    [["new", "New Survey"], ["build", "Build"], ["results", "Results"]].forEach(([v, label]) => {
+      const t = el("button", "tab" + (v === "new" ? " active" : ""), label); t.dataset.v = v;
+      t.onclick = () => { if (t.disabled) return; setView(v); };
+      viewToggle.appendChild(t);
     });
     host.insertBefore(viewToggle, card);
     host.appendChild(resultsCard);
@@ -666,15 +680,17 @@
       if (type === "rating") return { min: (prev && prev.min) || 1, max: (prev && prev.max) || 5, step: (prev && prev.step) || 1 };
       return {};
     }
-    function compatFieldsFor(type, rt) { const allow = MAP_COMPAT[type] || []; return (mapFields[rt] || []).filter((f) => allow.includes(f.type)); }
+    function compatFieldsFor(type, rt) { const allow = MAP_COMPAT[type] || []; return (fieldCache[rt] || []).filter((f) => allow.includes(f.type)); }
     function anyMapped() { return state.qs.some((q) => q.mapFieldKey); }
 
+    function updateWarn() {
+      if (!mapWarn) return;
+      if (anyMapped()) { mapWarn.style.display = ""; mapWarn.textContent = "This survey maps answers to fields. Mapped answers are written only when you send it as an email blast (each recipient gets a personal link). An anonymous/public link still collects answers but won't write them to any record."; }
+      else mapWarn.style.display = "none";
+    }
     function paintQuestions() {
       qListHost.innerHTML = "";
-      if (mapWarn) {
-        if (anyMapped()) { mapWarn.style.display = ""; mapWarn.textContent = "This survey maps answers to fields. Mapped answers are written only when you send it as an email blast (each recipient gets a personal link). An anonymous/public link still collects answers but won't write them to any record."; }
-        else mapWarn.style.display = "none";
-      }
+      updateWarn();
       if (!state.qs.length) { qListHost.appendChild(el("div", "cell-muted", "No questions yet — add one below.")); return; }
       state.qs.forEach((q, idx) => {
         const row = el("div", "card"); row.style.cssText = "padding:12px;background:var(--panel-2)"; row.draggable = true; row.dataset.lid = String(q.lid);
@@ -747,29 +763,33 @@
         const mapWrap = el("div", "field"); mapWrap.style.marginTop = "8px";
         mapWrap.appendChild(el("span", "field-label", "Saves answer to"));
         const mapRow = el("div"); mapRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
-        const rtSel = el("select", "input"); rtSel.style.cssText = "flex:0 0 150px";
-        const noMap = el("option", null, "— don't map —"); noMap.value = ""; rtSel.appendChild(noMap);
-        mapTypes.forEach(([key, label]) => { const o = el("option", null, label); o.value = key; if ((q.mapFieldKey ? (q.mapRecordType || "contact") : "") === key) o.selected = true; rtSel.appendChild(o); });
-        const fieldSel = el("select", "input"); fieldSel.style.cssText = "flex:1;min-width:160px";
-        function paintFieldSel() {
+        const rtSel = el("select", "input"); rtSel.style.cssText = "flex:0 0 160px";
+        const noMap = el("option", null, "— don't map (collect only) —"); noMap.value = ""; rtSel.appendChild(noMap);
+        MAP_TYPES.forEach(([key, label]) => { const o = el("option", null, label); o.value = key; rtSel.appendChild(o); });
+        rtSel.value = q.mapRecordType || (q.mapFieldKey ? "contact" : "");
+        const fieldSel = el("select", "input"); fieldSel.style.cssText = "flex:1;min-width:170px";
+        const jbNote = el("div", "cell-muted"); jbNote.style.cssText = "font-size:12px;margin-top:6px;display:none";
+        jbNote.textContent = "Job/booking answers are saved with the response and will write to the record when a survey is sent from a specific job or booking (coming soon).";
+        // Selecting a record type fetches THAT type's fields (lazily, cached) and fills
+        // the field dropdown in place — no full repaint, so the choice sticks.
+        async function fillFields() {
           const rt = rtSel.value;
-          fieldSel.innerHTML = "";
-          if (!rt) { const o = el("option", null, "Collect only (not saved to a field)"); o.value = ""; fieldSel.appendChild(o); fieldSel.disabled = true; return; }
-          fieldSel.disabled = false;
+          jbNote.style.display = (rt === "job" || rt === "booking") ? "" : "none";
+          if (!rt) { fieldSel.innerHTML = ""; const o = el("option", null, "Collect only (not saved to a field)"); o.value = ""; fieldSel.appendChild(o); fieldSel.disabled = true; return; }
+          fieldSel.disabled = true; fieldSel.innerHTML = `<option>Loading…</option>`;
+          await ensureFields(rt);
+          fieldSel.innerHTML = ""; fieldSel.disabled = false;
           const none2 = el("option", null, "— choose a field —"); none2.value = ""; fieldSel.appendChild(none2);
           const compat = compatFieldsFor(q.type, rt);
-          compat.forEach((f) => { const o = el("option", null, `${f.label} (${f.type})`); o.value = f.key; if (q.mapFieldKey === f.key && (q.mapRecordType || "contact") === rt) o.selected = true; fieldSel.appendChild(o); });
-          if (!compat.length) { const o = el("option", null, "No compatible fields"); o.value = ""; o.disabled = true; fieldSel.appendChild(o); }
+          compat.forEach((f) => { const o = el("option", null, `${f.label} (${f.type})`); o.value = f.key; fieldSel.appendChild(o); });
+          if (!compat.length) { const o = el("option", null, "No compatible fields for this question type"); o.value = ""; o.disabled = true; fieldSel.appendChild(o); }
+          fieldSel.value = (q.mapFieldKey && (q.mapRecordType || "contact") === rt) ? q.mapFieldKey : "";
         }
-        paintFieldSel();
-        rtSel.onchange = () => { q.mapRecordType = rtSel.value || null; q.mapFieldKey = null; paintFieldSel(); paintQuestions(); };
-        fieldSel.onchange = () => { q.mapFieldKey = fieldSel.value || null; q.mapRecordType = fieldSel.value ? (rtSel.value || "contact") : null; paintQuestions(); };
-        mapRow.appendChild(rtSel); mapRow.appendChild(fieldSel); mapWrap.appendChild(mapRow);
-        if (q.mapFieldKey && (q.mapRecordType === "job" || q.mapRecordType === "booking")) {
-          const jb = el("div", "cell-muted"); jb.style.cssText = "font-size:12px;margin-top:6px";
-          jb.textContent = "Job/booking answers are saved with the response and will write to the record when a survey is sent from a specific job or booking (coming soon).";
-          mapWrap.appendChild(jb);
-        }
+        rtSel.onchange = () => { q.mapRecordType = rtSel.value || null; q.mapFieldKey = null; fillFields(); updateWarn(); };
+        fieldSel.onchange = () => { q.mapFieldKey = fieldSel.value || null; q.mapRecordType = fieldSel.value ? (rtSel.value || "contact") : (rtSel.value || null); updateWarn(); };
+        mapRow.appendChild(rtSel); mapRow.appendChild(fieldSel);
+        mapWrap.appendChild(mapRow); mapWrap.appendChild(jbNote);
+        fillFields();
         row.appendChild(mapWrap);
 
         qListHost.appendChild(row);
@@ -832,12 +852,11 @@
           activateHint.textContent = "Set the survey to Active and save to send it to contacts.";
         }
         loadResponses(survey.id);
-        viewToggle.style.display = "";
-        setView("build");
+        setBuildResultsEnabled(true);
       } else {
         shareWrap.style.display = "none";
         responsesHost.innerHTML = "";
-        viewToggle.style.display = "none";
+        setBuildResultsEnabled(false);
         resultsCard.style.display = "none";
         card.style.display = "";
       }
@@ -894,7 +913,7 @@
         // After a CREATE, fully reset the builder so the bound id is cleared and the NEXT
         // save inserts a brand-new survey instead of overwriting the one we just made.
         // After a real EDIT, stay on that survey (its id stays bound; only that row updates).
-        if (wasCreate) setEdit(null);
+        if (wasCreate) setView("new");
         else state.id = res.id;
         await load();
       } catch (e) { toast(e.message, true); }
@@ -1141,7 +1160,7 @@
     });
 
     async function openEdit(id) {
-      try { const full = await App.portalApi("/api/surveys/" + encodeURIComponent(id)); setEdit(full); card.scrollIntoView({ behavior: "smooth", block: "start" }); }
+      try { const full = await App.portalApi("/api/surveys/" + encodeURIComponent(id)); setEdit(full); setView("build"); card.scrollIntoView({ behavior: "smooth", block: "start" }); }
       catch (e) { toast(e.message, true); }
     }
 
@@ -1156,12 +1175,11 @@
           App.portalApi("/api/record-types").catch(() => []),
         ]);
         surveys = Array.isArray(sv) ? sv : [];
-        mapFields = { contact: Array.isArray(fContact) ? fContact : [], job: Array.isArray(fJob) ? fJob : [], booking: Array.isArray(fBooking) ? fBooking : [] };
-        const rtByKey = {}; (Array.isArray(rTypes) ? rTypes : []).forEach((t) => { rtByKey[t.key] = t.label || t.labelPlural || t.key; });
-        const lbl = (k, d) => rtByKey[k] || (App.label ? App.label(k, "one") : d) || d;
-        mapTypes = [["contact", lbl("contact", "Contact")]];
-        if ((mapFields.job || []).length) mapTypes.push(["job", lbl("job", "Job")]);
-        if ((mapFields.booking || []).length) mapTypes.push(["booking", lbl("booking", "Booking")]);
+        // Prime the field cache so the builder's mapping dropdowns populate instantly.
+        fieldCache.contact = Array.isArray(fContact) ? fContact : [];
+        fieldCache.job = Array.isArray(fJob) ? fJob : [];
+        fieldCache.booking = Array.isArray(fBooking) ? fBooking : [];
+        void rTypes;
       } catch (e) { listHost.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
       listHost.innerHTML = "";
       const statusPill = (s) => `<span class="pill ${s === "active" ? "success" : s === "closed" ? "skipped" : ""}">${esc(s.charAt(0).toUpperCase() + s.slice(1))}</span>`;
@@ -1184,7 +1202,7 @@
       });
     }
 
-    setEdit(null);
+    setView("new");
     load();
   }
 
