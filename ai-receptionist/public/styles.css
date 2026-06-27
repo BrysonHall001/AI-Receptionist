@@ -554,6 +554,9 @@ textarea.input { resize: vertical; }
 /* Audience panel — give the criteria/table room to breathe. */
 .audience-picker .field-label { margin-top: 12px; }
 .audience-picker .audience-summary:first-child { margin-top: 0; }
+.audience-picker .chip-box:focus-within { border-color: var(--accent); }
+.audience-picker .cell-check { width: 32px; text-align: center; }
+.audience-picker .cell-check input { cursor: pointer; }
 /* Disabled sub-tabs (e.g. Build/Results before a survey is open). */
 .tabs .tab:disabled, .tabs .tab.tab-disabled { opacity: 0.45; cursor: default; }
 
@@ -609,10 +612,8 @@ textarea.input { resize: vertical; }
 .composer-editor .ql-snow .ql-picker.ql-size:not(.ql-expanded) .ql-picker-label.ql-active { color: var(--ink); }
 /* Custom toolbar buttons (continue numbering, insert button) sit inside the toolbar
    and never push controls off the edge. */
-.ql-toolbar.email-toolbar button.ql-cta,
-.ql-toolbar.email-toolbar button.ql-continue { width: auto; padding: 0 7px; font-size: 12px; font-weight: 600; color: var(--ink); }
-.ql-toolbar.email-toolbar button.ql-cta:hover,
-.ql-toolbar.email-toolbar button.ql-continue:hover { color: var(--accent); }
+.ql-toolbar.email-toolbar button.ql-cta { width: auto; padding: 0 7px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.ql-toolbar.email-toolbar button.ql-cta:hover { color: var(--accent); }
 /* In-editor CTA button chrome (the SENT html uses inline styles; this is just so it
    looks/behaves right inside the white editor). */
 .composer-editor .ql-editor a.cta-btn { cursor: pointer; }

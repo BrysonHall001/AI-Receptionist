@@ -32,34 +32,42 @@
       columns: [],
       rules: [],
       excluded: new Set(),
+      checked: new Set(Array.isArray(opts.preloadIds) ? opts.preloadIds : []), // explicit per-row picks
+      typed: [],                                                                 // committed typed-email chips
       preload: Array.isArray(opts.preloadIds) ? new Set(opts.preloadIds) : null,
       ready: false,
     };
-    const useTable = !!opts.tablePreview && !state.preload;
-    const useTyped = !!opts.allowTypedEmails && !state.preload;
+    const useTable = !!opts.tablePreview || !!state.preload; // preload shows the table too (pre-checked)
+    const useTyped = !!opts.allowTypedEmails;
 
-    // Count line — lives at the TOP of the panel (right under the heading/description).
+    // Count line — top of the panel.
     const summary = el("div", "audience-summary cell-muted");
-    summary.style.cssText = "font-size:13px;margin:0 0 12px";
+    summary.style.cssText = "font-size:13px;margin:0 0 6px";
+    // Plain-language note about WHO gets the email (checked vs all-matching).
+    const modeNote = el("div", "cell-muted"); modeNote.style.cssText = "font-size:12px;margin:0 0 12px";
 
-    // Typed-emails field.
-    let typedInput = null;
+    // ----- typed-email chips -----
+    let chipInput = null;
     const typedWrap = el("div", "field");
+    const chipBox = el("div", "chip-box");
     if (useTyped) {
       typedWrap.style.cssText = "margin:0 0 14px";
       typedWrap.innerHTML = `<span class="field-label">Add individual email addresses</span>`;
-      typedInput = el("textarea", "input"); typedInput.rows = 2; typedInput.placeholder = "name@example.com, another@example.com";
-      typedWrap.appendChild(typedInput);
+      chipBox.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line-strong);border-radius:8px;padding:6px 8px;background:var(--panel)";
+      chipInput = el("input"); chipInput.type = "text"; chipInput.placeholder = "name@example.com"; chipInput.style.cssText = "flex:1;min-width:160px;border:0;outline:none;background:transparent;font:inherit;color:inherit;padding:4px";
+      chipBox.appendChild(chipInput);
+      typedWrap.appendChild(chipBox);
     }
     const typedNote = el("div", "cell-muted"); typedNote.style.cssText = "font-size:12px;margin-top:4px";
 
-    // Compact preview (used when tablePreview is off).
+    // Compact preview (non-table mode, e.g. survey send).
     const previewToggle = el("button", "btn btn-ghost btn-sm");
     const previewBox = el("div", "audience-preview");
     previewBox.style.cssText = "display:none;margin-top:8px;border:1px solid var(--line);border-radius:8px;max-height:260px;overflow:auto";
     let previewOpen = false;
-    // Full table preview (used when tablePreview is on).
-    const tableHost = el("div"); tableHost.style.cssText = "margin-top:10px";
+    // Table preview (with checkboxes).
+    const tableTools = el("div"); tableTools.style.cssText = "display:flex;gap:8px;align-items:center;margin:10px 0 6px;flex-wrap:wrap";
+    const tableHost = el("div");
 
     function matched() {
       if (!state.ready) return [];
@@ -67,87 +75,130 @@
       return App.table.pipeline(state.contacts, state.columns, { rules: state.rules });
     }
     function emailable(rows) { return rows.filter((c) => c.email && String(c.email).trim()); }
-    function recipients() { return emailable(matched()).filter((c) => !state.excluded.has(c.id)); }
-
-    function parseTyped() {
-      if (!typedInput) return { valid: [], invalid: [] };
-      const tokens = (typedInput.value || "").split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean);
-      const valid = [], invalid = [], seen = new Set();
-      tokens.forEach((t) => { const lo = t.toLowerCase(); if (EMAIL_RE.test(t)) { if (!seen.has(lo)) { seen.add(lo); valid.push(t); } } else invalid.push(t); });
-      return { valid, invalid };
+    // The table contributes: if any rows are explicitly checked, ONLY those; otherwise all
+    // matching. Per-row "Remove" (exclude) always subtracts.
+    function contactRecipients() {
+      let base = emailable(matched());
+      if (state.checked.size) base = base.filter((c) => state.checked.has(c.id));
+      return base.filter((c) => !state.excluded.has(c.id));
     }
-    // Valid typed emails, de-duplicated against the contact-resolved recipients (so a
-    // typed address that also matches the criteria isn't emailed twice).
+    // Valid typed chips, de-duplicated against the resolved contact emails.
     function typedEmails() {
-      const { valid } = parseTyped();
-      const contactEmails = new Set(recipients().map((c) => String(c.email || "").toLowerCase()));
+      const contactEmails = new Set(contactRecipients().map((c) => String(c.email || "").toLowerCase()));
       const out = [], seen = new Set();
-      valid.forEach((e) => { const lo = e.toLowerCase(); if (!contactEmails.has(lo) && !seen.has(lo)) { seen.add(lo); out.push(e); } });
+      state.typed.forEach((e) => { const lo = e.toLowerCase(); if (EMAIL_RE.test(e) && !contactEmails.has(lo) && !seen.has(lo)) { seen.add(lo); out.push(e); } });
       return out;
     }
 
     function counts() {
       const m = matched();
       const e = emailable(m);
-      const r = e.filter((c) => !state.excluded.has(c.id));
+      const contacts = contactRecipients().length;
       const typed = typedEmails().length;
-      return { match: m.length, emailable: e.length, recipients: r.length, typed, total: r.length + typed };
+      return { match: m.length, emailable: e.length, recipients: contacts, typed, total: contacts + typed, checked: state.checked.size };
     }
 
     function renderSummary() {
       const c = counts();
       const noun = (n) => `${n} ${App.label ? App.label("contact", n === 1 ? "one" : "many").toLowerCase() : (n === 1 ? "contact" : "contacts")}`;
-      let txt = `${noun(c.match)} match · ${c.emailable} have an email`;
+      let txt = c.checked ? `${c.recipients} selected` : `${noun(c.match)} match · ${c.emailable} have an email`;
       if (c.typed) txt += ` · ${c.typed} typed`;
-      txt += ` · ${c.total} recipient${c.total === 1 ? "" : "s"}`;
+      txt += ` · ${c.total} recipient${c.total === 1 ? "" : "s"} total`;
       summary.textContent = txt;
-      previewToggle.textContent = `${c.recipients} from criteria ${previewOpen ? "▴" : "▾"}`;
-      if (useTable) renderTablePreview();
-      else if (previewOpen) renderPreview();
-      if (typedInput) {
-        const inv = parseTyped().invalid;
-        typedNote.textContent = inv.length ? `Ignoring ${inv.length} invalid address${inv.length === 1 ? "" : "es"}: ${inv.slice(0, 3).join(", ")}${inv.length > 3 ? "…" : ""}` : "";
-        typedNote.style.color = inv.length ? "var(--danger, #c0392b)" : "";
+      if (useTable) {
+        modeNote.textContent = c.checked
+          ? "Only the rows you checked will be emailed (plus any typed addresses)."
+          : "Everyone matching will be emailed (minus any you removed), plus any typed addresses.";
       }
+      previewToggle.textContent = `${c.recipients} recipients ${previewOpen ? "▴" : "▾"}`;
+      if (!useTable && previewOpen) renderPreview();
       if (opts.onChange) opts.onChange();
     }
 
-    function previewColumns() {
-      const cols = state.columns.slice();
-      cols.push({
-        key: "__rm", label: "", type: "text", get: () => "",
-        render: (c) => `<button class="btn btn-ghost btn-sm aud-rm" data-id="${esc(c.id)}">Remove</button>`,
+    // ----- chips -----
+    function renderChips() {
+      Array.prototype.slice.call(chipBox.querySelectorAll(".chip")).forEach((n) => n.remove());
+      state.typed.forEach((addr) => {
+        const chip = el("span", "chip");
+        chip.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:3px 8px;font-size:12.5px";
+        chip.innerHTML = `<span>${esc(addr)}</span>`;
+        const x = el("button", "chip-x", "&times;"); x.type = "button"; x.style.cssText = "border:0;background:none;color:inherit;cursor:pointer;font-size:15px;line-height:1;padding:0";
+        x.onclick = () => { state.typed = state.typed.filter((a) => a !== addr); renderChips(); renderSummary(); };
+        chip.appendChild(x);
+        chipBox.insertBefore(chip, chipInput);
       });
-      return cols;
+    }
+    function commitTyped() {
+      const raw = (chipInput.value || "").trim();
+      if (!raw) return;
+      const tokens = raw.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean);
+      const bad = [];
+      tokens.forEach((t) => {
+        if (!EMAIL_RE.test(t)) { bad.push(t); return; }
+        if (!state.typed.some((a) => a.toLowerCase() === t.toLowerCase())) state.typed.push(t);
+      });
+      chipInput.value = "";
+      typedNote.textContent = bad.length ? `Not a valid email: ${bad.slice(0, 3).join(", ")}${bad.length > 3 ? "…" : ""}` : "";
+      typedNote.style.color = bad.length ? "var(--danger, #c0392b)" : "";
+      renderChips(); renderSummary();
     }
 
+    // ----- table preview with checkboxes -----
+    function previewColumns() {
+      const ck = {
+        key: "__ck", label: "", type: "text", get: () => "",
+        render: (c) => `<input type="checkbox" class="aud-ck" data-id="${esc(c.id)}" ${state.checked.has(c.id) ? "checked" : ""} aria-label="Select" />`,
+        cellClass: "cell-check",
+      };
+      const rm = {
+        key: "__rm", label: "", type: "text", get: () => "",
+        render: (c) => `<button class="btn btn-ghost btn-sm aud-rm" data-id="${esc(c.id)}">Remove</button>`,
+      };
+      return [ck].concat(state.columns.slice(), [rm]);
+    }
     function renderTablePreview() {
+      tableTools.innerHTML = "";
+      const all = emailable(matched());
+      const allChecked = all.length > 0 && all.every((c) => state.checked.has(c.id));
+      const selAll = el("button", "btn btn-ghost btn-sm", allChecked ? "Clear selection" : `Select all ${all.length}`);
+      selAll.onclick = () => {
+        if (allChecked) all.forEach((c) => state.checked.delete(c.id));
+        else all.forEach((c) => state.checked.add(c.id));
+        renderTablePreview(); renderSummary();
+      };
+      tableTools.appendChild(selAll);
+      if (state.excluded.size) {
+        const restore = el("button", "btn btn-ghost btn-sm", `Restore ${state.excluded.size} removed`);
+        restore.onclick = () => { state.excluded.clear(); renderTablePreview(); renderSummary(); };
+        tableTools.appendChild(restore);
+      }
       tableHost.innerHTML = "";
-      const rows = recipients();
       App.table.mount({
-        container: tableHost, columns: previewColumns(), rows,
+        container: tableHost, columns: previewColumns(), rows: all,
         defaultSort: "name", defaultSortDir: "asc", pageSize: 10,
         emptyHtml: `<div class="card cell-muted" style="padding:14px">No emailable contacts match yet.</div>`,
       });
-      if (state.excluded.size) {
-        const restore = el("div"); restore.style.cssText = "padding:8px 2px";
-        const b = el("button", "btn btn-ghost btn-sm", `Restore ${state.excluded.size} removed`);
-        b.onclick = () => { state.excluded.clear(); renderSummary(); };
-        restore.appendChild(b); tableHost.appendChild(restore);
-      }
     }
-    // Exclude via the table's Remove buttons (delegated).
+    // Checkbox toggle (no full re-render — just update the count).
+    tableHost.addEventListener("change", (e) => {
+      const ck = e.target.closest && e.target.closest(".aud-ck");
+      if (!ck) return;
+      if (ck.checked) state.checked.add(ck.dataset.id); else state.checked.delete(ck.dataset.id);
+      renderSummary();
+    });
+    // Per-row remove (exclude).
     tableHost.addEventListener("click", (e) => {
       const rm = e.target.closest && e.target.closest(".aud-rm");
       if (!rm) return;
       e.stopPropagation();
       state.excluded.add(rm.dataset.id);
-      renderSummary();
+      state.checked.delete(rm.dataset.id);
+      renderTablePreview(); renderSummary();
     });
 
     function renderPreview() {
       previewBox.innerHTML = "";
-      const list = recipients();
+      const list = contactRecipients();
       if (!list.length) { previewBox.appendChild(el("div", "cell-muted", "No emailable recipients.")); return; }
       list.forEach((c) => {
         const row = el("div", "audience-row");
@@ -166,14 +217,13 @@
         restore.appendChild(b); previewBox.appendChild(restore);
       }
     }
-
     previewToggle.onclick = () => { previewOpen = !previewOpen; previewBox.style.display = previewOpen ? "" : "none"; renderSummary(); };
 
     let rulesHost = null;
     function mountRules() {
       if (!rulesHost) return;
       rulesHost.innerHTML = "";
-      rulesHost.appendChild(App.table.ruleEditor(state.columns, state.contacts, state.rules, () => { state.excluded.clear(); renderSummary(); }));
+      rulesHost.appendChild(App.table.ruleEditor(state.columns, state.contacts, state.rules, () => { state.excluded.clear(); if (useTable) renderTablePreview(); renderSummary(); }));
     }
 
     async function build() {
@@ -186,14 +236,14 @@
       state.columns = App.portal.contactColumnDefs(fields || []);
       state.ready = true;
 
-      // Count line first — sits directly under the panel heading/description.
       host.appendChild(summary);
+      host.appendChild(modeNote);
 
-      // Typed emails next (top of the panel, above criteria/table).
       if (useTyped) {
-        typedInput.addEventListener("input", renderSummary);
-        host.appendChild(typedWrap);
-        host.appendChild(typedNote);
+        chipInput.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commitTyped(); } });
+        chipInput.addEventListener("blur", commitTyped);
+        host.appendChild(typedWrap); host.appendChild(typedNote);
+        renderChips();
       }
 
       if (!state.preload) {
@@ -207,18 +257,19 @@
             const def = (f && f.definition) || {};
             state.rules.length = 0;
             (Array.isArray(def.rules) ? def.rules : []).forEach((r) => state.rules.push(r));
-            state.excluded.clear(); mountRules(); renderSummary();
+            state.excluded.clear(); mountRules(); if (useTable) renderTablePreview(); renderSummary();
           };
           sfWrap.appendChild(sel); host.appendChild(sfWrap);
         }
         host.appendChild(el("div", "field-label", "Who to include (criteria)"));
         rulesHost = el("div"); host.appendChild(rulesHost); mountRules();
       } else {
-        host.appendChild(el("div", "cell-muted", "Sending to the contacts you selected."));
+        host.appendChild(el("div", "cell-muted", "Starting from the contacts you selected — uncheck anyone you don't want, or add more below."));
       }
 
       if (useTable) {
-        host.appendChild(tableHost);
+        host.appendChild(tableTools); host.appendChild(tableHost);
+        renderTablePreview();
       } else {
         host.appendChild(previewToggle); host.appendChild(previewBox);
       }
@@ -228,8 +279,8 @@
     build().catch((e) => { host.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; });
 
     return {
-      getRecipients: () => recipients().map((c) => ({ id: c.id, email: c.email, name: c.name || null })),
-      getRecipientIds: () => recipients().map((c) => c.id),
+      getRecipients: () => contactRecipients().map((c) => ({ id: c.id, email: c.email, name: c.name || null })),
+      getRecipientIds: () => contactRecipients().map((c) => c.id),
       getTypedEmails: () => typedEmails(),
       getCounts: counts,
     };
@@ -308,34 +359,43 @@
     host.innerHTML = "";
     const hasPreload = !!(preloadIds && preloadIds.length);
 
-    // --- Panel 1: New email (subject + body) ---
+    // --- Panel 1: New email (Send up top, then subject + body) ---
     const card = el("div", "card");
     card.style.cssText = "padding:22px";
-    card.appendChild(el("h3", "settings-sub", "New email"));
-    card.appendChild(el("div", "cell-muted", "Write the subject and message your recipients will see.")).style.margin = "2px 0 14px";
-    const composerHost = el("div");
+    const headRow = el("div"); headRow.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap";
+    const headLeft = el("div");
+    headLeft.appendChild(el("h3", "settings-sub", "New email"));
+    headLeft.appendChild(el("div", "cell-muted", "Write the subject and message your recipients will see.")).style.margin = "2px 0 0";
+    const sendWrap = el("div"); sendWrap.style.cssText = "display:flex;flex-direction:column;align-items:flex-end;gap:4px";
+    const sendBtn = el("button", "btn btn-primary", "Send email");
+    const sendCount = el("div", "cell-muted"); sendCount.style.cssText = "font-size:12px";
+    sendWrap.appendChild(sendBtn); sendWrap.appendChild(sendCount);
+    headRow.appendChild(headLeft); headRow.appendChild(sendWrap);
+    card.appendChild(headRow);
+    const composerHost = el("div"); composerHost.style.marginTop = "14px";
     card.appendChild(composerHost);
     const composer = App.compose.mount(composerHost, { kind: "email" });
     host.appendChild(card);
 
-    // --- Panel 2: Audience (its own well-spaced panel) ---
+    // --- Panel 2: Audience ---
     const audCard = el("div", "card");
     audCard.style.cssText = "padding:22px;margin-top:16px";
     audCard.appendChild(el("h3", "settings-sub", "Audience"));
     const audIntro = hasPreload
-      ? `Sending to the ${preloadIds.length} ${App.label("contact", preloadIds.length === 1 ? "one" : "many").toLowerCase()} you selected — add more addresses or remove people below.`
-      : "Choose who receives this email — type individual addresses, build criteria, or both. Only people with an email address are sent to.";
+      ? `Starting from the ${preloadIds.length} ${App.label("contact", preloadIds.length === 1 ? "one" : "many").toLowerCase()} you selected (pre-checked) — uncheck anyone, or add more below.`
+      : "Choose who receives this email — add individual addresses, check specific people, or build criteria. Only people with an email address are sent to.";
     audCard.appendChild(el("div", "cell-muted", audIntro)).style.margin = "2px 0 14px";
     const audienceHost = el("div");
     audCard.appendChild(audienceHost);
-    const audience = App.audiencePicker.mount(audienceHost, hasPreload ? { preloadIds } : { tablePreview: true, allowTypedEmails: true });
-
-    const actions = el("div");
-    actions.style.cssText = "margin-top:18px";
-    const sendBtn = el("button", "btn btn-primary", "Send email");
-    actions.appendChild(sendBtn);
-    audCard.appendChild(actions);
+    const audOpts = { tablePreview: true, allowTypedEmails: true };
+    if (hasPreload) audOpts.preloadIds = preloadIds;
+    function refreshCount() {
+      const c = audience.getCounts ? audience.getCounts() : { total: 0 };
+      sendCount.textContent = `${c.total} recipient${c.total === 1 ? "" : "s"}`;
+    }
+    const audience = App.audiencePicker.mount(audienceHost, Object.assign(audOpts, { onChange: () => refreshCount() }));
     host.appendChild(audCard);
+    refreshCount();
 
     sendBtn.onclick = async () => {
       const subject = composer.getSubject();
@@ -343,11 +403,11 @@
       const recipientIds = audience.getRecipientIds();
       const typedEmails = audience.getTypedEmails ? audience.getTypedEmails() : [];
       const total = recipientIds.length + typedEmails.length;
-      if (!total) { toast("No recipients — add an email address or criteria.", true); return; }
+      if (!total) { toast("No recipients — add an email address, check people, or set criteria.", true); return; }
 
       const ok = await App.ui.confirmModal({
         title: "Send this email?",
-        message: `You're about to email ${total} ${total === 1 ? "person" : "people"}${typedEmails.length ? ` (${recipientIds.length} from criteria + ${typedEmails.length} typed)` : ""}. Send?`,
+        message: `You're about to email ${total} ${total === 1 ? "person" : "people"}${typedEmails.length ? ` (${recipientIds.length} contact${recipientIds.length === 1 ? "" : "s"} + ${typedEmails.length} typed)` : ""}. Send?`,
         confirmText: "Send",
       });
       if (!ok) return;

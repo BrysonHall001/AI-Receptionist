@@ -240,23 +240,6 @@
 
   // Continue an ordered list's numbering from the previous ordered list (sets the
   // standard `start` attribute, which is email-safe HTML).
-  function continueNumbering(quill) {
-    const range = quill.getSelection(true);
-    if (!range) { toast("Put the cursor in a numbered list first.", true); return; }
-    const line = quill.getLine(range.index)[0];
-    let node = line && line.domNode;
-    let ol = node;
-    while (ol && ol.tagName !== "OL") ol = ol.parentNode;
-    if (!ol) { toast("Put the cursor in a numbered list first.", true); return; }
-    let prev = ol.previousElementSibling;
-    while (prev && prev.tagName !== "OL") prev = prev.previousElementSibling;
-    if (!prev) { toast("There's no earlier numbered list to continue from.", true); return; }
-    const prevStart = parseInt(prev.getAttribute("start") || "1", 10);
-    const prevCount = prev.querySelectorAll(":scope > li").length;
-    ol.setAttribute("start", String(prevStart + prevCount));
-    toast("Numbering continued from the previous list.");
-  }
-
   // opts.kind: 'email' | 'sms' | 'richtext' ; opts.surveyLinkMode: 'token' | 'public'
   function mount(host, opts) {
     opts = opts || {};
@@ -307,10 +290,8 @@
         return delta;
       });
 
-      // Custom toolbar buttons: continue numbering + insert/edit button.
+      // Custom toolbar button: insert/edit CTA button.
       const custom = el("span", "ql-formats");
-      const contBtn = el("button", "ql-continue"); contBtn.type = "button"; contBtn.title = "Continue numbering"; contBtn.innerHTML = "1\u2026";
-      contBtn.onclick = () => continueNumbering(quill);
       const ctaBtn = el("button", "ql-cta"); ctaBtn.type = "button"; ctaBtn.title = "Insert button"; ctaBtn.textContent = "Button";
       ctaBtn.onclick = () => {
         const range = quill.getSelection(true);
@@ -320,7 +301,7 @@
           quill.setSelection(idx + 1, 0);
         });
       };
-      custom.appendChild(contBtn); custom.appendChild(ctaBtn);
+      custom.appendChild(ctaBtn);
       tb.appendChild(custom);
 
       // Click an existing button to edit/delete it.
