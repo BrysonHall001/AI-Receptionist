@@ -417,6 +417,74 @@
     actions.appendChild(hdrBtn); actions.appendChild(hdrFile);
   }
 
+  // ---------- Shared "Write custom invite email" composer ----------
+  // Used by BOTH invite spots (portal Team & Permissions and the master-hub Users
+  // modal). Reuses App.compose (same toolbar / link picker / CTA builder) and the
+  // EXISTING invite-token + outbound-email path — no second send engine, no second
+  // token. The invitee's one-time apply link is a merge token the SERVER substitutes
+  // at send time; the invite/user record is created only when the inviter sends.
+  const INVITE_LINK_TOKEN = "{{invite_link}}";
+
+  // opts: { email, send(html, subject)->Promise<result>, onSent(result) }
+  function openInviteComposer(opts) {
+    opts = opts || {};
+    const overlay = el("div", "modal-overlay");
+    const m = el("div", "modal"); m.style.cssText = "max-width:680px;width:100%;";
+    m.innerHTML = `<div class="modal-head"><h2>Write invite email</h2><button class="icon-btn" id="ic-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    const to = el("p", "cell-muted"); to.style.cssText = "margin:0 0 10px;font-size:13px;line-height:1.5;";
+    to.innerHTML = `To: <strong>${esc(opts.email || "")}</strong>. Use <strong>Insert invite link</strong> below (or type <code>${esc(INVITE_LINK_TOKEN)}</code>, or put it in a button/link's URL) to place their unique apply link anywhere in your message. The invite is only created when you send.`;
+    body.appendChild(to);
+
+    const tools = el("div"); tools.style.cssText = "display:flex;gap:8px;margin:0 0 8px;";
+    const insertBtn = el("button", "btn btn-ghost btn-sm", "Insert invite link");
+    tools.appendChild(insertBtn);
+    body.appendChild(tools);
+
+    const composerHost = el("div");
+    body.appendChild(composerHost);
+    const api = App.compose.mount(composerHost, { kind: "email" });
+
+    insertBtn.onclick = () => {
+      // Append a ready-made link carrying the merge token. The writer can equally
+      // wrap the token in a CTA button or type it inline — the server replaces EVERY
+      // occurrence with the real one-time link.
+      api.appendHtml(`<a href="${INVITE_LINK_TOKEN}">Accept your invitation</a>`);
+      api.focus();
+    };
+
+    const foot = el("div", "modal-foot"); foot.style.cssText = "display:flex;gap:10px;justify-content:flex-end;";
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    const sendBtn = el("button", "btn btn-primary btn-sm", "Send invitation");
+    foot.appendChild(cancel); foot.appendChild(sendBtn);
+
+    m.appendChild(body); m.appendChild(foot); overlay.appendChild(m);
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    m.querySelector("#ic-close").onclick = close;
+    cancel.onclick = close;
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+    sendBtn.onclick = async () => {
+      const html = api.getHTML();
+      if (!html || html.indexOf(INVITE_LINK_TOKEN) === -1) {
+        toast("Your email doesn't include the invite link — add it before sending.", true);
+        return;
+      }
+      sendBtn.disabled = true; const old = sendBtn.textContent; sendBtn.textContent = "Sending…";
+      try {
+        const result = await opts.send(html, api.getSubject());
+        close();
+        if (opts.onSent) opts.onSent(result);
+      } catch (e) {
+        toast((e && e.message) || "Couldn't send the invitation", true);
+        sendBtn.disabled = false; sendBtn.textContent = old;
+      }
+    };
+  }
+
+  App.inviteComposer = { open: openInviteComposer, INVITE_LINK_TOKEN };
+
   App.compose = {
     mount,
     // pure helpers exposed for tests / reuse:

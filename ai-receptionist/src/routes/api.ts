@@ -37,7 +37,7 @@ import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns, assignUserRole } from "../services/userService";
 import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, PER_PORTAL_SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign, effectiveMatrix } from "../services/permissionService";
 import { permissionGate } from "../middleware/permissionGate";
-import { createInvite, inviteLink, sendInvite, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
+import { createInvite, inviteLink, sendInvite, sendCustomInvite, hasInviteLinkToken, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
 import { testRunAutomation, runManualAutomation } from "../automation/engine";
 import { listScheduledJobs, cancelScheduledJob, processDueJobs } from "../automation/scheduler";
@@ -1598,9 +1598,16 @@ apiRouter.post("/users", async (req: Request, res: Response) => {
     res.status(403).json({ error: "Not authorized" });
     return;
   }
-  const { email, role, name } = (req.body ?? {}) as Record<string, string>;
+  const { email, role, name, customHtml, customSubject } = (req.body ?? {}) as Record<string, string>;
   if (!email) {
     res.status(400).json({ error: "email is required" });
+    return;
+  }
+  // If the inviter wrote a custom email, it MUST contain the apply-link token —
+  // checked BEFORE we mint anything so a missing-link request creates no invite.
+  const isCustom = typeof customHtml === "string" && customHtml.trim().length > 0;
+  if (isCustom && !hasInviteLinkToken(customHtml)) {
+    res.status(400).json({ error: "Your email doesn't include the invite link — add it before sending." });
     return;
   }
   // role can be a system role (PORTAL_ADMIN/CLIENT_USER) or a per-portal custom role
@@ -1618,7 +1625,9 @@ apiRouter.post("/users", async (req: Request, res: Response) => {
     const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
     const host = String(req.headers["x-forwarded-host"] || req.get("host") || "").trim();
     const link = inviteLink(proto + "://" + host, invite.token);
-    const emailed = await sendInvite({ email: invite.email, role: invite.role }, link);
+    const emailed = isCustom
+      ? await sendCustomInvite({ email: invite.email, role: invite.role }, link, customHtml, customSubject)
+      : await sendInvite({ email: invite.email, role: invite.role }, link);
     res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link, emailed });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

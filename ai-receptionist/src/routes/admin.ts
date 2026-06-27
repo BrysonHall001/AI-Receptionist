@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal } from "../services/portalService";
 import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
-import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvite, sendInvite, inviteLink } from "../services/inviteService";
+import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvite, sendInvite, sendCustomInvite, hasInviteLinkToken, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, listAllFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { createExport, listMasterExports, getMasterExportCsv } from "../services/exportService";
@@ -107,7 +107,7 @@ adminRouter.post("/invites/:inviteId/revoke", async (req: Request, res: Response
 });
 
 adminRouter.post("/users", async (req: Request, res: Response) => {
-  const { email, role, name } = (req.body ?? {}) as Record<string, string>;
+  const { email, role, name, customHtml, customSubject } = (req.body ?? {}) as Record<string, string>;
   if (!email || !role) {
     res.status(400).json({ error: "email and role are required" });
     return;
@@ -119,12 +119,21 @@ adminRouter.post("/users", async (req: Request, res: Response) => {
     res.status(400).json({ error: "This form can only create a Super Admin or an Auditor." });
     return;
   }
+  // Custom email must carry the apply-link token — validated BEFORE minting so a
+  // missing-link request creates no invite.
+  const isCustom = typeof customHtml === "string" && customHtml.trim().length > 0;
+  if (isCustom && !hasInviteLinkToken(customHtml)) {
+    res.status(400).json({ error: "Your email doesn't include the invite link — add it before sending." });
+    return;
+  }
   try {
     // Create an invite (no portal). The person sets their own password via the
     // link; the typed name is carried on the invite and applied at activation.
     const invite = await createInvite({ email, role: role as any, tenantId: null, name: name || null, createdById: req.user?.id ?? null });
     const link = inviteLink(requestOrigin(req), invite.token);
-    const emailed = await sendInvite({ email: invite.email, role: invite.role }, link);
+    const emailed = isCustom
+      ? await sendCustomInvite({ email: invite.email, role: invite.role }, link, customHtml, customSubject)
+      : await sendInvite({ email: invite.email, role: invite.role }, link);
     // `link` is always returned so it can be copied while email delivery is limited.
     res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link, emailed });
   } catch (err) {

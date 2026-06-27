@@ -2415,9 +2415,9 @@
     wrap.appendChild(intro);
 
     if (!fields.length) {
-      const card = el("div", "card");
-      card.appendChild(el("div", "cell-muted", "No fields yet for this type. Click “+ Add field” to create one."));
-      wrap.appendChild(card);
+      // No custom fields for this type — show nothing here (the "+ Add field" button
+      // already covers adding). Pipelines/stages/statuses below still render, so the
+      // tab never looks empty when those exist.
       if (canEdit && selectedType && selectedType.key !== "contact") { wrap.appendChild(subtypesCard()); wrap.appendChild(statusesCard()); }
       fieldsView().innerHTML = ""; fieldsView().appendChild(wrap); return;
     }
@@ -3488,10 +3488,11 @@
         <div class="add-user">
           <input id="nu-name" class="input" placeholder="Name" />
           <input id="nu-email" class="input" placeholder="email@company.com" />
-          <select id="nu-role" class="input"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option>${customOpts ? `<optgroup label="Custom roles">${customOpts}</optgroup>` : ""}</select>
+          <select id="nu-role" class="input" style="flex:0 0 160px"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option>${customOpts ? `<optgroup label="Custom roles">${customOpts}</optgroup>` : ""}</select>
           <button id="nu-add" class="btn btn-primary btn-sm">Send invite</button>
+          <button id="nu-custom" class="btn btn-ghost btn-sm">Write custom email</button>
         </div>
-        <p class="cell-muted" style="font-size:12px;margin-top:8px">They'll get an email with a link to set their own password — no temporary password needed.</p>`;
+        <p class="cell-muted" style="font-size:12px;margin-top:8px">We'll email them an invite link automatically — or write a custom email and place the link yourself.</p>`;
       panel.appendChild(membersCard);
 
       // ---- Permissions panel (separate card) ----
@@ -3515,6 +3516,19 @@
           showTeamInviteResult(email, result && result.link, result && result.emailed);
           secTeam(panel); // refresh the list in place
         } catch (err) { toast(err.message, true); }
+      };
+      App.util.$("#nu-custom").onclick = () => {
+        const name = App.util.$("#nu-name").value.trim();
+        const email = App.util.$("#nu-email").value.trim();
+        const role = App.util.$("#nu-role").value;
+        if (!email) { toast("Email is required", true); return; }
+        // Same shared endpoint + token as the default send; only the email body differs.
+        App.inviteComposer.open({
+          email,
+          send: (customHtml, customSubject) =>
+            App.portalApi("/api/users", { method: "POST", body: JSON.stringify({ name, email, role, customHtml, customSubject }) }),
+          onSent: (result) => { showTeamInviteResult(email, result && result.link, result && result.emailed); secTeam(panel); },
+        });
       };
     }
 

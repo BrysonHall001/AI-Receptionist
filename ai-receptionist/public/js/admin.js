@@ -573,8 +573,9 @@
         <label class="field-label">Email *</label><input id="cu-email" class="input" placeholder="jane@acme.com" />
         <label class="field-label">Role *</label>
         <select id="cu-role" class="input">${roleOptions}</select>
-        <p class="sub" style="margin:10px 0 0">They'll get an email with a link to set their own password — no temporary password needed.</p>
+        <p class="sub" style="margin:10px 0 0">We'll email them an invite link automatically — or write a custom email and place the link yourself.</p>
         <button id="cu-go" class="btn btn-primary btn-block" style="margin-top:14px">Send invite</button>
+        <button id="cu-custom" class="btn btn-ghost btn-block" style="margin-top:8px">Write custom email</button>
       </div>`;
     const overlay = modal(inner);
     const roleSel = inner.querySelector("#cu-role");
@@ -598,6 +599,27 @@
         }
         showInviteResult(body.email, result && result.link, result && result.emailed);
       } catch (err) { toast(err.message, true); }
+    };
+    inner.querySelector("#cu-custom").onclick = () => {
+      const role = roleSel.value;
+      const name = inner.querySelector("#cu-name").value.trim();
+      const email = inner.querySelector("#cu-email").value.trim();
+      if (!email) { toast("Email is required", true); return; }
+      // Same endpoints + invite token as the default send; only the body differs.
+      App.inviteComposer.open({
+        email,
+        send: (customHtml, customSubject) => {
+          const payload = JSON.stringify({ name, email, role, customHtml, customSubject });
+          return perPortal
+            ? App.api("/api/users?tenantId=" + encodeURIComponent(portal.id), { method: "POST", body: payload })
+            : App.api("/api/admin/users", { method: "POST", body: payload });
+        },
+        onSent: (result) => {
+          overlay.remove();
+          if (perPortal) renderPortalUsers(portal); else renderUsers();
+          showInviteResult(email, result && result.link, result && result.emailed);
+        },
+      });
     };
   }
 

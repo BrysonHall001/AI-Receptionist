@@ -99,6 +99,45 @@ export async function sendInvite(invite: { email: string; role?: string }, link:
   }
 }
 
+/** The merge token the inviter places in a custom email; replaced with the real
+ *  one-time apply link at send. Mirrors public/js/compose.js INVITE_LINK_TOKEN. */
+export const INVITE_LINK_TOKEN = "{{invite_link}}";
+
+/** True if a custom invite body actually contains the apply-link merge token. */
+export function hasInviteLinkToken(html: string | null | undefined): boolean {
+  return typeof html === "string" && html.includes(INVITE_LINK_TOKEN);
+}
+
+/**
+ * Send a CUSTOM invitation email written by the inviter. Identical outbound path to
+ * sendInvite (Resend, RESEND_FROM, auditor QRG attachment) — the ONLY differences are
+ * the caller-supplied subject/body and that every {{invite_link}} is replaced with the
+ * SAME real one-time link the default email would have used. Never throws.
+ */
+export async function sendCustomInvite(
+  invite: { email: string; role?: string },
+  link: string,
+  rawHtml: string,
+  subject?: string | null,
+): Promise<boolean> {
+  // Replace EVERY occurrence of the token with the real link (href, button URL, or
+  // inline text — wherever the writer placed it).
+  const html = String(rawHtml || "").split(INVITE_LINK_TOKEN).join(link);
+  try {
+    await sendRichEmail({
+      to: invite.email,
+      subject: (subject && subject.trim()) || "You're invited to Clarity CRM",
+      html,
+      fromEmail: env.RESEND_FROM,
+      attachments: auditorInviteAttachments(invite.role),
+    });
+    return true;
+  } catch (err) {
+    logger.warn(`Custom invite email to ${invite.email} could not be sent (delivery limited until a domain is verified): ${(err as Error).message}`);
+    return false;
+  }
+}
+
 /**
  * Create a single-use, expiring invite for { email, role } scoped to a tenant.
  * Any earlier still-open invite for the same email+tenant is superseded so there
