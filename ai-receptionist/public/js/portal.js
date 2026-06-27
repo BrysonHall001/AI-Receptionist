@@ -1601,8 +1601,8 @@
     let msgTimer = null;
     function needSelection(text) { bulkMsg.textContent = text || ("Select a " + App.label("contact","one").toLowerCase() + " first."); bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
     function bulkItem(label, fn) { const b = el("button", "bulk-item", label); b.onclick = () => fn(); return b; }
-    bulkMenu.appendChild(bulkItem("Email selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("email", selectedRows()); }));
-    bulkMenu.appendChild(bulkItem("Text selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkCompose("sms", selectedRows()); }));
+    bulkMenu.appendChild(bulkItem("Email selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); App.communication.composeTo(rows.map((r) => r.id)); }));
+    bulkMenu.appendChild(bulkItem("Text selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkText(selectedRows()); }));
     bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openExport(contactExportOpts(handle.getColumns(), rows)); }));
     bulkMenu.appendChild(el("div", "pop-sep"));
     bulkMenu.appendChild(bulkItem("Update a field…", () => { const ids = handle.getSelected(); if (!ids.length) return needSelection(); bulkMenu.classList.add("hidden"); openMassUpdate(ids, fields); }));
@@ -1690,24 +1690,26 @@
     save.onclick = () => { onSave({ order: order.slice(), hidden: Array.from(hidden) }); close(); App.util.toast("Columns updated"); };
   }
 
-  // ---------------- Bulk email/text (reuses the single-contact send endpoints) ----------------
-  function bulkCompose(kind, rows) {
-    const reachable = rows.filter((r) => (kind === "email" ? r.email : r.phone));
+  // ---------------- Bulk text (SMS) — reuses the single-contact send endpoint ----------------
+  // (Bulk EMAIL now routes through Communication → Email → Compose via the audience
+  // picker preload; this text-only path is what remains of the old inline bulk send.)
+  function bulkText(rows) {
+    const reachable = rows.filter((r) => r.phone);
     const overlay = el("div", "modal-overlay");
     const modal = el("div", "modal");
-    const title = kind === "email" ? ("Email selected " + App.label("contact","many").toLowerCase()) : ("Text selected " + App.label("contact","many").toLowerCase());
+    const title = "Text selected " + App.label("contact", "many").toLowerCase();
     modal.innerHTML = `<div class="modal-head"><h2>${title}</h2><button class="icon-btn" id="bc-close">&times;</button></div>`;
     const body = el("div", "modal-body");
     const note = el("p", "cell-muted");
-    note.textContent = `${reachable.length} of ${rows.length} selected ${kind === "email" ? "have an email address" : "have a phone number"} and will receive this.`;
+    note.textContent = `${reachable.length} of ${rows.length} selected have a phone number and will receive this.`;
     note.style.marginBottom = "10px";
     body.appendChild(note);
     const composerHost = el("div");
     body.appendChild(composerHost);
-    const api = App.compose.mount(composerHost, { kind: kind === "email" ? "email" : "sms" });
+    const api = App.compose.mount(composerHost, { kind: "sms" });
     const foot = el("div", "modal-foot");
     const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
-    const send = el("button", "btn btn-primary btn-sm", kind === "email" ? "Send emails" : "Send texts");
+    const send = el("button", "btn btn-primary btn-sm", "Send texts");
     foot.appendChild(cancel); foot.appendChild(send);
     modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -1716,14 +1718,12 @@
     modal.querySelector("#bc-close").onclick = close;
     cancel.onclick = close;
     send.onclick = async () => {
-      if (kind === "email" && !api.getSubject()) { App.util.toast("Add a subject", true); return; }
       if (!reachable.length) { App.util.toast("No reachable recipients", true); return; }
       send.disabled = true; send.textContent = "Sending…";
       let ok = 0, fail = 0;
       for (const r of reachable) {
         try {
-          if (kind === "email") await App.portalApi(`/api/contacts/${r.id}/email`, { method: "POST", body: JSON.stringify({ subject: api.getSubject(), html: api.getHTML() }) });
-          else await App.portalApi(`/api/contacts/${r.id}/text`, { method: "POST", body: JSON.stringify({ body: api.getHTML ? (api.getText ? api.getText() : api.getHTML()) : "" }) });
+          await App.portalApi(`/api/contacts/${r.id}/text`, { method: "POST", body: JSON.stringify({ body: api.getText ? api.getText() : api.getHTML() }) });
           ok++;
         } catch (e) { fail++; }
       }

@@ -55,6 +55,7 @@ export async function sendEmailBlast(input: {
       tenantId: input.tenantId,
       channel: "email",
       subject: (input.subject || "").slice(0, 998),
+      body: input.html || "",
       recipientCount: recipients.length,
       sentCount,
       failCount,
@@ -62,4 +63,36 @@ export async function sendEmailBlast(input: {
     },
   });
   return { id: rec.id, recipientCount: recipients.length, sentCount, failCount };
+}
+
+// The Sent log: a tenant's communication blasts, newest first, capped, joined to the
+// creator's display name. Includes subject + body so the detail view is faithful.
+export async function listSends(tenantId: string, limit = 500): Promise<Array<{
+  id: string; channel: string; subject: string; body: string;
+  recipientCount: number; sentCount: number; failCount: number;
+  createdById: string | null; createdByName: string | null; createdAt: string;
+}>> {
+  const rows = await db.communicationSend.findMany({
+    where: { tenantId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+  const ids = Array.from(new Set(rows.map((r: any) => r.createdById).filter(Boolean))) as string[];
+  const nameById: Record<string, string | null> = {};
+  if (ids.length) {
+    const users = await db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } });
+    users.forEach((u: any) => { nameById[u.id] = u.name || u.email || null; });
+  }
+  return rows.map((r: any) => ({
+    id: r.id,
+    channel: r.channel,
+    subject: r.subject || "",
+    body: r.body || "",
+    recipientCount: r.recipientCount,
+    sentCount: r.sentCount,
+    failCount: r.failCount,
+    createdById: r.createdById ?? null,
+    createdByName: r.createdById ? (nameById[r.createdById] ?? null) : null,
+    createdAt: r.createdAt.toISOString(),
+  }));
 }

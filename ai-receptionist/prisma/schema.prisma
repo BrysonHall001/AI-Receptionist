@@ -861,6 +861,9 @@ model CommunicationSend {
   tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   channel        String   @default("email") // "email" (texts/surveys later)
   subject        String   @default("")
+  // Rich-text body HTML of the blast, persisted so the Sent-log detail view is
+  // faithful. Nullable/forward-compatible.
+  body           String?
   recipientCount Int      @default(0)
   sentCount      Int      @default(0)
   failCount      Int      @default(0)

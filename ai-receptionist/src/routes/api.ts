@@ -16,7 +16,7 @@ import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDe
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
-import { sendEmailBlast } from "../services/communicationService";
+import { sendEmailBlast, listSends } from "../services/communicationService";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { listTemplates, createTemplate, deleteTemplate } from "../services/templateService";
 import { sendSms } from "../services/smsService";
@@ -435,6 +435,14 @@ apiRouter.post("/communication/email", async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
+});
+
+// Sent log — this tenant's past email blasts (newest first, creator name + counts +
+// subject/body for the detail view). Gated like the Email tab (contacts:edit).
+apiRouter.get("/communication/sends", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listSends(tenantId));
 });
 
 apiRouter.post("/contacts/:id/text", async (req: Request, res: Response) => {

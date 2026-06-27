@@ -168,7 +168,7 @@
   // bulk-emailing from Contacts.
   // ======================================================================
   function renderCommunication(host) {
-    const { el, esc, toast } = App.util;
+    const { el, esc } = App.util;
     host.innerHTML = "";
     const wrap = el("div", "fade-in");
 
@@ -195,26 +195,58 @@
     setTab("email");
   }
 
+  // The Email tab: a Compose / Sent sub-switch. Compose is the audience-first send
+  // screen; Sent is the log of past blasts. Default to Compose (or Compose with a
+  // preloaded audience when deep-linked from Contacts).
   function emailTab(host) {
+    const { el, esc } = App.util;
+    host.innerHTML = "";
+    const preload = pendingPreload; pendingPreload = null; // consume the deep-link once
+
+    const sub = el("div", "tabs");
+    const subBody = el("div");
+    subBody.style.marginTop = "12px";
+    let view = "compose";
+    function setSub(key) {
+      view = key;
+      App.util.$$(".tab", sub).forEach((t) => t.classList.toggle("active", t.dataset.s === key));
+      subBody.innerHTML = "";
+      if (key === "compose") emailCompose(subBody, key === "compose" ? preload : null);
+      else emailSent(subBody);
+    }
+    [["compose", "Compose"], ["sent", "Sent"]].forEach(([key, label]) => {
+      const t = el("button", "tab" + (key === "compose" ? " active" : ""), esc(label));
+      t.dataset.s = key;
+      t.onclick = () => setSub(key);
+      sub.appendChild(t);
+    });
+    host.appendChild(sub);
+    host.appendChild(subBody);
+    setSub("compose");
+  }
+
+  function emailCompose(host, preloadIds) {
     const { el, esc, toast } = App.util;
     host.innerHTML = "";
     const card = el("div", "card");
     card.style.cssText = "padding:18px";
     card.appendChild(el("h3", "settings-sub", "New email"));
-    card.appendChild(el("div", "cell-muted", "Write your message, choose who it goes to, and send. Only people with an email address receive it."));
+    const intro = preloadIds && preloadIds.length
+      ? `Sending to the ${preloadIds.length} ${App.label("contact", preloadIds.length === 1 ? "one" : "many").toLowerCase()} you selected. Only those with an email address receive it.`
+      : "Write your message, choose who it goes to, and send. Only people with an email address receive it.";
+    card.appendChild(el("div", "cell-muted", intro));
 
-    // Subject + body — REUSE the rich-text composer (same kind:"email" contract the
-    // Contacts bulk email uses: it provides the Subject field + the Quill body).
+    // Subject + body — REUSE the rich-text composer. Its built-in Templates menu is
+    // the "start from / save as template" affordance (no duplicate template UI here).
     const composerHost = el("div");
     composerHost.style.marginTop = "12px";
     card.appendChild(composerHost);
     const composer = App.compose.mount(composerHost, { kind: "email" });
 
-    // Audience
     card.appendChild(el("div", "field-label", "Audience"));
     const audienceHost = el("div");
     card.appendChild(audienceHost);
-    const audience = App.audiencePicker.mount(audienceHost, {});
+    const audience = App.audiencePicker.mount(audienceHost, (preloadIds && preloadIds.length) ? { preloadIds } : {});
 
     const actions = el("div");
     actions.style.cssText = "margin-top:16px";
@@ -252,5 +284,65 @@
     };
   }
 
-  App.communication = { render: renderCommunication };
+  function emailSent(host) {
+    const { el, esc, fmtDate, toast } = App.util;
+    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    App.portalApi("/api/communication/sends").then((rows) => {
+      rows = Array.isArray(rows) ? rows : [];
+      host.innerHTML = "";
+      const tableHost = el("div");
+      const columns = [
+        { key: "createdAt", label: "Date", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
+        { key: "subject", label: "Subject", type: "text", get: (r) => r.subject, render: (r) => esc(r.subject || "—") },
+        { key: "recipientCount", label: "Recipients", type: "text", get: (r) => String(r.recipientCount), render: (r) => `<span class="cell-muted">${r.recipientCount}</span>` },
+        { key: "sentCount", label: "Sent", type: "text", get: (r) => String(r.sentCount), render: (r) => `<span class="cell-muted">${r.sentCount}</span>` },
+        { key: "failCount", label: "Failed", type: "text", get: (r) => String(r.failCount), render: (r) => `<span class="${r.failCount ? "pill failed" : "cell-muted"}">${r.failCount}</span>` },
+        { key: "user", label: "Sent by", type: "text", get: (r) => r.createdByName || "", render: (r) => `<span class="cell-muted">${esc(r.createdByName || "—")}</span>` },
+      ];
+      host.appendChild(tableHost);
+      App.table.mount({
+        container: tableHost, columns, rows,
+        defaultSort: "createdAt", defaultSortDir: "desc",
+        onRowClick: (r) => openSendDetail(r),
+        emptyHtml: `<div class="card cell-muted" style="padding:18px">No emails sent yet.</div>`,
+        pageSize: 50,
+      });
+    }).catch((e) => { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; });
+  }
+
+  // Read-only detail for one past send.
+  function openSendDetail(r) {
+    const { el, esc, fmtDate } = App.util;
+    const overlay = el("div", "modal-overlay");
+    const modal = el("div", "modal");
+    modal.innerHTML = `<div class="modal-head"><h2>${esc(r.subject || "(no subject)")}</h2><button class="icon-btn" id="sd-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    const meta = el("div", "cell-muted");
+    meta.style.marginBottom = "10px";
+    meta.innerHTML = `Sent ${esc(fmtDate(r.createdAt))} by ${esc(r.createdByName || "—")} · ${r.recipientCount} recipient${r.recipientCount === 1 ? "" : "s"} · ${r.sentCount} sent${r.failCount ? ` · ${r.failCount} failed` : ""}`;
+    body.appendChild(meta);
+    const bodyBox = el("div", "card");
+    bodyBox.style.cssText = "padding:14px;max-height:50vh;overflow:auto";
+    bodyBox.innerHTML = r.body && r.body.trim() ? r.body : `<span class="cell-muted">(no message body)</span>`;
+    body.appendChild(bodyBox);
+    const foot = el("div", "modal-foot");
+    const close = el("button", "btn btn-ghost btn-sm", "Close");
+    foot.appendChild(close);
+    modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    const dismiss = () => overlay.remove();
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) dismiss(); });
+    modal.querySelector("#sd-close").onclick = dismiss;
+    close.onclick = dismiss;
+  }
+
+  // Deep-link entry point used by the Contacts "Email selected" bulk action: preload
+  // the chosen contact ids as the audience and open Communication → Email → Compose.
+  let pendingPreload = null;
+  function composeTo(ids) {
+    pendingPreload = Array.isArray(ids) ? ids.slice() : [];
+    App.go("#/communication");
+  }
+
+  App.communication = { render: renderCommunication, composeTo };
 })(typeof window !== "undefined" ? window : globalThis);
