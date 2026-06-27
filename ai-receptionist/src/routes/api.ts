@@ -45,6 +45,7 @@ import { loadFieldDefs, conditionFields } from "../automation/contactRow";
 import { validateWebhookUrl, sendWebhook, buildSamplePayload } from "../automation/webhook";
 import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteEndpoint, listCalls as listInboundCalls } from "../services/inboundService";
 import { ACTION_TYPES } from "../automation/actions";
+import { smsEnabled } from "../config/env";
 import { AUTOMATION_PRESETS, getPreset, PRESET_CATEGORIES } from "../automation/presets";
 import { analyzeFlowDefinition, applyFlowDefinition } from "../services/flowProvisioningService";
 import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
@@ -1996,6 +1997,14 @@ apiRouter.get("/automations/presets", async (req: Request, res: Response) => {
   for (const p of AUTOMATION_PRESETS) {
     if ((p as any).hidden) continue; // retired/wrong-vertical templates stay in code but off the UI
     const analysis = await analyzeFlowDefinition(tenantId, p.definition);
+    // Does this preset include any texting step? (send_sms, or notify_business /
+    // act_on_linked configured for SMS.) Used to surface a "text step hidden" note
+    // while SMS_ENABLED is off — the preset itself is never modified.
+    const acts: any[] = Array.isArray((p.definition as any).actions) ? (p.definition as any).actions : [];
+    const hasSms = acts.some((a) =>
+      a && (a.type === "send_sms"
+        || (a.type === "notify_business" && (a.config?.channel === "sms" || a.config?.channel === "both"))
+        || (a.type === "act_on_linked" && a.config?.subAction === "sms")));
     presets.push({
       key: p.key,
       name: p.name,
@@ -2008,9 +2017,10 @@ apiRouter.get("/automations/presets", async (req: Request, res: Response) => {
       note: p.note ?? null,
       expected: analysis.expected,
       missing: analysis.missing,
+      hasSms,
     });
   }
-  res.json({ categories: PRESET_CATEGORIES, presets });
+  res.json({ categories: PRESET_CATEGORIES, presets, smsEnabled: smsEnabled() });
 });
 
 // Apply one preset -> a NEW DRAFT (inactive) automation in the CURRENT portal,

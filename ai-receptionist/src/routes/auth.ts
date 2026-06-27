@@ -4,7 +4,7 @@ import { verifyPassword } from "../auth/passwords";
 import { createSession, destroySession, setSessionCookie, clearSessionCookie, SESSION_COOKIE } from "../auth/session";
 import { createResetToken, consumeResetToken, publicUser, accountInactive } from "../services/userService";
 import { sendPlainEmail } from "../services/notificationService";
-import { env } from "../config/env";
+import { env, smsEnabled } from "../config/env";
 import { logger } from "../utils/logger";
 import { rateLimit } from "../middleware/rateLimit";
 import { can, NAV_VIEW_AREAS } from "../services/permissionService";
@@ -72,7 +72,7 @@ authRouter.get("/me", async (req: Request, res: Response) => {
   // automatically. Cosmetic nav-hide is applied separately on the client.
   const permView: Record<string, boolean> = {};
   for (const area of NAV_VIEW_AREAS) permView[area] = await can(req.user as any, area, "view");
-  res.json({ user: { ...req.user, permView } });
+  res.json({ user: { ...req.user, permView }, features: { smsEnabled: smsEnabled() } });
 });
 
 authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => {

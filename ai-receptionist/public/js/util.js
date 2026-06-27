@@ -31,7 +31,10 @@
     `</g>` +
     `</svg>`;
 
-  App.state = { me: null, currentPortalId: null, currentPortalName: null, labels: { types: {}, generic: {} } };
+  App.state = { me: null, currentPortalId: null, currentPortalName: null, labels: { types: {}, generic: {} }, features: {} };
+  // Client-visible feature flags come from /api/auth/me (features). Texting/SMS is
+  // hidden across the UI when this is false (server also gates the send path).
+  App.smsEnabled = function () { return !!(App.state.features && App.state.features.smsEnabled); };
 
   // Top admin tier: OWNER, SUPER_ADMIN, or AUDITOR (a tester with the same full
   // reach as super-admin). Mirrors the server's isAdminTier so the UI treats all

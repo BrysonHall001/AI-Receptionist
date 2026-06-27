@@ -1602,7 +1602,7 @@
     function needSelection(text) { bulkMsg.textContent = text || ("Select a " + App.label("contact","one").toLowerCase() + " first."); bulkMsg.classList.remove("hidden"); clearTimeout(msgTimer); msgTimer = setTimeout(() => bulkMsg.classList.add("hidden"), 1800); }
     function bulkItem(label, fn) { const b = el("button", "bulk-item", label); b.onclick = () => fn(); return b; }
     bulkMenu.appendChild(bulkItem("Email selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); App.communication.composeTo(rows.map((r) => r.id)); }));
-    bulkMenu.appendChild(bulkItem("Text selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkText(selectedRows()); }));
+    if (App.smsEnabled()) bulkMenu.appendChild(bulkItem("Text selected", () => { if (!handle.getSelected().length) return needSelection(); bulkMenu.classList.add("hidden"); bulkText(selectedRows()); }));
     bulkMenu.appendChild(bulkItem("Export selected", () => { const rows = selectedRows(); if (!rows.length) return needSelection(); bulkMenu.classList.add("hidden"); openExport(contactExportOpts(handle.getColumns(), rows)); }));
     bulkMenu.appendChild(el("div", "pop-sep"));
     bulkMenu.appendChild(bulkItem("Update a field…", () => { const ids = handle.getSelected(); if (!ids.length) return needSelection(); bulkMenu.classList.add("hidden"); openMassUpdate(ids, fields); }));
@@ -2863,7 +2863,7 @@
 
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const tabs = ro ? [["fields", "All fields"], ["timeline", "Timeline"]] : [["fields", "All fields"], ["timeline", "Timeline"], ["email", "Email"], ["text", "Text"]];
+    const tabs = ro ? [["fields", "All fields"], ["timeline", "Timeline"]] : [["fields", "All fields"], ["timeline", "Timeline"], ["email", "Email"]].concat(App.smsEnabled() ? [["text", "Text"]] : []);
     let active = "fields";
     function setTab(key) {
       active = key;

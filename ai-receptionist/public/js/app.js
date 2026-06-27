@@ -314,7 +314,7 @@
   // context with the impersonated scope so the UI re-renders as the right role for
   // the right portal immediately after entering/leaving impersonation.
   async function refreshSession() {
-    try { const res = await fetch("/api/auth/me", { credentials: "same-origin" }); if (res.ok) App.state.me = (await res.json()).user; } catch (e) {}
+    try { const res = await fetch("/api/auth/me", { credentials: "same-origin" }); if (res.ok) { const j = await res.json(); App.state.me = j.user; App.state.features = j.features || App.state.features || {}; } } catch (e) {}
     await App.loadImpersonation();
     const st = App.state.impersonation;
     if (st && st.impersonating && st.overlay && st.overlay.scopeTenantId) {
@@ -634,7 +634,9 @@
   async function boot() {
     try {
       const res = await fetch("/api/auth/me", { credentials: "same-origin" });
-      App.state.me = res.ok ? (await res.json()).user : null;
+      const j = res.ok ? await res.json() : null;
+      App.state.me = j ? j.user : null;
+      App.state.features = (j && j.features) || {};
     } catch (e) { App.state.me = null; }
     await App.loadImpersonation(); // so the banner/control reflect state on first paint + after refresh
     route();

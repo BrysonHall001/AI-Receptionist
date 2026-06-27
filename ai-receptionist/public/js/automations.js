@@ -366,7 +366,10 @@
   // record, "Act on linked contacts"); everything else is contact-only, and
   // "act_on_linked" never appears there. Mirrors the engine's allow-list.
   function allowedActions(triggerType) {
-    const all = meta.actions || [];
+    let all = meta.actions || [];
+    // SMS master switch off → don't offer "Send SMS" as a new action (the SMS option
+    // inside notify_business / act_on_linked is hidden in their config UIs below).
+    if (!meta.smsEnabled) all = all.filter((a) => a.type !== "send_sms");
     // New honest record-acting actions (Option 3 Pass 2) — record subjects only.
     const recordOnly = ["create_record_item", "update_record_item", "find_record_items", "delete_record_items"];
     if (isRecordTrigger(triggerType)) return all.filter((a) => a.type === "create_note" || a.type === "act_on_linked" || a.type === "move_to_stage" || a.type === "set_record_field" || recordOnly.indexOf(a.type) !== -1);
@@ -650,6 +653,11 @@
     if (p.missing && p.missing.length) {
       card.appendChild(el("div", "preset-missing", "Expects a field: " + p.missing.map((m) => esc(m.label || m.key)).join(", ")));
     }
+    if (data && !data.smsEnabled && p.hasSms) {
+      const n = el("div", "preset-missing", "Includes a text step — hidden while texting is off.");
+      n.style.cssText = "background:var(--panel-2);color:var(--ink-soft)";
+      card.appendChild(n);
+    }
     const foot = el("div", "preset-card-foot");
     const prev = el("button", "btn btn-ghost btn-sm", "Preview");
     prev.onclick = (e) => { e.stopPropagation(); showPreview(pbody, p, data, overlay); };
@@ -686,6 +694,12 @@
     pbody.appendChild(head);
 
     pbody.appendChild(shapeEl(p.shape));
+
+    if (data && !data.smsEnabled && p.hasSms) {
+      const n = el("div", "preset-missing", "This template includes a text (SMS) step. Texting is currently off, so that step stays hidden and won't send; the rest applies normally.");
+      n.style.cssText = "background:var(--panel-2);color:var(--ink-soft);margin-top:12px";
+      pbody.appendChild(n);
+    }
 
     const sm = p.summary || {};
     const conds = (sm.conditions || []).map((c) => `<li>${esc(App.relabelText(c))}</li>`).join("") || "<li>Always runs</li>";
@@ -1781,15 +1795,19 @@
       appendBulkGate();
     } else if (act.type === "notify_business") {
       if (!c.channel) c.channel = "email";
+      // SMS off → OFFER email only and DISPLAY as email, but don't overwrite a stored
+      // sms/both channel (so it restores when SMS_ENABLED is flipped back on).
+      const effChannel = () => (meta.smsEnabled ? (c.channel || "email") : "email");
       cfg.appendChild(small("Send to the business via"));
       const chSel = el("select", "input");
-      [["email", "Email"], ["sms", "SMS (text)"], ["both", "Email + SMS"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (c.channel === v) o.selected = true; chSel.appendChild(o); });
+      const chOpts = meta.smsEnabled ? [["email", "Email"], ["sms", "SMS (text)"], ["both", "Email + SMS"]] : [["email", "Email"]];
+      chOpts.forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (effChannel() === v) o.selected = true; chSel.appendChild(o); });
       chSel.onchange = () => { c.channel = chSel.value; rebuildNotify(); };
       cfg.appendChild(chSel);
       const sub = el("div"); sub.style.marginTop = "8px"; cfg.appendChild(sub);
       function rebuildNotify() {
         sub.innerHTML = "";
-        const ch = c.channel || "email";
+        const ch = effChannel();
         if (ch === "email" || ch === "both") {
           sub.appendChild(small("Email to (leave blank to use your Notify email from Settings → General)"));
           sub.appendChild(text("toEmail", "optional override e.g. you@yourbusiness.com"));
@@ -1817,23 +1835,29 @@
       cfg.appendChild(small("Note (supports {{field}})")); cfg.appendChild(text("text", "Lead came in via automation", true));
     } else if (act.type === "act_on_linked") {
       if (!c.subAction) c.subAction = "note";
+      // SMS off → OFFER note/email only and DISPLAY a stored "sms" as note, without
+      // overwriting it (restores when SMS_ENABLED is flipped back on).
+      const effSub = () => ((!meta.smsEnabled && c.subAction === "sms") ? "note" : (c.subAction || "note"));
       cfg.appendChild(small("Do this to each linked contact:"));
       const subSel = el("select", "input");
-      [["note", "Add internal note (on each contact's timeline)"], ["email", "Send mock email to each"], ["sms", "Send mock SMS to each"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (c.subAction === v) o.selected = true; subSel.appendChild(o); });
+      const subOpts = [["note", "Add internal note (on each contact's timeline)"], ["email", "Send mock email to each"]];
+      if (meta.smsEnabled) subOpts.push(["sms", "Send mock SMS to each"]);
+      subOpts.forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (effSub() === v) o.selected = true; subSel.appendChild(o); });
       subSel.onchange = () => { c.subAction = subSel.value; rebuildLinked(); };
       cfg.appendChild(subSel);
       const sub = el("div"); sub.style.marginTop = "8px"; cfg.appendChild(sub);
       function rebuildLinked() {
         sub.innerHTML = "";
-        if (c.subAction === "email") {
+        const subAction = effSub();
+        if (subAction === "email") {
           sub.appendChild(small("Subject (supports {{name}}, {{record_title}})")); sub.appendChild(text("subject", "Update on {{record_title}}"));
           sub.appendChild(small("Body (HTML, supports {{field}})")); sub.appendChild(text("html", "Hi {{name}}, there's an update on {{record_title}}.", true));
-        } else if (c.subAction === "sms") {
+        } else if (subAction === "sms") {
           sub.appendChild(small("Message (supports {{name}}, {{record_title}})")); sub.appendChild(text("body", "Hi {{name}} — update on {{record_title}}.", true));
         } else {
           sub.appendChild(small("Note (supports {{name}}, {{record_title}})")); sub.appendChild(text("text", "Update on {{record_title}} — please review.", true));
         }
-        if (c.subAction === "email" || c.subAction === "sms") {
+        if (subAction === "email" || subAction === "sms") {
           const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
           const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
           const lbl = el("label", null, App.relabelText("Allow sending to more than 25 linked contacts in one run", { all: true }));

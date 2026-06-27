@@ -25,6 +25,11 @@ const envSchema = z.object({
   RESEND_FROM: z.string().default("Clarity <noreply@vaala.io>"),
   PORT: z.coerce.number().int().positive().default(3000),
   TWILIO_VALIDATE_SIGNATURE: z.enum(["true", "false"]).default("false"),
+  // Master switch for ALL texting/SMS. Default OFF: SMS UI is hidden and the send
+  // path is inert (see smsEnabled() / sendSms). Flip to "true" to re-enable. This is
+  // independent of Twilio creds — turning Twilio on for CALLS never sends a text while
+  // this is off.
+  SMS_ENABLED: z.enum(["true", "false"]).default("false"),
   MAX_TURNS: z.coerce.number().int().positive().default(12),
   MAX_EMPTY_TURNS: z.coerce.number().int().positive().default(2),
   AI_MAX_RETRIES: z.coerce.number().int().positive().default(3),
@@ -143,4 +148,13 @@ export function useMockEmail(): boolean {
 /** Whether to log texts locally instead of sending via Twilio. */
 export function useMockSms(): boolean {
   return isPlaceholderSecret(env.TWILIO_AUTH_TOKEN);
+}
+
+/**
+ * Master switch for texting/SMS. When false, all SMS UI is hidden and sendSms is a
+ * no-op (see smsService). Independent of Twilio creds: calls can use real Twilio while
+ * texting stays fully disabled.
+ */
+export function smsEnabled(): boolean {
+  return env.SMS_ENABLED === "true";
 }
