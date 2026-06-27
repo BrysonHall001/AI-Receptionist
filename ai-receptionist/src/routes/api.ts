@@ -635,20 +635,22 @@ apiRouter.get("/templates", async (req: Request, res: Response) => {
 apiRouter.post("/templates", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  const { name, kind, subject, body } = (req.body ?? {}) as any;
+  const { name, kind, subject, body, tag } = (req.body ?? {}) as any;
   if (!name || !name.trim()) {
     res.status(400).json({ error: "A template name is required" });
     return;
   }
-  res.json(await createTemplate({ tenantId, name, kind, subject, body: body || "", createdById: req.user!.id }));
+  res.json(await createTemplate({ tenantId, name, kind, subject, body: body || "", tag: tag != null && String(tag).trim() ? String(tag).trim() : null, createdById: req.user!.id }));
 });
 
 apiRouter.patch("/templates/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  const { name, subject, body } = (req.body ?? {}) as any;
+  const { name, subject, body, tag } = (req.body ?? {}) as any;
   if (name != null && !String(name).trim()) { res.status(400).json({ error: "A template name is required" }); return; }
-  const updated = await updateTemplate(req.params.id, tenantId, { name, subject, body });
+  const patch: any = { name, subject, body };
+  if (tag !== undefined) patch.tag = tag != null && String(tag).trim() ? String(tag).trim() : null;
+  const updated = await updateTemplate(req.params.id, tenantId, patch);
   if (!updated) { res.status(404).json({ error: "Template not found" }); return; }
   res.json(updated);
 });

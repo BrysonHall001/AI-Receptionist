@@ -545,6 +545,7 @@ model EmailTemplate {
   kind        String   @default("email")
   subject     String?
   body        String   @default("")
+  tag         String?
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

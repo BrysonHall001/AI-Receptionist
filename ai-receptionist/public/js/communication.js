@@ -436,22 +436,25 @@
     let rows = [];
     const state = { id: null };
 
-    const listHost = el("div");
-    host.appendChild(listHost);
-
-    // ----- create / edit form (reuses the rich-text composer for the body) -----
+    // ----- create / edit form ON TOP (reuses the rich-text composer for the body) -----
     const card = el("div", "card");
-    card.style.cssText = "margin-top:18px;padding:18px";
+    card.style.cssText = "padding:18px";
     const headRow = el("div"); headRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px";
     const heading = el("h3", "settings-sub", "New template"); heading.style.margin = "0";
     const newBtn = el("button", "btn btn-ghost btn-sm", "New template"); newBtn.style.display = "none";
     headRow.appendChild(heading); headRow.appendChild(newBtn);
     card.appendChild(headRow);
 
-    const nameWrap = el("label", "field");
+    const nameRow = el("div"); nameRow.style.cssText = "display:flex;gap:12px;flex-wrap:wrap";
+    const nameWrap = el("label", "field"); nameWrap.style.cssText = "flex:1;min-width:200px;margin:0";
     nameWrap.innerHTML = `<span class="field-label">Template name</span>`;
     const nameInput = el("input", "input"); nameInput.type = "text"; nameInput.placeholder = "e.g. Monthly newsletter";
-    nameWrap.appendChild(nameInput); card.appendChild(nameWrap);
+    nameWrap.appendChild(nameInput);
+    const tagWrap = el("label", "field"); tagWrap.style.cssText = "flex:1;min-width:200px;margin:0";
+    tagWrap.innerHTML = `<span class="field-label">Tag (optional)</span>`;
+    const tagInput = el("input", "input"); tagInput.type = "text"; tagInput.placeholder = "e.g. Newsletters";
+    tagWrap.appendChild(tagInput);
+    nameRow.appendChild(nameWrap); nameRow.appendChild(tagWrap); card.appendChild(nameRow);
 
     const subjWrap = el("label", "field"); subjWrap.style.marginTop = "10px";
     subjWrap.innerHTML = `<span class="field-label">Subject</span>`;
@@ -469,11 +472,21 @@
     actions.appendChild(saveBtn); card.appendChild(actions);
     host.appendChild(card);
 
+    // ----- Template Library (list) BELOW the create panel -----
+    const libCard = el("div", "card"); libCard.style.cssText = "margin-top:16px;padding:18px";
+    const libHead = el("h3", "settings-sub", "Template Library"); libHead.style.margin = "0 0 4px";
+    libCard.appendChild(libHead);
+    const libNote = el("div", "cell-muted", "Every email template in this portal. Filter or search — including by tag — to find one.");
+    libNote.style.cssText = "font-size:13px;margin-bottom:10px"; libCard.appendChild(libNote);
+    const listHost = el("div"); libCard.appendChild(listHost);
+    host.appendChild(libCard);
+
     function setEdit(t) {
       state.id = t ? t.id : null;
       heading.textContent = t ? "Edit template" : "New template";
       newBtn.style.display = t ? "" : "none";
       nameInput.value = t ? (t.name || "") : "";
+      tagInput.value = t ? (t.tag || "") : "";
       subjInput.value = t ? (t.subject || "") : "";
       bodyApi.setBody(t ? (t.body || "") : "");
     }
@@ -482,7 +495,7 @@
     saveBtn.onclick = async () => {
       const name = nameInput.value.trim();
       if (!name) { toast("Give the template a name.", true); return; }
-      const payload = { name, subject: subjInput.value, body: bodyApi.getHTML() };
+      const payload = { name, subject: subjInput.value, body: bodyApi.getHTML(), tag: tagInput.value.trim() || null };
       saveBtn.disabled = true; saveBtn.textContent = "Saving…";
       try {
         if (state.id) await App.portalApi("/api/templates/" + encodeURIComponent(state.id), { method: "PATCH", body: JSON.stringify(payload) });
@@ -516,6 +529,7 @@
       const columns = [
         { key: "name", label: "Name", type: "text", get: (r) => r.name, render: (r) => `<span class="cell-strong">${esc(r.name || "—")}</span>` },
         { key: "subject", label: "Subject", type: "text", get: (r) => r.subject || "", render: (r) => `<span class="cell-muted">${esc(r.subject || "—")}</span>` },
+        { key: "tag", label: "Tag", type: "text", get: (r) => r.tag || "", text: (r) => r.tag || "", render: (r) => r.tag ? `<span class="pill">${esc(r.tag)}</span>` : `<span class="cell-muted">—</span>` },
         { key: "updatedAt", label: "Last updated", type: "date", get: (r) => r.updatedAt, text: (r) => (r.updatedAt ? fmtDate(r.updatedAt) : ""), render: (r) => `<span class="cell-muted">${r.updatedAt ? fmtDate(r.updatedAt) : "—"}</span>` },
         { key: "by", label: "Updated by", type: "text", get: (r) => r.createdByName || "", render: (r) => `<span class="cell-muted">${esc(r.createdByName || "—")}</span>` },
         { key: "actions", label: "", type: "text", get: () => "", render: (r) => `<button class="btn btn-ghost btn-sm tpl-edit" data-id="${esc(r.id)}">Edit</button> <button class="btn btn-ghost btn-sm tpl-del" data-id="${esc(r.id)}">Delete</button>` },
