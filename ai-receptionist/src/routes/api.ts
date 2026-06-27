@@ -422,16 +422,17 @@ apiRouter.post("/contacts/:id/email", async (req: Request, res: Response) => {
 apiRouter.post("/communication/email", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  const body = (req.body ?? {}) as { subject?: string; html?: string; contactIds?: unknown; excludeIds?: unknown };
+  const body = (req.body ?? {}) as { subject?: string; html?: string; contactIds?: unknown; excludeIds?: unknown; extraEmails?: unknown };
   const subject = String(body.subject || "").trim();
   if (!subject) { res.status(400).json({ error: "A subject is required" }); return; }
   const contactIds = Array.isArray(body.contactIds) ? body.contactIds.map((x) => String(x)) : [];
   const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds.map((x) => String(x)) : [];
-  if (!contactIds.length) { res.status(400).json({ error: "No recipients selected" }); return; }
+  const extraEmails = Array.isArray(body.extraEmails) ? body.extraEmails.map((x) => String(x)) : [];
+  if (!contactIds.length && !extraEmails.length) { res.status(400).json({ error: "No recipients selected" }); return; }
   try {
     const result = await sendEmailBlast({
       tenantId, subject, html: String(body.html || ""),
-      contactIds, excludeIds,
+      contactIds, excludeIds, extraEmails,
       fromEmail: req.user!.email, fromName: req.user!.name,
       createdById: req.user!.id,
     });

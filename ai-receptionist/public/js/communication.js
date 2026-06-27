@@ -2,23 +2,25 @@
   const App = global.App || (global.App = {});
 
   // ======================================================================
-  // Reusable Audience Picker — COUNT-FIRST (not a contacts-table clone).
+  // Reusable Audience Picker.
   //   App.audiencePicker.mount(host, opts) -> api
   //   opts:
-  //     preloadIds : string[]  (optional) fix the audience to these contact ids
-  //                            (for the future Contacts-bulk deep-link); hides the
-  //                            saved-filter + criteria controls and just shows the
-  //                            count/preview/exclude UI over that set.
-  //     onChange   : fn()      (optional) called whenever the resolved set changes.
+  //     preloadIds       : string[]  fix the audience to these contact ids (compact).
+  //     onChange         : fn()      called whenever the resolved set changes.
+  //     tablePreview     : bool      show a full Contacts-style preview table (paginated)
+  //                                  instead of the compact collapsible list.
+  //     allowTypedEmails : bool      show a free-text field to add individual emails.
   //   api:
-  //     getRecipients()   -> [{id,email,name}]  (matching − excluded, emailable only)
-  //     getRecipientIds() -> string[]
-  //     getCounts()       -> { match, emailable, recipients }
+  //     getRecipients()    -> [{id,email,name}]  (contacts: matching − excluded, emailable)
+  //     getRecipientIds()  -> string[]           (contact ids)
+  //     getTypedEmails()   -> string[]           (valid typed emails, deduped vs contacts)
+  //     getCounts()        -> { match, emailable, recipients, typed, total }
   //
-  // Filtering REUSES the existing machinery: App.portal.contactColumnDefs for the
-  // contact columns, App.table.ruleEditor as the criteria control, and
-  // App.table.pipeline for the live client-side match — nothing is rebuilt here.
+  // REUSES: App.portal.contactColumnDefs (columns), App.table.ruleEditor (criteria),
+  // App.table.pipeline (live match), App.table.mount (the preview table). Nothing rebuilt.
   // ======================================================================
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   function mountAudiencePicker(host, opts) {
     opts = opts || {};
     const { el, esc, toast } = App.util;
@@ -33,13 +35,31 @@
       preload: Array.isArray(opts.preloadIds) ? new Set(opts.preloadIds) : null,
       ready: false,
     };
+    const useTable = !!opts.tablePreview && !state.preload;
+    const useTyped = !!opts.allowTypedEmails && !state.preload;
 
-    const summary = el("div", "audience-summary");
-    summary.style.cssText = "font-size:15px;font-weight:600;margin:10px 0 6px";
+    // Count line — lives at the TOP of the panel (right under the heading/description).
+    const summary = el("div", "audience-summary cell-muted");
+    summary.style.cssText = "font-size:13px;margin:0 0 12px";
+
+    // Typed-emails field.
+    let typedInput = null;
+    const typedWrap = el("div", "field");
+    if (useTyped) {
+      typedWrap.style.cssText = "margin:0 0 14px";
+      typedWrap.innerHTML = `<span class="field-label">Add individual email addresses</span>`;
+      typedInput = el("textarea", "input"); typedInput.rows = 2; typedInput.placeholder = "name@example.com, another@example.com";
+      typedWrap.appendChild(typedInput);
+    }
+    const typedNote = el("div", "cell-muted"); typedNote.style.cssText = "font-size:12px;margin-top:4px";
+
+    // Compact preview (used when tablePreview is off).
     const previewToggle = el("button", "btn btn-ghost btn-sm");
     const previewBox = el("div", "audience-preview");
     previewBox.style.cssText = "display:none;margin-top:8px;border:1px solid var(--line);border-radius:8px;max-height:260px;overflow:auto";
     let previewOpen = false;
+    // Full table preview (used when tablePreview is on).
+    const tableHost = el("div"); tableHost.style.cssText = "margin-top:10px";
 
     function matched() {
       if (!state.ready) return [];
@@ -49,23 +69,81 @@
     function emailable(rows) { return rows.filter((c) => c.email && String(c.email).trim()); }
     function recipients() { return emailable(matched()).filter((c) => !state.excluded.has(c.id)); }
 
+    function parseTyped() {
+      if (!typedInput) return { valid: [], invalid: [] };
+      const tokens = (typedInput.value || "").split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean);
+      const valid = [], invalid = [], seen = new Set();
+      tokens.forEach((t) => { const lo = t.toLowerCase(); if (EMAIL_RE.test(t)) { if (!seen.has(lo)) { seen.add(lo); valid.push(t); } } else invalid.push(t); });
+      return { valid, invalid };
+    }
+    // Valid typed emails, de-duplicated against the contact-resolved recipients (so a
+    // typed address that also matches the criteria isn't emailed twice).
+    function typedEmails() {
+      const { valid } = parseTyped();
+      const contactEmails = new Set(recipients().map((c) => String(c.email || "").toLowerCase()));
+      const out = [], seen = new Set();
+      valid.forEach((e) => { const lo = e.toLowerCase(); if (!contactEmails.has(lo) && !seen.has(lo)) { seen.add(lo); out.push(e); } });
+      return out;
+    }
+
     function counts() {
       const m = matched();
       const e = emailable(m);
       const r = e.filter((c) => !state.excluded.has(c.id));
-      return { match: m.length, emailable: e.length, recipients: r.length };
+      const typed = typedEmails().length;
+      return { match: m.length, emailable: e.length, recipients: r.length, typed, total: r.length + typed };
     }
 
     function renderSummary() {
       const c = counts();
       const noun = (n) => `${n} ${App.label ? App.label("contact", n === 1 ? "one" : "many").toLowerCase() : (n === 1 ? "contact" : "contacts")}`;
       let txt = `${noun(c.match)} match · ${c.emailable} have an email`;
-      if (state.excluded.size) txt += ` · ${c.recipients} recipients`;
+      if (c.typed) txt += ` · ${c.typed} typed`;
+      txt += ` · ${c.total} recipient${c.total === 1 ? "" : "s"}`;
       summary.textContent = txt;
-      previewToggle.textContent = `${c.recipients} recipients ${previewOpen ? "▴" : "▾"}`;
-      if (previewOpen) renderPreview();
+      previewToggle.textContent = `${c.recipients} from criteria ${previewOpen ? "▴" : "▾"}`;
+      if (useTable) renderTablePreview();
+      else if (previewOpen) renderPreview();
+      if (typedInput) {
+        const inv = parseTyped().invalid;
+        typedNote.textContent = inv.length ? `Ignoring ${inv.length} invalid address${inv.length === 1 ? "" : "es"}: ${inv.slice(0, 3).join(", ")}${inv.length > 3 ? "…" : ""}` : "";
+        typedNote.style.color = inv.length ? "var(--danger, #c0392b)" : "";
+      }
       if (opts.onChange) opts.onChange();
     }
+
+    function previewColumns() {
+      const cols = state.columns.slice();
+      cols.push({
+        key: "__rm", label: "", type: "text", get: () => "",
+        render: (c) => `<button class="btn btn-ghost btn-sm aud-rm" data-id="${esc(c.id)}">Remove</button>`,
+      });
+      return cols;
+    }
+
+    function renderTablePreview() {
+      tableHost.innerHTML = "";
+      const rows = recipients();
+      App.table.mount({
+        container: tableHost, columns: previewColumns(), rows,
+        defaultSort: "name", defaultSortDir: "asc", pageSize: 10,
+        emptyHtml: `<div class="card cell-muted" style="padding:14px">No emailable contacts match yet.</div>`,
+      });
+      if (state.excluded.size) {
+        const restore = el("div"); restore.style.cssText = "padding:8px 2px";
+        const b = el("button", "btn btn-ghost btn-sm", `Restore ${state.excluded.size} removed`);
+        b.onclick = () => { state.excluded.clear(); renderSummary(); };
+        restore.appendChild(b); tableHost.appendChild(restore);
+      }
+    }
+    // Exclude via the table's Remove buttons (delegated).
+    tableHost.addEventListener("click", (e) => {
+      const rm = e.target.closest && e.target.closest(".aud-rm");
+      if (!rm) return;
+      e.stopPropagation();
+      state.excluded.add(rm.dataset.id);
+      renderSummary();
+    });
 
     function renderPreview() {
       previewBox.innerHTML = "";
@@ -77,27 +155,26 @@
         const who = el("div");
         who.innerHTML = `<span class="cell-strong">${esc(c.name || "Unknown")}</span> <span class="cell-muted">${esc(c.email)}</span>`;
         const rm = el("button", "btn btn-ghost btn-sm", "Remove");
-        rm.title = "Don't send to this person";
         rm.onclick = () => { state.excluded.add(c.id); renderSummary(); };
         row.appendChild(who); row.appendChild(rm);
         previewBox.appendChild(row);
       });
-      // Offer to restore excluded ones, so the manual exclude is reversible while editing.
       if (state.excluded.size) {
-        const restore = el("div");
-        restore.style.cssText = "padding:8px 10px";
+        const restore = el("div"); restore.style.cssText = "padding:8px 10px";
         const b = el("button", "btn btn-ghost btn-sm", `Restore ${state.excluded.size} removed`);
         b.onclick = () => { state.excluded.clear(); renderSummary(); };
-        restore.appendChild(b);
-        previewBox.appendChild(restore);
+        restore.appendChild(b); previewBox.appendChild(restore);
       }
     }
 
-    previewToggle.onclick = () => {
-      previewOpen = !previewOpen;
-      previewBox.style.display = previewOpen ? "" : "none";
-      renderSummary();
-    };
+    previewToggle.onclick = () => { previewOpen = !previewOpen; previewBox.style.display = previewOpen ? "" : "none"; renderSummary(); };
+
+    let rulesHost = null;
+    function mountRules() {
+      if (!rulesHost) return;
+      rulesHost.innerHTML = "";
+      rulesHost.appendChild(App.table.ruleEditor(state.columns, state.contacts, state.rules, () => { state.excluded.clear(); renderSummary(); }));
+    }
 
     async function build() {
       const [contacts, fields, saved] = await Promise.all([
@@ -109,10 +186,19 @@
       state.columns = App.portal.contactColumnDefs(fields || []);
       state.ready = true;
 
+      // Count line first — sits directly under the panel heading/description.
+      host.appendChild(summary);
+
+      // Typed emails next (top of the panel, above criteria/table).
+      if (useTyped) {
+        typedInput.addEventListener("input", renderSummary);
+        host.appendChild(typedWrap);
+        host.appendChild(typedNote);
+      }
+
       if (!state.preload) {
-        // Start-from-a-saved-filter dropdown (reuses the same saved filters as Contacts).
         if ((saved || []).length) {
-          const sfWrap = el("label", "field");
+          const sfWrap = el("label", "field"); sfWrap.style.marginTop = "4px";
           sfWrap.innerHTML = `<span class="field-label">Start from a saved filter (optional)</span>`;
           const sel = el("select", "input");
           sel.innerHTML = `<option value="">— none —</option>` + (saved || []).map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("");
@@ -121,33 +207,22 @@
             const def = (f && f.definition) || {};
             state.rules.length = 0;
             (Array.isArray(def.rules) ? def.rules : []).forEach((r) => state.rules.push(r));
-            state.excluded.clear();
-            mountRules();
-            renderSummary();
+            state.excluded.clear(); mountRules(); renderSummary();
           };
-          sfWrap.appendChild(sel);
-          host.appendChild(sfWrap);
+          sfWrap.appendChild(sel); host.appendChild(sfWrap);
         }
-        // The criteria editor (the primary control) — REUSE App.table.ruleEditor.
         host.appendChild(el("div", "field-label", "Who to include (criteria)"));
-        rulesHost = el("div");
-        host.appendChild(rulesHost);
-        mountRules();
+        rulesHost = el("div"); host.appendChild(rulesHost); mountRules();
       } else {
         host.appendChild(el("div", "cell-muted", "Sending to the contacts you selected."));
       }
 
-      host.appendChild(summary);
-      host.appendChild(previewToggle);
-      host.appendChild(previewBox);
+      if (useTable) {
+        host.appendChild(tableHost);
+      } else {
+        host.appendChild(previewToggle); host.appendChild(previewBox);
+      }
       renderSummary();
-    }
-
-    let rulesHost = null;
-    function mountRules() {
-      if (!rulesHost) return;
-      rulesHost.innerHTML = "";
-      rulesHost.appendChild(App.table.ruleEditor(state.columns, state.contacts, state.rules, () => { state.excluded.clear(); renderSummary(); }));
     }
 
     build().catch((e) => { host.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; });
@@ -155,6 +230,7 @@
     return {
       getRecipients: () => recipients().map((c) => ({ id: c.id, email: c.email, name: c.name || null })),
       getRecipientIds: () => recipients().map((c) => c.id),
+      getTypedEmails: () => typedEmails(),
       getCounts: counts,
     };
   }
@@ -230,42 +306,48 @@
   function emailCompose(host, preloadIds) {
     const { el, esc, toast } = App.util;
     host.innerHTML = "";
-    const card = el("div", "card");
-    card.style.cssText = "padding:18px";
-    card.appendChild(el("h3", "settings-sub", "New email"));
-    const intro = preloadIds && preloadIds.length
-      ? `Sending to the ${preloadIds.length} ${App.label("contact", preloadIds.length === 1 ? "one" : "many").toLowerCase()} you selected. Only those with an email address receive it.`
-      : "Write your message, choose who it goes to, and send. Only people with an email address receive it.";
-    card.appendChild(el("div", "cell-muted", intro));
+    const hasPreload = !!(preloadIds && preloadIds.length);
 
-    // Subject + body — REUSE the rich-text composer. Its built-in Templates menu is
-    // the "start from / save as template" affordance (no duplicate template UI here).
+    // --- Panel 1: New email (subject + body) ---
+    const card = el("div", "card");
+    card.style.cssText = "padding:22px";
+    card.appendChild(el("h3", "settings-sub", "New email"));
+    card.appendChild(el("div", "cell-muted", "Write the subject and message your recipients will see.")).style.margin = "2px 0 14px";
     const composerHost = el("div");
-    composerHost.style.marginTop = "12px";
     card.appendChild(composerHost);
     const composer = App.compose.mount(composerHost, { kind: "email" });
+    host.appendChild(card);
 
-    card.appendChild(el("div", "field-label", "Audience"));
+    // --- Panel 2: Audience (its own well-spaced panel) ---
+    const audCard = el("div", "card");
+    audCard.style.cssText = "padding:22px;margin-top:16px";
+    audCard.appendChild(el("h3", "settings-sub", "Audience"));
+    const audIntro = hasPreload
+      ? `Sending to the ${preloadIds.length} ${App.label("contact", preloadIds.length === 1 ? "one" : "many").toLowerCase()} you selected — add more addresses or remove people below.`
+      : "Choose who receives this email — type individual addresses, build criteria, or both. Only people with an email address are sent to.";
+    audCard.appendChild(el("div", "cell-muted", audIntro)).style.margin = "2px 0 14px";
     const audienceHost = el("div");
-    card.appendChild(audienceHost);
-    const audience = App.audiencePicker.mount(audienceHost, (preloadIds && preloadIds.length) ? { preloadIds } : {});
+    audCard.appendChild(audienceHost);
+    const audience = App.audiencePicker.mount(audienceHost, hasPreload ? { preloadIds } : { tablePreview: true, allowTypedEmails: true });
 
     const actions = el("div");
-    actions.style.cssText = "margin-top:16px";
+    actions.style.cssText = "margin-top:18px";
     const sendBtn = el("button", "btn btn-primary", "Send email");
     actions.appendChild(sendBtn);
-    card.appendChild(actions);
-    host.appendChild(card);
+    audCard.appendChild(actions);
+    host.appendChild(audCard);
 
     sendBtn.onclick = async () => {
       const subject = composer.getSubject();
       if (!subject || !subject.trim()) { toast("Add a subject.", true); return; }
       const recipientIds = audience.getRecipientIds();
-      if (!recipientIds.length) { toast("No emailable recipients in this audience.", true); return; }
+      const typedEmails = audience.getTypedEmails ? audience.getTypedEmails() : [];
+      const total = recipientIds.length + typedEmails.length;
+      if (!total) { toast("No recipients — add an email address or criteria.", true); return; }
 
       const ok = await App.ui.confirmModal({
         title: "Send this email?",
-        message: `You're about to email ${recipientIds.length} ${recipientIds.length === 1 ? "person" : "people"}. This sends to real contacts. Send?`,
+        message: `You're about to email ${total} ${total === 1 ? "person" : "people"}${typedEmails.length ? ` (${recipientIds.length} from criteria + ${typedEmails.length} typed)` : ""}. Send?`,
         confirmText: "Send",
       });
       if (!ok) return;
@@ -274,7 +356,7 @@
       try {
         const res = await App.portalApi("/api/communication/email", {
           method: "POST",
-          body: JSON.stringify({ subject: subject.trim(), html: composer.getHTML(), contactIds: recipientIds }),
+          body: JSON.stringify({ subject: subject.trim(), html: composer.getHTML(), contactIds: recipientIds, extraEmails: typedEmails }),
         });
         if (res.failCount) toast(`Sent to ${res.sentCount} of ${res.recipientCount} — ${res.failCount} failed.`);
         else toast(`Sent to ${res.sentCount} ${res.sentCount === 1 ? "person" : "people"}.`);

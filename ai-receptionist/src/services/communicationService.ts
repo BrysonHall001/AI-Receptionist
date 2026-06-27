@@ -4,6 +4,24 @@ import { logger } from "../utils/logger";
 
 const db = prisma as any;
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Validate + de-duplicate typed email addresses against a set of already-included
+// emails (the contact recipients) and against each other. Case-insensitive.
+export function dedupeTypedEmails(typed: string[], alreadyIncluded: string[] = []): string[] {
+  const taken = new Set((alreadyIncluded || []).map((e) => String(e || "").trim().toLowerCase()));
+  const out: string[] = [];
+  for (const raw of typed || []) {
+    const addr = String(raw || "").trim();
+    const lo = addr.toLowerCase();
+    if (!EMAIL_RE.test(addr)) continue;       // skip invalid
+    if (taken.has(lo)) continue;              // skip dupes (vs contacts + earlier typed)
+    taken.add(lo);
+    out.push(addr);
+  }
+  return out;
+}
+
 // Resolve the authoritative recipient set for an email blast: the given contact ids,
 // scoped to the tenant, dropping any that are soft-deleted or have no email, minus an
 // optional exclude set. This is the server-side truth behind the picker's "matching −
@@ -34,11 +52,15 @@ export async function sendEmailBlast(input: {
   html: string;
   contactIds: string[];
   excludeIds?: string[];
+  extraEmails?: string[];
   fromEmail: string;
   fromName?: string | null;
   createdById?: string | null;
 }): Promise<{ id: string; recipientCount: number; sentCount: number; failCount: number }> {
   const recipients = await resolveEmailableRecipients(input.tenantId, input.contactIds, input.excludeIds || []);
+  // Typed addresses are recipients IN ADDITION to the resolved contacts, validated and
+  // de-duplicated against the contact emails (and each other) so nobody gets two copies.
+  const typed = dedupeTypedEmails(input.extraEmails || [], recipients.map((r) => r.email));
   let sentCount = 0;
   let failCount = 0;
   for (const r of recipients) {
@@ -50,19 +72,29 @@ export async function sendEmailBlast(input: {
       logger.error(`[communication] email to ${r.email} failed: ${(e as Error).message}`);
     }
   }
+  for (const addr of typed) {
+    try {
+      await sendRichEmail({ to: addr, subject: input.subject, html: input.html || "", fromEmail: input.fromEmail, fromName: input.fromName ?? null });
+      sentCount++;
+    } catch (e) {
+      failCount++;
+      logger.error(`[communication] email to ${addr} failed: ${(e as Error).message}`);
+    }
+  }
+  const recipientCount = recipients.length + typed.length;
   const rec = await db.communicationSend.create({
     data: {
       tenantId: input.tenantId,
       channel: "email",
       subject: (input.subject || "").slice(0, 998),
       body: input.html || "",
-      recipientCount: recipients.length,
+      recipientCount,
       sentCount,
       failCount,
       createdById: input.createdById ?? null,
     },
   });
-  return { id: rec.id, recipientCount: recipients.length, sentCount, failCount };
+  return { id: rec.id, recipientCount, sentCount, failCount };
 }
 
 // The Sent log: a tenant's communication blasts, newest first, capped, joined to the

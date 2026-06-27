@@ -551,6 +551,9 @@ textarea.input { resize: vertical; }
 .sms-body { resize: vertical; }
 .sms-count { font-size: 12px; margin-top: 4px; }
 .email-header-img { border-radius: 6px; }
+/* Audience panel — give the criteria/table room to breathe. */
+.audience-picker .field-label { margin-top: 12px; }
+.audience-picker .audience-summary:first-child { margin-top: 0; }
 
 /* ---------- Quill editor ---------- */
 .composer-editor .ql-container { min-height: 180px; font-family: var(--font-ui); font-size: 14px; }
