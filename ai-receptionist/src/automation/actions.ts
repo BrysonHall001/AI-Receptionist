@@ -9,6 +9,7 @@ import { listLinksForRecord, updateLink } from "../services/recordLinkService";
 import { stagesForSubtype } from "../services/recordTypeService";
 import { log as logActivity } from "../services/activityService";
 import { FieldMeta, renderTemplate, templateContext, buildColumns, valueOf, conditionFields, loadFieldDefs } from "./contactRow";
+import { resolveMergeTags } from "../services/mergeTags";
 import { loadRecordFieldDefs, buildRecordColumns, attachResourceNames } from "./recordRow";
 import { evalRules } from "./conditions";
 import { validateWebhookUrl, sendWebhook, buildContactPayload } from "./webhook";
@@ -149,6 +150,10 @@ const EXECUTORS: Record<string, Executor> = {
     const contact = await freshContact(ctx);
     if (!contact.email) return { type: "send_email", status: "skipped", detail: "Contact has no email" };
     const tmpl = templateTokens(contact, ctx);
+    // Derive first/last name so {{first_name}} works in automation emails too.
+    const nm = String(tmpl.name || contact.name || "").trim();
+    if (!tmpl.first_name) tmpl.first_name = nm ? nm.split(/\s+/)[0] : "";
+    if (!tmpl.last_name) { const p = nm.split(/\s+/); tmpl.last_name = p.length > 1 ? p.slice(1).join(" ") : ""; }
     let subject = cfg.subject || "";
     let html = cfg.html || cfg.body || "";
     if (cfg.templateId) {
@@ -158,8 +163,8 @@ const EXECUTORS: Record<string, Executor> = {
         html = html || t.body || "";
       }
     }
-    subject = renderTemplate(subject, tmpl);
-    html = renderTemplate(html, tmpl);
+    subject = resolveMergeTags(subject, tmpl);
+    html = resolveMergeTags(html, tmpl);
     await sendRichEmail({ to: contact.email, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name });
     await logActivity({ tenantId: ctx.tenantId, contactId: contact.id, type: "email_sent", summary: `Email sent: ${subject}`, detail: { subject, to: contact.email, via: "automation" }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
     await emitEvent({ tenantId: ctx.tenantId, type: EVENT_TYPES.EmailSent, actor: ctx.actor, subject: { type: "contact", id: contact.id }, payload: { subject, to: contact.email } });

@@ -254,7 +254,7 @@
     // Tab strip (same .tabs component Data Administration uses). One tab for now.
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const TABS = [["email", "Email"], ["templates", "Templates"], ["surveys", "Surveys"]]; // future: ["texts","Texts"]
+    const TABS = [["email", "Email"], ["templates", "Email Templates"], ["surveys", "Surveys"]]; // future: ["texts","Texts"]
     let active = "email";
     function setTab(key) {
       active = key;
@@ -483,16 +483,26 @@
     const actions = el("div"); actions.style.cssText = "margin-top:14px";
     const saveBtn = el("button", "btn btn-primary", "Save template");
     actions.appendChild(saveBtn); card.appendChild(actions);
-    host.appendChild(card);
+    // (form `card` is mounted into the right pane below)
 
-    // ----- Template Library (list) BELOW the create panel -----
-    const libCard = el("div", "card"); libCard.style.cssText = "margin-top:16px;padding:18px";
-    const libHead = el("h3", "settings-sub", "Template Library"); libHead.style.margin = "0 0 4px";
-    libCard.appendChild(libHead);
+    // ----- Template Library (LEFT pane) with a "+ New template" affordance -----
+    const libCard = el("div", "card"); libCard.style.cssText = "padding:18px";
+    const libHeadRow = el("div"); libHeadRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 4px";
+    const libHead = el("h3", "settings-sub", "Template Library"); libHead.style.margin = "0";
+    const libNewBtn = el("button", "btn btn-primary btn-sm", "+ New template");
+    libHeadRow.appendChild(libHead); libHeadRow.appendChild(libNewBtn);
+    libCard.appendChild(libHeadRow);
     const libNote = el("div", "cell-muted", "Every email template in this portal. Filter or search — including by tag — to find one.");
     libNote.style.cssText = "font-size:13px;margin-bottom:10px"; libCard.appendChild(libNote);
     const listHost = el("div"); libCard.appendChild(listHost);
-    host.appendChild(libCard);
+
+    // ----- Master-detail: library left (~1/3), editor right (~2/3) — mirrors Surveys -----
+    const leftPane = el("div", "survey-master"); leftPane.appendChild(libCard);
+    const rightPane = el("div", "survey-detail"); rightPane.appendChild(card);
+    const split = el("div", "survey-split");
+    split.appendChild(leftPane); split.appendChild(rightPane);
+    host.appendChild(split);
+    libNewBtn.onclick = () => { setEdit(null); card.scrollIntoView({ behavior: "smooth", block: "start" }); };
 
     function setEdit(t) {
       state.id = t ? t.id : null;

@@ -241,6 +241,65 @@
   // Continue an ordered list's numbering from the previous ordered list (sets the
   // standard `start` attribute, which is email-safe HTML).
   // opts.kind: 'email' | 'sms' | 'richtext' ; opts.surveyLinkMode: 'token' | 'public'
+  // ---------- merge tags (personalization) ----------
+  // Built from the EXISTING contact field definitions (system/derived + custom),
+  // using stable field keys. Cached per page load.
+  let _mergeTagsCache = null;
+  async function loadMergeTags() {
+    if (_mergeTagsCache) return _mergeTagsCache;
+    const base = [
+      { key: "first_name", label: "First name" },
+      { key: "name", label: "Full name" },
+      { key: "email", label: "Email" },
+      { key: "phone", label: "Phone" },
+    ];
+    const seen = new Set(base.map((t) => t.key));
+    try {
+      const fields = await App.portalApi("/api/fields?recordType=contact");
+      (Array.isArray(fields) ? fields : []).forEach((f) => {
+        if (f && f.key && !seen.has(f.key)) { base.push({ key: f.key, label: f.label || f.key }); seen.add(f.key); }
+      });
+    } catch (e) { /* best-effort: at least the system/derived tags are always offered */ }
+    _mergeTagsCache = base;
+    return base;
+  }
+
+  // Picker: search a field, set an optional fallback, insert {{key}} / {{key|fallback}}.
+  function openMergeTagPicker(onInsert) {
+    const overlay = el("div", "modal-overlay");
+    const m = el("div", "modal"); m.style.cssText = "max-width:440px;width:100%;";
+    m.innerHTML = `<div class="modal-head"><h2>Insert merge tag</h2><button class="icon-btn" id="mt-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    const hint = el("p", "cell-muted"); hint.style.cssText = "margin:0 0 8px;font-size:13px;line-height:1.5";
+    hint.textContent = "Pick a field to personalize per recipient. Set an optional fallback used when a recipient has no value (e.g. \u201cthere\u201d).";
+    body.appendChild(hint);
+    const search = el("input", "input"); search.placeholder = "Search fields\u2026"; search.style.cssText = "margin:0 0 8px";
+    body.appendChild(search);
+    const list = el("div"); list.style.cssText = "max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:4px"; body.appendChild(list);
+    const fbWrap = el("label", "field"); fbWrap.style.cssText = "display:block;margin-top:10px";
+    fbWrap.innerHTML = `<span class="field-label">Fallback (optional)</span>`;
+    const fb = el("input", "input"); fb.placeholder = "e.g. there"; fbWrap.appendChild(fb);
+    body.appendChild(fbWrap);
+    m.appendChild(body); overlay.appendChild(m); document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    m.querySelector("#mt-close").onclick = close;
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    let tags = [];
+    function paint() {
+      const q = search.value.trim().toLowerCase();
+      list.innerHTML = "";
+      tags.filter((t) => !q || t.key.toLowerCase().includes(q) || (t.label || "").toLowerCase().includes(q)).forEach((t) => {
+        const b = el("button", "btn btn-ghost btn-sm"); b.style.cssText = "justify-content:flex-start;text-align:left";
+        b.innerHTML = `${esc(t.label)} <span class="cell-muted" style="margin-left:6px">{{${esc(t.key)}}}</span>`;
+        b.onclick = () => { const f = fb.value.trim(); onInsert("{{" + t.key + (f ? "|" + f : "") + "}}"); close(); };
+        list.appendChild(b);
+      });
+      if (!list.children.length) list.appendChild(el("div", "cell-muted", "No matching fields."));
+    }
+    search.oninput = paint;
+    loadMergeTags().then((t) => { tags = t; paint(); });
+  }
+
   function mount(host, opts) {
     opts = opts || {};
     const kind = opts.kind || "email";
@@ -303,6 +362,22 @@
       };
       custom.appendChild(ctaBtn);
       tb.appendChild(custom);
+
+      // Merge-tag (personalization) button — inserts {{field}} / {{field|fallback}} at
+      // the cursor as plain text so it survives save/reload and resolves per recipient
+      // at send. Available at every email/richtext mount site (shared component).
+      const mtFormats = el("span", "ql-formats");
+      const mtBtn = el("button", "ql-merge"); mtBtn.type = "button"; mtBtn.title = "Insert merge tag"; mtBtn.textContent = "Merge tag";
+      mtBtn.onclick = () => {
+        const range = quill.getSelection(true);
+        openMergeTagPicker((token) => {
+          const idx = range ? range.index : quill.getLength();
+          quill.insertText(idx, token, "user");
+          quill.setSelection(idx + token.length, 0);
+        });
+      };
+      mtFormats.appendChild(mtBtn);
+      tb.appendChild(mtFormats);
 
       // Click an existing button to edit/delete it.
       quill.root.addEventListener("click", (e) => {
@@ -367,17 +442,37 @@
       try { templates = await App.portalApi("/api/templates?kind=" + kind); } catch (e) { templates = []; }
       paint();
     }
+    function stripPreview(html) { return String(html || "").replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim().slice(0, 80); }
+    let tplFilter = "";
     function paint() {
       tplMenu.innerHTML = "";
-      if (!templates.length) tplMenu.appendChild(el("div", "saved-empty", "No templates yet"));
-      templates.forEach((t) => {
-        const row = el("div", "saved-item");
-        const name = el("button", "saved-name", esc(t.name));
-        name.onclick = () => { if (kind === "email" && subjectInput && t.subject) subjectInput.value = t.subject; api.setBody(t.body || ""); tplMenu.classList.add("hidden"); toast("Loaded \u201c" + t.name + "\u201d"); };
-        const del = el("button", "saved-del", "&times;");
-        del.onclick = async (e) => { e.stopPropagation(); if (!(await App.ui.confirmModal({ title: "Delete template", message: "Delete template \u201c" + t.name + "\u201d?", confirmText: "Delete template" }))) return; try { await App.portalApi("/api/templates/" + t.id, { method: "DELETE" }); toast("Template deleted"); loadTemplates(); } catch (err) { toast(err.message, true); } };
-        row.appendChild(name); row.appendChild(del); tplMenu.appendChild(row);
-      });
+      // Searchable header (email templates carry tags/preview worth filtering).
+      if (kind === "email") {
+        const search = el("input", "input"); search.placeholder = "Search templates\u2026"; search.style.cssText = "margin:0 0 6px;width:100%"; search.value = tplFilter;
+        search.onclick = (e) => e.stopPropagation();
+        search.oninput = () => { tplFilter = search.value; paintList(); };
+        tplMenu.appendChild(search);
+      }
+      const listWrap = el("div", "saved-list");
+      tplMenu.appendChild(listWrap);
+      function paintList() {
+        listWrap.innerHTML = "";
+        const q = tplFilter.trim().toLowerCase();
+        const shown = templates.filter((t) => !q || (t.name || "").toLowerCase().includes(q) || (t.tag || "").toLowerCase().includes(q));
+        if (!shown.length) { listWrap.appendChild(el("div", "saved-empty", templates.length ? "No matches" : "No templates yet")); return; }
+        shown.forEach((t) => {
+          const row = el("div", "saved-item"); row.style.cssText = "align-items:flex-start";
+          const main = el("button", "saved-name"); main.style.cssText = "flex:1;text-align:left;display:block";
+          const tagPill = (kind === "email" && t.tag) ? ` <span class="pill" style="margin-left:6px">${esc(t.tag)}</span>` : "";
+          const prev = kind === "email" ? stripPreview(t.body) : "";
+          main.innerHTML = `<span class="cell-strong">${esc(t.name)}</span>${tagPill}` + (prev ? `<br><span class="cell-muted" style="font-size:12px">${esc(prev)}</span>` : "");
+          main.onclick = () => { if (kind === "email" && subjectInput && t.subject) subjectInput.value = t.subject; api.setBody(t.body || ""); tplMenu.classList.add("hidden"); toast("Loaded \u201c" + t.name + "\u201d"); };
+          const del = el("button", "saved-del", "&times;");
+          del.onclick = async (e) => { e.stopPropagation(); if (!(await App.ui.confirmModal({ title: "Delete template", message: "Delete template \u201c" + t.name + "\u201d?", confirmText: "Delete template" }))) return; try { await App.portalApi("/api/templates/" + t.id, { method: "DELETE" }); toast("Template deleted"); loadTemplates(); } catch (err) { toast(err.message, true); } };
+          row.appendChild(main); row.appendChild(del); listWrap.appendChild(row);
+        });
+      }
+      paintList();
       tplMenu.appendChild(el("div", "pop-sep"));
       const save = el("button", "saved-save", "+ Save current as template");
       save.onclick = async () => {
@@ -492,6 +587,8 @@
     buttonStyle,
     surveyLinkValue,
     SURVEY_LINK_TOKEN,
+    loadMergeTags,
+    openMergeTagPicker,
     FONT_WHITELIST,
     PRESET_COLORS,
     MOUNT_SITES,

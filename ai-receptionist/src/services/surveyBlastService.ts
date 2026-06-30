@@ -3,6 +3,7 @@ import { sendRichEmail } from "./notificationService";
 import { logger } from "../utils/logger";
 import { resolveEmailableRecipients } from "./communicationService";
 import { createRecipient } from "./surveyResponseService";
+import { contactMergeResolver } from "./mergeTags";
 
 const db = prisma as any;
 
@@ -64,6 +65,15 @@ export async function sendSurveyBlast(input: {
   let recipients = await resolveEmailableRecipients(input.tenantId, input.contactIds, input.excludeIds || []);
   recipients = filterSuppressed(recipients); // <-- suppression checkpoint (see above)
 
+  // Per-recipient merge tags (resolved AFTER the survey link so {{survey_link}} is
+  // already substituted and never collapsed). Typed recipients don't exist here —
+  // survey blasts are contact-only — so every recipient has a record to resolve from.
+  const resolver = await contactMergeResolver(input.tenantId);
+  const fullContacts = recipients.length
+    ? await db.contact.findMany({ where: { tenantId: input.tenantId, id: { in: recipients.map((r) => r.id) } } })
+    : [];
+  const byId = new Map(fullContacts.map((c: any) => [c.id, c]));
+
   let sentCount = 0;
   let failCount = 0;
   const links: Array<{ contactId: string; url: string }> = [];
@@ -73,8 +83,9 @@ export async function sendSurveyBlast(input: {
     const rec = await createRecipient(input.tenantId, input.surveyId, r.id);
     const url = rec ? surveyUrl(input.origin, rec.token) : input.origin;
     links.push({ contactId: r.id, url });
+    const contact = byId.get(r.id) || null;
     try {
-      await sendRichEmail({ to: r.email, subject: input.subject, html: personalize(input.html, url), fromEmail: input.fromEmail, fromName: input.fromName ?? null });
+      await sendRichEmail({ to: r.email, subject: resolver.apply(input.subject, contact), html: resolver.apply(personalize(input.html, url), contact), fromEmail: input.fromEmail, fromName: input.fromName ?? null });
       sentCount++;
     } catch (e) {
       failCount++;
@@ -110,11 +121,17 @@ export async function sendSurveyTest(input: {
   fromEmail: string;
   fromName?: string | null;
   origin: string;
+  sampleName?: string | null;
 }): Promise<{ sent: boolean }> {
   const survey = await db.survey.findFirst({ where: { id: input.surveyId, tenantId: input.tenantId } });
   if (!survey) throw new Error("Survey not found.");
   const sampleUrl = `${input.origin.replace(/\/+$/, "")}/survey.html?s=${encodeURIComponent(survey.publicId)}`;
-  const html = personalize(input.html, sampleUrl);
-  await sendRichEmail({ to: input.toEmail, subject: `[Test] ${input.subject}`, html, fromEmail: input.fromEmail, fromName: input.fromName ?? null });
+  // Preview personalization: resolve merge tags against a SAMPLE (the current user) so
+  // the sender sees real values, not raw {{tokens}}. Survey link substituted first.
+  const resolver = await contactMergeResolver(input.tenantId);
+  const sample = { name: input.sampleName || "", email: input.toEmail };
+  const html = resolver.apply(personalize(input.html, sampleUrl), sample);
+  const subject = `[Test] ${resolver.apply(input.subject, sample)}`;
+  await sendRichEmail({ to: input.toEmail, subject, html, fromEmail: input.fromEmail, fromName: input.fromName ?? null });
   return { sent: true };
 }

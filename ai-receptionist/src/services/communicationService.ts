@@ -1,6 +1,7 @@
 import { prisma } from "../db/client";
 import { sendRichEmail } from "./notificationService";
 import { logger } from "../utils/logger";
+import { contactMergeResolver } from "./mergeTags";
 
 const db = prisma as any;
 
@@ -61,11 +62,19 @@ export async function sendEmailBlast(input: {
   // Typed addresses are recipients IN ADDITION to the resolved contacts, validated and
   // de-duplicated against the contact emails (and each other) so nobody gets two copies.
   const typed = dedupeTypedEmails(input.extraEmails || [], recipients.map((r) => r.email));
+  // Per-recipient merge tags: load contact field defs once, then fetch the FULL contact
+  // records so custom-field tags resolve. Typed addresses have no record -> fallbacks.
+  const resolver = await contactMergeResolver(input.tenantId);
+  const fullContacts = recipients.length
+    ? await db.contact.findMany({ where: { tenantId: input.tenantId, id: { in: recipients.map((r) => r.id) } } })
+    : [];
+  const byId = new Map(fullContacts.map((c: any) => [c.id, c]));
   let sentCount = 0;
   let failCount = 0;
   for (const r of recipients) {
     try {
-      await sendRichEmail({ to: r.email, subject: input.subject, html: input.html || "", fromEmail: input.fromEmail, fromName: input.fromName ?? null });
+      const contact = byId.get(r.id) || null;
+      await sendRichEmail({ to: r.email, subject: resolver.apply(input.subject, contact), html: resolver.apply(input.html || "", contact), fromEmail: input.fromEmail, fromName: input.fromName ?? null });
       sentCount++;
     } catch (e) {
       failCount++;
@@ -74,7 +83,7 @@ export async function sendEmailBlast(input: {
   }
   for (const addr of typed) {
     try {
-      await sendRichEmail({ to: addr, subject: input.subject, html: input.html || "", fromEmail: input.fromEmail, fromName: input.fromName ?? null });
+      await sendRichEmail({ to: addr, subject: resolver.apply(input.subject, null), html: resolver.apply(input.html || "", null), fromEmail: input.fromEmail, fromName: input.fromName ?? null });
       sentCount++;
     } catch (e) {
       failCount++;

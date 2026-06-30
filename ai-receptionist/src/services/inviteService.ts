@@ -7,6 +7,7 @@ import { createUser } from "./userService";
 import { emitEvent } from "../events/bus";
 import { EVENT_TYPES } from "../events/types";
 import { sendRichEmail } from "./notificationService";
+import { resolveMergeTags } from "./mergeTags";
 import { env } from "../config/env";
 
 // Auditor invites carry the Quick-Reference Guide as an email attachment. To swap
@@ -122,11 +123,15 @@ export async function sendCustomInvite(
 ): Promise<boolean> {
   // Replace EVERY occurrence of the token with the real link (href, button URL, or
   // inline text — wherever the writer placed it).
-  const html = String(rawHtml || "").split(INVITE_LINK_TOKEN).join(link);
+  const linked = String(rawHtml || "").split(INVITE_LINK_TOKEN).join(link);
+  // An invitee is not a contact, so any personalization merge tags have no values —
+  // collapse them to their fallback (or nothing). Never leak a raw {{token}}.
+  const html = resolveMergeTags(linked, {});
+  const finalSubject = resolveMergeTags((subject && subject.trim()) || "You're invited to Clarity CRM", {});
   try {
     await sendRichEmail({
       to: invite.email,
-      subject: (subject && subject.trim()) || "You're invited to Clarity CRM",
+      subject: finalSubject,
       html,
       fromEmail: env.RESEND_FROM,
       attachments: auditorInviteAttachments(invite.role),

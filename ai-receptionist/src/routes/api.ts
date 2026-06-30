@@ -42,6 +42,7 @@ import { listAutomations, getAutomation, createAutomation, updateAutomation, del
 import { testRunAutomation, runManualAutomation } from "../automation/engine";
 import { listScheduledJobs, cancelScheduledJob, processDueJobs } from "../automation/scheduler";
 import { loadFieldDefs, conditionFields } from "../automation/contactRow";
+import { resolveMergeTags, contactMergeValues } from "../services/mergeTags";
 import { validateWebhookUrl, sendWebhook, buildSamplePayload } from "../automation/webhook";
 import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteEndpoint, listCalls as listInboundCalls } from "../services/inboundService";
 import { ACTION_TYPES } from "../automation/actions";
@@ -400,16 +401,20 @@ apiRouter.post("/contacts/:id/email", async (req: Request, res: Response) => {
     return;
   }
   try {
-    await sendRichEmail({ to: contact.email, subject, html: html || "", fromEmail: req.user!.email, fromName: req.user!.name });
+    // Resolve any merge tags against THIS contact (single transactional send — Part 3d).
+    const mergeVals = contactMergeValues(contact, await loadFieldDefs(tenantId));
+    const finalSubject = resolveMergeTags(subject, mergeVals);
+    const finalHtml = resolveMergeTags(html || "", mergeVals);
+    await sendRichEmail({ to: contact.email, subject: finalSubject, html: finalHtml, fromEmail: req.user!.email, fromName: req.user!.name });
     await logActivity({
       tenantId,
       contactId: req.params.id,
       type: "email_sent",
-      summary: `Email sent: ${subject.trim()}`,
-      detail: { subject: subject.trim(), to: contact.email, from: req.user!.email },
+      summary: `Email sent: ${finalSubject}`,
+      detail: { subject: finalSubject, to: contact.email, from: req.user!.email },
       actor: actorOf(req),
     });
-    await emitEvent({ tenantId, type: EVENT_TYPES.EmailSent, actor: { type: "user", id: req.user!.id, name: req.user!.name || req.user!.email }, subject: { type: "contact", id: req.params.id }, payload: { subject: subject.trim(), to: contact.email } });
+    await emitEvent({ tenantId, type: EVENT_TYPES.EmailSent, actor: { type: "user", id: req.user!.id, name: req.user!.name || req.user!.email }, subject: { type: "contact", id: req.params.id }, payload: { subject: finalSubject, to: contact.email } });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -591,7 +596,7 @@ apiRouter.post("/surveys/:id/send-test", async (req: Request, res: Response) => 
     await sendSurveyTest({
       tenantId, surveyId: req.params.id, subject, html: String(body.html || ""),
       toEmail: req.user!.email, fromEmail: req.user!.email, fromName: req.user!.name,
-      origin: `${req.protocol}://${req.get("host")}`,
+      origin: `${req.protocol}://${req.get("host")}`, sampleName: req.user!.name,
     });
     res.json({ ok: true });
   } catch (err) {
