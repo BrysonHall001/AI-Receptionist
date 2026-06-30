@@ -84,12 +84,12 @@ async function main() {
     }
 
     console.log("\n(B) CLIENT_USER — allowed on legitimate routes:");
-    for (const [m, p, label] of [["GET", "/contacts", "view contacts"], ["GET", "/records", "view records"], ["GET", "/calls", "view calls"], ["GET", "/stats", "view dashboard"], ["GET", "/automations", "view automations"], ["GET", "/communication/sends", "view communication sends log"]] as Array<[string, string, string]>) {
+    for (const [m, p, label] of [["GET", "/contacts", "view contacts"], ["GET", "/records", "view records"], ["GET", "/calls", "view calls"], ["GET", "/stats", "view dashboard"], ["GET", "/automations", "view automations"], ["GET", "/communication/sends", "view communication sends log"], ["GET", "/templates", "view email templates"], ["GET", "/surveys", "view surveys"], ["POST", "/dashboards", "create dashboard (intentionally OPEN)"], ["PATCH", "/dashboards/abc", "edit dashboard widgets (intentionally OPEN)"], ["DELETE", "/dashboards/abc", "delete dashboard (intentionally OPEN)"]] as Array<[string, string, string]>) {
       const r = await gate(userOf("CLIENT_USER", tId), m, p);
       check(r.allowed, `CLIENT_USER allowed: ${label} (${m} ${p})`);
     }
     console.log("\n    CLIENT_USER — DENIED (403) on the actions that were wrongly open before:");
-    for (const [m, p] of [["POST", "/contacts"], ["DELETE", "/contacts/abc"], ["POST", "/records"], ["POST", "/records/bulk-delete"], ["POST", "/automations"], ["DELETE", "/automations/abc"], ["PATCH", "/settings"], ["POST", "/fields"], ["POST", "/exports"], ["POST", "/users"], ["DELETE", "/users/abc"], ["POST", "/communication/email"]] as Array<[string, string]>) {
+    for (const [m, p] of [["POST", "/contacts"], ["DELETE", "/contacts/abc"], ["POST", "/records"], ["POST", "/records/bulk-delete"], ["POST", "/automations"], ["DELETE", "/automations/abc"], ["PATCH", "/settings"], ["POST", "/fields"], ["POST", "/exports"], ["POST", "/users"], ["DELETE", "/users/abc"], ["POST", "/communication/email"], ["POST", "/templates"], ["PATCH", "/templates/abc"], ["DELETE", "/templates/abc"], ["POST", "/surveys"], ["DELETE", "/surveys/abc"], ["POST", "/surveys/abc/send"], ["PATCH", "/surveys/abc/status"]] as Array<[string, string]>) {
       const r = await gate(userOf("CLIENT_USER", tId), m, p);
       check(!r.allowed && r.status === 403, `CLIENT_USER denied 403: ${m} ${p}`);
     }
@@ -117,6 +117,41 @@ async function main() {
     check((await gate(su, "POST", "/resources")).allowed, "merged row -> settings_resources.manage enforces (POST /resources allowed)");
     const noContacts = await gate(su, "POST", "/contacts");
     check(!noContacts.allowed && noContacts.status === 403, "scheduler role still can't edit contacts (no over-grant)");
+
+    console.log("\n(F) Communication gating, dashboards-stay-open, single Settings toggle:");
+    // communication.edit/delete lets a custom role manage templates & surveys.
+    const commEditor = await createPortalRole(tId, "Comm Editor", { communication: { view: true, edit: true, delete: true } });
+    const ce = userOf("CLIENT_USER", tId, commEditor.id);
+    check((await gate(ce, "POST", "/templates")).allowed, "communication.edit -> POST /templates allowed");
+    check((await gate(ce, "DELETE", "/templates/abc")).allowed, "communication.delete -> DELETE /templates allowed");
+    check((await gate(ce, "POST", "/surveys")).allowed, "communication.edit -> POST /surveys allowed");
+    check((await gate(ce, "POST", "/surveys/abc/send")).allowed, "communication.edit -> send survey allowed");
+    // view-only communication role can read but not mutate (templates no longer ungated).
+    const commViewer = await createPortalRole(tId, "Comm Viewer", { communication: { view: true } });
+    const cv = userOf("CLIENT_USER", tId, commViewer.id);
+    check((await gate(cv, "GET", "/templates")).allowed, "communication.view -> GET /templates allowed");
+    check((await gate(cv, "GET", "/surveys")).allowed, "communication.view -> GET /surveys allowed");
+    const tDel = await gate(cv, "DELETE", "/templates/abc");
+    check(!tDel.allowed && tDel.status === 403, "communication.view only -> DELETE /templates denied 403 (was ungated before)");
+    const sCreate = await gate(cv, "POST", "/surveys");
+    check(!sCreate.allowed && sCreate.status === 403, "communication.view only -> POST /surveys denied 403");
+
+    // Dashboard/Analytics mutations are intentionally NOT gated — assert no new 403s.
+    for (const [m, p] of [["POST", "/dashboards"], ["PATCH", "/dashboards/abc"], ["DELETE", "/dashboards/abc"]] as Array<[string, string]>) {
+      check((await gate(userOf("CLIENT_USER", tId), m, p)).allowed, `dashboard/Analytics left OPEN by decision (no new gate): ${m} ${p}`);
+    }
+
+    // Single "Manage Settings (all)" toggle = manage on every grantable settings_* area.
+    const settingsRole = await createPortalRole(tId, "Settings Manager", {
+      settings_general: { manage: true }, settings_appearance: { manage: true },
+      settings_scheduling: { manage: true }, settings_resources: { manage: true },
+      settings_data: { manage: true }, settings_labels: { manage: true }, settings_fields: { manage: true },
+    });
+    const sm = userOf("CLIENT_USER", tId, settingsRole.id);
+    const twoFlip = (await gate(sm, "PATCH", "/settings")).allowed && (await gate(sm, "PATCH", "/labels")).allowed && (await gate(sm, "POST", "/fields")).allowed;
+    check(twoFlip, "Settings toggle -> multiple settings endpoints flip together (general + labels + fields)");
+    const noSettings = await gate(userOf("CLIENT_USER", tId), "PATCH", "/settings");
+    check(!noSettings.allowed && noSettings.status === 403, "without the Settings toggle -> PATCH /settings denied 403");
 
     console.log("\n(E) Tenant scoping still holds independently (resolveTenantScope):");
     const reqClient: any = { user: { role: "CLIENT_USER", tenantId: "A" }, query: { tenantId: "B" }, body: {} };

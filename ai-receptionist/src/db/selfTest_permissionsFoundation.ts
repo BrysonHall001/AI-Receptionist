@@ -83,12 +83,12 @@ async function main() {
     console.log("\n(E) Cap #1 (runtime): tampered over-privileged DB row is denied:");
     const tampered = await createPortalRole(tId, "Tampered", { contacts: { view: true } });
     // Bypass validation to simulate a hand-edited / tampered DB row. calls.delete and
-    // reports.edit are OVER the ceiling (read-only areas support neither), so the
+    // learn.edit are OVER the ceiling (read-only areas support neither), so the
     // runtime re-intersection must strip them; contacts.view is legitimate and kept.
-    await db.portalRole.update({ where: { id: tampered.id }, data: { permissions: { contacts: { view: true }, calls: { delete: true }, reports: { edit: true } } } });
+    await db.portalRole.update({ where: { id: tampered.id }, data: { permissions: { contacts: { view: true }, calls: { delete: true }, learn: { edit: true } } } });
     const tu = { role: "CLIENT_USER", tenantId: tId, customRoleId: tampered.id };
     check((await can(tu, "calls", "delete")) === false, "tampered calls.delete denied at check time (read-only area)");
-    check((await can(tu, "reports", "edit")) === false, "tampered reports.edit denied at check time (read-only area)");
+    check((await can(tu, "learn", "edit")) === false, "tampered learn.edit denied at check time (read-only area)");
     check((await can(tu, "contacts", "view")) === true, "the legitimate contacts.view still works");
 
     console.log("\n(F) Cap #2: no sub-super-admin actor may act on a super-admin-tier user:");

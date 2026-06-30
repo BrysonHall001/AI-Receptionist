@@ -3609,58 +3609,62 @@
       }
 
       function gridHtml(role) {
-        const rights = ["view", "edit", "delete", "manage"];
         const my = data.myPermissions || {};
-        const colLabel = { view: "View", edit: "Edit", delete: "Delete", manage: "Manage Settings" };
-        const head = `<thead><tr><th style="text-align:left">Area</th>${rights.map((r) => `<th>${colLabel[r]}</th>`).join("")}</tr></thead>`;
 
-        // Collapse areas that share a `group` (e.g. settings_scheduling + settings_resources)
-        // into ONE display row whose toggle writes ALL members together.
-        function displayRows(areas) {
-          const out = []; const seenGroup = {};
-          areas.forEach((a) => {
-            if (a.group) {
-              if (seenGroup[a.group]) return;
-              seenGroup[a.group] = true;
-              const members = areas.filter((x) => x.group === a.group);
-              out.push({ label: a.groupLabel || a.label, areas: members, rights: members[0].rights, locked: members.some((m) => m.locked), lockedNote: a.lockedNote });
-            } else {
-              out.push({ label: a.label, areas: [a], rights: a.rights, locked: !!a.locked, lockedNote: a.lockedNote });
-            }
-          });
-          return out;
-        }
+        // Each section shows ONLY the columns its areas actually support — no dead "—" cells.
+        const SECTION_COLS = {
+          Data: [["view", "View"], ["edit", "Edit"], ["delete", "Delete"]],
+          Operations: [["view", "Access"]], // genuinely view-only areas → one yes/no
+          Admin: [["view", "View"], ["edit", "Edit"], ["delete", "Delete"]],
+        };
 
-        const cell = (row, right) => {
-          // N/A: the area doesn't support this right.
-          if (row.rights.indexOf(right) === -1) return `<td style="text-align:center;color:var(--muted);opacity:.3" title="Not applicable to this area">—</td>`;
-          // Locked: real access lives in a stricter admin-only check, not this toggle, so
-          // it's shown as admin-managed (never a grantable checkbox) to stay honest.
-          if (row.locked) return `<td style="text-align:center" title="${esc(row.lockedNote || "Managed by admins only")}">\uD83D\uDD12</td>`;
-          const keys = row.areas.map((a) => a.key);
+        // One yes/no cell covering a set of area keys under a right (checkbox when editable
+        // & within the creator's level; ✓/· reference otherwise). Multi-key = grant all together.
+        function cellFor(keys, right) {
           const granted = keys.every((k) => !!(role.permissions[k] && role.permissions[k][right]));
           if (!role.editable) {
-            // Read-only reference (system roles): clear granted / not-granted mark.
             return granted
               ? `<td style="text-align:center;color:var(--accent,#2563eb);font-weight:700" title="Granted">\u2713</td>`
               : `<td style="text-align:center;color:var(--muted);opacity:.4" title="Not granted">\u00b7</td>`;
           }
-          // Editable: only grantable up to the creator's OWN level (every grouped member).
           const withinLevel = keys.every((k) => !!(my[k] && my[k][right] === true));
           if (!withinLevel) return `<td style="text-align:center;color:var(--muted);opacity:.3" title="Beyond your own permission level — you can't grant this">\u00b7</td>`;
-          // One checkbox may carry several real area keys (comma-joined) — collectPermissions splits them.
           return `<td style="text-align:center"><input type="checkbox" data-area="${esc(keys.join(","))}" data-right="${right}" ${granted ? "checked" : ""}/></td>`;
-        };
-        return (data.sections || []).map((section) => {
+        }
+
+        function sectionTable(section) {
           const areas = data.catalog.filter((a) => a.section === section);
           if (!areas.length) return "";
-          const rows = displayRows(areas).map((r) => {
-            const note = r.locked && r.lockedNote ? `<div class="cell-muted" style="font-size:11px">${esc(r.lockedNote)}</div>` : "";
-            return `<tr><td>${esc(r.label)}${note}</td>${rights.map((right) => cell(r, right)).join("")}</tr>`;
-          }).join("");
+
+          // SETTINGS — collapse the whole section to ONE "Manage Settings (all)" toggle that
+          // covers every grantable settings_* area at once. Locked ones (Integrations / Lead
+          // capture) stay admin-managed underneath and are noted, not toggled.
+          if (section === "Settings") {
+            const grantableKeys = areas.filter((a) => !a.locked).map((a) => a.key);
+            const lockedAreas = areas.filter((a) => a.locked);
+            const seenG = {}; const grantableLabels = [];
+            areas.filter((a) => !a.locked).forEach((a) => {
+              if (a.group) { if (seenG[a.group]) return; seenG[a.group] = true; grantableLabels.push(a.groupLabel || a.label); }
+              else grantableLabels.push(a.label);
+            });
+            const head = `<thead><tr><th style="text-align:left">Area</th><th>Manage Settings</th></tr></thead>`;
+            const row = `<tr><td>Manage Settings (all)<div class="cell-muted" style="font-size:11px">${esc(grantableLabels.join(", "))}</div></td>${cellFor(grantableKeys, "manage")}</tr>`;
+            const lockNote = lockedAreas.length
+              ? `<tr><td colspan="2" class="cell-muted" style="font-size:11px;padding-top:8px">\uD83D\uDD12 ${esc(lockedAreas.map((a) => a.label).join(" and "))} are always admin-managed — not controlled by this toggle.</td></tr>`
+              : "";
+            return `<details open style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;padding:4px 0">${esc(section)}</summary>
+              <table class="mini-table"><colgroup><col/><col style="width:150px"/></colgroup>${head}<tbody>${row}${lockNote}</tbody></table></details>`;
+          }
+
+          // DATA / OPERATIONS / ADMIN — one row per area, only the real columns.
+          const cols = SECTION_COLS[section] || [["view", "View"]];
+          const head = `<thead><tr><th style="text-align:left">Area</th>${cols.map((c) => `<th>${c[1]}</th>`).join("")}</tr></thead>`;
+          const rows = areas.map((a) => `<tr><td>${esc(a.label)}</td>${cols.map((c) => cellFor([a.key], c[0])).join("")}</tr>`).join("");
           return `<details open style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;padding:4px 0">${esc(section)}</summary>
             <table class="mini-table">${head}<tbody>${rows}</tbody></table></details>`;
-        }).join("");
+        }
+
+        return (data.sections || []).map(sectionTable).join("");
       }
 
       function render() {
@@ -3673,7 +3677,7 @@
           ? `<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" id="perm-save">${role.isNew ? "Create role" : "Save changes"}</button>${role.id ? `<button class="btn btn-sm" id="perm-delete">Delete</button>` : ""}</div>`
           : `<span class="cell-muted" style="font-size:12px">Shown for reference — system roles aren't edited here.</span>`;
         host.innerHTML = `<h2 class="settings-h">Permissions</h2>
-          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Each row is an area, and its columns are the rights that area supports — View / Edit / Delete for data, View for read-only areas, and Manage Settings for settings. Greyed cells are rights that area doesn't support; a \uD83D\uDD12 row is managed by admins only and can't be granted here. For your own custom roles, tick the rights to grant; you can grant up to your own level.</p>
+          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Each section shows only the rights its areas support: data areas (Contacts, Records, Automations, Communication, Home Dashboard, Analytics) have View / Edit / Delete; Calls and the Learning Center have a single Access switch; Settings is one combined "Manage Settings" toggle; and User management has View / Edit / Delete. Integrations and Lead capture stay admin-managed. For your own custom roles, tick what you want to grant — you can grant up to your own level.</p>
           <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
             <div style="width:210px;flex:0 0 auto">${roleListHtml()}</div>
             <div style="flex:1;min-width:320px">

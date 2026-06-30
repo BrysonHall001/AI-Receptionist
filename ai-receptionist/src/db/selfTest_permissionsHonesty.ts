@@ -1,7 +1,8 @@
-// Batch self-test (static, sandbox-runnable) — Permissions UI honesty + Communication
-// view consistency + Template panel containment. Behavioral permission assertions live
-// in the seven DB-backed permission self-tests (run in the Codespace); this pins the
-// catalog/UI/gate/CSS edits that must stay in lockstep.
+// Batch self-test (static, sandbox-runnable) — reclassify communication/dashboard/reports,
+// gate templates/surveys to the communication area, redesign the Team & Permissions table
+// (per-section columns + single Settings toggle), and the Email-Templates panel-width fix.
+// Behavioral permission assertions live in the seven DB-backed permission self-tests
+// (run in the Codespace); this pins the catalog/gate/UI/CSS edits that must stay in lockstep.
 //
 //   npx tsx src/db/selfTest_permissionsHonesty.ts
 
@@ -10,59 +11,66 @@ import { resolve } from "path";
 
 const failures: string[] = [];
 function check(cond: boolean, label: string) {
-  console.log(`  ${cond ? "✓" : "✗"} ${label}`);
+  console.log(`  ${cond ? "\u2713" : "\u2717"} ${label}`);
   if (!cond) failures.push(label);
 }
 const read = (rel: string) => readFileSync(resolve(__dirname, rel), "utf8");
 
 function main() {
-  console.log("Permissions honesty + comm + panel width");
-  console.log("========================================");
+  console.log("Reclassify + gate communication + table redesign + panel width");
+  console.log("==============================================================");
 
   const svc = read("../services/permissionService.ts");
   const gate = read("../middleware/permissionGate.ts");
   const portal = read("../../public/js/portal.js");
   const css = read("../../public/styles.css");
 
-  // ---------- (1) catalog relabel + group + locked (presentation only) ----------
-  console.log("(1) catalog presentation:");
-  check(/key: "settings_general", label: "Business Profile"/.test(svc), "settings_general relabeled 'Business Profile' (key unchanged)");
-  check(/key: "settings_scheduling"[\s\S]*?group: "scheduling_resources", groupLabel: "Scheduling & Resources"/.test(svc) && /key: "settings_resources"[\s\S]*?group: "scheduling_resources"/.test(svc), "scheduling + resources grouped (both keys still present)");
-  check(/key: "settings_integrations"[\s\S]*?locked: true/.test(svc) && /key: "settings_leadcapture"[\s\S]*?locked: true/.test(svc), "integrations + lead capture flagged locked");
-  check(/getPermissionCatalog[\s\S]*?group: a\.group, groupLabel: a\.groupLabel, locked: !!a\.locked, lockedNote: a\.lockedNote/.test(svc), "catalog exposes group/locked metadata to the UI");
+  // ---------- (1) reclassification ----------
+  console.log("(1) catalog reclassification:");
+  for (const key of ["communication", "dashboard", "reports"]) {
+    const re = new RegExp(`key: "${key}",[^}]*kind: "data",[^}]*section: "Data"`);
+    check(re.test(svc), `${key} is now data-kind in the Data section`);
+  }
+  check(/key: "calls",[^}]*kind: "readonly",[^}]*section: "Operations"/.test(svc), "calls stays read-only in Operations");
+  check(/key: "learn",[^}]*kind: "readonly",[^}]*section: "Operations"/.test(svc), "learn stays read-only in Operations");
+  check(/key: "dashboard", label: "Home Dashboard"/.test(svc), "dashboard relabeled 'Home Dashboard'");
 
-  // ---------- (2) enforcement INTACT (no behavior change) ----------
-  console.log("\n(2) enforcement unchanged:");
-  check(/area: "settings_scheduling", right: "manage"/.test(gate) && /area: "settings_resources", right: "manage"/.test(gate), "both scheduling + resources gate rules still present (merge is UI-only)");
-  check(!/locked/.test(gate), "permissionGate has no notion of 'locked' (presentation lives in the catalog/UI)");
-  check(/PATCH.*\/booking-config.*settings_scheduling|settings_scheduling[\s\S]*?booking-config/.test(gate.replace(/\n/g, " ")), "booking-config still maps to settings_scheduling");
+  // ---------- (2) communication gating (the real enforcement fix) ----------
+  console.log("\n(2) communication gating:");
+  check(/re: \/\^\\\/templates\$\/, area: "communication", right: "edit"/.test(gate), "POST /templates -> communication.edit (was ungated)");
+  check(/re: \/\^\\\/templates\\\/\[\^\/\]\+\$\/, area: "communication", right: "delete"/.test(gate), "DELETE /templates -> communication.delete");
+  check(/re: \/\^\\\/templates\(\\\/\|\$\)\/, area: "communication", right: "view"/.test(gate), "GET /templates -> communication.view");
+  check(/re: \/\^\\\/surveys\$\/, area: "communication", right: "edit"/.test(gate), "POST /surveys -> communication.edit (re-pointed from contacts)");
+  check(/re: \/\^\\\/surveys\\\/\[\^\/\]\+\$\/, area: "communication", right: "delete"/.test(gate), "DELETE /surveys -> communication.delete");
+  check(/re: \/\^\\\/surveys\(\\\/\|\$\)\/, area: "communication", right: "view"/.test(gate), "GET /surveys -> communication.view (viewable without contact-edit)");
+  check(/re: \/\^\\\/communication\\\/email\$\/, area: "communication", right: "edit"/.test(gate), "POST /communication/email -> communication.edit");
+  check(!/surveys\$\/, area: "contacts"/.test(gate), "surveys no longer gated to contacts.edit");
 
-  // ---------- (3) Communication view consistency ----------
-  console.log("\n(3) communication honesty:");
-  check(/re: \/\^\\\/communication\\\/sends\$\/, area: "communication", right: "view"/.test(gate), "GET /communication/sends -> communication.view (page viewable)");
-  check(/re: \/\^\\\/communication\\\/email\$\/, area: "contacts", right: "edit"/.test(gate), "POST /communication/email still -> contacts.edit (sending stays gated)");
+  // ---------- (3) dashboards stay intentionally OPEN ----------
+  console.log("\n(3) dashboards left open by decision:");
+  check(!/m: "(POST|PATCH|DELETE)", re: [^\n]*dashboards/.test(gate), "no PERM_RULES gate dashboard mutations (left open)");
+  check(/intentionally LEFT OPEN/.test(gate), "comment documents the deliberate open-dashboards decision");
 
-  // ---------- (4) stale comment fixed ----------
-  console.log("\n(4) comment honesty:");
-  check(!/takes effect when enforcement is rolled out in\s*\n?\s*\/\/ Batch 2/.test(svc) && /Enforcement is active: permissionGate is mounted/.test(svc), "CLIENT_USER comment states enforcement is LIVE (not dormant)");
+  // ---------- (4) table redesign: per-section columns + single Settings toggle ----------
+  console.log("\n(4) permissions table redesign:");
+  check(/Operations: \[\["view", "Access"\]\]/.test(portal), "Operations section renders a single 'Access' column");
+  check(/Data: \[\["view", "View"\], \["edit", "Edit"\], \["delete", "Delete"\]\]/.test(portal), "Data section renders View/Edit/Delete only");
+  check(/Manage Settings \(all\)/.test(portal), "Settings collapses to one 'Manage Settings (all)' toggle");
+  check(/grantableKeys = areas\.filter\(\(a\) => !a\.locked\)\.map/.test(portal), "settings toggle writes every grantable settings_* key");
+  check(/are always admin-managed/.test(portal), "locked Integrations/Lead-capture noted under the toggle");
+  check(!/colLabel = \{ view: "View", edit: "Edit", delete: "Delete", manage: "Manage Settings" \}/.test(portal), "old shared 4-column grid removed (no dead cells)");
+  check(/cb\.getAttribute\("data-area"\)\.split\(","\)\.forEach/.test(portal), "collectPermissions expands multi-key toggles (settings + groups)");
 
-  // ---------- (5) Team & Permissions table: merged row + locked rows ----------
-  console.log("\n(5) permissions table UI:");
-  check(/function displayRows\(areas\)/.test(portal) && /a\.group/.test(portal), "table merges grouped areas into one row");
-  check(/if \(row\.locked\) return `<td[\s\S]*?\\uD83D\\uDD12/.test(portal), "locked rows render a lock (non-toggleable)");
-  check(/data-area="\$\{esc\(keys\.join\(","\)\)\}"/.test(portal), "one toggle can carry several real area keys (merged row writes both)");
-  check(/cb\.getAttribute\("data-area"\)\.split\(","\)\.forEach/.test(portal), "collectPermissions expands comma-joined keys on save");
-  check(/managed by admins only and can't be granted here/.test(portal), "intro explains locked rows");
+  // ---------- (5) panel width fix (named root cause: the 820px floor) ----------
+  console.log("\n(5) panel width fix:");
+  check(/ROOT CAUSE of the recurring Email-Templates width/.test(css), "root cause documented inline");
+  check(/\.survey-master \.table-wrap table \{ width: auto; min-width: 100%; \}/.test(css), "library table fills the panel (820px floor overridden)");
+  check(/\.survey-master \.table-wrap \{ overflow-x: auto; max-width: 100%; \}/.test(css), "table scrolls INSIDE the fixed panel, capped at 100%");
+  check(!/\.survey-master \.data-table-scroll, \.survey-master \.table-scroll/.test(css), "dead scroll rule stays removed");
 
-  // ---------- (6) Template panel containment (the recurring width bug) ----------
-  console.log("\n(6) panel width fix:");
-  check(!/\.survey-master \.data-table-scroll, \.survey-master \.table-scroll/.test(css), "dead .data-table-scroll/.table-scroll rule removed");
-  check(/\.survey-master \.table-layout \{ min-width: 0; \}/.test(css), "flex .table-layout gets min-width:0 (table can't size the panel)");
-  check(/\.survey-master \.table-wrap \{ overflow-x: auto; \}/.test(css), "library table scrolls INSIDE the fixed panel");
-
-  console.log("\n========================================");
-  if (failures.length === 0) console.log("ALL CHECKS PASSED ✅  (permissions honesty + comm + panel)");
-  else { console.log(`${failures.length} CHECK(S) FAILED ❌`); failures.forEach((f) => console.log("   - " + f)); }
+  console.log("\n==============================================================");
+  if (failures.length === 0) console.log("ALL CHECKS PASSED \u2705  (reclassify + gate + table + panel)");
+  else { console.log(`${failures.length} CHECK(S) FAILED \u274c`); failures.forEach((f) => console.log("   - " + f)); }
   process.exit(failures.length === 0 ? 0 : 1);
 }
 

@@ -39,11 +39,17 @@ export const AREAS: AreaDef[] = [
   { key: "contacts", label: "Contacts", kind: "data", section: "Data" },
   { key: "records", label: "Records (Jobs / Bookings / custom)", kind: "data", section: "Data" },
   { key: "automations", label: "Automations", kind: "data", section: "Data" },
+  // Communication, Home Dashboard and Analytics are real CRUD surfaces (email templates,
+  // surveys, dashboards + widgets), so they are DATA-kind, not read-only. NOTE: only
+  // Communication's mutations are gated to its own area rights (templates/surveys closed
+  // off in permissionGate). Dashboard/Analytics mutations (/dashboards POST/PATCH/DELETE)
+  // are LEFT INTENTIONALLY OPEN by decision — the catalog is honest about edit/delete
+  // existing, but no new gate rule restricts them (see permissionGate comment).
+  { key: "communication", label: "Communication", kind: "data", section: "Data" },
+  { key: "dashboard", label: "Home Dashboard", kind: "data", section: "Data" },
+  { key: "reports", label: "Analytics", kind: "data", section: "Data" },
   // ---- Read-only (view only) ----
-  { key: "dashboard", label: "Dashboard", kind: "readonly", section: "Operations" },
   { key: "calls", label: "Calls", kind: "readonly", section: "Operations" },
-  { key: "reports", label: "Analytics", kind: "readonly", section: "Operations" },
-  { key: "communication", label: "Communication", kind: "readonly", section: "Operations" },
   { key: "learn", label: "Learning Center", kind: "readonly", section: "Operations" },
   // ---- Settings sub-areas (single Manage right each) ----
   { key: "settings_general", label: "Business Profile", kind: "settings", section: "Settings" },

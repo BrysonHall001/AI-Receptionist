@@ -19,8 +19,14 @@ import { can, Right } from "../services/permissionService";
 // still apply) — deliberately, for: self-service /account/*, Feedback (its own
 // role logic in feedbackService), Twilio/OpenAI integration writes (a STRICTER
 // admin-tier-only check stays — gating them with "manage" would LOOSEN them for
-// PORTAL_ADMIN), personal /dashboards mutations, /saved-filters, /templates,
-// /record-types, and the operational /automations/jobs* queue endpoints.
+// PORTAL_ADMIN), /saved-filters, /record-types, and the operational
+// /automations/jobs* queue endpoints.
+// DASHBOARDS: /dashboards POST/PATCH/DELETE (Home Dashboard + Analytics widgets) are
+// intentionally LEFT OPEN — by product decision anyone (incl. Client Users) may build
+// dashboards/Analytics. The catalog marks dashboard/reports as data (edit/delete exist)
+// for an honest table, but no gate rule restricts those mutations. The only guard is the
+// inline "Home Dashboard can't be edited by CLIENT_USER" check in dashboardService.
+// TEMPLATES are NO LONGER ungated — they are gated to the communication area below.
 // Settings READS (GET /settings, /labels, /theme, /fields, ...) stay open too, since
 // every role needs them to render; only the WRITES are gated to "manage".
 // ===========================================================================
@@ -35,17 +41,26 @@ export const PERM_RULES: PermRule[] = [
   { m: "POST", re: /^\/contacts(\/(restore|bulk-update|merge|dummy|import))?$/, area: "contacts", right: "edit" },
   { m: "PATCH", re: /^\/contacts\/[^/]+$/, area: "contacts", right: "edit" },
   { m: "POST", re: /^\/contacts\/[^/]+\/(email|text)$/, area: "contacts", right: "edit" },
-  { m: "POST", re: /^\/communication\/email$/, area: "contacts", right: "edit" },
-  { m: "GET", re: /^\/communication\/sends$/, area: "communication", right: "view" },
-  { m: "POST", re: /^\/surveys$/, area: "contacts", right: "edit" },
-  { m: "POST", re: /^\/surveys\/[^/]+\/recipients$/, area: "contacts", right: "edit" },
-  { m: "POST", re: /^\/surveys\/[^/]+\/send$/, area: "contacts", right: "edit" },
-  { m: "POST", re: /^\/surveys\/[^/]+\/send-test$/, area: "contacts", right: "edit" },
-  { m: "POST", re: /^\/surveys\/[^/]+\/duplicate$/, area: "contacts", right: "edit" },
-  { m: "PATCH", re: /^\/surveys\/[^/]+\/status$/, area: "contacts", right: "edit" },
-  { m: "DELETE", re: /^\/surveys\/[^/]+$/, area: "contacts", right: "edit" },
-  { m: "GET", re: /^\/surveys(\/|$)/, area: "contacts", right: "edit" },
   { m: "GET", re: /^\/contacts(\/|$)/, area: "contacts", right: "view" },
+
+  // ---- Communication (data: view / edit / delete) — email templates, surveys, sends ----
+  // Email templates: previously UNGATED (anyone could CRUD). Now closed to the area.
+  { m: "POST", re: /^\/templates$/, area: "communication", right: "edit" },
+  { m: "PATCH", re: /^\/templates\/[^/]+$/, area: "communication", right: "edit" },
+  { m: "DELETE", re: /^\/templates\/[^/]+$/, area: "communication", right: "delete" },
+  { m: "GET", re: /^\/templates(\/|$)/, area: "communication", right: "view" },
+  // Surveys: re-pointed from contacts.edit to the communication area (create/edit/send =
+  // edit, delete = delete, all reads = view). Send actions count as edit.
+  { m: "POST", re: /^\/surveys\/[^/]+\/(recipients|send|send-test)$/, area: "communication", right: "edit" },
+  { m: "POST", re: /^\/surveys\/[^/]+\/duplicate$/, area: "communication", right: "edit" },
+  { m: "PATCH", re: /^\/surveys\/[^/]+\/status$/, area: "communication", right: "edit" },
+  { m: "POST", re: /^\/surveys$/, area: "communication", right: "edit" },
+  { m: "DELETE", re: /^\/surveys\/[^/]+$/, area: "communication", right: "delete" },
+  { m: "GET", re: /^\/surveys(\/|$)/, area: "communication", right: "view" },
+  // Email blast + sent log.
+  { m: "POST", re: /^\/communication\/email$/, area: "communication", right: "edit" },
+  { m: "GET", re: /^\/communication\/sends$/, area: "communication", right: "view" },
+
 
   // ---- Records: Jobs / Bookings / custom share one "records" area (Batch-1 catalog) ----
   { m: "POST", re: /^\/records\/bulk-delete$/, area: "records", right: "delete" },

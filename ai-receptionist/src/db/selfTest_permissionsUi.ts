@@ -83,8 +83,15 @@ async function main() {
     const cat = getPermissionCatalog();
     const callsArea = cat.find((a) => a.key === "calls");
     const contactsArea = cat.find((a) => a.key === "contacts");
-    check(!!callsArea && callsArea.rights.length === 1 && callsArea.rights[0] === "view", "Calls catalog exposes only View (greys Edit/Delete/Manage)");
+    check(!!callsArea && callsArea.rights.length === 1 && callsArea.rights[0] === "view", "Calls catalog exposes only View (read-only)");
     check(!!contactsArea && contactsArea.rights.join(",") === "view,edit,delete", "Contacts catalog exposes View/Edit/Delete");
+    // Reclassified areas: communication/dashboard/reports are now DATA (view/edit/delete) in the Data section.
+    for (const key of ["communication", "dashboard", "reports"]) {
+      const a = cat.find((x) => x.key === key);
+      check(!!a && a.kind === "data" && a.rights.join(",") === "view,edit,delete" && a.section === "Data", `${key} reclassified to data/view+edit+delete in Data section`);
+    }
+    const learnArea = cat.find((a) => a.key === "learn");
+    check(!!learnArea && learnArea.rights.join(",") === "view" && learnArea.section === "Operations", "Learning Center stays read-only in Operations");
     const m = permissionMatrixForRole("CLIENT_USER");
     check(m.contacts.view === true && m.contacts.edit === false, "CLIENT_USER matrix: contacts view yes, edit no (reference display)");
     check(permissionMatrixForRole("OWNER").contacts.delete === true, "OWNER matrix: full rights");
