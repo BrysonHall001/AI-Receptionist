@@ -58,7 +58,7 @@
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
   const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
-  const ADMIN_NAV = [["#/admin/portals", "Portals"], ["#/admin/users", "Users"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
+  const ADMIN_NAV = [["#/admin/portals", "Tenants"], ["#/admin/users", "Users"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
   // Exposed so the Settings → Labels → "Pages & navigation" editor builds its rows
   // from the same canonical list the sidebar uses (no drift, no second definition).
   App.PORTAL_NAV = PORTAL_NAV;
@@ -493,13 +493,13 @@
     const topLeft = el("div", "top-left");
 
     if (section === "portal" && App.isAdminTier(me.role)) {
-      const back = el("a", "back-link", "← All portals");
+      const back = el("a", "back-link", "← All tenants");
       back.href = "#/admin/portals";
       back.onclick = () => { App.state.currentPortalId = null; App.state.currentPortalName = null; };
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
     } else {
-      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Portals", "#/admin/users": "Users", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
+      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
       topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Home Dashboard"));
     }
     topbar.appendChild(topLeft);

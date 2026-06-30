@@ -52,64 +52,82 @@
     portalsCache = portals;
     const wrap = el("div", "fade-in");
     const bar = el("div", "page-actions");
-    const create = el("button", "btn btn-primary btn-sm", "+ Create portal");
+    const create = el("button", "btn btn-primary btn-sm", "+ Create tenant");
     create.onclick = () => renderSetupScreen();
     bar.appendChild(create);
     wrap.appendChild(bar);
 
-    if (!portals.length) {
-      const e = el("div", "card");
-      e.innerHTML = `<div class="empty"><div class="empty-emoji">&#127970;</div><h3>No portals yet</h3><p>Create your first client portal to get started.</p></div>`;
-      wrap.appendChild(e);
-    } else {
-      const grid = el("div", "portal-grid stagger");
-      portals.forEach((p) => {
-        const card = el("div", "portal-card");
-        card.innerHTML = `<div class="portal-card-head"><div class="portal-mark">${esc((p.name || "?").charAt(0).toUpperCase())}</div>
-            <div class="portal-status">${statusBadge(p.status)}</div></div>
-          <div class="portal-name">${esc(p.name)}</div>
-          <div class="portal-type">${esc(p.businessType)}</div>
-          <div class="portal-metrics"><span><strong>${p.calls}</strong> calls</span><span><strong>${p.contacts}</strong> contacts</span><span><strong>${p.users}</strong> users</span></div>
-          <div class="portal-rule">
-            <label class="field-label" style="margin:0 0 4px">Contact identity rule</label>
-            <select class="input portal-rule-sel">
-              <option value="email" ${p.requireEmail !== false ? "selected" : ""}>Require unique email</option>
-              <option value="either" ${p.requireEmail === false ? "selected" : ""}>Phone or email</option>
-            </select>
-          </div>
-          <div class="portal-rule">
-            <label class="field-label" style="margin:0 0 4px">AI Receptionist</label>
-            <select class="input portal-recep-sel">
-              ${voiceOptionsHtml(voiceModeOf(p))}
-            </select>
-          </div>
-          <div class="portal-actions"><button class="btn btn-ghost btn-sm portal-users">Users</button></div>
-          <div class="portal-actions"><button class="btn btn-primary btn-sm portal-enter">Open portal →</button>
-            <button class="btn btn-ghost btn-sm portal-toggle">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button></div>`;
-        card.querySelector(".portal-enter").onclick = () => enterPortal(p);
-        card.querySelector(".portal-users").onclick = () => renderPortalUsers(p);
-        const ruleSel = card.querySelector(".portal-rule-sel");
-        ruleSel.onclick = (e) => e.stopPropagation();
-        ruleSel.onchange = async () => {
-          const requireEmail = ruleSel.value === "email";
-          try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ requireEmail }) }); p.requireEmail = requireEmail; toast(requireEmail ? "Now requires a unique email" : "Now accepts phone or email"); }
-          catch (err) { toast(err.message, true); ruleSel.value = p.requireEmail !== false ? "email" : "either"; }
-        };
-        const recepSel = card.querySelector(".portal-recep-sel");
-        recepSel.onclick = (e) => e.stopPropagation();
-        recepSel.onchange = async () => {
-          const voiceMode = recepSel.value;
-          try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ voiceMode }) }); p.voiceMode = voiceMode; p.receptionistEnabled = voiceMode !== "OFF"; toast(voiceToast(voiceMode)); }
-          catch (err) { toast(err.message, true); recepSel.value = voiceModeOf(p); }
-        };
-        card.querySelector(".portal-toggle").onclick = async () => {
-          try { await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ status: p.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }) }); toast("Portal updated"); renderPortals(); }
-          catch (err) { toast(err.message, true); }
-        };
-        grid.appendChild(card);
-      });
-      wrap.appendChild(grid);
-    }
+    // Tenants list — the reusable App.table (same component as Contacts/Records),
+    // so we get search, sort, column filters, and the filter rail for free. The
+    // interactive cells (AI Receptionist control + row actions) are rendered as HTML
+    // and wired via delegation below, since App.table sets cells with innerHTML.
+    const tableHost = el("div");
+    wrap.appendChild(tableHost);
+
+    const mark = (name) => `<span style="flex:0 0 24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;background:var(--surface,#eef1f6);color:var(--ink-soft,#5b6678)">${esc((name || "?").charAt(0).toUpperCase())}</span>`;
+    const columns = [
+      { key: "name", label: "Tenant Name", get: (p) => p.name,
+        render: (p) => `<div style="display:flex;align-items:center;gap:8px">${mark(p.name)}<span style="font-weight:600">${esc(p.name)}</span></div>` },
+      { key: "status", label: "Status", get: (p) => (p.status === "ACTIVE" ? "Active" : "Suspended"),
+        render: (p) => statusBadge(p.status) },
+      { key: "created", label: "Created", type: "date", get: (p) => p.createdAt, text: (p) => fmtDate(p.createdAt),
+        render: (p) => esc(fmtDate(p.createdAt)) },
+      { key: "ai", label: "AI Receptionist", get: (p) => VOICE_LABELS[voiceModeOf(p)],
+        render: (p) => `<select class="input portal-recep-sel t-voice" data-id="${esc(p.id)}">${voiceOptionsHtml(voiceModeOf(p))}</select>` },
+      { key: "calls", label: "Calls", type: "number", get: (p) => p.calls },
+      { key: "contacts", label: "Contacts", type: "number", get: (p) => p.contacts },
+      { key: "users", label: "Users", type: "number", get: (p) => p.users },
+      { key: "actions", label: "Actions", filterable: false, get: () => "",
+        render: (p) => `<div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" data-act="users" data-id="${esc(p.id)}">Users</button>
+            <button class="btn btn-primary btn-sm" data-act="open" data-id="${esc(p.id)}">Open tenant →</button>
+            <button class="btn btn-ghost btn-sm" data-act="toggle" data-id="${esc(p.id)}">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button>
+          </div>` },
+    ];
+
+    App.table.mount({
+      container: tableHost,
+      rows: portals,
+      columns: columns,
+      rowId: (p) => p.id,
+      scrollX: true,
+      defaultSort: "created",
+      defaultSortDir: "desc",
+      emptyHtml: `<div class="empty"><div class="empty-emoji">&#127970;</div><h3>No tenants yet</h3><p>Create your first client tenant to get started.</p></div>`,
+    });
+
+    // Delegated handlers live on the stable host so they survive App.table's internal
+    // re-renders (sort/filter/search rebuild the rows). Same endpoints as before.
+    const findP = (id) => portalsCache.find((x) => x.id === id);
+    tableHost.addEventListener("change", async (e) => {
+      const sel = e.target.closest && e.target.closest(".t-voice");
+      if (!sel) return;
+      const p = findP(sel.getAttribute("data-id"));
+      if (!p) return;
+      const voiceMode = sel.value;
+      try {
+        await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ voiceMode }) });
+        p.voiceMode = voiceMode; p.receptionistEnabled = voiceMode !== "OFF";
+        toast(voiceToast(voiceMode));
+      } catch (err) { toast(err.message, true); sel.value = voiceModeOf(p); }
+    });
+    tableHost.addEventListener("click", async (e) => {
+      const btn = e.target.closest && e.target.closest("[data-act]");
+      if (!btn) return;
+      const p = findP(btn.getAttribute("data-id"));
+      if (!p) return;
+      const act = btn.getAttribute("data-act");
+      if (act === "users") return renderPortalUsers(p);
+      if (act === "open") return enterPortal(p);
+      if (act === "toggle") {
+        try {
+          await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ status: p.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }) });
+          toast("Tenant updated");
+          renderPortals();
+        } catch (err) { toast(err.message, true); }
+      }
+    });
+
     view().innerHTML = "";
     view().appendChild(wrap);
   }
@@ -125,7 +143,7 @@
 
     const wrap = el("div", "fade-in");
     const bar = el("div", "page-actions");
-    const back = el("button", "btn btn-ghost btn-sm", "← Portals");
+    const back = el("button", "btn btn-ghost btn-sm", "← Tenants");
     back.onclick = () => renderPortals();
     const title = el("div", "page-title", "Users · " + esc(portal.name));
     title.style.flex = "1";
@@ -143,7 +161,7 @@
     const tb = el("tbody");
     if (!users.length) {
       const tr = el("tr");
-      tr.innerHTML = `<td colspan="5" class="cell-muted">No users in this portal yet.</td>`;
+      tr.innerHTML = `<td colspan="5" class="cell-muted">No users in this tenant yet.</td>`;
       tb.appendChild(tr);
     } else {
       users.forEach((u) => {
@@ -239,7 +257,7 @@
       num.style.cssText = "flex:0 0 28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;background:" + (enabled ? "var(--accent,#3257d6);color:#fff" : "var(--surface,#eef1f6);color:var(--ink-soft,#5b6678)") + ";";
       const tt = el("div"); tt.innerHTML = `<div style="font-weight:600">${esc(title)}</div><div class="cell-muted" style="font-size:13px">${esc(desc)}</div>`;
       head.appendChild(num); head.appendChild(tt);
-      if (!enabled) { const lock = el("span", "pill", "Create portal first"); lock.style.cssText = "margin-left:auto;font-size:12px;opacity:.8;"; head.appendChild(lock); }
+      if (!enabled) { const lock = el("span", "pill", "Create tenant first"); lock.style.cssText = "margin-left:auto;font-size:12px;opacity:.8;"; head.appendChild(lock); }
       card.appendChild(head);
       return card;
     }
@@ -247,8 +265,8 @@
     function draw() {
       const wrap = el("div", "fade-in");
       const head = el("div");
-      head.innerHTML = `<h1 class="page-title">${created ? "Set up " + esc(portal.name) : "Create a portal"}</h1>
-        <p class="cell-muted">Enter the basics to create the portal, then add users and set its look — all on this screen. Each section saves as you go.</p>`;
+      head.innerHTML = `<h1 class="page-title">${created ? "Set up " + esc(portal.name) : "Create a tenant"}</h1>
+        <p class="cell-muted">Enter the basics to create the tenant, then add users and set its look — all on this screen. Each section saves as you go.</p>`;
       wrap.appendChild(head);
 
       // ---- Section 1: basic details (creates the portal) ----
@@ -266,7 +284,7 @@
             <option value="email">Require unique email (default)</option>
             <option value="either">Phone or email</option>
           </select>`;
-        const go = el("button", "btn btn-primary btn-sm", "Create portal");
+        const go = el("button", "btn btn-primary btn-sm", "Create tenant");
         go.style.marginTop = "14px";
         go.onclick = async () => {
           const body = {
@@ -285,7 +303,7 @@
             // The hinge: point the reused editors at the brand-new portal.
             App.state.currentPortalId = portal.id;
             App.state.currentPortalName = portal.name;
-            toast("Portal created");
+            toast("Tenant created");
             draw(); // re-render: lock section 1, unlock sections 2 & 3
           } catch (err) { toast(err.message, true); go.disabled = false; }
         };
@@ -307,12 +325,12 @@
         renderUsersStep(host, portal);
         s2.appendChild(host);
       } else {
-        s2.appendChild(elNote("You can invite users once the portal is created."));
+        s2.appendChild(elNote("You can invite users once the tenant is created."));
       }
       wrap.appendChild(s2);
 
       // ---- Section 3: labels & theme (reuse the existing editors) ----
-      const s3 = sectionCard(3, "Labels & theme", "Rename things and choose the portal's colors. Optional — you can do this later.", created);
+      const s3 = sectionCard(3, "Labels & theme", "Rename things and choose the tenant's colors. Optional — you can do this later.", created);
       if (created) {
         const themeWrap = el("div"); themeWrap.style.marginTop = "8px";
         themeWrap.appendChild(el("h3", "settings-sub", "Theme"));
@@ -327,12 +345,12 @@
         if (App.labelsEditor && App.labelsEditor.mount) App.labelsEditor.mount(labelsHost);
         else labelsHost.appendChild(elNote("Labels editor unavailable."));
       } else {
-        s3.appendChild(elNote("You can set labels and theme once the portal is created."));
+        s3.appendChild(elNote("You can set labels and theme once the tenant is created."));
       }
       wrap.appendChild(s3);
 
       // ---- Section 4: features (AI Receptionist on/off) ----
-      const s4 = sectionCard(4, "Features", "Turn portal features on or off. New portals start with the AI Receptionist off.", created);
+      const s4 = sectionCard(4, "Features", "Turn tenant features on or off. New tenants start with the AI Receptionist off.", created);
       if (created) {
         const fhost = el("div"); fhost.style.marginTop = "8px";
         const lab = el("label", "field-label", "AI Receptionist"); lab.style.cssText = "margin:0 0 4px";
@@ -349,17 +367,17 @@
         fhost.appendChild(lab); fhost.appendChild(sel); fhost.appendChild(cap);
         s4.appendChild(fhost);
       } else {
-        s4.appendChild(elNote("You can turn features on once the portal is created."));
+        s4.appendChild(elNote("You can turn features on once the tenant is created."));
       }
       wrap.appendChild(s4);
 
       // ---- Footer ----
       const footer = el("div", "page-actions");
       footer.style.cssText = "margin-top:8px;display:flex;gap:8px;";
-      const finish = el("button", "btn btn-primary btn-sm", "Finish — go to portal");
+      const finish = el("button", "btn btn-primary btn-sm", "Finish — go to tenant");
       finish.disabled = !created;
       finish.onclick = () => { if (portal) { restoreRoute(); enterPortal(portal); } }; // enterPortal sets currentPortalId + navigates
-      const back = el("button", "btn btn-ghost btn-sm", "Back to portals");
+      const back = el("button", "btn btn-ghost btn-sm", "Back to tenants");
       back.onclick = () => leave(true);
       footer.appendChild(finish); footer.appendChild(back);
       wrap.appendChild(footer);
@@ -472,7 +490,7 @@
 
     const card = el("div", "card");
     const table = el("table");
-    table.innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Portal</th><th>Last login</th><th></th></tr></thead>`;
+    table.innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Tenant</th><th>Last login</th><th></th></tr></thead>`;
     const tb = el("tbody");
     users.forEach((u) => {
       const tr = el("tr");
