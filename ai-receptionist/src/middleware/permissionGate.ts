@@ -36,7 +36,7 @@ export const PERM_RULES: PermRule[] = [
   { m: "PATCH", re: /^\/contacts\/[^/]+$/, area: "contacts", right: "edit" },
   { m: "POST", re: /^\/contacts\/[^/]+\/(email|text)$/, area: "contacts", right: "edit" },
   { m: "POST", re: /^\/communication\/email$/, area: "contacts", right: "edit" },
-  { m: "GET", re: /^\/communication\/sends$/, area: "contacts", right: "edit" },
+  { m: "GET", re: /^\/communication\/sends$/, area: "communication", right: "view" },
   { m: "POST", re: /^\/surveys$/, area: "contacts", right: "edit" },
   { m: "POST", re: /^\/surveys\/[^/]+\/recipients$/, area: "contacts", right: "edit" },
   { m: "POST", re: /^\/surveys\/[^/]+\/send$/, area: "contacts", right: "edit" },

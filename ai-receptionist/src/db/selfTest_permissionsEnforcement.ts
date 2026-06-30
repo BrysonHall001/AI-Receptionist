@@ -84,12 +84,12 @@ async function main() {
     }
 
     console.log("\n(B) CLIENT_USER — allowed on legitimate routes:");
-    for (const [m, p, label] of [["GET", "/contacts", "view contacts"], ["GET", "/records", "view records"], ["GET", "/calls", "view calls"], ["GET", "/stats", "view dashboard"], ["GET", "/automations", "view automations"]] as Array<[string, string, string]>) {
+    for (const [m, p, label] of [["GET", "/contacts", "view contacts"], ["GET", "/records", "view records"], ["GET", "/calls", "view calls"], ["GET", "/stats", "view dashboard"], ["GET", "/automations", "view automations"], ["GET", "/communication/sends", "view communication sends log"]] as Array<[string, string, string]>) {
       const r = await gate(userOf("CLIENT_USER", tId), m, p);
       check(r.allowed, `CLIENT_USER allowed: ${label} (${m} ${p})`);
     }
     console.log("\n    CLIENT_USER — DENIED (403) on the actions that were wrongly open before:");
-    for (const [m, p] of [["POST", "/contacts"], ["DELETE", "/contacts/abc"], ["POST", "/records"], ["POST", "/records/bulk-delete"], ["POST", "/automations"], ["DELETE", "/automations/abc"], ["PATCH", "/settings"], ["POST", "/fields"], ["POST", "/exports"], ["POST", "/users"], ["DELETE", "/users/abc"]] as Array<[string, string]>) {
+    for (const [m, p] of [["POST", "/contacts"], ["DELETE", "/contacts/abc"], ["POST", "/records"], ["POST", "/records/bulk-delete"], ["POST", "/automations"], ["DELETE", "/automations/abc"], ["PATCH", "/settings"], ["POST", "/fields"], ["POST", "/exports"], ["POST", "/users"], ["DELETE", "/users/abc"], ["POST", "/communication/email"]] as Array<[string, string]>) {
       const r = await gate(userOf("CLIENT_USER", tId), m, p);
       check(!r.allowed && r.status === 403, `CLIENT_USER denied 403: ${m} ${p}`);
     }
@@ -108,6 +108,15 @@ async function main() {
     check(!delc.allowed && delc.status === 403, "custom role WITHOUT contacts.delete -> DELETE /contacts denied 403");
     const recv = await gate(cu, "GET", "/records");
     check(!recv.allowed && recv.status === 403, "custom role WITHOUT records.view -> GET /records denied 403");
+
+    // The merged "Scheduling & Resources" UI row writes BOTH real area keys; a role
+    // granted both must enforce on BOTH endpoints (booking-config + resources).
+    const schedRole = await createPortalRole(tId, "Scheduler", { settings_scheduling: { manage: true }, settings_resources: { manage: true } });
+    const su = userOf("CLIENT_USER", tId, schedRole.id);
+    check((await gate(su, "PATCH", "/booking-config")).allowed, "merged row -> settings_scheduling.manage enforces (PATCH /booking-config allowed)");
+    check((await gate(su, "POST", "/resources")).allowed, "merged row -> settings_resources.manage enforces (POST /resources allowed)");
+    const noContacts = await gate(su, "POST", "/contacts");
+    check(!noContacts.allowed && noContacts.status === 403, "scheduler role still can't edit contacts (no over-grant)");
 
     console.log("\n(E) Tenant scoping still holds independently (resolveTenantScope):");
     const reqClient: any = { user: { role: "CLIENT_USER", tenantId: "A" }, query: { tenantId: "B" }, body: {} };

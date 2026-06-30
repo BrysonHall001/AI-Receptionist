@@ -89,6 +89,19 @@ async function main() {
     check(m.contacts.view === true && m.contacts.edit === false, "CLIENT_USER matrix: contacts view yes, edit no (reference display)");
     check(permissionMatrixForRole("OWNER").contacts.delete === true, "OWNER matrix: full rights");
     check(SYSTEM_ROLES.some((s) => s.role === "SUPER_ADMIN" && s.ceiling), "Super Admin flagged as the ceiling in the role list");
+
+    console.log("\n(7) Catalog presentation (honesty fixes — no behavior change):");
+    const generalArea = cat.find((a) => a.key === "settings_general");
+    check(!!generalArea && generalArea.label === "Business Profile", "settings_general relabeled to 'Business Profile'");
+    const sched = cat.find((a) => a.key === "settings_scheduling");
+    const reso = cat.find((a) => a.key === "settings_resources");
+    check(!!sched && !!reso && sched!.group === "scheduling_resources" && reso!.group === "scheduling_resources" && sched!.groupLabel === "Scheduling & Resources", "scheduling + resources share one display group 'Scheduling & Resources' (both keys still present)");
+    const integ = cat.find((a) => a.key === "settings_integrations");
+    const lead = cat.find((a) => a.key === "settings_leadcapture");
+    check(!!integ && integ!.locked === true && !!integ!.lockedNote, "Integrations shown locked (admin-managed)");
+    check(!!lead && lead!.locked === true && !!lead!.lockedNote, "Lead capture shown locked (admin-managed)");
+    // Locked is presentation only — enforcement/ceiling unchanged: the area still supports manage.
+    check(!!integ && integ!.rights.join(",") === "manage", "locked areas still structurally 'manage' (enforcement untouched)");
   } catch (e) {
     console.error("\nUNEXPECTED ERROR:", e);
     failures.push("unexpected error: " + (e as Error).message);

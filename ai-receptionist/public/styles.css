@@ -563,7 +563,17 @@ textarea.input { resize: vertical; }
 .survey-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; align-items: start; }
 .survey-split .survey-master, .survey-split .survey-detail { min-width: 0; }
 .survey-master { align-self: start; }
-.survey-master .data-table-scroll, .survey-master .table-scroll { overflow-x: auto; }
+/* Library tables in the master panel are App.table, which emits a `.table-wrap` (NOT
+   the `.data-table-scroll`/`.table-scroll` this rule used to name — so the old rule was
+   a no-op). The table carries `min-width: 820px` (styles.css), and the inner flex
+   `.table-layout` had no `min-width: 0`, so on a narrow 1fr master panel the table's
+   intrinsic width leaked into the panel's sizing/visual balance (the recurring Email
+   Templates width drift). These rules let the table scroll INSIDE the fixed-width panel
+   and never size it — applied to BOTH the Surveys and Email Templates libraries so they
+   align identically. Column widths/density are untouched (we scroll, we don't squish). */
+.survey-master .table-layout { min-width: 0; }
+.survey-master .table-area { min-width: 0; }
+.survey-master .table-wrap { overflow-x: auto; }
 @media (max-width: 900px) { .survey-split { grid-template-columns: 1fr; } }
 
 /* ---------- Quill editor ---------- */

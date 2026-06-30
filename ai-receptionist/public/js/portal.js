@@ -3613,26 +3613,51 @@
         const my = data.myPermissions || {};
         const colLabel = { view: "View", edit: "Edit", delete: "Delete", manage: "Manage Settings" };
         const head = `<thead><tr><th style="text-align:left">Area</th>${rights.map((r) => `<th>${colLabel[r]}</th>`).join("")}</tr></thead>`;
-        const cell = (area, right) => {
+
+        // Collapse areas that share a `group` (e.g. settings_scheduling + settings_resources)
+        // into ONE display row whose toggle writes ALL members together.
+        function displayRows(areas) {
+          const out = []; const seenGroup = {};
+          areas.forEach((a) => {
+            if (a.group) {
+              if (seenGroup[a.group]) return;
+              seenGroup[a.group] = true;
+              const members = areas.filter((x) => x.group === a.group);
+              out.push({ label: a.groupLabel || a.label, areas: members, rights: members[0].rights, locked: members.some((m) => m.locked), lockedNote: a.lockedNote });
+            } else {
+              out.push({ label: a.label, areas: [a], rights: a.rights, locked: !!a.locked, lockedNote: a.lockedNote });
+            }
+          });
+          return out;
+        }
+
+        const cell = (row, right) => {
           // N/A: the area doesn't support this right.
-          if (area.rights.indexOf(right) === -1) return `<td style="text-align:center;color:var(--muted);opacity:.3" title="Not applicable to this area">—</td>`;
-          const granted = !!(role.permissions[area.key] && role.permissions[area.key][right]);
+          if (row.rights.indexOf(right) === -1) return `<td style="text-align:center;color:var(--muted);opacity:.3" title="Not applicable to this area">—</td>`;
+          // Locked: real access lives in a stricter admin-only check, not this toggle, so
+          // it's shown as admin-managed (never a grantable checkbox) to stay honest.
+          if (row.locked) return `<td style="text-align:center" title="${esc(row.lockedNote || "Managed by admins only")}">\uD83D\uDD12</td>`;
+          const keys = row.areas.map((a) => a.key);
+          const granted = keys.every((k) => !!(role.permissions[k] && role.permissions[k][right]));
           if (!role.editable) {
-            // Read-only reference (system roles): show a clear granted / not-granted mark
-            // — NOT a faint disabled checkbox, so roles are visibly different.
+            // Read-only reference (system roles): clear granted / not-granted mark.
             return granted
               ? `<td style="text-align:center;color:var(--accent,#2563eb);font-weight:700" title="Granted">\u2713</td>`
               : `<td style="text-align:center;color:var(--muted);opacity:.4" title="Not granted">\u00b7</td>`;
           }
-          // Editable: only grantable up to the creator's OWN level (the ceiling).
-          const withinLevel = !!(my[area.key] && my[area.key][right] === true);
+          // Editable: only grantable up to the creator's OWN level (every grouped member).
+          const withinLevel = keys.every((k) => !!(my[k] && my[k][right] === true));
           if (!withinLevel) return `<td style="text-align:center;color:var(--muted);opacity:.3" title="Beyond your own permission level — you can't grant this">\u00b7</td>`;
-          return `<td style="text-align:center"><input type="checkbox" data-area="${area.key}" data-right="${right}" ${granted ? "checked" : ""}/></td>`;
+          // One checkbox may carry several real area keys (comma-joined) — collectPermissions splits them.
+          return `<td style="text-align:center"><input type="checkbox" data-area="${esc(keys.join(","))}" data-right="${right}" ${granted ? "checked" : ""}/></td>`;
         };
         return (data.sections || []).map((section) => {
           const areas = data.catalog.filter((a) => a.section === section);
           if (!areas.length) return "";
-          const rows = areas.map((a) => `<tr><td>${esc(a.label)}</td>${rights.map((r) => cell(a, r)).join("")}</tr>`).join("");
+          const rows = displayRows(areas).map((r) => {
+            const note = r.locked && r.lockedNote ? `<div class="cell-muted" style="font-size:11px">${esc(r.lockedNote)}</div>` : "";
+            return `<tr><td>${esc(r.label)}${note}</td>${rights.map((right) => cell(r, right)).join("")}</tr>`;
+          }).join("");
           return `<details open style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;padding:4px 0">${esc(section)}</summary>
             <table class="mini-table">${head}<tbody>${rows}</tbody></table></details>`;
         }).join("");
@@ -3648,7 +3673,7 @@
           ? `<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" id="perm-save">${role.isNew ? "Create role" : "Save changes"}</button>${role.id ? `<button class="btn btn-sm" id="perm-delete">Delete</button>` : ""}</div>`
           : `<span class="cell-muted" style="font-size:12px">Shown for reference — system roles aren't edited here.</span>`;
         host.innerHTML = `<h2 class="settings-h">Permissions</h2>
-          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Each row is an area, and its columns are the rights that area supports — View / Edit / Delete for data, View for read-only areas, and Manage Settings for settings. Greyed cells are rights that area doesn't support. For your own custom roles, tick the rights to grant; you can grant up to your own level.</p>
+          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Each row is an area, and its columns are the rights that area supports — View / Edit / Delete for data, View for read-only areas, and Manage Settings for settings. Greyed cells are rights that area doesn't support; a \uD83D\uDD12 row is managed by admins only and can't be granted here. For your own custom roles, tick the rights to grant; you can grant up to your own level.</p>
           <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
             <div style="width:210px;flex:0 0 auto">${roleListHtml()}</div>
             <div style="flex:1;min-width:320px">
@@ -3667,7 +3692,10 @@
       function collectPermissions() {
         const perms = {};
         host.querySelectorAll('input[type="checkbox"][data-area]').forEach((cb) => {
-          if (cb.checked) { const a = cb.getAttribute("data-area"); (perms[a] = perms[a] || {})[cb.getAttribute("data-right")] = true; }
+          if (!cb.checked) return;
+          const right = cb.getAttribute("data-right");
+          // A single toggle may carry several real area keys (merged group row).
+          cb.getAttribute("data-area").split(",").forEach((a) => { (perms[a] = perms[a] || {})[right] = true; });
         });
         return perms;
       }

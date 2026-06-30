@@ -16,7 +16,12 @@ export type Right = "view" | "edit" | "delete" | "manage";
 type AreaKind = "data" | "readonly" | "settings" | "users";
 
 // `section` groups areas into the collapsible blocks the Permissions UI renders.
-interface AreaDef { key: string; label: string; kind: AreaKind; section: string; }
+// Presentation-only hints (do NOT affect enforcement / can() / the ceiling):
+//   group/groupLabel — render several real areas as ONE row whose toggle writes them
+//     all together (e.g. the merged "Scheduling & Resources" settings tab).
+//   locked/lockedNote — the area's real access lives in a stricter side-channel check,
+//     so the table shows it as admin-managed (not a grantable toggle) to stay honest.
+interface AreaDef { key: string; label: string; kind: AreaKind; section: string; group?: string; groupLabel?: string; locked?: boolean; lockedNote?: string; }
 
 function rightsForKind(kind: AreaKind): Right[] {
   switch (kind) {
@@ -41,12 +46,18 @@ export const AREAS: AreaDef[] = [
   { key: "communication", label: "Communication", kind: "readonly", section: "Operations" },
   { key: "learn", label: "Learning Center", kind: "readonly", section: "Operations" },
   // ---- Settings sub-areas (single Manage right each) ----
-  { key: "settings_general", label: "General", kind: "settings", section: "Settings" },
+  { key: "settings_general", label: "Business Profile", kind: "settings", section: "Settings" },
   { key: "settings_appearance", label: "Appearance", kind: "settings", section: "Settings" },
-  { key: "settings_leadcapture", label: "Lead capture", kind: "settings", section: "Settings" },
-  { key: "settings_scheduling", label: "Scheduling", kind: "settings", section: "Settings" },
-  { key: "settings_resources", label: "Resources", kind: "settings", section: "Settings" },
-  { key: "settings_integrations", label: "Integrations", kind: "settings", section: "Settings" },
+  // Lead capture's real gate is inboundAdminOnly (blocks Client-User-based roles), NOT
+  // this catalog right — so it's shown locked/admin-managed, never a grantable toggle.
+  { key: "settings_leadcapture", label: "Lead capture", kind: "settings", section: "Settings", locked: true, lockedNote: "Managed by admins only" },
+  // Scheduling + Resources are two real areas (two endpoints) presented as ONE row that
+  // matches the merged "Scheduling & Resources" settings tab; the row's toggle writes both.
+  { key: "settings_scheduling", label: "Scheduling", kind: "settings", section: "Settings", group: "scheduling_resources", groupLabel: "Scheduling & Resources" },
+  { key: "settings_resources", label: "Resources", kind: "settings", section: "Settings", group: "scheduling_resources", groupLabel: "Scheduling & Resources" },
+  // Integrations' real gate is integrationsEditable = admin-tier only (Owner/Super Admin/
+  // Auditor) — so it's shown locked/admin-managed rather than a grantable toggle.
+  { key: "settings_integrations", label: "Integrations", kind: "settings", section: "Settings", locked: true, lockedNote: "Managed by admins only" },
   { key: "settings_data", label: "Data Administration", kind: "settings", section: "Settings" },
   { key: "settings_labels", label: "Labels", kind: "settings", section: "Settings" },
   { key: "settings_fields", label: "Fields", kind: "settings", section: "Settings" },
@@ -100,13 +111,13 @@ function isTopTier(role: string): boolean {
   return role === "OWNER" || role === "SUPER_ADMIN" || role === "AUDITOR";
 }
 
-// IMPORTANT — CLIENT_USER tightening (deliberate). Today the server does NOT gate
-// portal DATA crud by role, so a CLIENT_USER can read/write/delete data the menu
-// merely hides. The INTENDED CLIENT_USER is view-only: it may VIEW data + read-only
-// areas, and nothing else (no edit/delete, no settings, no user management). This is
-// only DEFINED here in Batch 1; it takes effect when enforcement is rolled out in
-// Batch 2. Tune this set before that rollout if you want client users to keep some
-// edit rights.
+// CLIENT_USER restriction (LIVE). Enforcement is active: permissionGate is mounted
+// globally on apiRouter (see middleware/permissionGate.ts), so this map is what the
+// server actually enforces — it is NOT dormant. A CLIENT_USER is genuinely view-only:
+// it may VIEW data + read-only areas and nothing else (no edit/delete, no settings
+// manage, no user management). A direct API call to edit/delete data the menu hides is
+// rejected with 403 at the gate. Custom roles start from this base and can only be
+// granted up to their creator's own level (never beyond the ceiling).
 function systemCan(role: string, area: string, right: Right): boolean {
   const def = AREA_BY_KEY.get(area);
   if (!def) return false;                                   // unknown area -> deny
@@ -250,7 +261,7 @@ export async function effectiveMatrix(user: PermUser | null | undefined): Promis
 // is the FULL catalog, an area's supported rights ARE its ceiling — the greyed N/A
 // cells are exactly the cells no role (custom or system) can ever be granted.
 export function getPermissionCatalog() {
-  return AREAS.map((a) => ({ key: a.key, label: a.label, kind: a.kind, section: a.section, rights: rightsForKind(a.kind) }));
+  return AREAS.map((a) => ({ key: a.key, label: a.label, kind: a.kind, section: a.section, rights: rightsForKind(a.kind), group: a.group, groupLabel: a.groupLabel, locked: !!a.locked, lockedNote: a.lockedNote }));
 }
 
 // The full permission matrix for a SYSTEM role (for read-only reference display in
