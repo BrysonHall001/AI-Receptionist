@@ -618,8 +618,18 @@ textarea.input { resize: vertical; }
 .composer-editor .ql-snow .ql-picker.ql-size:not(.ql-expanded) .ql-picker-label.ql-active { color: var(--ink); }
 /* Custom toolbar buttons (continue numbering, insert button) sit inside the toolbar
    and never push controls off the edge. */
-.ql-toolbar.email-toolbar button.ql-cta { width: auto; padding: 0 7px; font-size: 12px; font-weight: 600; color: var(--ink); }
-.ql-toolbar.email-toolbar button.ql-cta:hover { color: var(--accent); }
+.ql-toolbar.email-toolbar button.ql-cta,
+.ql-toolbar.email-toolbar button.ql-merge {
+  width: auto; height: auto; padding: 4px 9px; font-size: 12px; font-weight: 600; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; line-height: 1.2;
+}
+.ql-toolbar.email-toolbar button.ql-cta:hover,
+.ql-toolbar.email-toolbar button.ql-merge:hover { background: var(--gray-soft); color: var(--accent); }
+.ql-toolbar.email-toolbar button.ql-cta svg,
+.ql-toolbar.email-toolbar button.ql-merge svg { width: 13px; height: 13px; float: none; }
+.ql-toolbar.email-toolbar button.ql-cta span,
+.ql-toolbar.email-toolbar button.ql-merge span { display: inline; }
 /* In-editor CTA button chrome (the SENT html uses inline styles; this is just so it
    looks/behaves right inside the white editor). */
 .composer-editor .ql-editor a.cta-btn { cursor: pointer; }

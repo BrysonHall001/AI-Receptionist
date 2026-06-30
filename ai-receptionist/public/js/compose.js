@@ -351,7 +351,8 @@
 
       // Custom toolbar button: insert/edit CTA button.
       const custom = el("span", "ql-formats");
-      const ctaBtn = el("button", "ql-cta"); ctaBtn.type = "button"; ctaBtn.title = "Insert button"; ctaBtn.textContent = "Button";
+      const ctaBtn = el("button", "ql-cta"); ctaBtn.type = "button"; ctaBtn.title = "Insert button";
+      ctaBtn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span>Button</span>';
       ctaBtn.onclick = () => {
         const range = quill.getSelection(true);
         openButtonBuilder(null, surveyLinkMode, (data) => {
@@ -367,7 +368,8 @@
       // the cursor as plain text so it survives save/reload and resolves per recipient
       // at send. Available at every email/richtext mount site (shared component).
       const mtFormats = el("span", "ql-formats");
-      const mtBtn = el("button", "ql-merge"); mtBtn.type = "button"; mtBtn.title = "Insert merge tag"; mtBtn.textContent = "Merge tag";
+      const mtBtn = el("button", "ql-merge"); mtBtn.type = "button"; mtBtn.title = "Insert merge tag";
+      mtBtn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7.5 1.8H2.4a.6.6 0 0 0-.6.6v5.1c0 .16.06.31.18.42l6 6a.6.6 0 0 0 .85 0l5.1-5.1a.6.6 0 0 0 0-.85l-6-6a.6.6 0 0 0-.42-.18Z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5" cy="5" r="1.1" fill="currentColor"/></svg><span>Merge Tag</span>';
       mtBtn.onclick = () => {
         const range = quill.getSelection(true);
         openMergeTagPicker((token) => {

@@ -475,11 +475,6 @@
     side.appendChild(nav);
 
     const userBox = el("div", "sidebar-user");
-    if (section === "portal") {
-      const rb = el("a", "recycle-link" + (activePath === "#/recycle" ? " active" : ""), `<span class="rb-icon">&#128465;</span><span>Recycle Bin</span>`);
-      rb.href = "#/recycle";
-      userBox.appendChild(rb);
-    }
     const chip = el("div");
     chip.innerHTML = `<div class="user-chip"><div class="user-avatar">${esc((me.name || me.email).charAt(0).toUpperCase())}</div>
       <div class="user-meta"><div class="user-name">${esc(me.name || me.email)}</div><div class="user-role">${esc(roleLabel(me.role))}</div></div></div>
@@ -586,17 +581,17 @@
     }
 
     // Recycle Bin read-only preview (contact or record). Stays INSIDE the bin:
-    // buildShell keeps "#/recycle" highlighted, and the renderer is read-only.
+    // buildShell highlights Settings (the bin now lives there), and the renderer is read-only.
     if (path.indexOf("/recycle/contact/") === 0) {
       const id = path.slice("/recycle/contact/".length);
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
-      buildShell("portal", "#/recycle");
+      buildShell("portal", "#/settings");
       return App.portal.renderRecycledPreview("contact", id);
     }
     if (path.indexOf("/recycle/record/") === 0) {
       const id = path.slice("/recycle/record/".length);
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
-      buildShell("portal", "#/recycle");
+      buildShell("portal", "#/settings");
       return App.portal.renderRecycledPreview("record", id);
     }
 
@@ -605,6 +600,7 @@
 
     // Old Fields page now lives inside Settings.
     if (path === "/fields") return App.go("#/settings/fields");
+    if (path === "/recycle") return App.go("#/settings/data/recycle");
 
     // Settings (with optional sub-section, e.g. #/settings/appearance) — the
     // sub-section drives the in-view sub-shell; refresh/back keep their place.
@@ -616,7 +612,7 @@
     }
 
     // Portal section
-    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/bookings": "bookings", "/recycle": "recycle", "/reports": "reports", "/communication": "communication", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
+    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/bookings": "bookings", "/reports": "reports", "/communication": "communication", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
     if (portalViews[path]) {
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       // Batch 3: hide is now COSMETIC — a hidden page the user can View still loads by

@@ -485,19 +485,20 @@
     actions.appendChild(saveBtn); card.appendChild(actions);
     // (form `card` is mounted into the right pane below)
 
-    // ----- Template Library (LEFT pane) with a "+ New template" affordance -----
-    const libCard = el("div", "card"); libCard.style.cssText = "padding:18px";
-    const libHeadRow = el("div"); libHeadRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 4px";
+    // ----- Template Library (LEFT pane) — SAME card+survey-master treatment as the
+    // Surveys library so both panels share identical outer width, top alignment, and
+    // height treatment via the shared .survey-split container -----
+    const leftPane = el("div", "card survey-master");
+    const libHeadRow = el("div"); libHeadRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px";
     const libHead = el("h3", "settings-sub", "Template Library"); libHead.style.margin = "0";
     const libNewBtn = el("button", "btn btn-primary btn-sm", "+ New template");
     libHeadRow.appendChild(libHead); libHeadRow.appendChild(libNewBtn);
-    libCard.appendChild(libHeadRow);
-    const libNote = el("div", "cell-muted", "Every email template in this portal. Filter or search — including by tag — to find one.");
-    libNote.style.cssText = "font-size:13px;margin-bottom:10px"; libCard.appendChild(libNote);
-    const listHost = el("div"); libCard.appendChild(listHost);
+    leftPane.appendChild(libHeadRow);
+    const libNote = el("div", "cell-muted", "Click a template to edit it. Filter or search — including by tag — to find one.");
+    libNote.style.cssText = "font-size:12.5px;margin-bottom:10px"; leftPane.appendChild(libNote);
+    const listHost = el("div"); leftPane.appendChild(listHost);
 
     // ----- Master-detail: library left (~1/3), editor right (~2/3) — mirrors Surveys -----
-    const leftPane = el("div", "survey-master"); leftPane.appendChild(libCard);
     const rightPane = el("div", "survey-detail"); rightPane.appendChild(card);
     const split = el("div", "survey-split");
     split.appendChild(leftPane); split.appendChild(rightPane);
@@ -560,6 +561,9 @@
       App.table.mount({
         container: listHost, columns, rows,
         defaultSort: "name", defaultSortDir: "asc",
+        // Clicking a row opens that template into the right pane (bound to its id);
+        // the Edit/Delete buttons still work (onRowClick ignores button clicks).
+        onRowClick: (r) => { setEdit(r); card.scrollIntoView({ behavior: "smooth", block: "start" }); },
         emptyHtml: `<div class="card cell-muted" style="padding:18px">No templates yet — create one below or save one from a draft in the Email tab.</div>`,
         pageSize: 50,
       });

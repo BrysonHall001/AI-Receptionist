@@ -53,7 +53,6 @@
     if (v === "contacts") return renderContacts();
     if (v === "jobs") return renderRecordList("job");
     if (v === "bookings") return renderRecordList("booking");
-    if (v === "recycle") return renderRecycleBin();
     if (v === "fields") return renderFields();
     if (v === "reports") return App.reports.render(view());
     if (v === "communication") return App.communication.render(view());
@@ -673,14 +672,14 @@
   // import+export history (the data Batch A produced). Reuses every existing modal
   // and column builder — no new import/export logic. Sub-tabs use the same .tabs
   // strip the record detail view uses.
-  async function renderDataAdmin(panel) {
+  async function renderDataAdmin(panel, initialTab) {
     panel.innerHTML = "";
     const wrap = el("div", "fade-in");
     wrap.appendChild(el("h2", "settings-h", "Data Administration"));
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const SUBS = [["import", "Import"], ["export", "Export"], ["backup", "Data Backup"], ["history", "Import / Export History"], ["reports", "Reports"]];
-    let active = "import";
+    const SUBS = [["import", "Import"], ["export", "Export"], ["backup", "Data Backup"], ["history", "Import / Export History"], ["reports", "Reports"], ["recycle", "Recycle Bin"]];
+    let active = SUBS.some(([k]) => k === initialTab) ? initialTab : "import";
     function setTab(key) {
       active = key;
       App.util.$$(".tab", tabsBar).forEach((t) => t.classList.toggle("active", t.dataset.tab === key));
@@ -689,6 +688,7 @@
       else if (key === "export") tabExport(tabBody);
       else if (key === "backup") tabBackup(tabBody);
       else if (key === "reports") tabReports(tabBody);
+      else if (key === "recycle") renderRecycleBin(tabBody);
       else tabHistory(tabBody);
     }
     SUBS.forEach(([key, label]) => {
@@ -700,7 +700,7 @@
     wrap.appendChild(tabsBar);
     wrap.appendChild(tabBody);
     panel.appendChild(wrap);
-    setTab("import");
+    setTab(active);
   }
 
   // Importable types are Contacts + the record types (Jobs, Bookings, custom). The
@@ -1928,8 +1928,9 @@
   }
 
   // ---------------- Recycle Bin ----------------
-  async function renderRecycleBin() {
-    loading();
+  async function renderRecycleBin(mountEl) {
+    const host = mountEl || view();
+    if (!mountEl) loading();
     // Contacts live in their own table/endpoint; records (jobs/bookings/custom)
     // come back across ALL types from one endpoint and get split per type below.
     let delContacts, delRecords, types, resources, cFields, cCols;
@@ -1943,7 +1944,7 @@
         App.portalApi("/api/account/contact-columns").catch(() => ({ layout: {} })),
       ]);
     } catch (e) {
-      view().innerHTML = `<div class="card"><p class="cell-muted">${esc((e && e.message) || "Couldn't load the Recycle Bin.")}</p></div>`;
+      host.innerHTML = `<div class="card"><p class="cell-muted">${esc((e && e.message) || "Couldn't load the Recycle Bin.")}</p></div>`;
       return;
     }
 
@@ -1960,7 +1961,7 @@
       fieldsByType[t.id] = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(t.key)).catch(() => []);
     }));
 
-    view().innerHTML = "";
+    host.innerHTML = "";
     const container = el("div", "fade-in");
     const head = el("div", "rb-head");
     head.innerHTML = `<div><h1 class="rb-title">&#128465; Recycle Bin</h1><p class="cell-muted">Deleted items are kept for 30 days, then permanently removed. They don't appear anywhere else.</p></div>`;
@@ -1968,7 +1969,7 @@
     backBtn.href = "#/contacts";
     head.appendChild(backBtn);
     container.appendChild(head);
-    view().appendChild(container);
+    host.appendChild(container);
 
     // Show the days-left countdown beneath the primary cell (the old bin's pattern).
     const withCountdown = (columns, primaryKey, nameOf) => columns.map((c) => c.key === primaryKey
@@ -1996,7 +1997,7 @@
       restoreBtn.onclick = async () => {
         const ids = handle.getSelected();
         if (!ids.length) { App.util.toast("Select something to restore first.", true); return; }
-        try { await App.portalApi(restoreUrl, { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Restored"); renderRecycleBin(); }
+        try { await App.portalApi(restoreUrl, { method: "POST", body: JSON.stringify({ ids }) }); App.util.toast("Restored"); renderRecycleBin(mountEl); }
         catch (e) { App.util.toast((e && e.message) || "Restore failed", true); }
       };
       if (handle.toolbarLeft) { handle.toolbarLeft.appendChild(restoreBtn); handle.toolbarLeft.appendChild(rc); }
@@ -2050,7 +2051,7 @@
     restoreBtn.onclick = async () => {
       restoreBtn.disabled = true;
       const url = kind === "contact" ? "/api/contacts/restore" : "/api/records/restore";
-      try { await App.portalApi(url, { method: "POST", body: JSON.stringify({ ids: [id] }) }); App.util.toast("Restored"); App.go("#/recycle"); }
+      try { await App.portalApi(url, { method: "POST", body: JSON.stringify({ ids: [id] }) }); App.util.toast("Restored"); App.go("#/settings/data/recycle"); }
       catch (e) { restoreBtn.disabled = false; App.util.toast((e && e.message) || "Restore failed", true); }
     };
     box.appendChild(restoreBtn);
@@ -2062,7 +2063,7 @@
     view().innerHTML = "";
     const card = el("div", "card rb-preview");
     const back = el("a", "btn btn-ghost btn-sm", "← Back to Recycle Bin");
-    back.href = "#/recycle";
+    back.href = "#/settings/data/recycle";
     card.appendChild(back);
     const p = el("p", "cell-muted");
     p.style.marginTop = "12px";
@@ -2859,7 +2860,7 @@
 
     const wrap = el("div", "fade-in contact-page");
     const back = el("a", "back-link", ro ? "← Back to Recycle Bin" : ("← " + App.label("contact","many")));
-    back.href = ro ? "#/recycle" : "#/contacts";
+    back.href = ro ? "#/settings/data/recycle" : "#/contacts";
     wrap.appendChild(back);
 
     const head = el("div", "contact-head");
@@ -3424,7 +3425,10 @@
       { key: "fields", label: "Fields", admin: true, build: secFields },
     ].filter((s) => canEditPortal || !s.admin);
 
-    const active = SECTIONS.some((s) => s.key === sub) ? sub : SECTIONS[0].key;
+    // Allow an optional sub-tab after the section, e.g. #/settings/data/recycle.
+    const [secKey, ...rest] = String(sub || "").split("/");
+    const subTab = rest.join("/") || null;
+    const active = SECTIONS.some((s) => s.key === secKey) ? secKey : SECTIONS[0].key;
 
     // Two-pane shell: sub-sidebar (left) + content panel (right). The global app
     // nav is untouched; this layout lives entirely inside the settings view.
@@ -3445,7 +3449,7 @@
     view().appendChild(shell);
 
     const def = SECTIONS.find((s) => s.key === active);
-    try { await def.build(panel); }
+    try { await def.build(panel, subTab); }
     catch (e) { panel.innerHTML = `<div class="cell-muted" style="padding:8px">Couldn’t load this section.</div>`; }
 
     // ---- Section builders (existing content + behavior, relocated verbatim) ----
@@ -5463,7 +5467,7 @@
 
     const wrap = el("div", "fade-in contact-page");
     const back = el("a", "back-link", ro ? "← Back to Recycle Bin" : ("← " + esc(type.labelPlural || App.label("record","many"))));
-    back.href = ro ? "#/recycle" : (type.key === "booking" ? "#/bookings" : "#/jobs");
+    back.href = ro ? "#/settings/data/recycle" : (type.key === "booking" ? "#/bookings" : "#/jobs");
     // The /record/:id route highlights "Jobs" by default; now that we know the
     // record's real type, re-mark the correct sidebar item so a Booking shows
     // Bookings active (not Jobs). In the read-only preview we DON'T re-mark —
