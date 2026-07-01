@@ -53,7 +53,7 @@
       ],
     },
     {
-      cat: "Calls & receptionist",
+      cat: "Calls & receptionist", page: "#/calls",
       items: [
         {
           id: "calls-list",
@@ -109,7 +109,7 @@
       ],
     },
     {
-      cat: "Contacts",
+      cat: "Contacts", page: "#/contacts",
       items: [
         {
           id: "contact-identity",
@@ -312,7 +312,7 @@
       ],
     },
     {
-      cat: "Jobs",
+      cat: "Jobs", page: "#/jobs",
       items: [
         {
           id: "jobs-overview",
@@ -345,7 +345,7 @@
       ],
     },
     {
-      cat: "Analytics & dashboards",
+      cat: "Analytics & dashboards", page: "#/reports",
       items: [
         {
           id: "reports",
@@ -366,7 +366,7 @@
       ],
     },
     {
-      cat: "Automations",
+      cat: "Automations", page: "#/automations",
       items: [
         {
           id: "automations-overview",
@@ -527,7 +527,7 @@
       ],
     },
     {
-      cat: "Feedback",
+      cat: "Feedback", page: "#/feedback",
       items: [
         {
           id: "feedback",
@@ -695,11 +695,16 @@
     const navList = el("div", "learn-nav-list");
     nav.appendChild(navList);
 
-    let currentId = GUIDES[0] && GUIDES[0].items[0] && GUIDES[0].items[0].id;
+    // Owner page-lock: hide guides for pages locked for this tenant — a locked page must
+    // not appear (or be openable) in the Learning Center. Page-specific categories carry a
+    // `page` href; cross-cutting categories (no page) always show. Empty on the master hub.
+    const guides = GUIDES.filter((g) => !(g.page && App.isPageLocked && App.isPageLocked(g.page)));
+
+    let currentId = guides[0] && guides[0].items[0] && guides[0].items[0].id;
 
     function showGuide(id) {
       let found = null, cat = null;
-      GUIDES.forEach((g) => g.items.forEach((it) => { if (it.id === id) { found = it; cat = g.cat; } }));
+      guides.forEach((g) => g.items.forEach((it) => { if (it.id === id) { found = it; cat = g.cat; } }));
       if (!found) { content.innerHTML = `<div class="card"><p class="cell-muted">Pick a guide from the left.</p></div>`; return; }
       currentId = id;
       paintNav();
@@ -715,7 +720,7 @@
     function paintNav() {
       const term = (search.value || "").trim().toLowerCase();
       navList.innerHTML = "";
-      GUIDES.forEach((g) => {
+      guides.forEach((g) => {
         const items = g.items.filter((it) => !term || it.title.toLowerCase().includes(term) || g.cat.toLowerCase().includes(term));
         if (!items.length) return;
         navList.appendChild(el("div", "learn-cat", esc(App.relabelText(g.cat))));

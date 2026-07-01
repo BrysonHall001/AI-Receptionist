@@ -22,6 +22,7 @@ function main() {
   const appjs = read("../../public/js/app.js");
   const adminjs = read("../../public/js/admin.js");
   const portaljs = read("../../public/js/portal.js");
+  const learnjs = read("../../public/js/learn.js");
 
   // ---------- storage (owner-only) ----------
   console.log("(1) storage:");
@@ -71,7 +72,7 @@ function main() {
   check(!has(cfg, "enterPortal") && !has(cfg, "currentPortalId"), "config view never enters the portal");
   check(has(adminjs, 'data-act="config"'), "Tenants row has a Page access action");
   check(has(adminjs, "draft.lockedPages") && has(adminjs, "lockChecklist(lockHost"), "wizard step 4 collects lockedPages into the draft");
-  check(!has(portaljs, "lockedPages"), "no in-portal control writes lockedPages");
+  check(!/lockedPages\s*:/.test(portaljs) && !has(portaljs, "/api/admin/portals"), "no in-portal control writes lockedPages (portal reads it via helpers only)");
 
   // ---------- (7) the four Home-Dashboard carve-outs now respect the lock ----------
   console.log("\n(7) Home Dashboard carve-outs respect the lock:");
@@ -82,6 +83,19 @@ function main() {
   check(has(firstAvail, 'return "#/settings"') && !has(firstAvail, 'return "#/dashboard"'), "FIX 3: firstAvailableNav ultimate fallback is #/settings, never a locked page");
   check(!/App\.go\("#\/dashboard"\)/.test(appjs), "FIX 4: no hard-coded App.go(\"#/dashboard\") landing remains (all use firstAvailableNav)");
   check((appjs.match(/App\.go\(App\.firstAvailableNav\(\)\)/g) || []).length >= 5, "all entry/redirect landings route through firstAvailableNav");
+
+  // ---------- (8) every page-ENUMERATING surface excludes locked pages ----------
+  console.log("\n(8) page-enumerating surfaces exclude locked pages (portal side):");
+  check(has(appjs, "App.isPageLocked = function") && has(appjs, "App.isAreaLocked = function") && has(appjs, "App.isRecordTypeLocked = function"), "lock helpers (isPageLocked / isAreaLocked / isRecordTypeLocked) exist");
+  check(has(portaljs, "NAV = NAV.filter(function (it) { return !App.isPageLocked(it[0]); })"), "Labels 'Pages & navigation' editor excludes locked pages");
+  check(has(appjs, ".filter((h) => !App.isPageLocked(h))"), "nav reorder order (fullNavOrder) excludes locked pages");
+  check(has(portaljs, "data.catalog = data.catalog.filter((a) => !App.isAreaLocked(a.key))"), "Team & Permissions catalog excludes locked areas");
+  check(has(learnjs, "GUIDES.filter((g) => !(g.page && App.isPageLocked"), "Learning Center excludes locked-page guides");
+  check((learnjs.match(/page: "#\//g) || []).length >= 6, "Learning Center page-specific categories are tagged with their href");
+  check(has(portaljs, "types.filter((t) => !App.isRecordTypeLocked(t.key))"), "Fields object-type selector excludes locked record types");
+  // Master hub must still show ALL pages in the Page-Access editor (not affected).
+  const cfg2 = slice(adminjs, "async function renderTenantConfig", "// ===================== Create-tenant wizard");
+  check(has(adminjs, "LOCKABLE_PAGES") && !has(cfg2, "isPageLocked") && !has(cfg2, "lockedPages.filter"), "master-hub Page-Access editor lists ALL pages (unfiltered)");
 
   console.log("\n===========================================");
   if (failures.length === 0) console.log("ALL CHECKS PASSED \u2705  (page-lock wiring)");

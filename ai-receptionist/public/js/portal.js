@@ -2367,9 +2367,14 @@
     if (mountEl) fieldsMount = mountEl; // set on first mount; persists across refresh(true)
     if (!refresh && !fieldsMount) loading(); // on refresh we hold the current view until the rebuilt one is ready — no blink
     const types = await App.portalApi("/api/record-types");
-    if (!App.state.fieldsType || !types.some((t) => t.key === App.state.fieldsType)) App.state.fieldsType = "contact";
+    // Owner page-lock: don't offer field editing for a record type whose page is locked
+    // (its data area is blocked for the tenant). Empty on the master hub -> no exclusion.
+    const visibleTypes = types.filter((t) => !App.isRecordTypeLocked(t.key));
+    if (!App.state.fieldsType || !visibleTypes.some((t) => t.key === App.state.fieldsType)) {
+      App.state.fieldsType = (visibleTypes[0] && visibleTypes[0].key) || "contact";
+    }
     const selectedKey = App.state.fieldsType;
-    const selectedType = types.find((t) => t.key === selectedKey) || types[0];
+    const selectedType = visibleTypes.find((t) => t.key === selectedKey) || types.find((t) => t.key === selectedKey) || types[0];
     const [fields, sections] = await Promise.all([
       App.portalApi("/api/fields?recordType=" + encodeURIComponent(selectedKey)),
       App.portalApi("/api/field-sections?recordType=" + encodeURIComponent(selectedKey)).catch(() => []),
@@ -2381,7 +2386,7 @@
     const typeBar = el("div", "fields-typebar");
     typeBar.appendChild(el("span", "fields-typebar-label", "Editing fields for:"));
     const typeSel = el("select", "input fields-typebar-select");
-    types.forEach((t) => {
+    visibleTypes.forEach((t) => {
       const o = el("option", null, esc(t.labelPlural || t.label));
       o.value = t.key;
       if (t.key === selectedKey) o.selected = true;
@@ -3310,6 +3315,10 @@
       if (App.state.receptionistEnabled === false) {
         NAV = NAV.filter(function (it) { return it[0] !== "#/calls"; });
       }
+      // Owner page-lock: a locked page must not be renameable / reorderable / "Show"-able
+      // by a Portal Admin — the Owner controls it from the master hub. Exclude locked pages
+      // from this editor entirely (me.lockedPages is empty on the master hub).
+      NAV = NAV.filter(function (it) { return !App.isPageLocked(it[0]); });
       const navByHref = {}; NAV.forEach((it) => { navByHref[it[0]] = it; });
       // Initial display order: saved order first, then any default items not in it
       // (so a newly-shipped nav item still appears under an older saved order). We
@@ -3581,6 +3590,12 @@
       let data;
       try { data = await App.portalApi("/api/portal-roles"); }
       catch (e) { host.innerHTML = `<h2 class="settings-h">Permissions</h2><p class="cell-muted">${esc(e.message)}</p>`; return; }
+
+      // Owner page-lock: a locked page's area is not accessible to anyone in the tenant, so
+      // it must not appear as a grantable area in this tenant's permissions table. Drop
+      // locked areas from the catalog (me.lockedPages is empty on the master hub, so this
+      // is a no-op there). Settings/Users/Integrations aren't lockable pages -> unaffected.
+      if (Array.isArray(data.catalog)) data.catalog = data.catalog.filter((a) => !App.isAreaLocked(a.key));
 
       // selection: { kind:"system", role } | { kind:"custom", id } | { kind:"new" }
       let sel = { kind: "system", role: data.systemRoles[0].role };

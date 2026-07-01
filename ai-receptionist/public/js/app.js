@@ -115,6 +115,33 @@
     // it renders without bouncing back through the redirect.
     return "#/settings";
   };
+  // Owner page-lock helpers for page-ENUMERATING surfaces (labels editor, permissions
+  // table, learning center, reorder…). A locked page must not appear anywhere a portal
+  // user could see or reference it — these let each surface exclude locked pages. For the
+  // master hub (Owner/Super Admin/Auditor) me.lockedPages is empty, so nothing is excluded.
+  App.isPageLocked = function (href) {
+    var me = App.state.me;
+    return !!(me && me.lockedPages && me.lockedPages.indexOf(href) !== -1);
+  };
+  // Map a permission AREA to its nav href(s); an area is "locked" if any of its pages is.
+  // (Jobs & Bookings share the records area and lock together.)
+  App.AREA_HREFS = { contacts: ["#/contacts"], records: ["#/jobs", "#/bookings"], automations: ["#/automations"], communication: ["#/communication"], dashboard: ["#/dashboard"], reports: ["#/reports"], calls: ["#/calls"], learn: ["#/learn"] };
+  App.isAreaLocked = function (areaKey) {
+    var hrefs = App.AREA_HREFS[areaKey]; if (!hrefs) return false;
+    for (var i = 0; i < hrefs.length; i++) if (App.isPageLocked(hrefs[i])) return true;
+    return false;
+  };
+  // Map a record-type kind (contact/job/booking/custom) to its nav href, then to locked.
+  // Built-in kinds have a PORTAL_NAV entry; custom record types live in the records area.
+  App.recordKindHref = function (kind) {
+    var nav = (App.PORTAL_NAV || []).filter(function (it) { return it[2] === kind; })[0];
+    return nav ? nav[0] : null;
+  };
+  App.isRecordTypeLocked = function (typeKey) {
+    var href = App.recordKindHref(typeKey);
+    if (href) return App.isPageLocked(href);   // contact -> #/contacts, job -> #/jobs, etc.
+    return App.isAreaLocked("records");          // custom record types live under records
+  };
   // Home Dashboard is never COSMETICALLY hideable, so there's normally a landing page —
   // but an owner LOCK overrides that: a locked page (dashboard included) counts as hidden.
   App.isNavHidden = function (href) {
@@ -178,7 +205,7 @@
   // hidden items keep their relative slot even though they aren't shown as targets.
   App.fullNavOrder = function () {
     const cfg = App.navConfig();
-    const all = (App.PORTAL_NAV || []).map((it) => it[0]);
+    const all = (App.PORTAL_NAV || []).map((it) => it[0]).filter((h) => !App.isPageLocked(h)); // locked pages aren't reorderable
     const seen = {}; const out = [];
     cfg.order.forEach((h) => { if (all.indexOf(h) !== -1 && !seen[h]) { out.push(h); seen[h] = true; } });
     all.forEach((h) => { if (!seen[h]) { out.push(h); seen[h] = true; } });
