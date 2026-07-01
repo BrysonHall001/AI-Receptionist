@@ -501,5 +501,90 @@
     return wrap;
   }
 
-  App.table = { pipeline, evalRule, evalRules, ruleComplete, mount, ruleEditor, OPS };
+  // ---------- Shared "Manage columns" affordance (show/hide + drag reorder) ----------
+  // Generic version of the Contacts column picker: works for ANY App.table handle. It
+  // wires a "Manage columns" button into the table's toolbar; the popup toggles/reorders
+  // columns and calls handle.setColumns() with the visible subset. Layout is in-memory
+  // unless the caller wires getLayout/setLayout to persist it.
+  function applyColumnLayout(all, layout, defaultKeys) {
+    const byKey = {}; all.forEach((c) => (byKey[c.key] = c));
+    const defaults = (defaultKeys && defaultKeys.length ? defaultKeys : all.map((c) => c.key));
+    const hasLayout = layout && ((layout.order || []).length || (layout.hidden || []).length);
+    if (!hasLayout) return defaults.filter((k) => byKey[k]).map((k) => byKey[k]);
+    const hidden = new Set(layout.hidden || []);
+    const ordered = [];
+    (layout.order || []).forEach((k) => { if (byKey[k]) ordered.push(byKey[k]); });
+    all.forEach((c) => { if (ordered.indexOf(c) === -1) ordered.push(c); });
+    return ordered.filter((c) => !hidden.has(c.key));
+  }
+
+  function openColumnManager(allColumns, layout, defaultKeys, onSave) {
+    const el = App.util.el, esc = App.util.esc;
+    const byKey = {}; allColumns.forEach((c) => (byKey[c.key] = c));
+    let order = (layout && layout.order && layout.order.length) ? layout.order.filter((k) => byKey[k]) : (defaultKeys || allColumns.map((c) => c.key)).filter((k) => byKey[k]);
+    allColumns.forEach((c) => { if (order.indexOf(c.key) === -1) order.push(c.key); });
+    const hidden = new Set((layout && layout.hidden) || []);
+
+    const overlay = el("div", "modal-overlay");
+    const modal = el("div", "modal");
+    modal.innerHTML = `<div class="modal-head"><h2>Manage columns</h2><button class="icon-btn" id="mc-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    const help = el("p", "cell-muted", "Check to show, drag to reorder."); help.style.marginBottom = "10px";
+    body.appendChild(help);
+    const list = el("div", "mc-list"); body.appendChild(list);
+    function paint() {
+      list.innerHTML = "";
+      order.forEach((key) => {
+        const c = byKey[key]; if (!c) return;
+        const row = el("div", "mc-row"); row.draggable = true; row.dataset.key = key;
+        const grip = el("span", "mc-drag", "\u283F");
+        const lab = el("label", "mc-label");
+        const cb = el("input"); cb.type = "checkbox"; cb.checked = !hidden.has(key);
+        cb.onchange = () => { if (cb.checked) hidden.delete(key); else hidden.add(key); };
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(" " + (c.label || key)));
+        row.appendChild(grip); row.appendChild(lab);
+        row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.setData("text/plain", key); });
+        row.addEventListener("dragend", () => row.classList.remove("dragging"));
+        row.addEventListener("dragover", (e) => { e.preventDefault(); });
+        row.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const from = e.dataTransfer.getData("text/plain"); const to = key;
+          if (from === to) return;
+          order = order.filter((k) => k !== from);
+          order.splice(order.indexOf(to), 0, from);
+          paint();
+        });
+        list.appendChild(row);
+      });
+    }
+    paint();
+    const foot = el("div", "modal-foot");
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    const save = el("button", "btn btn-primary btn-sm", "Save columns");
+    foot.appendChild(cancel); foot.appendChild(save);
+    modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    modal.querySelector("#mc-close").onclick = close;
+    cancel.onclick = close;
+    save.onclick = () => { onSave({ order: order.slice(), hidden: Array.from(hidden) }); close(); if (App.util.toast) App.util.toast("Columns updated"); };
+  }
+
+  // Wire the button into a mounted table handle. `allColumns` is the full set; the table
+  // starts showing `defaultKeys` (default: all). Returns { getLayout }.
+  function mountColumnManager(handle, allColumns, opts) {
+    opts = opts || {};
+    const el = App.util.el;
+    const defaultKeys = opts.defaultKeys || allColumns.map((c) => c.key);
+    let layout = { order: (opts.order || defaultKeys).slice(), hidden: (opts.hidden || []).slice() };
+    function apply() { handle.setColumns(applyColumnLayout(allColumns, layout, defaultKeys)); }
+    const btn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#9776;</span> Manage columns`);
+    btn.onclick = () => openColumnManager(allColumns, layout, defaultKeys, (nl) => { layout = nl; if (opts.onSave) opts.onSave(nl); apply(); });
+    if (handle.toolbarRight) handle.toolbarRight.insertBefore(btn, handle.toolbarRight.firstChild);
+    apply();
+    return { getLayout: () => layout };
+  }
+
+  App.table = { pipeline, evalRule, evalRules, ruleComplete, mount, ruleEditor, OPS, manageColumns: mountColumnManager, applyColumnLayout };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -25,10 +25,10 @@ function main() {
   check(has(app, '["#/admin/portals", "Tenants"]'), 'app.js ADMIN_NAV label is "Tenants"');
   check(has(app, '"#/admin/portals": "Tenants"'), 'app.js titleMap label is "Tenants"');
   check(has(app, '"\u2190 All tenants"'), 'app.js back-link is "\u2190 All tenants"');
-  for (const s of ['"+ Create tenant"', '"\u2190 Tenants"', '"Create tenant first"', '"Create a tenant"',
-    '"Create tenant"', 'toast("Tenant created")', 'toast("Tenant updated")', '"Finish \u2014 go to tenant"',
+  for (const s of ['"+ Create tenant"', '"\u2190 Tenants"', "Create a tenant",
+    "Tenant created", 'toast("Tenant updated")', '"Finish \u2014 go to tenant"',
     '"Back to tenants"', "No tenants yet", "Open tenant \u2192", "No users in this tenant yet",
-    "the tenant's colors", "Turn tenant features on or off. New tenants start with"]) {
+    "New tenants start with it off"]) {
     check(has(admin, s), `admin.js has ${JSON.stringify(s)}`);
   }
 
@@ -44,7 +44,7 @@ function main() {
   // still lives in the create-portal screen (its removal is a later batch). Assert it's
   // gone from the list view but intentionally still present in the setup flow.
   check(!has(admin, 'portal-rule-sel'), "identity dropdown removed from the list (no portal-rule-sel)");
-  check(has(admin, '#sp-rule') && has(admin, "Contact identity rule"), "identity rule still in the create screen (later-batch removal)");
+  check(!has(admin, "#sp-rule") && !has(admin, "Contact identity rule"), "identity rule since removed from the create screen too");
 
   // ---------- (2) internal identifiers intact ----------
   console.log("\n(2) internal identifiers untouched:");

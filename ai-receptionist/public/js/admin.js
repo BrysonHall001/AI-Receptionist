@@ -77,15 +77,18 @@
       { key: "calls", label: "Calls", type: "number", get: (p) => p.calls },
       { key: "contacts", label: "Contacts", type: "number", get: (p) => p.contacts },
       { key: "users", label: "Users", type: "number", get: (p) => p.users },
+      // "Users" opens the tenant's user list — its own column so it can be hidden.
+      { key: "manage", label: "Manage", filterable: false, get: () => "",
+        render: (p) => `<button class="btn btn-ghost btn-sm" data-act="users" data-id="${esc(p.id)}">Users</button>` },
+      // Real row actions, side by side (no vertical stacking -> single-line rows).
       { key: "actions", label: "Actions", filterable: false, get: () => "",
-        render: (p) => `<div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" data-act="users" data-id="${esc(p.id)}">Users</button>
+        render: (p) => `<span style="display:inline-flex;gap:6px;white-space:nowrap;align-items:center">
             <button class="btn btn-primary btn-sm" data-act="open" data-id="${esc(p.id)}">Open tenant →</button>
             <button class="btn btn-ghost btn-sm" data-act="toggle" data-id="${esc(p.id)}">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button>
-          </div>` },
+          </span>` },
     ];
 
-    App.table.mount({
+    const handle = App.table.mount({
       container: tableHost,
       rows: portals,
       columns: columns,
@@ -95,6 +98,8 @@
       defaultSortDir: "desc",
       emptyHtml: `<div class="empty"><div class="empty-emoji">&#127970;</div><h3>No tenants yet</h3><p>Create your first client tenant to get started.</p></div>`,
     });
+    // Same manage-columns control as Contacts/Records (shared App.table helper).
+    App.table.manageColumns(handle, columns, { defaultKeys: columns.map((c) => c.key) });
 
     // Delegated handlers live on the stable host so they survive App.table's internal
     // re-renders (sort/filter/search rebuild the rows). Same endpoints as before.
@@ -209,261 +214,164 @@
     App.go("#/dashboard");
   }
 
-  // ===================== Unified tenant setup screen =====================
-  // ATOMIC CREATE: the tenant is NOT written until the user clicks "Finish". Section 1
-  // only collects the name + optional notify email into the form (a client-side draft);
-  // Finish POSTs /api/admin/portals and then enters the new tenant, where users, theme,
-  // labels, and the receptionist are configured. Because nothing is persisted before
-  // Finish, abandoning the screen (Back / nav-away / tab-close) leaves NO tenant, and no
-  // partial user/theme rows can exist either. (The optional `existingPortal` resume path
-  // — currently unused — keeps its in-screen editors for an already-created tenant.)
-  function renderSetupScreen(existingPortal) {
-    let portal = existingPortal || null;
-    let created = !!existingPortal;
-    // Remember where the app was pointed so backing out doesn't strand the
-    // super-admin inside a half-set-up portal. (In the admin area this is null.)
+  // ===================== Create-tenant wizard (client-side DRAFT) =====================
+  // ATOMIC: nothing is written until the user clicks "Finish". All four steps collect
+  // into `draft` (name/email, queued user invites, theme preset, receptionist mode).
+  // On Finish we create the tenant, then apply the queued config in sequence, then enter
+  // it. Abandoning (Back / nav-away / tab-close) persists NOTHING — no tenant, no users,
+  // no theme. Every step is active from the start; there is no "create tenant first" gate.
+  function renderSetupScreen() {
     const prior = { id: App.state.currentPortalId, name: App.state.currentPortalName };
-    if (created) { App.state.currentPortalId = portal.id; App.state.currentPortalName = portal.name; }
+    const draft = { users: [], themePreset: "", voiceMode: "OFF" };
 
-    // The labels editor calls App._route() after saving to repaint the in-portal
-    // nav. On this directly-rendered screen that would bounce us to the portal list,
-    // so while the setup screen is open we make that repaint a no-op (the save still
-    // succeeds and the editor already shows what was typed). Real navigation is
-    // unaffected — the app's own hashchange handler uses a separate route fn — and
-    // we restore App._route the moment the admin navigates away or leaves.
-    const realRoute = App._route;
-    let routeShimmed = true;
-    function restoreRoute() {
-      if (!routeShimmed) return;
-      routeShimmed = false;
-      App._route = realRoute;
-      window.removeEventListener("hashchange", restoreRoute);
-    }
-    window.addEventListener("hashchange", restoreRoute);
-    App._route = function () {};
+    // Built-in theme preset ids (match src/theme/themes.ts). "" = leave the default.
+    const THEME_PRESETS = [
+      ["", "Default (Clean Light)"], ["warm", "Warm Light"], ["slate", "Slate"],
+      ["steel", "Steel Blue"], ["contrast", "High Contrast"], ["dark", "Dark"], ["midnight", "Midnight"],
+    ];
 
+    function elNote(text) { const d = el("div", "cell-muted"); d.style.cssText = "margin-top:8px;font-size:13px;"; d.textContent = text; return d; }
     function leave(toList) {
-      restoreRoute();
-      // Restore the prior portal context (don't leave the app scoped to this portal
-      // unless the admin explicitly "enters" it via Finish).
       App.state.currentPortalId = prior.id;
       App.state.currentPortalName = prior.name;
       if (toList) render("portals");
     }
-
-    function sectionCard(n, title, desc, enabled) {
+    function sectionCard(n, title, desc) {
       const card = el("div", "card");
-      card.style.cssText = "margin-bottom:16px;padding:20px;" + (enabled ? "" : "opacity:.55;");
-      const head = el("div"); head.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:4px;";
+      card.style.cssText = "margin-bottom:16px;padding:20px;";
+      const head = el("div"); head.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:12px;";
       const num = el("div", null, String(n));
-      num.style.cssText = "flex:0 0 28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;background:" + (enabled ? "var(--accent,#3257d6);color:#fff" : "var(--surface,#eef1f6);color:var(--ink-soft,#5b6678)") + ";";
+      num.style.cssText = "flex:0 0 28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;background:var(--accent,#3257d6);color:#fff;";
       const tt = el("div"); tt.innerHTML = `<div style="font-weight:600">${esc(title)}</div><div class="cell-muted" style="font-size:13px">${esc(desc)}</div>`;
       head.appendChild(num); head.appendChild(tt);
-      if (!enabled) { const lock = el("span", "pill", "Create tenant first"); lock.style.cssText = "margin-left:auto;font-size:12px;opacity:.8;"; head.appendChild(lock); }
       card.appendChild(head);
       return card;
     }
 
-    function draw() {
-      const wrap = el("div", "fade-in");
-      const head = el("div");
-      head.innerHTML = `<h1 class="page-title">${created ? "Set up " + esc(portal.name) : "Create a tenant"}</h1>
-        <p class="cell-muted">Enter the name to create the tenant — then add users, set its look, and turn on the receptionist. Nothing is saved until you click Finish, so you can back out any time before then.</p>`;
-      wrap.appendChild(head);
+    const wrap = el("div", "fade-in");
+    const head = el("div");
+    head.innerHTML = `<h1 class="page-title">Create a tenant</h1>
+      <p class="cell-muted">Fill in the steps below, then click Finish to create the tenant with everything set up at once. Nothing is saved until you click Finish — back out any time before then and nothing is created.</p>`;
+    wrap.appendChild(head);
 
-      // ---- Section 1: basic details (draft only — the tenant is created on Finish) ----
-      const s1 = sectionCard(1, "Basic details", "The tenant's name, and optionally where call summaries go.", true);
-      if (!created) {
-        const f = el("div");
-        f.innerHTML = `
-          <label class="field-label">Business name *</label><input id="sp-name" class="input" placeholder="Acme Plumbing" />
-          <label class="field-label">Notify email</label><input id="sp-email" class="input" placeholder="owner@acme.com" />
-          <p class="cell-muted" style="font-size:12.5px;margin:8px 0 0">Notify email is where call summaries and notifications go — it's optional and can be added later. Nothing is created until you click <strong>Finish</strong> below; you'll add users, theme, and the receptionist right after.</p>`;
-        s1.appendChild(f);
-      } else {
-        const done = el("div");
-        done.style.cssText = "margin-top:6px;display:flex;align-items:center;gap:8px;color:var(--ink,#1a2230);";
-        done.innerHTML = `<span class="pill" style="background:var(--ok,#e6f4ea);color:#1c7a3f">Created</span>
-          <span><strong>${esc(portal.name)}</strong> is ready. Configure it below, or open it any time later.</span>`;
-        s1.appendChild(done);
-      }
-      wrap.appendChild(s1);
+    // ---- Step 1: basic details ----
+    const s1 = sectionCard(1, "Basic details", "The tenant's name, and optionally where call summaries go.");
+    const f1 = el("div");
+    f1.innerHTML = `
+      <label class="field-label">Business name *</label><input id="sp-name" class="input" placeholder="Acme Plumbing" />
+      <label class="field-label">Notify email</label><input id="sp-email" class="input" placeholder="owner@acme.com" />
+      <p class="cell-muted" style="font-size:12.5px;margin:8px 0 0">Notify email is optional — it's where call summaries and notifications go.</p>`;
+    s1.appendChild(f1);
+    wrap.appendChild(s1);
 
-      // ---- Section 2: add users (reuse renderUsersStep verbatim) ----
-      const s2 = sectionCard(2, "Add users", "Invite teammates and set their roles. They get a link to set their own password.", created);
-      if (created) {
-        const host = el("div"); host.style.marginTop = "8px";
-        renderUsersStep(host, portal);
-        s2.appendChild(host);
-      } else {
-        s2.appendChild(elNote("You can invite users once the tenant is created."));
-      }
-      wrap.appendChild(s2);
-
-      // ---- Section 3: labels & theme (reuse the existing editors) ----
-      const s3 = sectionCard(3, "Labels & theme", "Rename things and choose the tenant's colors. Optional — you can do this later.", created);
-      if (created) {
-        const themeWrap = el("div"); themeWrap.style.marginTop = "8px";
-        themeWrap.appendChild(el("h3", "settings-sub", "Theme"));
-        const themeHost = el("div"); themeWrap.appendChild(themeHost);
-        s3.appendChild(themeWrap);
-        const labelsWrap = el("div"); labelsWrap.style.marginTop = "20px";
-        const labelsHost = el("div"); labelsWrap.appendChild(labelsHost);
-        s3.appendChild(labelsWrap);
-        // Mount AFTER the hosts are in the DOM. Both editors read App.portalApi,
-        // which scopes to currentPortalId (set above) for a super-admin.
-        if (App.theme && App.theme.mountSettings) App.theme.mountSettings(themeHost);
-        if (App.labelsEditor && App.labelsEditor.mount) App.labelsEditor.mount(labelsHost);
-        else labelsHost.appendChild(elNote("Labels editor unavailable."));
-      } else {
-        s3.appendChild(elNote("You can set labels and theme once the tenant is created."));
-      }
-      wrap.appendChild(s3);
-
-      // ---- Section 4: features (AI Receptionist on/off) ----
-      const s4 = sectionCard(4, "Features", "Turn tenant features on or off. New tenants start with the AI Receptionist off.", created);
-      if (created) {
-        const fhost = el("div"); fhost.style.marginTop = "8px";
-        const lab = el("label", "field-label", "AI Receptionist"); lab.style.cssText = "margin:0 0 4px";
-        const sel = el("select", "input");
-        sel.innerHTML = voiceOptionsHtml(voiceModeOf(portal));
-        sel.value = voiceModeOf(portal);
-        const cap = el("p", "cell-muted"); cap.style.cssText = "margin:8px 0 0;font-size:13px;";
-        cap.textContent = "Off declines inbound calls. Standard voice is the basic back-and-forth receptionist. Premium voice uses the smooth ElevenLabs voice. Standard and Premium both show the Calls page; Off hides it.";
-        sel.onchange = async () => {
-          const voiceMode = sel.value;
-          try { await App.api(`/api/admin/portals/${portal.id}`, { method: "PATCH", body: JSON.stringify({ voiceMode }) }); portal.voiceMode = voiceMode; portal.receptionistEnabled = voiceMode !== "OFF"; toast(voiceToast(voiceMode)); }
-          catch (err) { toast(err.message, true); sel.value = voiceModeOf(portal); }
-        };
-        fhost.appendChild(lab); fhost.appendChild(sel); fhost.appendChild(cap);
-        s4.appendChild(fhost);
-      } else {
-        s4.appendChild(elNote("You can turn features on once the tenant is created."));
-      }
-      wrap.appendChild(s4);
-
-      // ---- Footer ----
-      const footer = el("div", "page-actions");
-      footer.style.cssText = "margin-top:8px;display:flex;gap:8px;";
-      const finish = el("button", "btn btn-primary btn-sm", "Finish — go to tenant");
-      finish.onclick = async () => {
-        // Resume path (tenant already exists): just enter it.
-        if (created && portal) { restoreRoute(); enterPortal(portal); return; }
-        // Atomic create: the tenant is written ONLY here, on Finish. Abandoning the
-        // screen before this point (Back / nav-away) never persisted anything.
-        const nameEl = document.querySelector("#sp-name");
-        const emailEl = document.querySelector("#sp-email");
-        const name = nameEl ? nameEl.value.trim() : "";
-        const notifyEmail = emailEl ? emailEl.value.trim() : "";
-        if (!name) { toast("Business name is required", true); if (nameEl) nameEl.focus(); return; }
-        finish.disabled = true;
-        try {
-          portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail }) });
-          created = true;
-          toast("Tenant created");
-          restoreRoute();
-          enterPortal(portal); // sets currentPortalId + navigates into the new tenant
-        } catch (err) { toast(err.message, true); finish.disabled = false; }
-      };
-      const back = el("button", "btn btn-ghost btn-sm", "Back to tenants");
-      back.onclick = () => leave(true);
-      footer.appendChild(finish); footer.appendChild(back);
-      wrap.appendChild(footer);
-
-      view().innerHTML = "";
-      view().appendChild(wrap);
-    }
-
-    function elNote(text) {
-      const d = el("div", "cell-muted"); d.style.cssText = "margin-top:8px;font-size:13px;"; d.textContent = text; return d;
-    }
-
-    draw();
-  }
-  function renderUsersStep(host, portal) {
-    host.innerHTML = "";
-
-    // Invite form
-    const form = el("div");
-    form.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;";
-    const emailWrap = el("div"); emailWrap.style.cssText = "flex:1 1 220px;";
-    emailWrap.innerHTML = `<label class="field-label">Email</label>`;
-    const email = el("input", "input"); email.type = "email"; email.placeholder = "teammate@company.com"; email.style.marginBottom = "0";
-    emailWrap.appendChild(email);
-    const roleWrap = el("div"); roleWrap.style.cssText = "flex:0 0 170px;";
-    roleWrap.innerHTML = `<label class="field-label">Role</label>`;
-    const role = el("select", "input"); role.style.marginBottom = "0";
-    role.innerHTML = `<option value="CLIENT_USER">Client user</option><option value="PORTAL_ADMIN">Portal admin</option>`;
-    roleWrap.appendChild(role);
-    const sendBtn = el("button", "btn btn-primary btn-sm", "Create invite link");
-    form.appendChild(emailWrap); form.appendChild(roleWrap); form.appendChild(sendBtn);
-    host.appendChild(form);
-
-    // Where the most-recent invite link is shown (mock stand-in for emailing it).
-    const linkBox = el("div"); linkBox.style.marginTop = "12px"; host.appendChild(linkBox);
-
-    // Pending invites list
-    const listHost = el("div"); listHost.style.marginTop = "16px"; host.appendChild(listHost);
-
-    function showLink(inviteEmail, link) {
-      linkBox.innerHTML = "";
-      const box = el("div", "card");
-      box.style.cssText = "padding:12px 14px;background:var(--surface,#f5f7fa);";
-      box.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:6px">Invite link for ${esc(inviteEmail)}</div>
-        <div class="cell-muted" style="font-size:12px;margin-bottom:8px">Email is mocked in this build, so copy this link and open it yourself to test. (Later, this gets emailed automatically.)</div>`;
-      const row = el("div"); row.style.cssText = "display:flex;gap:8px;align-items:center;";
-      const inp = el("input", "input"); inp.value = link; inp.readOnly = true; inp.style.cssText = "margin-bottom:0;font-family:monospace;font-size:12px;";
-      inp.onclick = () => inp.select();
-      const copy = el("button", "btn btn-ghost btn-sm", "Copy");
-      copy.onclick = () => { inp.select(); try { document.execCommand("copy"); } catch (e) {} toast("Link copied"); };
-      row.appendChild(inp); row.appendChild(copy);
-      box.appendChild(row);
-      linkBox.appendChild(box);
-    }
-
-    async function refreshList() {
-      listHost.innerHTML = `<div class="cell-muted" style="font-size:13px">Loading invites…</div>`;
-      let pending = [];
-      try { pending = await App.api(`/api/admin/portals/${portal.id}/invites`); } catch (e) { listHost.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
-      listHost.innerHTML = "";
-      const title = el("div"); title.style.cssText = "font-size:12.5px;font-weight:600;color:var(--ink-soft,#5b6678);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;";
-      title.textContent = pending.length ? "Pending invites" : "No pending invites yet";
-      listHost.appendChild(title);
-      pending.forEach((inv) => {
-        const r = el("div");
-        r.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border,#eef1f6);";
-        r.innerHTML = `<div style="flex:1 1 auto"><span class="cell-mono">${esc(inv.email)}</span> <span class="pill" style="font-size:11px">${esc(roleLabel(inv.role))}</span></div>`;
-        const resend = el("button", "btn btn-ghost btn-sm", "Get link");
-        resend.onclick = () => createInvite(inv.email, inv.role, true);
-        const revoke = el("button", "link-danger", "Revoke");
-        revoke.onclick = async () => {
-          if (!(await App.ui.confirmModal({ title: "Revoke invite", message: `Revoke the invite for ${inv.email}?`, confirmText: "Revoke" }))) return;
-          try { await App.api(`/api/admin/portals/${portal.id}/invites/${inv.id}/revoke`, { method: "POST" }); toast("Invite revoked"); refreshList(); }
-          catch (e) { toast(e.message, true); }
-        };
-        r.appendChild(resend); r.appendChild(revoke);
-        listHost.appendChild(r);
+    // ---- Step 2: add users (queued into the draft; invited on Finish) ----
+    const s2 = sectionCard(2, "Add users", "Queue teammates to invite. Each gets an invite link when you finish. You can add none, one, or several.");
+    const uForm = el("div"); uForm.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;";
+    uForm.innerHTML = `
+      <div style="flex:1 1 220px"><label class="field-label">Email</label><input id="sp-user-email" class="input" type="email" placeholder="teammate@company.com" style="margin-bottom:0" /></div>
+      <div style="flex:0 0 170px"><label class="field-label">Role</label><select id="sp-user-role" class="input" style="margin-bottom:0"><option value="CLIENT_USER">Client user</option><option value="PORTAL_ADMIN">Portal admin</option></select></div>`;
+    const addUserBtn = el("button", "btn btn-ghost btn-sm", "+ Add to list");
+    uForm.appendChild(addUserBtn);
+    s2.appendChild(uForm);
+    const uList = el("div"); uList.style.marginTop = "10px";
+    s2.appendChild(uList);
+    function paintUsers() {
+      uList.innerHTML = "";
+      if (!draft.users.length) { uList.appendChild(elNote("No users queued yet — that's fine, you can invite people later too.")); return; }
+      draft.users.forEach((u, i) => {
+        const row = el("div"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line,#eee)";
+        row.innerHTML = `<span style="flex:1">${esc(u.email)}</span><span class="pill" style="font-size:11px">${u.role === "PORTAL_ADMIN" ? "Portal admin" : "Client user"}</span>`;
+        const rm = el("button", "btn btn-ghost btn-sm", "Remove");
+        rm.onclick = () => { draft.users.splice(i, 1); paintUsers(); };
+        row.appendChild(rm); uList.appendChild(row);
       });
     }
+    addUserBtn.onclick = () => {
+      const em = document.querySelector("#sp-user-email");
+      const rl = document.querySelector("#sp-user-role");
+      const email = (em.value || "").trim();
+      if (!email || email.indexOf("@") === -1) { toast("Enter a valid email to queue", true); return; }
+      draft.users.push({ email: email, role: rl.value });
+      em.value = ""; paintUsers();
+    };
+    paintUsers();
+    wrap.appendChild(s2);
 
-    async function createInvite(addr, theRole, isResend) {
-      const value = String(addr || "").trim();
-      if (!value) { toast("Enter an email address", true); return; }
-      sendBtn.disabled = true;
+    // ---- Step 3: appearance (theme preset into the draft; applied on Finish) ----
+    const s3 = sectionCard(3, "Appearance", "Pick a starting theme for the tenant.");
+    const tWrap = el("div");
+    tWrap.innerHTML = `<label class="field-label">Theme</label>`;
+    const tSel = el("select", "input");
+    tSel.innerHTML = THEME_PRESETS.map((p) => `<option value="${p[0]}">${esc(p[1])}</option>`).join("");
+    tSel.onchange = () => { draft.themePreset = tSel.value; };
+    tWrap.appendChild(tSel);
+    s3.appendChild(tWrap);
+    wrap.appendChild(s3);
+
+    // ---- Step 4: features (receptionist mode into the draft; applied on Finish) ----
+    const s4 = sectionCard(4, "Features", "Turn on the AI Receptionist. New tenants start with it off.");
+    const vWrap = el("div");
+    vWrap.innerHTML = `<label class="field-label">AI Receptionist</label>`;
+    const vSel = el("select", "input");
+    vSel.innerHTML = voiceOptionsHtml("OFF"); vSel.value = "OFF";
+    vSel.onchange = () => { draft.voiceMode = vSel.value; };
+    vWrap.appendChild(vSel);
+    const vCap = el("p", "cell-muted"); vCap.style.cssText = "margin:8px 0 0;font-size:13px;";
+    vCap.textContent = "Off declines inbound calls. Standard voice is the basic back-and-forth receptionist. Premium voice uses the smooth ElevenLabs voice.";
+    s4.appendChild(vWrap); s4.appendChild(vCap);
+    wrap.appendChild(s4);
+
+    // ---- Footer: Finish creates the tenant, then applies the draft, then enters it ----
+    const footer = el("div", "page-actions");
+    footer.style.cssText = "margin-top:8px;display:flex;gap:8px;";
+    const finish = el("button", "btn btn-primary btn-sm", "Finish — go to tenant");
+    finish.onclick = async () => {
+      const nameEl = document.querySelector("#sp-name");
+      const emailEl = document.querySelector("#sp-email");
+      const name = nameEl ? nameEl.value.trim() : "";
+      const notifyEmail = emailEl ? emailEl.value.trim() : "";
+      if (!name) { toast("Business name is required", true); if (nameEl) nameEl.focus(); return; }
+      finish.disabled = true;
+
+      // 1) Create the tenant. If THIS fails, nothing was persisted — stay on the screen.
+      let portal;
       try {
-        const res = await App.api(`/api/admin/portals/${portal.id}/invites`, { method: "POST", body: JSON.stringify({ email: value, role: theRole }) });
-        toast(isResend ? "New link created" : "Invite created");
-        showLink(res.invite.email, res.link);
-        if (!isResend) email.value = "";
-        refreshList();
-      } catch (e) { toast(e.message, true); }
-      finally { sendBtn.disabled = false; }
-    }
+        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail }) });
+      } catch (err) { toast(err.message || "Could not create the tenant", true); finish.disabled = false; return; }
 
-    sendBtn.onclick = () => createInvite(email.value, role.value, false);
-    refreshList();
+      // 2) Apply the queued draft in sequence. Collect failures instead of throwing, so
+      //    one bad step never hides the others or leaves a silent partial setup.
+      App.state.currentPortalId = portal.id;
+      App.state.currentPortalName = portal.name;
+      const problems = [];
+      if (draft.themePreset) {
+        try { await App.portalApi("/api/theme", { method: "PATCH", body: JSON.stringify({ theme: { active: { mode: "preset", preset: draft.themePreset }, customs: [] } }) }); }
+        catch (e) { problems.push("theme"); }
+      }
+      if (draft.voiceMode && draft.voiceMode !== "OFF") {
+        try { await App.api(`/api/admin/portals/${portal.id}`, { method: "PATCH", body: JSON.stringify({ voiceMode: draft.voiceMode }) }); }
+        catch (e) { problems.push("receptionist"); }
+      }
+      let invited = 0;
+      for (const u of draft.users) {
+        try { await App.api(`/api/admin/portals/${portal.id}/invites`, { method: "POST", body: JSON.stringify({ email: u.email, role: u.role }) }); invited++; }
+        catch (e) { problems.push("invite " + u.email); }
+      }
+
+      // 3) Report + enter the tenant (never leave an orphan silently).
+      const okMsg = `Tenant created${draft.users.length ? `, ${invited}/${draft.users.length} invite(s) sent` : ""}`;
+      if (problems.length) toast(`${okMsg}. Couldn't apply: ${problems.join(", ")} — you can finish those inside the tenant.`, true);
+      else toast(okMsg);
+      enterPortal(portal); // sets currentPortalId + navigates into the new tenant
+    };
+    const back = el("button", "btn btn-ghost btn-sm", "Back to tenants");
+    back.onclick = () => leave(true);
+    footer.appendChild(finish); footer.appendChild(back);
+    wrap.appendChild(footer);
+
+    view().innerHTML = "";
+    view().appendChild(wrap);
   }
-
   // ---------------- Users ----------------
   async function renderUsers() {
     loading();
