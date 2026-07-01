@@ -1505,11 +1505,13 @@ apiRouter.patch("/settings", async (req: Request, res: Response) => {
     res.status(403).json({ error: "Not authorized to change portal settings" });
     return;
   }
-  const { name, businessType, phoneNumber, notifyEmail, greeting } = (req.body ?? {}) as Record<string, any>;
+  const { name, notifyEmail } = (req.body ?? {}) as Record<string, any>;
   try {
-    // NOTE: the email/phone identity rule (requireEmail) is intentionally NOT
-    // accepted here. It can only be changed by a SUPER_ADMIN via /api/admin/portals.
-    const updated = await updatePortal(tenantId, { name, businessType, phoneNumber, notifyEmail, greeting });
+    // Only name + notifyEmail are set from Business Profile now. greeting and
+    // businessType are dead (not read anywhere) so they're no longer forwarded;
+    // the phone number is set under Integrations (Twilio), not here. requireEmail
+    // is hard-set and never accepted here.
+    const updated = await updatePortal(tenantId, { name, notifyEmail });
     auditEvent(req, tenantId, EVENT_TYPES.SettingChanged, { setting: "business_info" });
     res.json({ ok: true, portal: { id: updated.id } });
   } catch (err) {

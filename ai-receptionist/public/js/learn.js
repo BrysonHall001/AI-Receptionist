@@ -112,6 +112,15 @@
       cat: "Contacts",
       items: [
         {
+          id: "contact-identity",
+          title: "How contacts are identified (email vs. phone)",
+          blocks: [
+            { p: "Every contact you add manually or bring in through an import must have a unique email address — that's how the system keeps people from being entered twice." },
+            { p: "Contacts created automatically from phone calls are the exception: they're saved by phone number, so a caller who never gives an email still gets captured. You can always add their email later." },
+            { tip: "So if you're typing in a new contact or importing a list and it asks for an email, that's expected. Phone-call contacts don't need one." },
+          ],
+        },
+        {
           id: "view-contacts",
           title: "Viewing contacts and opening a profile",
           blocks: [

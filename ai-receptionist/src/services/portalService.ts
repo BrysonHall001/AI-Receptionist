@@ -102,20 +102,15 @@ export async function setTenantNav(
 
 export async function createPortal(input: {
   name: string;
-  businessType?: string;
-  phoneNumber?: string | null;
-  notifyEmail: string;
-  greeting?: string;
-  requireEmail?: boolean;
+  notifyEmail?: string;
 }) {
+  // Create writes only name + (optional) notifyEmail now. greeting, businessType and
+  // requireEmail fall back to their column defaults (they're no longer collected at
+  // creation — greeting/businessType are dead, the identity rule is hard-set on).
   return prisma.tenant.create({
     data: {
       name: input.name,
-      businessType: input.businessType || "general business",
-      phoneNumber: input.phoneNumber || null,
-      notifyEmail: input.notifyEmail,
-      greeting: input.greeting || "Thank you for calling. How can I help you today?",
-      requireEmail: input.requireEmail !== false,
+      notifyEmail: input.notifyEmail || "",
     } as any,
   });
 }

@@ -298,9 +298,12 @@ export async function purgeExpiredContacts(tenantId: string): Promise<number> {
 // Manual create, mass update, merge, dummy generator (per-portal scoped)
 // ============================================================
 
-async function tenantRequiresEmail(tenantId: string): Promise<boolean> {
-  const t = await prisma.tenant.findUnique({ where: { id: tenantId } });
-  return (t as any)?.requireEmail !== false; // default ON
+async function tenantRequiresEmail(_tenantId: string): Promise<boolean> {
+  // Hard-set ON: the per-tenant "contact identity rule" toggle was removed. Email is
+  // always required for manually-added and imported contacts (uniqueness + capture).
+  // Phone-call-origin contacts are exempt because createOrUpdateContact() upserts by
+  // phone and never calls this. The Tenant.requireEmail column is retained but ignored.
+  return true;
 }
 
 /** Case-insensitive email existence check among active (non-deleted) contacts. */

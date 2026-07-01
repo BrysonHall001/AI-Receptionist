@@ -37,13 +37,16 @@ adminRouter.get("/portals/:id", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/portals", async (req: Request, res: Response) => {
-  const { name, businessType, phoneNumber, notifyEmail, greeting, requireEmail } = (req.body ?? {}) as Record<string, any>;
-  if (!name || !notifyEmail) {
-    res.status(400).json({ error: "name and notifyEmail are required" });
+  const { name, notifyEmail } = (req.body ?? {}) as Record<string, any>;
+  if (!name) {
+    res.status(400).json({ error: "name is required" });
     return;
   }
   try {
-    const portal = await createPortal({ name, businessType, phoneNumber: phoneNumber || null, notifyEmail, greeting, requireEmail: requireEmail !== false });
+    // Only name + (optional) notifyEmail are collected at creation now. Business type,
+    // phone, greeting, and the identity rule are no longer set here (dead/decoupled or
+    // set later under Integrations); requireEmail is hard-set true and not accepted.
+    const portal = await createPortal({ name, notifyEmail: notifyEmail || "" });
     logger.info(`Portal created: ${portal.name} (${portal.id})`);
     res.json(portal);
   } catch (err) {
@@ -53,14 +56,13 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
 
 adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
   try {
-    // Whitelist updatable fields. requireEmail (the identity rule) is settable
-    // here because this whole router is SUPER_ADMIN-only.
+    // Whitelist updatable fields. requireEmail (the old identity rule) is no longer
+    // accepted anywhere — it's hard-set true. businessType/greeting are dead and dropped.
     const b = (req.body ?? {}) as Record<string, any>;
     const data: any = {};
-    for (const k of ["name", "businessType", "phoneNumber", "notifyEmail", "greeting", "status"]) {
+    for (const k of ["name", "phoneNumber", "notifyEmail", "status"]) {
       if (b[k] !== undefined) data[k] = b[k];
     }
-    if (typeof b.requireEmail === "boolean") data.requireEmail = b.requireEmail;
     // Voice mode is the authoritative 3-way choice. Validate it server-side and
     // keep the receptionistEnabled boolean mirror in sync (= mode != OFF). If an
     // old client sends only the boolean, map it onto a voiceMode for consistency.

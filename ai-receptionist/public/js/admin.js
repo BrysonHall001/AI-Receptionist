@@ -209,12 +209,14 @@
     App.go("#/dashboard");
   }
 
-  // ===================== Unified portal setup screen =====================
-  // One screen, three sections. Section 1 (basic details) CREATES the portal via
-  // the existing POST /api/admin/portals. Once created, we set
-  // App.state.currentPortalId to the new id — the hinge that makes the reused
-  // users + theme + labels editors target this portal — and unlock sections 2 & 3.
-  // Pass an existing portal to resume setup (section 1 is already done).
+  // ===================== Unified tenant setup screen =====================
+  // ATOMIC CREATE: the tenant is NOT written until the user clicks "Finish". Section 1
+  // only collects the name + optional notify email into the form (a client-side draft);
+  // Finish POSTs /api/admin/portals and then enters the new tenant, where users, theme,
+  // labels, and the receptionist are configured. Because nothing is persisted before
+  // Finish, abandoning the screen (Back / nav-away / tab-close) leaves NO tenant, and no
+  // partial user/theme rows can exist either. (The optional `existingPortal` resume path
+  // — currently unused — keeps its in-screen editors for an already-created tenant.)
   function renderSetupScreen(existingPortal) {
     let portal = existingPortal || null;
     let created = !!existingPortal;
@@ -266,48 +268,17 @@
       const wrap = el("div", "fade-in");
       const head = el("div");
       head.innerHTML = `<h1 class="page-title">${created ? "Set up " + esc(portal.name) : "Create a tenant"}</h1>
-        <p class="cell-muted">Enter the basics to create the tenant, then add users and set its look — all on this screen. Each section saves as you go.</p>`;
+        <p class="cell-muted">Enter the name to create the tenant — then add users, set its look, and turn on the receptionist. Nothing is saved until you click Finish, so you can back out any time before then.</p>`;
       wrap.appendChild(head);
 
-      // ---- Section 1: basic details (creates the portal) ----
-      const s1 = sectionCard(1, "Basic details", "Name, contact rule, and how the receptionist greets callers.", true);
+      // ---- Section 1: basic details (draft only — the tenant is created on Finish) ----
+      const s1 = sectionCard(1, "Basic details", "The tenant's name, and optionally where call summaries go.", true);
       if (!created) {
         const f = el("div");
         f.innerHTML = `
           <label class="field-label">Business name *</label><input id="sp-name" class="input" placeholder="Acme Plumbing" />
-          <label class="field-label">Business type</label><input id="sp-type" class="input" placeholder="home services company" />
-          <label class="field-label">Phone number</label><input id="sp-phone" class="input" placeholder="+19195551234" />
-          <label class="field-label">Notify email *</label><input id="sp-email" class="input" placeholder="owner@acme.com" />
-          <label class="field-label">Greeting</label><textarea id="sp-greet" class="input" rows="2" placeholder="Thanks for calling Acme. How can I help?"></textarea>
-          <label class="field-label">Contact identity rule</label>
-          <select id="sp-rule" class="input">
-            <option value="email">Require unique email (default)</option>
-            <option value="either">Phone or email</option>
-          </select>`;
-        const go = el("button", "btn btn-primary btn-sm", "Create tenant");
-        go.style.marginTop = "14px";
-        go.onclick = async () => {
-          const body = {
-            name: f.querySelector("#sp-name").value.trim(),
-            businessType: f.querySelector("#sp-type").value.trim(),
-            phoneNumber: f.querySelector("#sp-phone").value.trim(),
-            notifyEmail: f.querySelector("#sp-email").value.trim(),
-            greeting: f.querySelector("#sp-greet").value.trim(),
-            requireEmail: f.querySelector("#sp-rule").value === "email",
-          };
-          if (!body.name || !body.notifyEmail) { toast("Name and notify email are required", true); return; }
-          go.disabled = true;
-          try {
-            portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify(body) });
-            created = true;
-            // The hinge: point the reused editors at the brand-new portal.
-            App.state.currentPortalId = portal.id;
-            App.state.currentPortalName = portal.name;
-            toast("Tenant created");
-            draw(); // re-render: lock section 1, unlock sections 2 & 3
-          } catch (err) { toast(err.message, true); go.disabled = false; }
-        };
-        f.appendChild(go);
+          <label class="field-label">Notify email</label><input id="sp-email" class="input" placeholder="owner@acme.com" />
+          <p class="cell-muted" style="font-size:12.5px;margin:8px 0 0">Notify email is where call summaries and notifications go — it's optional and can be added later. Nothing is created until you click <strong>Finish</strong> below; you'll add users, theme, and the receptionist right after.</p>`;
         s1.appendChild(f);
       } else {
         const done = el("div");
@@ -375,8 +346,25 @@
       const footer = el("div", "page-actions");
       footer.style.cssText = "margin-top:8px;display:flex;gap:8px;";
       const finish = el("button", "btn btn-primary btn-sm", "Finish — go to tenant");
-      finish.disabled = !created;
-      finish.onclick = () => { if (portal) { restoreRoute(); enterPortal(portal); } }; // enterPortal sets currentPortalId + navigates
+      finish.onclick = async () => {
+        // Resume path (tenant already exists): just enter it.
+        if (created && portal) { restoreRoute(); enterPortal(portal); return; }
+        // Atomic create: the tenant is written ONLY here, on Finish. Abandoning the
+        // screen before this point (Back / nav-away) never persisted anything.
+        const nameEl = document.querySelector("#sp-name");
+        const emailEl = document.querySelector("#sp-email");
+        const name = nameEl ? nameEl.value.trim() : "";
+        const notifyEmail = emailEl ? emailEl.value.trim() : "";
+        if (!name) { toast("Business name is required", true); if (nameEl) nameEl.focus(); return; }
+        finish.disabled = true;
+        try {
+          portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail }) });
+          created = true;
+          toast("Tenant created");
+          restoreRoute();
+          enterPortal(portal); // sets currentPortalId + navigates into the new tenant
+        } catch (err) { toast(err.message, true); finish.disabled = false; }
+      };
       const back = el("button", "btn btn-ghost btn-sm", "Back to tenants");
       back.onclick = () => leave(true);
       footer.appendChild(finish); footer.appendChild(back);
