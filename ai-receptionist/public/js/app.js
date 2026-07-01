@@ -15,7 +15,7 @@
 
   App.afterLogin = () => {
     if (App.isAdminTier(App.state.me.role)) App.go("#/admin/portals");
-    else App.go("#/dashboard");
+    else App.go(App.firstAvailableNav()); // portal user lands on first available (skips a locked Home Dashboard)
   };
 
   async function logout() {
@@ -110,11 +110,17 @@
   App.firstAvailableNav = function () {
     var order = ["#/dashboard", "#/calls", "#/contacts", "#/jobs", "#/bookings", "#/reports", "#/automations", "#/communication", "#/learn", "#/feedback"];
     for (var i = 0; i < order.length; i++) { if (App.canViewNav(order[i])) return order[i]; }
-    return "#/dashboard"; // ultimate fallback (shouldn't happen)
+    // Nothing viewable (extreme case: every nav page locked). NEVER return a locked page:
+    // fall back to Settings, which isn't a lockable page and always passes canViewNav, so
+    // it renders without bouncing back through the redirect.
+    return "#/settings";
   };
-  // Home Dashboard is never hideable, so there's always a landing page.
+  // Home Dashboard is never COSMETICALLY hideable, so there's normally a landing page —
+  // but an owner LOCK overrides that: a locked page (dashboard included) counts as hidden.
   App.isNavHidden = function (href) {
-    if (href === "#/dashboard") return false;
+    var me = App.state.me;
+    if (me && me.lockedPages && me.lockedPages.indexOf(href) !== -1) return true; // locked -> hidden
+    if (href === "#/dashboard") return false; // otherwise Home Dashboard is never hidden
     return App.navConfig().hidden.indexOf(href) !== -1;
   };
   // Display text for a nav item: record-type items (kind set) keep flowing through
@@ -137,7 +143,10 @@
     cfg.order.forEach((href) => { if (byHref[href] && !seen[href]) { ordered.push(byHref[href]); seen[href] = true; } });
     navList.forEach((it) => { if (!seen[it[0]]) { ordered.push(it); seen[it[0]] = true; } });
     return ordered.filter((it) => {
-      if (it[0] === "#/dashboard") return true;          // always a landing page
+      // Home Dashboard is always shown WITHOUT needing a View area — UNLESS it's locked.
+      // Routing through canViewNav preserves the always-shown behavior when unlocked
+      // (null area -> true) but excludes it when it's in me.lockedPages (lock wins).
+      if (it[0] === "#/dashboard") return App.canViewNav("#/dashboard");
       if (cfg.hidden.indexOf(it[0]) !== -1) return false; // portal-hidden (cosmetic)
       return App.canViewNav(it[0]);                        // must have View (access)
     });
@@ -347,7 +356,7 @@
     try { await App.api("/api/impersonation/start", { method: "POST", body: JSON.stringify(payload) }); }
     catch (e) { App.util.toast(e.message, true); App.state._preImpPortal = null; return; }
     await refreshSession();
-    App.go("#/dashboard"); // land somewhere valid for the (possibly downgraded) role
+    App.go(App.firstAvailableNav()); // land on first available (skips a locked Home Dashboard)
   }
   // Guaranteed exit: hits the real-session-authorized exit endpoint, then refreshes
   // identity + state and lands on the dashboard — even if the call errored, we still
@@ -356,7 +365,7 @@
     try { await App.api("/api/impersonation/exit", { method: "POST" }); }
     catch (e) { /* swallow; still refresh below so we never get stuck */ }
     await refreshSession();
-    App.go("#/dashboard");
+    App.go(App.firstAvailableNav());
   }
 
   let impMenuEl = null;
@@ -570,7 +579,7 @@
 
     // Master (admin) section
     if (path.indexOf("/admin") === 0) {
-      if (!App.isAdminTier(me.role)) return App.go("#/dashboard");
+      if (!App.isAdminTier(me.role)) return App.go(App.firstAvailableNav());
       const sub = path === "/admin/users" ? "users" : path === "/admin/feedback" ? "feedback" : path === "/admin/changelog" ? "changelog" : "portals";
       buildShell("admin", "#/admin/" + sub);
       return App.admin.render(sub);

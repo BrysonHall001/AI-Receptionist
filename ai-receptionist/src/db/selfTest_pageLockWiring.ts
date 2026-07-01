@@ -73,6 +73,16 @@ function main() {
   check(has(adminjs, "draft.lockedPages") && has(adminjs, "lockChecklist(lockHost"), "wizard step 4 collects lockedPages into the draft");
   check(!has(portaljs, "lockedPages"), "no in-portal control writes lockedPages");
 
+  // ---------- (7) the four Home-Dashboard carve-outs now respect the lock ----------
+  console.log("\n(7) Home Dashboard carve-outs respect the lock:");
+  check(has(appjs, 'if (it[0] === "#/dashboard") return App.canViewNav("#/dashboard")'), "FIX 1: applyNavConfig routes dashboard through canViewNav (lock wins)");
+  const isHidden = slice(appjs, "App.isNavHidden = function", "App.navLabel = function");
+  check(has(isHidden, "me.lockedPages") && has(isHidden, "return true"), "FIX 2: isNavHidden reports a locked page (incl. dashboard) as hidden");
+  const firstAvail = slice(appjs, "App.firstAvailableNav = function", "App.isNavHidden = function");
+  check(has(firstAvail, 'return "#/settings"') && !has(firstAvail, 'return "#/dashboard"'), "FIX 3: firstAvailableNav ultimate fallback is #/settings, never a locked page");
+  check(!/App\.go\("#\/dashboard"\)/.test(appjs), "FIX 4: no hard-coded App.go(\"#/dashboard\") landing remains (all use firstAvailableNav)");
+  check((appjs.match(/App\.go\(App\.firstAvailableNav\(\)\)/g) || []).length >= 5, "all entry/redirect landings route through firstAvailableNav");
+
   console.log("\n===========================================");
   if (failures.length === 0) console.log("ALL CHECKS PASSED \u2705  (page-lock wiring)");
   else { console.log(`${failures.length} CHECK(S) FAILED \u274c`); failures.forEach((f) => console.log("   - " + f)); }

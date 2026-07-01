@@ -112,8 +112,12 @@ async function main() {
     };
     const firstAvail = (pv: Record<string, boolean>, locked: string[]) => {
       for (const [href] of NAV_L) if (cvn(pv, locked, href)) return href;
-      return "#/dashboard";
+      return "#/settings"; // matches fixed client: the fallback is never a locked page
     };
+    // Fixed applyNavConfig: Home Dashboard is shown UNLESS locked (via cvn), like any page.
+    const menuOf = (pv: Record<string, boolean>, locked: string[]) => NAV_L.filter(([h]) => cvn(pv, locked, h)).map(([h]) => h);
+    // Fixed isNavHidden: a locked page (dashboard included) counts as hidden.
+    const isHiddenMirror = (locked: string[], href: string) => (locked.indexOf(href) !== -1 ? true : false);
     const pa = { id: "pa", role: "PORTAL_ADMIN", tenantId: tId } as any;
     await updatePortal(tId, { lockedPages: ["#/contacts"] });
     const paPv1 = await permViewFor(pa);
@@ -129,7 +133,19 @@ async function main() {
     await updatePortal(tId, { lockedPages: ["#/dashboard", "#/contacts"] });
     const paPv3 = await permViewFor(pa); const locked3 = await getLockedPages(tId);
     check(firstAvail(paPv3, locked3) === "#/calls", "Dashboard+Contacts locked -> first available is Calls");
-    await updatePortal(tId, { lockedPages: [] }); // leave clean before cleanup
+    // Home-Dashboard carve-outs (the four fixes) now respect the lock.
+    await updatePortal(tId, { lockedPages: ["#/dashboard"] });
+    const paPv4 = await permViewFor(pa); const locked4 = await getLockedPages(tId);
+    check(cvn(paPv4, locked4, "#/dashboard") === false, "locked Home Dashboard: canViewNav false");
+    check(menuOf(paPv4, locked4).indexOf("#/dashboard") === -1, "locked Home Dashboard: excluded from the menu (applyNavConfig)");
+    check(isHiddenMirror(locked4, "#/dashboard") === true, "locked Home Dashboard: isNavHidden true");
+    check(firstAvail(paPv4, locked4) === "#/calls", "locked Home Dashboard: lands on Calls, never the locked dashboard");
+    check(firstAvail(paPv4, ["#/dashboard"]).indexOf("#/dashboard") === -1 || firstAvail(paPv4, ["#/dashboard"]) !== "#/dashboard", "firstAvailableNav never returns a locked href");
+    // Sanity: an UNLOCKED tenant still lands on Home Dashboard (normal case not broken).
+    await updatePortal(tId, { lockedPages: [] });
+    const paPvU = await permViewFor(pa); const lockedU = await getLockedPages(tId);
+    check(firstAvail(paPvU, lockedU) === "#/dashboard", "unlocked: still lands on Home Dashboard");
+    check(menuOf(paPvU, lockedU).indexOf("#/dashboard") !== -1, "unlocked: Home Dashboard present in the menu");
   } catch (e) {
     console.error("\nUNEXPECTED ERROR:", e);
     failures.push("unexpected error: " + (e as Error).message);
