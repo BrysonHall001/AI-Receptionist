@@ -40,14 +40,13 @@ function main() {
   check(has(finishBlock, "problems.push(") && has(finishBlock, "Couldn't apply"), "Finish collects per-step failures and reports them");
   check(has(finishBlock, "enterPortal(portal)"), "Finish still enters the tenant (no orphan left silently)");
 
-  // ---------- (4) Tenants table: split actions + Users column + manage-columns ----------
+  // ---------- (4) Tenants table: clickable-row detail panel + compact actions ----------
   console.log("\n(4) Tenants table fixes:");
   check(has(admin, "const handle = App.table.mount("), "table handle captured");
-  check(has(admin, "App.table.manageColumns(handle"), "manage-columns wired via the shared App.table helper");
-  const manageCol = slice(admin, 'key: "manage"', 'key: "actions"');
-  check(has(manageCol, 'data-act="users"'), "Users is its own column (opens the users view)");
+  check(!has(admin, "App.table.manageColumns"), "manage-columns removed from the tenants table (by request)");
+  check(has(admin, "onRowClick: (p) => renderTenantDetail(p)") && has(admin, "usersSectionInto(usersHost"), "Users management moved into the clickable-row detail panel");
   const actionsCol = slice(admin, 'key: "actions"', "];");
-  check(has(actionsCol, "white-space:nowrap") && has(actionsCol, "inline-flex"), "Open/Suspend are side by side (no vertical stacking)");
+  check(has(actionsCol, 'data-act="open"') && !has(actionsCol, 'data-act="toggle"'), "actions column is a single compact Open-tenant arrow (Suspend moved to the detail panel)");
   check(!has(actionsCol, "flex-wrap:wrap"), "old stacked (flex-wrap) actions removed");
 
   // ---------- (5) shared manage-columns component lives in App.table ----------

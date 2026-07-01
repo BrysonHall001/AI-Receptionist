@@ -46,21 +46,58 @@
   }
 
   // ---------------- Portals ----------------
+  // Master-hub saved filters. The saved-filters SERVER feature is tenant-scoped
+  // (SavedFilter.tenantId is required), and the master hub has no tenant context, so these
+  // persist client-side in localStorage — the same pattern the app uses for other table
+  // view prefs. Same UX as the portal's Saved Filters: save / apply / delete named filter
+  // states via the table handle's getState()/applyState().
+  function adminFiltersKey(view) { return "airec.adminSavedFilters." + view; }
+  function loadAdminFilters(view) { try { return JSON.parse(localStorage.getItem(adminFiltersKey(view)) || "[]") || []; } catch (e) { return []; } }
+  function saveAdminFilters(view, list) { try { localStorage.setItem(adminFiltersKey(view), JSON.stringify(list || [])); } catch (e) {} }
+  function mountAdminSavedFilters(handle, view) {
+    if (!handle || !handle.toolbarLeft) return;
+    const dd = el("div", "saved-wrap");
+    const btn = el("button", "btn btn-ghost btn-sm", "Saved Filters \u25be");
+    const menu = el("div", "saved-menu hidden");
+    dd.appendChild(btn); dd.appendChild(menu);
+    handle.toolbarLeft.appendChild(dd);
+    function paint() {
+      const list = loadAdminFilters(view);
+      menu.innerHTML = "";
+      if (!list.length) menu.appendChild(el("div", "saved-empty", "No saved filters yet"));
+      list.forEach((f, i) => {
+        const row = el("div", "saved-item");
+        const name = el("button", "saved-name", esc(f.name));
+        name.onclick = () => { handle.applyState(f.definition); menu.classList.add("hidden"); toast("Applied \u201c" + f.name + "\u201d"); };
+        const del = el("button", "saved-del", "\u00d7"); del.title = "Delete";
+        del.onclick = (e) => { e.stopPropagation(); const cur = loadAdminFilters(view); cur.splice(i, 1); saveAdminFilters(view, cur); toast("Filter deleted"); paint(); };
+        row.appendChild(name); row.appendChild(del); menu.appendChild(row);
+      });
+      menu.appendChild(el("div", "pop-sep"));
+      const save = el("button", "saved-save", "+ Save current filter\u2026");
+      save.onclick = async () => {
+        const def = handle.getState();
+        if (!def.rules.length && !Object.keys(def.colFilters || {}).length && !def.search) { toast("Set some filters first", true); return; }
+        const name = await App.ui.promptModal({ title: "Save filter", label: "Name this filter", okText: "Save" });
+        if (!name || !name.trim()) return;
+        const cur = loadAdminFilters(view); cur.push({ name: name.trim(), definition: def }); saveAdminFilters(view, cur);
+        toast("Filter saved"); paint();
+      };
+      menu.appendChild(save);
+    }
+    btn.onclick = (e) => { e.stopPropagation(); menu.classList.toggle("hidden"); if (!menu.classList.contains("hidden")) setTimeout(() => document.addEventListener("click", () => menu.classList.add("hidden"), { once: true }), 0); };
+    menu.addEventListener("click", (e) => e.stopPropagation());
+    paint();
+  }
+
   async function renderPortals() {
     loading();
     const portals = await App.api("/api/admin/portals");
     portalsCache = portals;
     const wrap = el("div", "fade-in");
-    const bar = el("div", "page-actions");
-    const create = el("button", "btn btn-primary btn-sm", "+ Create tenant");
-    create.onclick = () => renderSetupScreen();
-    bar.appendChild(create);
-    wrap.appendChild(bar);
 
     // Tenants list — the reusable App.table (same component as Contacts/Records),
-    // so we get search, sort, column filters, and the filter rail for free. The
-    // interactive cells (AI Receptionist control + row actions) are rendered as HTML
-    // and wired via delegation below, since App.table sets cells with innerHTML.
+    // so we get search, sort, column filters, saved filters, and the filter rail for free.
     const tableHost = el("div");
     wrap.appendChild(tableHost);
 
@@ -77,19 +114,10 @@
       { key: "calls", label: "Calls", type: "number", get: (p) => p.calls },
       { key: "contacts", label: "Contacts", type: "number", get: (p) => p.contacts },
       { key: "users", label: "Users", type: "number", get: (p) => p.users },
-      // "Users" opens the tenant's user list; "Page access" opens the owner page-lock
-      // panel — both are its own column so they can be hidden. Neither enters the portal.
-      { key: "manage", label: "Manage", filterable: false, get: () => "",
-        render: (p) => `<span style="display:inline-flex;gap:6px;white-space:nowrap">
-            <button class="btn btn-ghost btn-sm" data-act="users" data-id="${esc(p.id)}">Users</button>
-            <button class="btn btn-ghost btn-sm" data-act="config" data-id="${esc(p.id)}">Page access</button>
-          </span>` },
-      // Real row actions, side by side (no vertical stacking -> single-line rows).
-      { key: "actions", label: "Actions", filterable: false, get: () => "",
-        render: (p) => `<span style="display:inline-flex;gap:6px;white-space:nowrap;align-items:center">
-            <button class="btn btn-primary btn-sm" data-act="open" data-id="${esc(p.id)}">Open tenant →</button>
-            <button class="btn btn-ghost btn-sm" data-act="toggle" data-id="${esc(p.id)}">${p.status === "ACTIVE" ? "Suspend" : "Activate"}</button>
-          </span>` },
+      // Actions column trimmed to a single compact square arrow that enters the portal.
+      // Users, Page access, and Suspend/Activate now live in the row-detail panel (row click).
+      { key: "actions", label: "Open tenant", filterable: false, get: () => "",
+        render: (p) => `<button class="btn btn-primary btn-sm t-openbtn" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant" style="padding:4px 9px;line-height:1;min-width:0;font-size:14px">\u2197</button>` },
     ];
 
     const handle = App.table.mount({
@@ -100,13 +128,31 @@
       scrollX: true,
       defaultSort: "created",
       defaultSortDir: "desc",
+      // Clicking a row (but not an inline control — App.table ignores clicks on
+      // button/select/input/label) opens the admin-side detail panel. It never enters
+      // the portal.
+      onRowClick: (p) => renderTenantDetail(p),
       emptyHtml: `<div class="empty"><div class="empty-emoji">&#127970;</div><h3>No tenants yet</h3><p>Create your first client tenant to get started.</p></div>`,
     });
-    // Same manage-columns control as Contacts/Records (shared App.table helper).
-    App.table.manageColumns(handle, columns, { defaultKeys: columns.map((c) => c.key) });
+
+    // Top button row, left->right: [Filters][Saved filters] … [+ Create tenant][Search].
+    // Filters stays flush-left (it's first in the toolbar-left). Saved filters sits next to
+    // it. Create tenant goes into the right group just before Search. (Manage Columns and
+    // the Manage column were removed by request.)
+    mountAdminSavedFilters(handle, "admin-tenants");
+    const create = el("button", "btn btn-primary btn-sm", "+ Create tenant");
+    create.onclick = () => renderSetupScreen();
+    if (handle.toolbarRight) handle.toolbarRight.insertBefore(create, handle.toolbarRight.firstChild);
+
+    // Caption below the button/search row, above the table (subtle hint).
+    const caption = el("p", "cell-muted");
+    caption.style.cssText = "font-size:12.5px;margin:2px 2px 10px";
+    caption.textContent = "Click a tenant row to edit its properties (page access, users, status).";
+    const tbEl = tableHost.querySelector(".table-toolbar");
+    if (tbEl) tbEl.insertAdjacentElement("afterend", caption); else tableHost.insertBefore(caption, tableHost.firstChild);
 
     // Delegated handlers live on the stable host so they survive App.table's internal
-    // re-renders (sort/filter/search rebuild the rows). Same endpoints as before.
+    // re-renders. AI Receptionist select (change) + the Open-tenant arrow (click).
     const findP = (id) => portalsCache.find((x) => x.id === id);
     tableHost.addEventListener("change", async (e) => {
       const sel = e.target.closest && e.target.closest(".t-voice");
@@ -123,47 +169,32 @@
     tableHost.addEventListener("click", async (e) => {
       const btn = e.target.closest && e.target.closest("[data-act]");
       if (!btn) return;
+      e.stopPropagation(); // don't let the arrow also trigger the row-detail click
       const p = findP(btn.getAttribute("data-id"));
       if (!p) return;
-      const act = btn.getAttribute("data-act");
-      if (act === "users") return renderPortalUsers(p);
-      if (act === "config") return renderTenantConfig(p);
-      if (act === "open") return enterPortal(p);
-      if (act === "toggle") {
-        try {
-          await App.api(`/api/admin/portals/${p.id}`, { method: "PATCH", body: JSON.stringify({ status: p.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }) });
-          toast("Tenant updated");
-          renderPortals();
-        } catch (err) { toast(err.message, true); }
-      }
+      if (btn.getAttribute("data-act") === "open") return enterPortal(p);
     });
 
     view().innerHTML = "";
     view().appendChild(wrap);
   }
 
-  // ---------------- Per-portal Users (from a portal card's "Users" button) ----
-  // Lists and creates users for ONE portal, scoped by ?tenantId. Creation uses the
-  // per-portal endpoint POST /api/users, which clamps the role to portal-admin/
-  // client-user server-side, so only those two roles are offered here.
-  async function renderPortalUsers(portal) {
-    loading();
-    let users = [];
-    try { users = await App.api("/api/users?tenantId=" + encodeURIComponent(portal.id)); } catch (e) { toast(e.message, true); }
-
-    const wrap = el("div", "fade-in");
-    const bar = el("div", "page-actions");
-    const back = el("button", "btn btn-ghost btn-sm", "← Tenants");
-    back.onclick = () => renderPortals();
-    const title = el("div", "page-title", "Users · " + esc(portal.name));
-    title.style.flex = "1";
-    title.style.fontWeight = "600";
+  // ---------------- Per-tenant Users section (rendered inside the detail panel) ----
+  // Lists and creates users for ONE tenant, scoped by ?tenantId. Renders INTO `host` so
+  // it can sit alongside Page access + status in the tenant detail panel. Creation uses
+  // the per-portal endpoint POST /api/users, which clamps the role to portal-admin/
+  // client-user server-side, so only those two roles are offered.
+  async function usersSectionInto(host, portal) {
+    host.innerHTML = "";
+    const head = el("div", "page-actions"); head.style.cssText = "align-items:center;margin-bottom:8px";
+    const h = el("h2", "settings-h", "Users"); h.style.flex = "1";
     const create = el("button", "btn btn-primary btn-sm", "+ Create user");
     create.onclick = () => openCreateUser(portal);
-    bar.appendChild(back);
-    bar.appendChild(title);
-    bar.appendChild(create);
-    wrap.appendChild(bar);
+    head.appendChild(h); head.appendChild(create);
+    host.appendChild(head);
+
+    let users = [];
+    try { users = await App.api("/api/users?tenantId=" + encodeURIComponent(portal.id)); } catch (e) { toast(e.message, true); }
 
     const card = el("div", "card");
     const table = el("table");
@@ -185,7 +216,7 @@
           const rev = el("button", "link-danger", "Revoke");
           rev.onclick = async () => {
             if (!(await App.ui.confirmModal({ title: "Revoke invite", message: `Revoke the pending invite for ${u.email}?`, confirmText: "Revoke" }))) return;
-            try { await App.api("/api/invites/" + u.inviteId + "/revoke?tenantId=" + encodeURIComponent(portal.id), { method: "POST" }); toast("Invite revoked"); renderPortalUsers(portal); }
+            try { await App.api("/api/invites/" + u.inviteId + "/revoke?tenantId=" + encodeURIComponent(portal.id), { method: "POST" }); toast("Invite revoked"); usersSectionInto(host, portal); }
             catch (e) { toast(e.message, true); }
           };
           tr.lastChild.appendChild(rev);
@@ -193,7 +224,7 @@
           const del = el("button", "link-danger", "Remove");
           del.onclick = async () => {
             if (!(await App.ui.confirmModal({ title: "Remove user", message: `Remove ${u.email}?`, confirmText: "Remove" }))) return;
-            try { await App.api("/api/users/" + u.id + "?tenantId=" + encodeURIComponent(portal.id), { method: "DELETE" }); toast("User removed"); renderPortalUsers(portal); }
+            try { await App.api("/api/users/" + u.id + "?tenantId=" + encodeURIComponent(portal.id), { method: "DELETE" }); toast("User removed"); usersSectionInto(host, portal); }
             catch (e) { toast(e.message, true); }
           };
           tr.lastChild.appendChild(del);
@@ -203,9 +234,7 @@
     }
     table.appendChild(tb);
     card.appendChild(table);
-    wrap.appendChild(card);
-    view().innerHTML = "";
-    view().appendChild(wrap);
+    host.appendChild(card);
   }
 
   function enterPortal(p) {
@@ -249,42 +278,68 @@
     return () => Array.from(locked);
   }
 
-  // Admin-side per-tenant "Page access" panel, opened from a Tenants row. It NEVER enters
-  // the portal (no currentPortalId / enterPortal) — it reads GET /portals/:id and PATCHes
-  // {lockedPages}. Owner-only by the admin router guard; no in-portal equivalent exists.
-  async function renderTenantConfig(portalRow) {
+  // Page-access (owner page-lock) SECTION for the tenant detail panel. Returns a node with
+  // the lockable-pages checklist + a Save button. PATCHes {lockedPages}; never enters the
+  // portal. Owner-only by the admin router guard; no in-portal equivalent exists.
+  function pageAccessSection(portal) {
+    const sec = el("div");
+    const h = el("h2", "settings-h", "Page access");
+    sec.appendChild(h);
+    const hint = el("p", "cell-muted"); hint.style.cssText = "font-size:12.5px;margin:0 0 8px";
+    hint.textContent = "Lock pages for this tenant. A locked page is hidden from everyone in the tenant — including its Portal Admin — and can't be reached by direct link or API.";
+    sec.appendChild(hint);
+    const card = el("div", "card"); card.style.cssText = "padding:20px";
+    const listHost = el("div");
+    const getLocked = lockChecklist(listHost, portal.lockedPages || []);
+    card.appendChild(listHost);
+    const save = el("button", "btn btn-primary btn-sm", "Save page access"); save.style.marginTop = "12px";
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ lockedPages: getLocked() }) });
+        portal.lockedPages = getLocked();
+        toast("Page access updated"); save.disabled = false;
+      } catch (e) { toast(e.message, true); save.disabled = false; }
+    };
+    card.appendChild(save);
+    sec.appendChild(card);
+    return sec;
+  }
+
+  // Admin-side per-tenant DETAIL panel, opened by clicking a Tenants row. Composes Page
+  // access + Users + Suspend/Activate. It NEVER enters the portal (no currentPortalId /
+  // enterPortal) — "configure this tenant without entering it". Back returns to the table.
+  async function renderTenantDetail(portalRow) {
     loading();
     let portal;
     try { portal = await App.api("/api/admin/portals/" + encodeURIComponent(portalRow.id)); }
     catch (e) { toast(e.message, true); return renderPortals(); }
 
     const wrap = el("div", "fade-in");
-    const head = el("div");
-    head.innerHTML = `<h1 class="page-title">Page access — ${esc(portal.name)}</h1>
-      <p class="cell-muted">Lock pages for this tenant. A locked page is hidden from everyone in the tenant — including its Portal Admin — and can't be reached by direct link or API. This is controlled only from here; there's no way to change it from inside the portal.</p>`;
-    wrap.appendChild(head);
-
-    const card = el("div", "card"); card.style.cssText = "margin-bottom:16px;padding:20px;";
-    card.appendChild(el("div", "cell-muted", "Locked pages")).style.cssText = "font-weight:600;margin-bottom:4px;";
-    const listHost = el("div");
-    const getLocked = lockChecklist(listHost, portal.lockedPages || []);
-    card.appendChild(listHost);
-    wrap.appendChild(card);
-
-    const footer = el("div", "page-actions"); footer.style.cssText = "margin-top:8px;display:flex;gap:8px;";
-    const save = el("button", "btn btn-primary btn-sm", "Save page access");
-    save.onclick = async () => {
-      save.disabled = true;
-      try {
-        await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ lockedPages: getLocked() }) });
-        toast("Page access updated");
-        renderPortals();
-      } catch (e) { toast(e.message, true); save.disabled = false; }
-    };
-    const back = el("button", "btn btn-ghost btn-sm", "Back to tenants");
+    const bar = el("div", "page-actions"); bar.style.alignItems = "center";
+    const back = el("button", "btn btn-ghost btn-sm", "← Back to tenants");
     back.onclick = () => renderPortals();
-    footer.appendChild(save); footer.appendChild(back);
-    wrap.appendChild(footer);
+    const title = el("div", "page-title", esc(portal.name)); title.style.cssText = "flex:1;font-weight:600";
+    const status = statusBadge(portal.status);
+    const toggle = el("button", "btn btn-ghost btn-sm", portal.status === "ACTIVE" ? "Suspend tenant" : "Activate tenant");
+    toggle.onclick = async () => {
+      toggle.disabled = true;
+      const next = portal.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+      try { await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ status: next }) }); portal.status = next; toast("Tenant updated"); renderTenantDetail(portal); }
+      catch (e) { toast(e.message, true); toggle.disabled = false; }
+    };
+    bar.appendChild(back); bar.appendChild(title); bar.appendChild(status); bar.appendChild(toggle);
+    wrap.appendChild(bar);
+
+    const caption = el("p", "cell-muted"); caption.style.cssText = "margin:-4px 0 16px;font-size:12.5px";
+    caption.textContent = "Configure this tenant’s page access, users, and status. This does not enter the portal.";
+    wrap.appendChild(caption);
+
+    wrap.appendChild(pageAccessSection(portal));
+
+    const usersHost = el("div"); usersHost.style.marginTop = "22px";
+    wrap.appendChild(usersHost);
+    usersSectionInto(usersHost, portal);
 
     view().innerHTML = ""; view().appendChild(wrap);
   }
@@ -589,7 +644,7 @@
         let result;
         if (perPortal) {
           result = await App.api("/api/users?tenantId=" + encodeURIComponent(portal.id), { method: "POST", body: JSON.stringify(body) });
-          overlay.remove(); renderPortalUsers(portal);
+          overlay.remove(); renderTenantDetail(portal);
         } else {
           result = await App.api("/api/admin/users", { method: "POST", body: JSON.stringify(body) });
           overlay.remove(); renderUsers();
@@ -613,7 +668,7 @@
         },
         onSent: (result) => {
           overlay.remove();
-          if (perPortal) renderPortalUsers(portal); else renderUsers();
+          if (perPortal) renderTenantDetail(portal); else renderUsers();
           showInviteResult(email, result && result.link, result && result.emailed);
         },
       });

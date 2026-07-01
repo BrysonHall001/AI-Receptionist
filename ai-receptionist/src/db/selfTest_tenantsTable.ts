@@ -25,9 +25,9 @@ function main() {
   check(has(app, '["#/admin/portals", "Tenants"]'), 'app.js ADMIN_NAV label is "Tenants"');
   check(has(app, '"#/admin/portals": "Tenants"'), 'app.js titleMap label is "Tenants"');
   check(has(app, '"\u2190 All tenants"'), 'app.js back-link is "\u2190 All tenants"');
-  for (const s of ['"+ Create tenant"', '"\u2190 Tenants"', "Create a tenant",
+  for (const s of ['"+ Create tenant"', "Create a tenant",
     "Tenant created", 'toast("Tenant updated")', '"Finish \u2014 go to tenant"',
-    '"Back to tenants"', "No tenants yet", "Open tenant \u2192", "No users in this tenant yet",
+    '"Back to tenants"', "No tenants yet", "Open tenant", "No users in this tenant yet",
     "New tenants start with it off"]) {
     check(has(admin, s), `admin.js has ${JSON.stringify(s)}`);
   }
@@ -53,7 +53,7 @@ function main() {
   check(has(admin, "currentPortalId"), "admin.js currentPortalId intact");
   check(has(admin, "function renderPortals"), "renderPortals fn name intact");
   check(has(admin, "function enterPortal"), "enterPortal fn name intact");
-  check(has(admin, "function renderPortalUsers"), "renderPortalUsers fn name intact");
+  check(has(admin, "function usersSectionInto") && has(admin, "function renderTenantDetail"), "users section + tenant detail panel present (renderPortalUsers folded in)");
   check(has(admin, 'current = "portals"'), 'state current = "portals" intact');
   check(has(admin, "portal-recep-sel"), "portal-recep-sel class reused (not renamed)");
   check(has(admin, '"PORTAL_ADMIN">Portal admin'), "Portal Admin ROLE label intentionally NOT renamed");
@@ -62,10 +62,10 @@ function main() {
   console.log("\n(3) list converted to App.table:");
   check(has(admin, "App.table.mount("), "renderPortals mounts App.table");
   check(!has(admin, "portal-grid") && !has(admin, "portal-card"), "old card grid markup removed");
-  for (const c of ['"Tenant Name"', '"Status"', '"Created"', '"AI Receptionist"', '"Calls"', '"Contacts"', '"Users"', '"Actions"']) {
+  for (const c of ['"Tenant Name"', '"Status"', '"Created"', '"AI Receptionist"', '"Calls"', '"Contacts"', '"Users"', '"Open tenant"']) {
     check(has(admin, c), `table column ${c} present`);
   }
-  check(has(admin, 'data-act="open"') && has(admin, 'data-act="toggle"') && has(admin, 'data-act="users"'), "row actions open/toggle/users present");
+  check(has(admin, String.fromCharCode(100)+"ata-act=\"open\""), "row action: compact Open-tenant arrow present"); check(!has(admin, "data-act=\"toggle\"") && !has(admin, "data-act=\"config\""), "Suspend + Page-access moved out of the table into the detail panel");
   check(has(admin, "t-voice"), "embedded AI Receptionist control present");
   check(has(admin, "JSON.stringify({ voiceMode })"), "voice control still PATCHes voiceMode to /api/admin/portals");
   check(has(admin, 'defaultSort: "created"'), "table defaults to sorting by Created");

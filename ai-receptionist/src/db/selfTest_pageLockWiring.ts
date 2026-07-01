@@ -67,10 +67,11 @@ function main() {
   // ---------- master-hub UI + wizard, no in-portal control ----------
   console.log("\n(6) master-hub UI + create wizard:");
   check(has(adminjs, "LOCKABLE_PAGES") && has(adminjs, '"Jobs & Bookings"'), "lock checklist with Jobs & Bookings as one unit");
-  const cfg = slice(adminjs, "async function renderTenantConfig", "// ===================== Create-tenant wizard");
-  check(has(cfg, '/api/admin/portals/') && has(cfg, "lockedPages: getLocked()"), "config view PATCHes lockedPages");
-  check(!has(cfg, "enterPortal") && !has(cfg, "currentPortalId"), "config view never enters the portal");
-  check(has(adminjs, 'data-act="config"'), "Tenants row has a Page access action");
+  const cfg = slice(adminjs, "function pageAccessSection", "async function renderTenantDetail");
+  check(has(cfg, '/api/admin/portals/') && has(cfg, "lockedPages: getLocked()"), "page-access section PATCHes lockedPages");
+  const detail = slice(adminjs, "async function renderTenantDetail(portalRow)", "view().innerHTML = \"\"; view().appendChild(wrap);\n  }");
+  check(!has(detail, "enterPortal") && !has(detail, "currentPortalId"), "tenant detail panel never enters the portal");
+  check(has(adminjs, "onRowClick: (p) => renderTenantDetail(p)") && has(detail, "pageAccessSection(portal)"), "row click opens the detail panel which hosts Page access");
   check(has(adminjs, "draft.lockedPages") && has(adminjs, "lockChecklist(lockHost"), "wizard step 4 collects lockedPages into the draft");
   check(!/lockedPages\s*:/.test(portaljs) && !has(portaljs, "/api/admin/portals"), "no in-portal control writes lockedPages (portal reads it via helpers only)");
 
@@ -94,7 +95,7 @@ function main() {
   check((learnjs.match(/page: "#\//g) || []).length >= 6, "Learning Center page-specific categories are tagged with their href");
   check(has(portaljs, "types.filter((t) => !App.isRecordTypeLocked(t.key))"), "Fields object-type selector excludes locked record types");
   // Master hub must still show ALL pages in the Page-Access editor (not affected).
-  const cfg2 = slice(adminjs, "async function renderTenantConfig", "// ===================== Create-tenant wizard");
+  const cfg2 = slice(adminjs, "function pageAccessSection", "async function renderTenantDetail");
   check(has(adminjs, "LOCKABLE_PAGES") && !has(cfg2, "isPageLocked") && !has(cfg2, "lockedPages.filter"), "master-hub Page-Access editor lists ALL pages (unfiltered)");
 
   console.log("\n===========================================");
