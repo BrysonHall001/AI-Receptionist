@@ -1,4 +1,24 @@
 import { prisma } from "../db/client";
+import { getLockedPages } from "./portalService";
+
+// Owner page-lock: map each lockable nav href to its permission area (mirror of the
+// client NAV_VIEW_AREA). Home Dashboard -> "dashboard"; Feedback has no area (null) and
+// is enforced by the href-based lockGate + client check instead. Jobs & Bookings both
+// map to "records" (one lock unit at the real level).
+const NAV_AREA_BY_HREF: Record<string, string | null> = {
+  "#/dashboard": "dashboard", "#/calls": "calls", "#/contacts": "contacts",
+  "#/jobs": "records", "#/bookings": "records", "#/reports": "reports",
+  "#/automations": "automations", "#/communication": "communication",
+  "#/learn": "learn", "#/feedback": null,
+};
+
+// The set of permission AREAS locked for a tenant (derived from its locked hrefs).
+export async function lockedAreasForTenant(tenantId: string): Promise<Set<string>> {
+  const pages = await getLockedPages(tenantId);
+  const areas = new Set<string>();
+  for (const href of pages) { const a = NAV_AREA_BY_HREF[href]; if (a) areas.add(a); }
+  return areas;
+}
 
 // ===========================================================================
 // Permission foundation (Batch 1 — server-only, no UI, no enforcement rollout).
@@ -173,6 +193,15 @@ export interface PermUser {
 
 export async function can(user: PermUser | null | undefined, area: string, right: Right): Promise<boolean> {
   if (!user || !user.role) return false;
+  // Owner page-lock (tenant-level ACCESS CEILING). If this area is locked for the user's
+  // tenant, deny it for EVERYONE in that tenant — including a Portal Admin or an
+  // impersonating top-tier actor scoped to the tenant — beating systemCan's full access.
+  // Global owners/super-admins (no tenantId) are unaffected: they set the locks and still
+  // see everything from the master hub.
+  if (user.tenantId) {
+    const locked = await lockedAreasForTenant(user.tenantId);
+    if (locked.has(area)) return false;
+  }
   if (!user.customRoleId) return systemCan(user.role, area, right);
 
   const role = await prisma.portalRole.findUnique({ where: { id: user.customRoleId } } as any).catch(() => null);

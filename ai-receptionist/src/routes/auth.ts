@@ -8,6 +8,7 @@ import { env, smsEnabled } from "../config/env";
 import { logger } from "../utils/logger";
 import { rateLimit } from "../middleware/rateLimit";
 import { can, NAV_VIEW_AREAS } from "../services/permissionService";
+import { getLockedPages } from "../services/portalService";
 
 export const authRouter = Router();
 
@@ -72,7 +73,8 @@ authRouter.get("/me", async (req: Request, res: Response) => {
   // automatically. Cosmetic nav-hide is applied separately on the client.
   const permView: Record<string, boolean> = {};
   for (const area of NAV_VIEW_AREAS) permView[area] = await can(req.user as any, area, "view");
-  res.json({ user: { ...req.user, permView }, features: { smsEnabled: smsEnabled() } });
+  const lockedPages = (req.user as any)?.tenantId ? await getLockedPages((req.user as any).tenantId) : [];
+  res.json({ user: { ...req.user, permView, lockedPages }, features: { smsEnabled: smsEnabled() } });
 });
 
 authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => {

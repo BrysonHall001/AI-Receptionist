@@ -37,7 +37,7 @@ adminRouter.get("/portals/:id", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/portals", async (req: Request, res: Response) => {
-  const { name, notifyEmail } = (req.body ?? {}) as Record<string, any>;
+  const { name, notifyEmail, lockedPages } = (req.body ?? {}) as Record<string, any>;
   if (!name) {
     res.status(400).json({ error: "name is required" });
     return;
@@ -46,7 +46,8 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
     // Only name + (optional) notifyEmail are collected at creation now. Business type,
     // phone, greeting, and the identity rule are no longer set here (dead/decoupled or
     // set later under Integrations); requireEmail is hard-set true and not accepted.
-    const portal = await createPortal({ name, notifyEmail: notifyEmail || "" });
+    // lockedPages (owner page-lock) may be set atomically at creation.
+    const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages });
     logger.info(`Portal created: ${portal.name} (${portal.id})`);
     res.json(portal);
   } catch (err) {
@@ -60,7 +61,7 @@ adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
     // accepted anywhere — it's hard-set true. businessType/greeting are dead and dropped.
     const b = (req.body ?? {}) as Record<string, any>;
     const data: any = {};
-    for (const k of ["name", "phoneNumber", "notifyEmail", "status"]) {
+    for (const k of ["name", "phoneNumber", "notifyEmail", "status", "lockedPages"]) {
       if (b[k] !== undefined) data[k] = b[k];
     }
     // Voice mode is the authoritative 3-way choice. Validate it server-side and

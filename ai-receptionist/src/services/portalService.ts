@@ -2,6 +2,35 @@ import { prisma } from "../db/client";
 import { DEFAULT_VOICE_ID } from "../config/voices";
 import { DEFAULT_TIMEZONE } from "../config/timezones";
 
+// ---- Owner page-lock -------------------------------------------------------
+// The canonical set of lockable left-nav hrefs. Any lockedPages input is filtered
+// to this set so only real nav pages can ever be stored.
+export const LOCKABLE_HREFS = [
+  "#/dashboard", "#/calls", "#/contacts", "#/jobs", "#/bookings",
+  "#/reports", "#/automations", "#/communication", "#/learn", "#/feedback",
+];
+export function sanitizeLockedPages(input: any): string[] {
+  if (!Array.isArray(input)) return [];
+  const set = new Set<string>();
+  for (const h of input) if (typeof h === "string" && LOCKABLE_HREFS.includes(h)) set.add(h);
+  return Array.from(set);
+}
+
+// Small TTL cache so can()/lockGate (which run per gated request) don't hit the DB
+// every time. Busted explicitly whenever a tenant's lockedPages is written.
+const _lockCache = new Map<string, { at: number; pages: string[] }>();
+const LOCK_TTL_MS = 5000;
+export function bustLockedPagesCache(tenantId: string) { _lockCache.delete(tenantId); }
+export async function getLockedPages(tenantId: string): Promise<string[]> {
+  if (!tenantId) return [];
+  const hit = _lockCache.get(tenantId);
+  if (hit && Date.now() - hit.at < LOCK_TTL_MS) return hit.pages;
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { lockedPages: true } as any }).catch(() => null);
+  const pages = sanitizeLockedPages((t as any)?.lockedPages);
+  _lockCache.set(tenantId, { at: Date.now(), pages });
+  return pages;
+}
+
 export async function listPortals() {
   const tenants = await prisma.tenant.findMany({
     orderBy: { createdAt: "desc" },
@@ -21,6 +50,7 @@ export async function listPortals() {
     calls: t._count?.callSessions ?? 0,
     contacts: t._count?.contacts ?? 0,
     users: t._count?.users ?? 0,
+    lockedPages: sanitizeLockedPages((t as any).lockedPages),
     createdAt: t.createdAt.toISOString(),
   }));
 }
@@ -36,6 +66,7 @@ export async function getPortal(id: string) {
     notifyEmail: t.notifyEmail,
     greeting: t.greeting,
     labels: (t as any).labels ?? {},
+    lockedPages: sanitizeLockedPages((t as any).lockedPages),
     status: t.status,
     requireEmail: (t as any).requireEmail !== false,
     receptionistEnabled: (t as any).receptionistEnabled === true,
@@ -103,23 +134,30 @@ export async function setTenantNav(
 export async function createPortal(input: {
   name: string;
   notifyEmail?: string;
+  lockedPages?: string[];
 }) {
   // Create writes only name + (optional) notifyEmail now. greeting, businessType and
   // requireEmail fall back to their column defaults (they're no longer collected at
   // creation — greeting/businessType are dead, the identity rule is hard-set on).
+  // lockedPages (owner page-lock) can be set atomically at creation.
   return prisma.tenant.create({
     data: {
       name: input.name,
       notifyEmail: input.notifyEmail || "",
+      lockedPages: sanitizeLockedPages(input.lockedPages),
     } as any,
   });
 }
 
 export async function updatePortal(
   id: string,
-  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; voiceId: string; timezone: string; aiInstructions: string }>,
+  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; voiceId: string; timezone: string; aiInstructions: string; lockedPages: string[] }>,
 ) {
-  return prisma.tenant.update({ where: { id }, data: data as any });
+  const clean: any = { ...data };
+  if (clean.lockedPages !== undefined) clean.lockedPages = sanitizeLockedPages(clean.lockedPages);
+  const out = await prisma.tenant.update({ where: { id }, data: clean as any });
+  if (clean.lockedPages !== undefined) bustLockedPagesCache(id); // lock changed -> drop cache
+  return out;
 }
 
 // ---- Per-portal theme (branding) -------------------------------------------

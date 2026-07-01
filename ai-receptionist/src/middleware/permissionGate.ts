@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { can, Right } from "../services/permissionService";
+import { getLockedPages } from "../services/portalService";
 
 // ===========================================================================
 // Batch 2 — server-side permission ENFORCEMENT (no UI).
@@ -143,6 +144,52 @@ export async function permissionGate(req: Request, res: Response, next: NextFunc
       : u;
     if (await can(actor, rule.area, rule.right)) { next(); return; }
     res.status(403).json({ error: "Not authorized" });
+  } catch {
+    res.status(403).json({ error: "Not authorized" }); // fail closed
+  }
+}
+
+// ===========================================================================
+// Owner page-lock — API coverage for the endpoints permissionGate leaves UNGATED.
+//
+// The can() short-circuit already 403s every PERM_RULES-gated endpoint of a locked
+// area (contacts/records/communication/automations/calls/dashboard...). This second
+// middleware closes the holes the audit flagged — endpoints with NO gate rule that
+// would otherwise still answer for a locked page: the shared dashboard/analytics
+// widgets (/dashboards, /stats), Feedback (its own role logic), and the operational
+// automations queue (/automations/jobs*). It maps (method-agnostic) path -> the nav
+// href(s) it serves and 403s if ANY is locked for the acting tenant — for EVERYONE,
+// independent of role. Global owners/super-admins (no tenant scope) are unaffected.
+// ===========================================================================
+interface LockRule { re: RegExp; hrefs: string[] }
+const LOCK_RULES: LockRule[] = [
+  // Dashboard + Analytics share these widget/stat endpoints — lock either page and the
+  // shared endpoints close (over-block on purpose: a real lock must never leak).
+  { re: /^\/dashboards(\/|$)/, hrefs: ["#/dashboard", "#/reports"] },
+  { re: /^\/stats$/, hrefs: ["#/dashboard", "#/reports"] },
+  { re: /^\/feedback(\/|$)/, hrefs: ["#/feedback"] },
+  { re: /^\/automations\/jobs(\/|$)/, hrefs: ["#/automations"] },
+];
+
+export async function lockGate(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const p = (req.path || "").replace(/^\/api(?=\/)/, "");
+    const rule = LOCK_RULES.find((r) => r.re.test(p));
+    if (!rule) { next(); return; }
+    // Effective tenant scope (impersonation-aware, mirrors permissionGate). No tenant
+    // scope (a global owner/super-admin) -> never locked.
+    const imp = (req as any).impersonation;
+    const u = (req.user as any) || {};
+    const tenantId = imp && (imp.mode === "act-as-type" || imp.mode === "view-as-user")
+      ? (imp.scopeTenantId ?? u.tenantId ?? null)
+      : (u.tenantId ?? null);
+    if (!tenantId) { next(); return; }
+    const locked = await getLockedPages(tenantId);
+    if (rule.hrefs.some((h) => locked.includes(h))) {
+      res.status(403).json({ error: "Not authorized" });
+      return;
+    }
+    next();
   } catch {
     res.status(403).json({ error: "Not authorized" }); // fail closed
   }

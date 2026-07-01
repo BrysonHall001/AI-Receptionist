@@ -77,9 +77,13 @@
       { key: "calls", label: "Calls", type: "number", get: (p) => p.calls },
       { key: "contacts", label: "Contacts", type: "number", get: (p) => p.contacts },
       { key: "users", label: "Users", type: "number", get: (p) => p.users },
-      // "Users" opens the tenant's user list — its own column so it can be hidden.
+      // "Users" opens the tenant's user list; "Page access" opens the owner page-lock
+      // panel — both are its own column so they can be hidden. Neither enters the portal.
       { key: "manage", label: "Manage", filterable: false, get: () => "",
-        render: (p) => `<button class="btn btn-ghost btn-sm" data-act="users" data-id="${esc(p.id)}">Users</button>` },
+        render: (p) => `<span style="display:inline-flex;gap:6px;white-space:nowrap">
+            <button class="btn btn-ghost btn-sm" data-act="users" data-id="${esc(p.id)}">Users</button>
+            <button class="btn btn-ghost btn-sm" data-act="config" data-id="${esc(p.id)}">Page access</button>
+          </span>` },
       // Real row actions, side by side (no vertical stacking -> single-line rows).
       { key: "actions", label: "Actions", filterable: false, get: () => "",
         render: (p) => `<span style="display:inline-flex;gap:6px;white-space:nowrap;align-items:center">
@@ -123,6 +127,7 @@
       if (!p) return;
       const act = btn.getAttribute("data-act");
       if (act === "users") return renderPortalUsers(p);
+      if (act === "config") return renderTenantConfig(p);
       if (act === "open") return enterPortal(p);
       if (act === "toggle") {
         try {
@@ -214,6 +219,76 @@
     App.go("#/dashboard");
   }
 
+  // ===================== Owner page-lock (master-hub only) =====================
+  // The lockable left-nav pages. Jobs & Bookings share the records area + endpoints, so
+  // they're ONE lock unit (locking hides both nav items and blocks /records*).
+  const LOCKABLE_PAGES = [
+    { label: "Home Dashboard", hrefs: ["#/dashboard"] },
+    { label: "Calls", hrefs: ["#/calls"] },
+    { label: "Contacts", hrefs: ["#/contacts"] },
+    { label: "Jobs & Bookings", hrefs: ["#/jobs", "#/bookings"] },
+    { label: "Analytics", hrefs: ["#/reports"] },
+    { label: "Automations", hrefs: ["#/automations"] },
+    { label: "Communication", hrefs: ["#/communication"] },
+    { label: "Learning Center", hrefs: ["#/learn"] },
+    { label: "Feedback", hrefs: ["#/feedback"] },
+  ];
+  // Build a checklist of lockable pages into `host`, reflecting `lockedHrefs`. A box is
+  // checked when ALL of its hrefs are locked; toggling adds/removes all of them (so the
+  // Jobs & Bookings pair moves together). Returns a getter for the selected hrefs and
+  // calls onChange(hrefs) on every toggle. Shared by the config view + wizard step 4.
+  function lockChecklist(host, lockedHrefs, onChange) {
+    const locked = new Set(lockedHrefs || []);
+    LOCKABLE_PAGES.forEach((pg) => {
+      const row = el("label"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;cursor:pointer;border-top:1px solid var(--line,#eee)";
+      const cb = el("input"); cb.type = "checkbox"; cb.checked = pg.hrefs.every((h) => locked.has(h));
+      cb.onchange = () => { pg.hrefs.forEach((h) => { if (cb.checked) locked.add(h); else locked.delete(h); }); if (onChange) onChange(Array.from(locked)); };
+      row.appendChild(cb); row.appendChild(document.createTextNode(" " + pg.label));
+      host.appendChild(row);
+    });
+    return () => Array.from(locked);
+  }
+
+  // Admin-side per-tenant "Page access" panel, opened from a Tenants row. It NEVER enters
+  // the portal (no currentPortalId / enterPortal) — it reads GET /portals/:id and PATCHes
+  // {lockedPages}. Owner-only by the admin router guard; no in-portal equivalent exists.
+  async function renderTenantConfig(portalRow) {
+    loading();
+    let portal;
+    try { portal = await App.api("/api/admin/portals/" + encodeURIComponent(portalRow.id)); }
+    catch (e) { toast(e.message, true); return renderPortals(); }
+
+    const wrap = el("div", "fade-in");
+    const head = el("div");
+    head.innerHTML = `<h1 class="page-title">Page access — ${esc(portal.name)}</h1>
+      <p class="cell-muted">Lock pages for this tenant. A locked page is hidden from everyone in the tenant — including its Portal Admin — and can't be reached by direct link or API. This is controlled only from here; there's no way to change it from inside the portal.</p>`;
+    wrap.appendChild(head);
+
+    const card = el("div", "card"); card.style.cssText = "margin-bottom:16px;padding:20px;";
+    card.appendChild(el("div", "cell-muted", "Locked pages")).style.cssText = "font-weight:600;margin-bottom:4px;";
+    const listHost = el("div");
+    const getLocked = lockChecklist(listHost, portal.lockedPages || []);
+    card.appendChild(listHost);
+    wrap.appendChild(card);
+
+    const footer = el("div", "page-actions"); footer.style.cssText = "margin-top:8px;display:flex;gap:8px;";
+    const save = el("button", "btn btn-primary btn-sm", "Save page access");
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ lockedPages: getLocked() }) });
+        toast("Page access updated");
+        renderPortals();
+      } catch (e) { toast(e.message, true); save.disabled = false; }
+    };
+    const back = el("button", "btn btn-ghost btn-sm", "Back to tenants");
+    back.onclick = () => renderPortals();
+    footer.appendChild(save); footer.appendChild(back);
+    wrap.appendChild(footer);
+
+    view().innerHTML = ""; view().appendChild(wrap);
+  }
+
   // ===================== Create-tenant wizard (client-side DRAFT) =====================
   // ATOMIC: nothing is written until the user clicks "Finish". All four steps collect
   // into `draft` (name/email, queued user invites, theme preset, receptionist mode).
@@ -222,7 +297,7 @@
   // no theme. Every step is active from the start; there is no "create tenant first" gate.
   function renderSetupScreen() {
     const prior = { id: App.state.currentPortalId, name: App.state.currentPortalName };
-    const draft = { users: [], themePreset: "", voiceMode: "OFF" };
+    const draft = { users: [], themePreset: "", voiceMode: "OFF", lockedPages: [] };
 
     // Built-in theme preset ids (match src/theme/themes.ts). "" = leave the default.
     const THEME_PRESETS = [
@@ -319,6 +394,14 @@
     const vCap = el("p", "cell-muted"); vCap.style.cssText = "margin:8px 0 0;font-size:13px;";
     vCap.textContent = "Off declines inbound calls. Standard voice is the basic back-and-forth receptionist. Premium voice uses the smooth ElevenLabs voice.";
     s4.appendChild(vWrap); s4.appendChild(vCap);
+    // Page access (owner page-lock) — sets the INITIAL locked set into the draft.
+    const lockHost = el("div"); lockHost.style.marginTop = "16px";
+    const lockLab = el("label", "field-label", "Page access"); lockLab.style.cssText = "margin:0 0 2px";
+    const lockNote = el("p", "cell-muted"); lockNote.style.cssText = "margin:0 0 4px;font-size:12.5px;";
+    lockNote.textContent = "Lock pages so this tenant can't see or reach them. You can change this anytime from the tenant's row.";
+    lockHost.appendChild(lockLab); lockHost.appendChild(lockNote);
+    lockChecklist(lockHost, draft.lockedPages, (arr) => { draft.lockedPages = arr; });
+    s4.appendChild(lockHost);
     wrap.appendChild(s4);
 
     // ---- Footer: Finish creates the tenant, then applies the draft, then enters it ----
@@ -336,7 +419,7 @@
       // 1) Create the tenant. If THIS fails, nothing was persisted — stay on the screen.
       let portal;
       try {
-        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail }) });
+        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages }) });
       } catch (err) { toast(err.message || "Could not create the tenant", true); finish.disabled = false; return; }
 
       // 2) Apply the queued draft in sequence. Collect failures instead of throwing, so

@@ -36,7 +36,7 @@ import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/t
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns, assignUserRole } from "../services/userService";
 import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, PER_PORTAL_SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign, effectiveMatrix } from "../services/permissionService";
-import { permissionGate } from "../middleware/permissionGate";
+import { permissionGate, lockGate } from "../middleware/permissionGate";
 import { createInvite, inviteLink, sendInvite, sendCustomInvite, hasInviteLinkToken, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
 import { testRunAutomation, runManualAutomation } from "../automation/engine";
@@ -81,6 +81,7 @@ apiRouter.use((req: Request, res: Response, next: NextFunction) => {
 // tenant scope. A no-op for OWNER/SUPER_ADMIN/AUDITOR/PORTAL_ADMIN (can()=true for
 // them everywhere); applies the intended CLIENT_USER tightening. See permissionGate.
 apiRouter.use(permissionGate);
+apiRouter.use(lockGate); // owner page-lock: closes the ungated holes for locked pages
 
 /** Resolve the tenant the request may read/write, or send 400 and return null. */
 function tenantOr400(req: Request, res: Response): string | null {

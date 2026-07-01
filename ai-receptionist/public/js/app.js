@@ -94,11 +94,23 @@
     "#/feedback": null,
   };
   App.canViewNav = function (href) {
+    // Owner page-lock (beats everything, incl. null-area pages like Dashboard/Feedback):
+    // a locked page is simply not viewable for anyone in the tenant.
+    var me = App.state.me;
+    if (me && me.lockedPages && me.lockedPages.indexOf(href) !== -1) return false;
     var area = App.NAV_VIEW_AREA[href];
     if (!area) return true; // always-visible items (page-load not permission-gated)
-    var pv = App.state.me && App.state.me.permView;
+    var pv = me && me.permView;
     if (!pv) return true; // permissions not loaded yet -> don't hide (matches old default)
     return pv[area] === true;
+  };
+  // First page (in default nav order) the user can actually see — the silent landing
+  // spot when a requested page isn't viewable (locked or no permission). No "locked"
+  // messaging: locked pages simply behave as if they don't exist for the user.
+  App.firstAvailableNav = function () {
+    var order = ["#/dashboard", "#/calls", "#/contacts", "#/jobs", "#/bookings", "#/reports", "#/automations", "#/communication", "#/learn", "#/feedback"];
+    for (var i = 0; i < order.length; i++) { if (App.canViewNav(order[i])) return order[i]; }
+    return "#/dashboard"; // ultimate fallback (shouldn't happen)
   };
   // Home Dashboard is never hideable, so there's always a landing page.
   App.isNavHidden = function (href) {
@@ -620,7 +632,7 @@
       // user has no View permission for sends them to the always-present Home Dashboard.
       // For system roles this never triggers (they have View everywhere), so a hidden
       // page that used to redirect now loads.
-      if (App.canViewNav && App.canViewNav("#" + path) === false) return App.go("#/dashboard");
+      if (App.canViewNav && App.canViewNav("#" + path) === false) return App.go(App.firstAvailableNav());
       buildShell("portal", path === "/settings" ? "#/settings" : "#" + path);
       return App.portal.render(portalViews[path]);
     }

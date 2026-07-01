@@ -49,6 +49,12 @@ model Tenant {
   // Record-type nouns (Contact/Job/...) are NOT stored here — they live on
   // RecordType.label/labelPlural already.
   labels       Json          @default("{}")
+  // Owner-only per-tenant page lock: a string[] of locked nav hrefs (e.g. "#/contacts").
+  // Written ONLY via the admin router (OWNER/SUPER_ADMIN/AUDITOR). A locked page is
+  // hidden from the tenant's menu AND blocked at the API for everyone in the tenant,
+  // including its Portal Admin. Portal-facing writers (/api/labels, /api/settings) never
+  // touch this field.
+  lockedPages  Json          @default("[]")
   // Booking availability config (open hours, appointment durations, buffer).
   // Stored as JSON like `theme`/`labels`. Empty {} means "use the code defaults"
   // (Mon–Fri 9–5, 30-minute appointments, no buffer), so availability computes

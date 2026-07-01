@@ -39,7 +39,7 @@ function main() {
   console.log("\n(2) atomic creation (tenant written only on Finish):");
   const postCount = (admin.match(/\/api\/admin\/portals", \{ method: "POST"/g) || []).length;
   check(postCount === 1, "exactly one create POST in the setup screen");
-  check(has(admin, 'body: JSON.stringify({ name, notifyEmail }) })'), "create POST body is just { name, notifyEmail }");
+  check(has(admin, 'body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages }) })'), "create POST body is { name, notifyEmail, lockedPages }");
   const finishBlock = slice(admin, "finish.onclick = async", "const back = el(");
   check(has(finishBlock, 'method: "POST"'), "the create POST lives in the Finish handler");
   check(!has(admin, '"Create tenant");') || !has(admin, "go.onclick"), "old step-1 inline create button removed");
@@ -63,7 +63,7 @@ function main() {
   console.log("\n(5) requireEmail hard-set on, not settable:");
   const trq = slice(contact, "async function tenantRequiresEmail", "/** Case-insensitive");
   check(has(trq, "return true;"), "tenantRequiresEmail is hard-set to true");
-  check(has(post, "const { name, notifyEmail } =") && has(post, "createPortal({ name, notifyEmail:"), "admin POST accepts only name + notifyEmail (no requireEmail)");
+  check(has(post, "const { name, notifyEmail, lockedPages } =") && has(post, "createPortal({ name, notifyEmail:"), "admin POST accepts name/notifyEmail/lockedPages");
   const patch = slice(adminTs, 'adminRouter.patch("/portals/:id"', "adminRouter.get");
   check(!has(patch, "data.requireEmail =") && !has(patch, '"businessType"') && !has(patch, '"greeting"'), "admin PATCH drops requireEmail + dead businessType/greeting");
 

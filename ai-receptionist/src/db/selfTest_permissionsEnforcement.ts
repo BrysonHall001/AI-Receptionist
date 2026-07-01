@@ -18,6 +18,8 @@
 
 import { prisma, disconnectDb } from "./client";
 import { permissionGate } from "../middleware/permissionGate";
+import { lockGate } from "../middleware/permissionGate";
+import { updatePortal, getLockedPages } from "../services/portalService";
 import { resolveTenantScope } from "../middleware/auth";
 import { createPortalRole } from "../services/permissionService";
 
@@ -39,6 +41,15 @@ async function gate(user: any, method: string, path: string): Promise<{ allowed:
   return { allowed: nexted, status: res.statusCode };
 }
 const userOf = (role: string, tenantId: string | null = "T1", customRoleId: string | null = null) => ({ id: "u", email: "u@x", name: "U", role, tenantId, customRoleId });
+
+// Drive the REAL lockGate (owner page-lock coverage for ungated endpoints).
+async function lockDrive(user: any, method: string, path: string): Promise<{ allowed: boolean; status: number | null }> {
+  let nexted = false;
+  const req: any = { method, path, user };
+  const res: any = { statusCode: null as number | null, status(c: number) { this.statusCode = c; return this; }, json() { return this; } };
+  await lockGate(req, res, () => { nexted = true; });
+  return { allowed: nexted, status: res.statusCode };
+}
 
 // Representative gated routes per area (method, path, label).
 const GATED: Array<[string, string, string]> = [
@@ -158,6 +169,30 @@ async function main() {
     check(resolveTenantScope(reqClient) === "A", "CLIENT_USER locked to own tenant A (ignores requested B)");
     const reqAdmin: any = { user: { role: "SUPER_ADMIN", tenantId: "A" }, query: { tenantId: "B" }, body: {} };
     check(resolveTenantScope(reqAdmin) === "B", "SUPER_ADMIN may target requested tenant B (cross-tenant, unchanged)");
+
+    // ---- (F) Owner page-lock at the API — beats Portal Admin + closes ungated holes ----
+    console.log("\n(F) owner page-lock at the gate (Portal Admin, incl. ungated holes):");
+    const pa = () => userOf("PORTAL_ADMIN", tId);
+    // Baseline: an unlocked Portal Admin passes everything.
+    check((await gate(pa(), "GET", "/contacts")).allowed, "baseline: Portal Admin passes GET /contacts (unlocked)");
+    check((await lockDrive(pa(), "POST", "/dashboards")).allowed, "baseline: Portal Admin passes POST /dashboards (unlocked)");
+    // Lock Contacts, Dashboard/Analytics, Feedback, Automations.
+    await updatePortal(tId, { lockedPages: ["#/contacts", "#/dashboard", "#/reports", "#/feedback", "#/automations"] });
+    // permissionGate (via can() short-circuit) 403s gated endpoints of locked areas.
+    const gc = await gate(pa(), "GET", "/contacts");
+    check(!gc.allowed && gc.status === 403, "locked Contacts -> GET /contacts 403 for PORTAL_ADMIN (beats systemCan)");
+    // lockGate 403s the previously-UNGATED endpoints.
+    for (const [m, p, label] of [["POST", "/dashboards", "dashboards mutation"], ["PATCH", "/dashboards/x", "dashboards mutation"], ["GET", "/stats", "stats"], ["GET", "/feedback", "feedback"], ["POST", "/feedback/x/messages", "feedback write"], ["POST", "/automations/jobs/process", "automations queue"]] as [string, string, string][]) {
+      const r = await lockDrive(pa(), m, p);
+      check(!r.allowed && r.status === 403, `locked -> ${m} ${p} 403 (${label})`);
+    }
+    // A GLOBAL owner (no tenant scope) is unaffected by the lock.
+    check((await gate(userOf("OWNER", null), "GET", "/contacts")).allowed, "global OWNER (no tenantId) still passes locked Contacts");
+    check((await lockDrive(userOf("OWNER", null), "POST", "/dashboards")).allowed, "global OWNER unaffected by lockGate");
+    // Unlocked area still fine for the Portal Admin.
+    check((await gate(pa(), "GET", "/calls")).allowed, "unlocked Calls still passes for PORTAL_ADMIN");
+    await updatePortal(tId, { lockedPages: [] }); // leave clean
+    check((await getLockedPages(tId)).length === 0, "lock cleared before cleanup");
   } catch (e) {
     console.error("\nUNEXPECTED ERROR:", e);
     failures.push("unexpected error: " + (e as Error).message);

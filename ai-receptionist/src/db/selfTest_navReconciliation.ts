@@ -19,6 +19,7 @@
 
 import { prisma, disconnectDb } from "./client";
 import { can, createPortalRole, NAV_VIEW_AREAS } from "../services/permissionService";
+import { updatePortal, getLockedPages } from "../services/portalService";
 
 const db = prisma as any;
 const T_NAME = "__SELFTEST_NAV__";
@@ -99,6 +100,36 @@ async function main() {
     check(navLabel(labels, "#/contacts", "Contacts") === "Clients", "renamed #/contacts shows custom label \"Clients\"");
     check(navLabel(labels, "#/calls", "Calls") === "Calls", "un-renamed #/calls falls back to \"Calls\"");
     check(navLabel({ "#/contacts": "   " }, "#/contacts", "Contacts") === "Contacts", "blank override falls back to default");
+
+    // ---- (E) owner page-lock flows through can() -> permView -> menu + fallthrough ----
+    console.log("\n(E) owner page-lock (menu + fallthrough):");
+    const NAV_L: [string, string | null][] = [["#/dashboard", "dashboard"], ["#/calls", "calls"], ["#/contacts", "contacts"], ["#/jobs", "records"], ["#/bookings", "records"], ["#/reports", "reports"], ["#/automations", "automations"], ["#/communication", "communication"], ["#/learn", "learn"], ["#/feedback", null]];
+    const cvn = (pv: Record<string, boolean>, locked: string[], href: string) => {
+      if (locked.indexOf(href) !== -1) return false;                 // owner lock (any page)
+      const a = (NAV_L.find((n) => n[0] === href) || [])[1] as string | null | undefined;
+      if (!a) return true;                                           // null-area -> visible unless locked
+      return pv[a] === true;
+    };
+    const firstAvail = (pv: Record<string, boolean>, locked: string[]) => {
+      for (const [href] of NAV_L) if (cvn(pv, locked, href)) return href;
+      return "#/dashboard";
+    };
+    const pa = { id: "pa", role: "PORTAL_ADMIN", tenantId: tId } as any;
+    await updatePortal(tId, { lockedPages: ["#/contacts"] });
+    const paPv1 = await permViewFor(pa);
+    const locked1 = await getLockedPages(tId);
+    check(paPv1["contacts"] === false, "locked contacts -> permView.contacts false even for PORTAL_ADMIN");
+    check(cvn(paPv1, locked1, "#/contacts") === false, "locked contacts absent from Portal-Admin menu");
+    check(cvn(paPv1, locked1, "#/calls") === true, "unlocked calls still in menu");
+    // Null-area page (Feedback) locks via lockedPages even without a permission area.
+    await updatePortal(tId, { lockedPages: ["#/feedback"] });
+    const paPv2 = await permViewFor(pa); const locked2 = await getLockedPages(tId);
+    check(cvn(paPv2, locked2, "#/feedback") === false, "locked Feedback (null-area) hidden via lockedPages");
+    // Fallthrough: Dashboard locked -> land on first available (Calls).
+    await updatePortal(tId, { lockedPages: ["#/dashboard", "#/contacts"] });
+    const paPv3 = await permViewFor(pa); const locked3 = await getLockedPages(tId);
+    check(firstAvail(paPv3, locked3) === "#/calls", "Dashboard+Contacts locked -> first available is Calls");
+    await updatePortal(tId, { lockedPages: [] }); // leave clean before cleanup
   } catch (e) {
     console.error("\nUNEXPECTED ERROR:", e);
     failures.push("unexpected error: " + (e as Error).message);
