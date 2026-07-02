@@ -168,6 +168,13 @@ thead th {
 }
 tbody td { padding: 13px 18px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: middle; }
 tbody tr:last-child td { border-bottom: none; }
+
+/* Compact rows for the master-hub Tenants table ONLY (scoped via .tenants-table-host,
+   the container admin.js mounts that table into). Reduces vertical cell padding ~35-40%
+   (13px -> 8px body, 11px -> 7px header) so the tenant list is denser; horizontal
+   padding and all other tables (Contacts, Records, etc.) are unchanged. */
+.tenants-table-host tbody td { padding-top: 8px; padding-bottom: 8px; }
+.tenants-table-host thead th { padding-top: 7px; padding-bottom: 7px; }
 tbody tr { cursor: pointer; transition: background 0.1s ease; }
 tbody tr:hover { background: var(--row-hover); }
 .cell-strong { font-weight: 600; }

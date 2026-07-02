@@ -98,13 +98,13 @@
 
     // Tenants list — the reusable App.table (same component as Contacts/Records),
     // so we get search, sort, column filters, saved filters, and the filter rail for free.
-    const tableHost = el("div");
+    // The `tenants-table-host` class scopes the compact-row CSS override to THIS table only.
+    const tableHost = el("div", "tenants-table-host");
     wrap.appendChild(tableHost);
 
-    const mark = (name) => `<span style="flex:0 0 24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;background:var(--surface,#eef1f6);color:var(--ink-soft,#5b6678)">${esc((name || "?").charAt(0).toUpperCase())}</span>`;
     const columns = [
       { key: "name", label: "Tenant Name", get: (p) => p.name,
-        render: (p) => `<div style="display:flex;align-items:center;gap:8px">${mark(p.name)}<span style="font-weight:600">${esc(p.name)}</span></div>` },
+        render: (p) => `<span style="font-weight:600">${esc(p.name)}</span>` },
       { key: "status", label: "Status", get: (p) => (p.status === "ACTIVE" ? "Active" : "Suspended"),
         render: (p) => statusBadge(p.status) },
       { key: "created", label: "Created", type: "date", get: (p) => p.createdAt, text: (p) => fmtDate(p.createdAt),
@@ -120,10 +120,23 @@
         render: (p) => `<button class="btn btn-primary btn-sm t-openbtn" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant" style="padding:4px 9px;line-height:1;min-width:0;font-size:14px">\u2197</button>` },
     ];
 
+    // Persist the Tenants column layout per-browser, mirroring how portal.js persists
+    // record-table layouts (recordLayoutKey/loadRecordLayout/saveRecordLayout): load the
+    // saved order + hidden set on mount and write it back on save, so hiding/reordering a
+    // column survives navigating away and back — identical behavior to the portal tables.
+    const TENANTS_COLS_KEY = "admincols:tenants";
+    const loadTenantsLayout = () => { try { return JSON.parse(localStorage.getItem(TENANTS_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
+    const saveTenantsLayout = (layout) => { try { localStorage.setItem(TENANTS_COLS_KEY, JSON.stringify(layout || {})); } catch (e) {} };
+    const tenantsDefaultKeys = columns.map((c) => c.key);
+    const tenantsLayout = loadTenantsLayout();
+    // Apply the saved layout to the columns we mount with (like portal.js applies it
+    // before mount) so there's no flash of the default layout before it settles.
+    const initialColumns = App.table.applyColumnLayout(columns, tenantsLayout, tenantsDefaultKeys);
+
     const handle = App.table.mount({
       container: tableHost,
       rows: portals,
-      columns: columns,
+      columns: initialColumns,
       rowId: (p) => p.id,
       scrollX: true,
       defaultSort: "created",
@@ -145,7 +158,14 @@
     if (handle.toolbarRight) handle.toolbarRight.insertBefore(create, handle.toolbarRight.firstChild);
     // Standard shared Manage Columns control (same component as Contacts/Records). Because
     // it inserts before toolbarRight.firstChild (now Create), it lands left of Create.
-    App.table.manageColumns(handle, columns, { defaultKeys: columns.map((c) => c.key) });
+    // Pass the loaded order/hidden so it opens showing the persisted layout, and onSave
+    // writes changes back to localStorage.
+    App.table.manageColumns(handle, columns, {
+      defaultKeys: tenantsDefaultKeys,
+      order: tenantsLayout.order,
+      hidden: tenantsLayout.hidden,
+      onSave: (newLayout) => saveTenantsLayout(newLayout),
+    });
 
     // Caption below the button/search row, above the table. Its left edge must line up
     // with the Filters button and the first table column — both of which sit 18px in

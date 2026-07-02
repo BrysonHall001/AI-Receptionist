@@ -60,6 +60,14 @@ function main() {
   check(!has(portals, 'data-act="toggle"'), "Suspend removed from the actions column (moved to detail panel)");
   check(!has(admin, "function renderPortalUsers") && !has(admin, "function renderTenantConfig"), "old standalone Users/Page-access views folded into the detail panel");
 
+  console.log("\n(6) column layout persistence + badge removal:");
+  check(has(portals, "admincols:tenants"), "tenants column layout uses a stable localStorage key (admincols:tenants)");
+  check(has(portals, "localStorage.getItem(TENANTS_COLS_KEY") && has(portals, "localStorage.setItem(TENANTS_COLS_KEY"), "layout loaded on mount + saved on change (per-browser, like portal record tables)");
+  check(has(portals, "order: tenantsLayout.order") && has(portals, "hidden: tenantsLayout.hidden") && has(portals, "onSave:"), "saved order/hidden passed into manageColumns + onSave persists changes");
+  check(has(portals, "App.table.applyColumnLayout(columns, tenantsLayout"), "saved layout applied to the initial mount columns (no default-layout flash)");
+  check(!has(portals, "const mark =") && !has(portals, "border-radius:50%") && !has(portals, "charAt(0).toUpperCase()"), "initials badge helper + markup removed from tenant name cells");
+  check(has(portals, 'render: (p) => `<span style="font-weight:600">${esc(p.name)}</span>`'), "name cell renders just the name (font-weight kept, no badge wrapper)");
+
   console.log("\n=====================================");
   if (failures.length === 0) console.log("ALL CHECKS PASSED \u2705  (tenants table UI)");
   else { console.log(`${failures.length} CHECK(S) FAILED \u274c`); failures.forEach((f) => console.log("   - " + f)); }
