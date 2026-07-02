@@ -38,15 +38,23 @@ function main() {
   const detail = slice(admin, "async function renderTenantDetail", "async function ");
   check(has(admin, "async function renderTenantDetail"), "renderTenantDetail exists");
   check(has(admin, "renderTenantDetail") && !/renderTenantDetail[\s\S]*enterPortal/.test(slice(admin, "async function renderTenantDetail(portalRow)", "view().innerHTML")), "detail panel never enters the portal (no enterPortal/currentPortalId)");
-  const detailBody = slice(admin, "async function renderTenantDetail(portalRow)", "view().innerHTML = \"\"; view().appendChild(wrap);\n  }");
+  const detailBody = slice(admin, "async function renderTenantDetail(portalRow)", "function renderSetupScreen()");
   check(!has(detailBody, "enterPortal") && !has(detailBody, "currentPortalId"), "detail panel body has no enterPortal / currentPortalId");
   check(has(detailBody, "pageAccessSection(portal)"), "detail panel includes Page access");
   check(has(detailBody, "usersSectionInto(usersHost"), "detail panel includes Users");
   check(has(detailBody, "Suspend tenant") || has(detailBody, "Activate tenant"), "detail panel includes Suspend/Activate");
+  // Loading-hang fix: status goes through innerHTML (statusBadge returns a string, not a
+  // node), the whole build is guarded, and the shell renders before Users fills async.
+  check(has(detailBody, "status.innerHTML = statusBadge(portal.status)") && !has(detailBody, "appendChild(statusBadge"), "status rendered via innerHTML (not appendChild of a string)");
+  check(has(detailBody, "try {") && has(detailBody, "Couldn’t open this tenant"), "detail build is guarded — a render error shows an error state, never a permanent spinner");
+  check(/view\(\)\.innerHTML = "";[\s\S]*view\(\)\.appendChild\(wrap\);[\s\S]*usersSectionInto\(usersHost, portal\)\.catch/.test(detailBody), "shell renders first, then Users fills asynchronously (with its own catch)");
+
+  console.log("\n(4b) caption alignment:");
+  check(has(portals, 'margin:4px 0 10px 0"'), "caption is flush-left (no left indent)");
 
   console.log("\n(5) removals + trimmed actions:");
   check(!has(admin, 'label: "Manage"'), "Manage column removed");
-  check(!has(admin, "App.table.manageColumns"), "Manage Columns button removed");
+  check(has(admin, "App.table.manageColumns(handle"), "Manage Columns button present (shared component)");
   check(has(portals, 'label: "Open tenant"'), "Actions column header renamed to 'Open tenant'");
   check(has(portals, "data-act=\"open\"") && has(portals, "t-openbtn"), "Open-tenant arrow button present (compact, single action)");
   check(!has(portals, 'data-act="toggle"'), "Suspend removed from the actions column (moved to detail panel)");

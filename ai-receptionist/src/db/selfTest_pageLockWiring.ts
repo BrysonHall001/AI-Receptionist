@@ -71,7 +71,7 @@ function main() {
   check(has(adminjs, "LOCKABLE_PAGES") && has(adminjs, '"Jobs & Bookings"'), "lock checklist with Jobs & Bookings as one unit");
   const cfg = slice(adminjs, "function pageAccessSection", "async function renderTenantDetail");
   check(has(cfg, '/api/admin/portals/') && has(cfg, "lockedPages: getLocked()"), "page-access section PATCHes lockedPages");
-  const detail = slice(adminjs, "async function renderTenantDetail(portalRow)", "view().innerHTML = \"\"; view().appendChild(wrap);\n  }");
+  const detail = slice(adminjs, "async function renderTenantDetail(portalRow)", "function renderSetupScreen()");
   check(!has(detail, "enterPortal") && !has(detail, "currentPortalId"), "tenant detail panel never enters the portal");
   check(has(adminjs, "onRowClick: (p) => renderTenantDetail(p)") && has(detail, "pageAccessSection(portal)"), "row click opens the detail panel which hosts Page access");
   check(has(adminjs, "draft.lockedPages") && has(adminjs, "lockChecklist(lockHost"), "wizard step 4 collects lockedPages into the draft");

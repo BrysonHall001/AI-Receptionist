@@ -135,18 +135,22 @@
       emptyHtml: `<div class="empty"><div class="empty-emoji">&#127970;</div><h3>No tenants yet</h3><p>Create your first client tenant to get started.</p></div>`,
     });
 
-    // Top button row, left->right: [Filters][Saved filters] … [+ Create tenant][Search].
-    // Filters stays flush-left (it's first in the toolbar-left). Saved filters sits next to
-    // it. Create tenant goes into the right group just before Search. (Manage Columns and
-    // the Manage column were removed by request.)
+    // Top button row, left->right: [Filters][Saved filters] … [Manage columns][+ Create tenant][Search].
+    // Filters stays flush-left (first in toolbar-left); Saved filters sits beside it. In the
+    // right group we insert Create BEFORE Search, then Manage Columns before Create — so the
+    // shared column manager ends up to the LEFT of Create tenant.
     mountAdminSavedFilters(handle, "admin-tenants");
     const create = el("button", "btn btn-primary btn-sm", "+ Create tenant");
     create.onclick = () => renderSetupScreen();
     if (handle.toolbarRight) handle.toolbarRight.insertBefore(create, handle.toolbarRight.firstChild);
+    // Standard shared Manage Columns control (same component as Contacts/Records). Because
+    // it inserts before toolbarRight.firstChild (now Create), it lands left of Create.
+    App.table.manageColumns(handle, columns, { defaultKeys: columns.map((c) => c.key) });
 
-    // Caption below the button/search row, above the table (subtle hint).
+    // Caption below the button/search row, above the table — flush-left with Filters/table
+    // (no left margin/indent).
     const caption = el("p", "cell-muted");
-    caption.style.cssText = "font-size:12.5px;margin:2px 2px 10px";
+    caption.style.cssText = "font-size:12.5px;margin:4px 0 10px 0";
     caption.textContent = "Click a tenant row to edit its properties (page access, users, status).";
     const tbEl = tableHost.querySelector(".table-toolbar");
     if (tbEl) tbEl.insertAdjacentElement("afterend", caption); else tableHost.insertBefore(caption, tableHost.firstChild);
@@ -315,33 +319,48 @@
     try { portal = await App.api("/api/admin/portals/" + encodeURIComponent(portalRow.id)); }
     catch (e) { toast(e.message, true); return renderPortals(); }
 
-    const wrap = el("div", "fade-in");
-    const bar = el("div", "page-actions"); bar.style.alignItems = "center";
-    const back = el("button", "btn btn-ghost btn-sm", "← Back to tenants");
-    back.onclick = () => renderPortals();
-    const title = el("div", "page-title", esc(portal.name)); title.style.cssText = "flex:1;font-weight:600";
-    const status = statusBadge(portal.status);
-    const toggle = el("button", "btn btn-ghost btn-sm", portal.status === "ACTIVE" ? "Suspend tenant" : "Activate tenant");
-    toggle.onclick = async () => {
-      toggle.disabled = true;
-      const next = portal.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
-      try { await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ status: next }) }); portal.status = next; toast("Tenant updated"); renderTenantDetail(portal); }
-      catch (e) { toast(e.message, true); toggle.disabled = false; }
-    };
-    bar.appendChild(back); bar.appendChild(title); bar.appendChild(status); bar.appendChild(toggle);
-    wrap.appendChild(bar);
+    // Guard the whole build so a render error can NEVER leave the spinner up — show a
+    // visible error state instead.
+    try {
+      const wrap = el("div", "fade-in");
+      const bar = el("div", "page-actions"); bar.style.alignItems = "center";
+      const back = el("button", "btn btn-ghost btn-sm", "← Back to tenants");
+      back.onclick = () => renderPortals();
+      const title = el("div", "page-title", esc(portal.name)); title.style.cssText = "flex:1;font-weight:600";
+      // statusBadge() returns an HTML STRING (built for innerHTML / table cells), NOT a DOM
+      // node — so it must go through innerHTML, not appendChild. (This mismatch was the
+      // cause of the permanent "Loading…": appendChild(string) threw before the view swap.)
+      const status = el("span"); status.innerHTML = statusBadge(portal.status);
+      const toggle = el("button", "btn btn-ghost btn-sm", portal.status === "ACTIVE" ? "Suspend tenant" : "Activate tenant");
+      toggle.onclick = async () => {
+        toggle.disabled = true;
+        const next = portal.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+        try { await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ status: next }) }); portal.status = next; toast("Tenant updated"); renderTenantDetail(portal); }
+        catch (e) { toast(e.message, true); toggle.disabled = false; }
+      };
+      bar.appendChild(back); bar.appendChild(title); bar.appendChild(status); bar.appendChild(toggle);
+      wrap.appendChild(bar);
 
-    const caption = el("p", "cell-muted"); caption.style.cssText = "margin:-4px 0 16px;font-size:12.5px";
-    caption.textContent = "Configure this tenant’s page access, users, and status. This does not enter the portal.";
-    wrap.appendChild(caption);
+      const caption = el("p", "cell-muted"); caption.style.cssText = "margin:-4px 0 16px;font-size:12.5px";
+      caption.textContent = "Configure this tenant’s page access, users, and status. This does not enter the portal.";
+      wrap.appendChild(caption);
 
-    wrap.appendChild(pageAccessSection(portal));
+      wrap.appendChild(pageAccessSection(portal));
 
-    const usersHost = el("div"); usersHost.style.marginTop = "22px";
-    wrap.appendChild(usersHost);
-    usersSectionInto(usersHost, portal);
+      const usersHost = el("div"); usersHost.style.marginTop = "22px";
+      usersHost.innerHTML = `<h2 class="settings-h">Users</h2><div class="cell-muted" style="padding:6px">Loading users…</div>`;
+      wrap.appendChild(usersHost);
 
-    view().innerHTML = ""; view().appendChild(wrap);
+      // Render the shell (Back + Suspend + Page access) IMMEDIATELY, then fill Users async
+      // so a slow or failing users fetch can't block or hang the panel.
+      view().innerHTML = ""; view().appendChild(wrap);
+      usersSectionInto(usersHost, portal).catch((e) => {
+        usersHost.innerHTML = `<h2 class="settings-h">Users</h2><div class="card"><p class="cell-muted">Couldn’t load users: ${esc((e && e.message) || "error")}</p></div>`;
+      });
+    } catch (e) {
+      view().innerHTML = `<div class="card"><p class="cell-muted">Couldn’t open this tenant: ${esc((e && e.message) || "error")}</p></div>`;
+      toast((e && e.message) || "Couldn’t open this tenant", true);
+    }
   }
 
   // ===================== Create-tenant wizard (client-side DRAFT) =====================

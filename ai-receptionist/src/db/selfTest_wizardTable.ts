@@ -43,7 +43,7 @@ function main() {
   // ---------- (4) Tenants table: clickable-row detail panel + compact actions ----------
   console.log("\n(4) Tenants table fixes:");
   check(has(admin, "const handle = App.table.mount("), "table handle captured");
-  check(!has(admin, "App.table.manageColumns"), "manage-columns removed from the tenants table (by request)");
+  check(has(admin, "App.table.manageColumns(handle"), "manage-columns restored on the tenants table (shared component)");
   check(has(admin, "onRowClick: (p) => renderTenantDetail(p)") && has(admin, "usersSectionInto(usersHost"), "Users management moved into the clickable-row detail panel");
   const actionsCol = slice(admin, 'key: "actions"', "];");
   check(has(actionsCol, 'data-act="open"') && !has(actionsCol, 'data-act="toggle"'), "actions column is a single compact Open-tenant arrow (Suspend moved to the detail panel)");
