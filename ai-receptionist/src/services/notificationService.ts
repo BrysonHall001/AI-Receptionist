@@ -99,9 +99,11 @@ export async function sendPlainEmail(to: string, subject: string, body: string):
 }
 
 /**
- * Send an HTML email to a contact. `fromEmail` is the logged-in user's address;
- * in real mode we send via the verified domain and set reply-to to that user so
- * replies reach them (sending "as" an arbitrary address needs domain verification).
+ * Send an HTML email to a contact. `fromEmail` is kept for mock-mode logging and
+ * because callers pass it, but it is intentionally NOT mapped to a Reply-To header:
+ * every email sends from (and replies to) the verified domain address (RESEND_FROM).
+ * Setting Reply-To to a personal freemail address triggered a spam penalty
+ * (FREEMAIL_FORGED_REPLYTO), and the domain has no monitored reply mailbox anyway.
  */
 export async function sendRichEmail(input: { to: string; subject: string; html: string; fromEmail: string; fromName?: string | null; attachments?: Array<{ filename: string; content: Buffer | string }> }): Promise<void> {
   if (useMockEmail()) {
@@ -112,7 +114,6 @@ export async function sendRichEmail(input: { to: string; subject: string; html: 
   const { error } = await resend.emails.send({
     from: env.RESEND_FROM,
     to: [input.to],
-    replyTo: input.fromEmail,
     subject: input.subject,
     html: input.html,
     ...(input.attachments && input.attachments.length ? { attachments: input.attachments } : {}),
