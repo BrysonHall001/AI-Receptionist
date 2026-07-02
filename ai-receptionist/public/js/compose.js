@@ -267,7 +267,11 @@
   }
 
   // Picker: search a field, set an optional fallback, insert {{key}} / {{key|fallback}}.
-  function openMergeTagPicker(onInsert) {
+  // scopeApi controls which API merge tags load through (portal-scoped by default, or the
+  // acting user's own via App.api for the master-hub invite). It MUST be passed in — it is
+  // not in this module-level function's scope otherwise (that omission was the
+  // "scopeApi is not defined" crash when opening the picker).
+  function openMergeTagPicker(onInsert, scopeApi) {
     const overlay = el("div", "modal-overlay");
     const m = el("div", "modal"); m.style.cssText = "max-width:440px;width:100%;";
     m.innerHTML = `<div class="modal-head"><h2>Insert merge tag</h2><button class="icon-btn" id="mt-close">&times;</button></div>`;
@@ -299,7 +303,7 @@
       if (!list.children.length) list.appendChild(el("div", "cell-muted", "No matching fields."));
     }
     search.oninput = paint;
-    loadMergeTags(scopeApi).then((t) => { tags = t; paint(); });
+    loadMergeTags(scopeApi || App.portalApi).then((t) => { tags = t; paint(); });
   }
 
   function mount(host, opts) {
@@ -320,7 +324,7 @@
       body.oninput = () => { counter.textContent = body.value.length + " characters"; };
       const api = { getSubject: () => "", setSubject: () => {}, getHTML: () => body.value, getText: () => body.value, setBody: (h) => { body.value = h || ""; body.dispatchEvent(new Event("input")); }, focus: () => body.focus() };
       const actions = el("div", "compose-actions"); host.appendChild(actions);
-      buildActions(actions, "sms", api, null);
+      buildActions(actions, "sms", api, null, scopeApi, opts.signature !== false);
       host.appendChild(body); host.appendChild(counter);
       return api;
     }
@@ -384,7 +388,7 @@
           const idx = range ? range.index : quill.getLength();
           quill.insertText(idx, token, "user");
           quill.setSelection(idx + token.length, 0);
-        });
+        }, scopeApi);
       };
       mtFormats.appendChild(mtBtn);
       tb.appendChild(mtFormats);
@@ -422,7 +426,7 @@
     if (kind === "email") {
       const actions = el("div", "compose-actions");
       host.insertBefore(actions, editorWrap);
-      buildActions(actions, "email", api, subjectInput);
+      buildActions(actions, "email", api, subjectInput, scopeApi, opts.signature !== false);
     }
     return api;
   }
@@ -440,7 +444,13 @@
     });
   }
 
-  function buildActions(actions, kind, api, subjectInput) {
+  // NOTE: buildActions is a MODULE-LEVEL function (sibling of mount), so neither `opts`
+  // nor `scopeApi` is in its scope — they MUST be passed in. (Referencing a bare `scopeApi`
+  // here is exactly what caused the "scopeApi is not defined" error for templates/signature.)
+  // showSignature=false hides the "Insert signature" button (master-hub invite has no place
+  // to create a signature).
+  function buildActions(actions, kind, api, subjectInput, scopeApi, showSignature) {
+    scopeApi = scopeApi || App.portalApi;
     const tplWrap = el("div", "saved-wrap");
     const tplBtn = el("button", "btn btn-ghost btn-sm", "Templates &#9662;");
     const tplMenu = el("div", "saved-menu hidden");
@@ -502,12 +512,18 @@
 
     if (kind !== "email") return;
 
-    const sigBtn = el("button", "btn btn-ghost btn-sm", "Insert signature");
-    sigBtn.onclick = async () => {
-      try { const r = await scopeApi("/api/account/signature"); if (!r || !r.signature) { toast("Set a signature in Settings first", true); return; } api.appendHtml(r.signature); }
-      catch (e) { toast(e.message, true); }
-    };
-    actions.appendChild(sigBtn);
+    // Insert signature — hidden when opts.signature === false. The master-hub invite
+    // composer turns it off because a master-hub owner/super-admin has no Settings screen
+    // to create a personal signature, so the button had nothing to insert. Portal
+    // composers (where a signature CAN be set) keep it.
+    if (showSignature) {
+      const sigBtn = el("button", "btn btn-ghost btn-sm", "Insert signature");
+      sigBtn.onclick = async () => {
+        try { const r = await scopeApi("/api/account/signature"); if (!r || !r.signature) { toast("Set a signature in Settings first", true); return; } api.appendHtml(r.signature); }
+        catch (e) { toast(e.message, true); }
+      };
+      actions.appendChild(sigBtn);
+    }
 
     const hdrBtn = el("button", "btn btn-ghost btn-sm", "Header image");
     const hdrFile = el("input"); hdrFile.type = "file"; hdrFile.accept = "image/*"; hdrFile.style.display = "none";
@@ -549,8 +565,10 @@
     const composerHost = el("div");
     body.appendChild(composerHost);
     // Master-hub invites (opts.selfScope) fetch the ACTING user's own signature and no
-    // tenant-scoped templates/fields; portal invites keep the portal-scoped default.
-    const api = App.compose.mount(composerHost, { kind: "email", scopeApi: opts.selfScope ? App.api : undefined });
+    // tenant-scoped templates/fields; portal invites keep the portal-scoped default. The
+    // master hub also HIDES "Insert signature" entirely — there's no master-hub Settings
+    // screen to create one, so the button would have nothing to insert.
+    const api = App.compose.mount(composerHost, { kind: "email", scopeApi: opts.selfScope ? App.api : undefined, signature: !opts.selfScope });
 
     insertBtn.onclick = () => {
       // Append a ready-made link carrying the merge token. The writer can equally

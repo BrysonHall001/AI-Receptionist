@@ -19,10 +19,19 @@ function main() {
 
   console.log("(1) composer scope option:");
   check(has(compose, "const scopeApi = opts.scopeApi || App.portalApi"), "mount() has a scopeApi option (defaults to portal-scoped)");
+  // scopeApi/openMergeTagPicker/buildActions are MODULE-LEVEL — scopeApi must be PASSED in,
+  // not referenced free (a free reference was the "scopeApi is not defined" crash).
+  check(has(compose, "function buildActions(actions, kind, api, subjectInput, scopeApi, showSignature)"), "buildActions receives scopeApi (not a free variable)");
+  check(has(compose, 'buildActions(actions, "email", api, subjectInput, scopeApi,') && has(compose, 'buildActions(actions, "sms", api, null, scopeApi,'), "both buildActions call sites pass scopeApi");
+  check(has(compose, "function openMergeTagPicker(onInsert, scopeApi)") && has(compose, "}, scopeApi);"), "openMergeTagPicker receives scopeApi from its caller (fixes the merge-tag crash)");
   check(has(compose, 'const r = await scopeApi("/api/account/signature")') && !has(compose, 'await App.portalApi("/api/account/signature")'), "Insert signature goes through scopeApi (not hard-coded portalApi)");
   check(has(compose, 'templates = await scopeApi("/api/templates?kind=" + kind)'), "Templates load goes through scopeApi");
-  check(has(compose, "loadMergeTags(scopeApi)") && has(compose, "async function loadMergeTags(scopeApi)"), "Merge tags load goes through scopeApi (cache bypassed for non-portal scope)");
+  check(has(compose, "loadMergeTags(scopeApi") && has(compose, "async function loadMergeTags(scopeApi)"), "Merge tags load goes through scopeApi (cache bypassed for non-portal scope)");
   check(has(compose, "scopeApi: opts.selfScope ? App.api : undefined"), "openInviteComposer maps selfScope -> App.api (self) vs portal default");
+
+  console.log("\n(1b) master-hub invite hides Insert signature:");
+  check(has(compose, "if (showSignature) {"), "Insert signature button is gated on showSignature");
+  check(has(compose, "signature: !opts.selfScope"), "master-hub invite (selfScope) hides signature; portal invites keep it");
 
   console.log("\n(2) callers use the right scope:");
   check(/App\.inviteComposer\.open\(\{\s*email,\s*selfScope: true/.test(admin), "master-hub invite (admin.js) passes selfScope: true");
