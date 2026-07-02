@@ -50,7 +50,7 @@ function main() {
   check(/view\(\)\.innerHTML = "";[\s\S]*view\(\)\.appendChild\(wrap\);[\s\S]*usersSectionInto\(usersHost, portal\)\.catch/.test(detailBody), "shell renders first, then Users fills asynchronously (with its own catch)");
 
   console.log("\n(4b) caption alignment:");
-  check(has(portals, 'margin:4px 0 10px 0"'), "caption is flush-left (no left indent)");
+  check(has(portals, 'margin:4px 0 10px 18px'), "caption left edge matches the 18px toolbar/table gutter (flush with Filters + first column)");
 
   console.log("\n(5) removals + trimmed actions:");
   check(!has(admin, 'label: "Manage"'), "Manage column removed");

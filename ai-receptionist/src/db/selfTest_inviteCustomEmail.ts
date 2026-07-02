@@ -36,7 +36,7 @@ function main() {
   console.log("\n(2) shared composer:");
   check(/function openInviteComposer\(opts\)/.test(compose), "single openInviteComposer in compose.js");
   check(/App\.inviteComposer = \{ open: openInviteComposer/.test(compose), "exposed as App.inviteComposer.open");
-  check(/App\.compose\.mount\(composerHost, \{ kind: "email" \}\)/.test(compose), "reuses App.compose (same toolbar/CTA/link)");
+  check(/App\.compose\.mount\(composerHost, \{ kind: "email"/.test(compose), "reuses App.compose (same toolbar/CTA/link)");
   check(/api\.appendHtml\(`<a href="\$\{INVITE_LINK_TOKEN\}">/.test(compose), "Insert-invite-link control drops the token in");
   check(/indexOf\(INVITE_LINK_TOKEN\) === -1[\s\S]*?doesn't include the invite link/.test(compose), "client blocks send when the token is missing (clear warning)");
   // The composer itself never POSTs — it delegates the actual send to opts.send,

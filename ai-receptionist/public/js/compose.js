@@ -245,8 +245,10 @@
   // Built from the EXISTING contact field definitions (system/derived + custom),
   // using stable field keys. Cached per page load.
   let _mergeTagsCache = null;
-  async function loadMergeTags() {
-    if (_mergeTagsCache) return _mergeTagsCache;
+  async function loadMergeTags(scopeApi) {
+    const useApi = scopeApi || App.portalApi;
+    const isDefault = useApi === App.portalApi; // only the portal-scoped result is cached
+    if (isDefault && _mergeTagsCache) return _mergeTagsCache;
     const base = [
       { key: "first_name", label: "First name" },
       { key: "name", label: "Full name" },
@@ -255,12 +257,12 @@
     ];
     const seen = new Set(base.map((t) => t.key));
     try {
-      const fields = await App.portalApi("/api/fields?recordType=contact");
+      const fields = await useApi("/api/fields?recordType=contact");
       (Array.isArray(fields) ? fields : []).forEach((f) => {
         if (f && f.key && !seen.has(f.key)) { base.push({ key: f.key, label: f.label || f.key }); seen.add(f.key); }
       });
     } catch (e) { /* best-effort: at least the system/derived tags are always offered */ }
-    _mergeTagsCache = base;
+    if (isDefault) _mergeTagsCache = base;
     return base;
   }
 
@@ -297,13 +299,19 @@
       if (!list.children.length) list.appendChild(el("div", "cell-muted", "No matching fields."));
     }
     search.oninput = paint;
-    loadMergeTags().then((t) => { tags = t; paint(); });
+    loadMergeTags(scopeApi).then((t) => { tags = t; paint(); });
   }
 
   function mount(host, opts) {
     opts = opts || {};
     const kind = opts.kind || "email";
     const surveyLinkMode = opts.surveyLinkMode || "public";
+    // Which API the composer's data fetches (signature, templates, merge tags) go through.
+    // Default = portal-scoped (App.portalApi) so portal composers are unchanged. The
+    // master-hub invite composer passes App.api ("self" scope) so it pulls the ACTING
+    // user's own signature and never a leftover tenant's templates/fields (currentPortalId
+    // may still point at the last tenant that was opened).
+    const scopeApi = opts.scopeApi || App.portalApi;
     host.innerHTML = "";
 
     if (kind === "sms") {
@@ -441,7 +449,7 @@
 
     let templates = [];
     async function loadTemplates() {
-      try { templates = await App.portalApi("/api/templates?kind=" + kind); } catch (e) { templates = []; }
+      try { templates = await scopeApi("/api/templates?kind=" + kind); } catch (e) { templates = []; }
       paint();
     }
     function stripPreview(html) { return String(html || "").replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim().slice(0, 80); }
@@ -470,7 +478,7 @@
           main.innerHTML = `<span class="cell-strong">${esc(t.name)}</span>${tagPill}` + (prev ? `<br><span class="cell-muted" style="font-size:12px">${esc(prev)}</span>` : "");
           main.onclick = () => { if (kind === "email" && subjectInput && t.subject) subjectInput.value = t.subject; api.setBody(t.body || ""); tplMenu.classList.add("hidden"); toast("Loaded \u201c" + t.name + "\u201d"); };
           const del = el("button", "saved-del", "&times;");
-          del.onclick = async (e) => { e.stopPropagation(); if (!(await App.ui.confirmModal({ title: "Delete template", message: "Delete template \u201c" + t.name + "\u201d?", confirmText: "Delete template" }))) return; try { await App.portalApi("/api/templates/" + t.id, { method: "DELETE" }); toast("Template deleted"); loadTemplates(); } catch (err) { toast(err.message, true); } };
+          del.onclick = async (e) => { e.stopPropagation(); if (!(await App.ui.confirmModal({ title: "Delete template", message: "Delete template \u201c" + t.name + "\u201d?", confirmText: "Delete template" }))) return; try { await scopeApi("/api/templates/" + t.id, { method: "DELETE" }); toast("Template deleted"); loadTemplates(); } catch (err) { toast(err.message, true); } };
           row.appendChild(main); row.appendChild(del); listWrap.appendChild(row);
         });
       }
@@ -483,7 +491,7 @@
         const payload = kind === "email"
           ? { name: name.trim(), kind: "email", subject: subjectInput ? subjectInput.value : "", body: api.getHTML() }
           : { name: name.trim(), kind: "sms", body: api.getText() };
-        try { await App.portalApi("/api/templates", { method: "POST", body: JSON.stringify(payload) }); toast("Template saved"); loadTemplates(); }
+        try { await scopeApi("/api/templates", { method: "POST", body: JSON.stringify(payload) }); toast("Template saved"); loadTemplates(); }
         catch (err) { toast(err.message, true); }
       };
       tplMenu.appendChild(save);
@@ -496,7 +504,7 @@
 
     const sigBtn = el("button", "btn btn-ghost btn-sm", "Insert signature");
     sigBtn.onclick = async () => {
-      try { const r = await App.portalApi("/api/account/signature"); if (!r || !r.signature) { toast("Set a signature in Settings first", true); return; } api.appendHtml(r.signature); }
+      try { const r = await scopeApi("/api/account/signature"); if (!r || !r.signature) { toast("Set a signature in Settings first", true); return; } api.appendHtml(r.signature); }
       catch (e) { toast(e.message, true); }
     };
     actions.appendChild(sigBtn);
@@ -540,7 +548,9 @@
 
     const composerHost = el("div");
     body.appendChild(composerHost);
-    const api = App.compose.mount(composerHost, { kind: "email" });
+    // Master-hub invites (opts.selfScope) fetch the ACTING user's own signature and no
+    // tenant-scoped templates/fields; portal invites keep the portal-scoped default.
+    const api = App.compose.mount(composerHost, { kind: "email", scopeApi: opts.selfScope ? App.api : undefined });
 
     insertBtn.onclick = () => {
       // Append a ready-made link carrying the merge token. The writer can equally

@@ -147,10 +147,13 @@
     // it inserts before toolbarRight.firstChild (now Create), it lands left of Create.
     App.table.manageColumns(handle, columns, { defaultKeys: columns.map((c) => c.key) });
 
-    // Caption below the button/search row, above the table — flush-left with Filters/table
-    // (no left margin/indent).
+    // Caption below the button/search row, above the table. Its left edge must line up
+    // with the Filters button and the first table column — both of which sit 18px in
+    // (.toolbar-left has padding-left:18px; thead th / tbody td have padding …18px; .card
+    // itself has NO padding). So the caption needs margin-left:18px, not 0 (a prior "fix"
+    // set it to 0, which is why it read 18px too far left).
     const caption = el("p", "cell-muted");
-    caption.style.cssText = "font-size:12.5px;margin:4px 0 10px 0";
+    caption.style.cssText = "font-size:12.5px;margin:4px 0 10px 18px";
     caption.textContent = "Click a tenant row to edit its properties (page access, users, status).";
     const tbEl = tableHost.querySelector(".table-toolbar");
     if (tbEl) tbEl.insertAdjacentElement("afterend", caption); else tableHost.insertBefore(caption, tableHost.firstChild);
@@ -679,6 +682,7 @@
       // Same endpoints + invite token as the default send; only the body differs.
       App.inviteComposer.open({
         email,
+        selfScope: true, // master-hub: insert the acting admin's OWN signature, not a stale tenant's
         send: (customHtml, customSubject) => {
           const payload = JSON.stringify({ name, email, role, customHtml, customSubject });
           return perPortal
