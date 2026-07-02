@@ -1,6 +1,4 @@
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { createUser } from "./userService";
@@ -10,28 +8,11 @@ import { sendRichEmail } from "./notificationService";
 import { resolveMergeTags } from "./mergeTags";
 import { env } from "../config/env";
 
-// Auditor invites carry the Quick-Reference Guide as an email attachment. To swap
-// the guide later, replace this single file in the repo (no code change needed):
-//   ai-receptionist/assets/Clarity_QRG.pdf
-// It is read fresh on each send, so a redeploy with a new file is enough.
-const QRG_PATH = path.resolve(process.cwd(), "assets", "Clarity_QRG.pdf");
-const QRG_FILENAME = "Clarity-Auditor-Quick-Reference-Guide.pdf";
-
-/**
- * Returns the QRG as a Resend attachment, but ONLY for AUDITOR invites. For every
- * other role it returns undefined so the invite email is completely unchanged.
- * If the file is missing/unreadable, it logs and returns undefined so the invite
- * still sends (just without the attachment) rather than failing.
- */
-function auditorInviteAttachments(role?: string): Array<{ filename: string; content: Buffer }> | undefined {
-  if (role !== "AUDITOR") return undefined;
-  try {
-    return [{ filename: QRG_FILENAME, content: fs.readFileSync(QRG_PATH) }];
-  } catch (err) {
-    logger.warn(`Auditor QRG attachment unavailable at ${QRG_PATH}; sending invite without it: ${(err as Error).message}`);
-    return undefined;
-  }
-}
+// The Quick-Reference Guide is no longer emailed as an attachment. It is served
+// at a public, same-domain URL instead (GET /quick-reference-guide.pdf, wired up
+// in src/app.ts), which streams the repo file assets/Clarity_QRG.pdf. To swap the
+// guide later, replace that single file and redeploy — no code change, and invites
+// carry no attachment at all.
 
 // The Prisma client is regenerated (with the Invite model) by the migration step.
 // Until the person runs that, we reach the table via a cast so the build still
@@ -90,8 +71,7 @@ export async function sendInvite(invite: { email: string; role?: string }, link:
       to: invite.email,
       subject: "You're invited to Clarity CRM",
       html,
-      fromEmail: env.RESEND_FROM, // reply-to; the send address itself is RESEND_FROM
-      attachments: auditorInviteAttachments(invite.role), // QRG PDF, auditors only
+      fromEmail: env.RESEND_FROM, // send address is RESEND_FROM (no Reply-To set)
     });
     return true;
   } catch (err) {
@@ -111,8 +91,8 @@ export function hasInviteLinkToken(html: string | null | undefined): boolean {
 
 /**
  * Send a CUSTOM invitation email written by the inviter. Identical outbound path to
- * sendInvite (Resend, RESEND_FROM, auditor QRG attachment) — the ONLY differences are
- * the caller-supplied subject/body and that every {{invite_link}} is replaced with the
+ * sendInvite (Resend, RESEND_FROM, no attachment) — the ONLY differences are the
+ * caller-supplied subject/body and that every {{invite_link}} is replaced with the
  * SAME real one-time link the default email would have used. Never throws.
  */
 export async function sendCustomInvite(
@@ -134,7 +114,6 @@ export async function sendCustomInvite(
       subject: finalSubject,
       html,
       fromEmail: env.RESEND_FROM,
-      attachments: auditorInviteAttachments(invite.role),
     });
     return true;
   } catch (err) {

@@ -1,11 +1,5 @@
 [
   {
-    "date": "2026-07-02",
-    "type": "Fix",
-    "description": "Email deliverability — removed the Reply-To header from all outbound emails. Messages now send from and reply to the verified domain address instead of mixing in a personal reply address, clearing the spam-filter penalty that flagged that mismatch.",
-    "commitSha": "daea43d94886046d243cfd98aedd19b1eafaedd2"
-  },
-  {
     "date": "2026-06-03",
     "type": "Feature",
     "description": "The initial Clarity platform: AI receptionist with secure login and accounts, a master admin portal for managing client businesses, contact records with custom fields, saved filters, and CSV export.",

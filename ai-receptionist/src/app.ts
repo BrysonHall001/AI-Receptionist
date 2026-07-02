@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 import express from "express";
 import cookieParser from "cookie-parser";
@@ -49,6 +50,32 @@ export function createApp(): express.Express {
 
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true });
+  });
+
+  // PUBLIC Quick-Reference Guide download. No authentication: it is mounted here,
+  // outside every auth-gated router, so anyone with the link can fetch it (auditor
+  // invites now link to this instead of carrying a PDF attachment). It streams the
+  // repo file at request time, so swapping the guide later is just "replace
+  // assets/Clarity_QRG.pdf and redeploy" — no code change. A missing file returns a
+  // clean 404 rather than crashing the request.
+  //   Live URL: https://clarity.vaala.io/quick-reference-guide.pdf
+  app.get("/quick-reference-guide.pdf", (_req, res) => {
+    const pdfPath = path.resolve(process.cwd(), "assets", "Clarity_QRG.pdf");
+    fs.stat(pdfPath, (err, stats) => {
+      if (err || !stats.isFile()) {
+        res.status(404).type("text/plain").send("Quick-Reference Guide not found.");
+        return;
+      }
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Length", String(stats.size));
+      res.setHeader("Content-Disposition", 'inline; filename="Clarity-Quick-Reference-Guide.pdf"');
+      const stream = fs.createReadStream(pdfPath);
+      stream.on("error", () => {
+        if (!res.headersSent) res.status(404).type("text/plain").send("Quick-Reference Guide not found.");
+        else res.destroy();
+      });
+      stream.pipe(res);
+    });
   });
 
   // Telephony (unauthenticated by nature)
