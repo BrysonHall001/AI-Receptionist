@@ -23,6 +23,8 @@ function main() {
   const adminjs = read("../../public/js/admin.js");
   const portaljs = read("../../public/js/portal.js");
   const learnjs = read("../../public/js/learn.js");
+  const automationsjs = read("../../public/js/automations.js");
+  const reportsjs = read("../../public/js/reports.js");
 
   // ---------- storage (owner-only) ----------
   console.log("(1) storage:");
@@ -91,12 +93,29 @@ function main() {
   check(has(portaljs, "NAV = NAV.filter(function (it) { return !App.isPageLocked(it[0]); })"), "Labels 'Pages & navigation' editor excludes locked pages");
   check(has(appjs, ".filter((h) => !App.isPageLocked(h))"), "nav reorder order (fullNavOrder) excludes locked pages");
   check(has(portaljs, "data.catalog = data.catalog.filter((a) => !App.isAreaLocked(a.key))"), "Team & Permissions catalog excludes locked areas");
-  check(has(learnjs, "GUIDES.filter((g) => !(g.page && App.isPageLocked"), "Learning Center excludes locked-page guides");
+  check(has(learnjs, ".filter((g) => !blocked(g))"), "Learning Center excludes locked-page guides");
   check((learnjs.match(/page: "#\//g) || []).length >= 6, "Learning Center page-specific categories are tagged with their href");
   check(has(portaljs, "types.filter((t) => !App.isRecordTypeLocked(t.key))"), "Fields object-type selector excludes locked record types");
   // Master hub must still show ALL pages in the Page-Access editor (not affected).
   const cfg2 = slice(adminjs, "function pageAccessSection", "async function renderTenantDetail");
   check(has(adminjs, "LOCKABLE_PAGES") && !has(cfg2, "isPageLocked") && !has(cfg2, "lockedPages.filter"), "master-hub Page-Access editor lists ALL pages (unfiltered)");
+
+  // ---------- (9) dependent surfaces: settings tabs, data-admin, recycle, labels, learn ----------
+  console.log("\n(9) dependent surfaces exclude locked pages:");
+  check(has(portaljs, 'if (s.key === "scheduling") return !App.isPageLocked("#/bookings")'), "settings tab: Scheduling hidden when Bookings locked");
+  check(has(portaljs, 'if (s.key === "fields") return !(App.isPageLocked("#/contacts") && App.isAreaLocked("records"))'), "settings tab: Fields hidden when no editable type remains");
+  check(has(portaljs, 'k === "reports" && App.isPageLocked("#/reports")'), "data-admin: Reports sub-tab hidden when Analytics locked");
+  check(has(portaljs, 'if (!App.isPageLocked("#/contacts")) {') && has(portaljs, 't.key !== "contact" && !App.isRecordTypeLocked(t.key)'), "data-admin Import: locked Contacts/types excluded");
+  check(has(portaljs, 'App.isPageLocked("#/contacts") ? [] : [{ value: "contact"') && has(portaljs, 'if (!App.isPageLocked("#/calls")) options.push'), "data-admin Export: locked Contacts/Calls/types excluded");
+  check(has(portaljs, "const bkTypes = []") && has(portaljs, 'if (!App.isAreaLocked("records")) bkTypes.push'), "data-admin Backup: type list excludes locked pages");
+  check(has(portaljs, "recordTypes = recordTypes.filter((t) => !App.isRecordTypeLocked(t.key))"), "data-admin Reports: reportable types exclude locked");
+  check(has(portaljs, "(types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort"), "Labels noun editor: locked record types excluded");
+  check(has(portaljs, "rbContactsLocked") && has(portaljs, "!App.isRecordTypeLocked(t.key) && (recsByType"), "Recycle Bin: locked Contacts/types excluded");
+  check(has(learnjs, "NAV_SECTIONS_SENTINEL") && has(learnjs, "function navSectionsSentence"), "Learning Center: nav-sections sentence is computed (locked pages omitted)");
+  check(has(learnjs, "const blocked =") && has(learnjs, ".filter((it) => !blocked(it))"), "Learning Center: filters at BOTH category and guide level");
+  check((learnjs.match(/pagesAll:/g) || []).length >= 4 && has(learnjs, 'page: "#/dashboard"'), "Learning Center: data-cross-cutting categories + Home Dashboard guide tagged");
+  check((automationsjs.match(/!App\.isRecordTypeLocked\(t\.key\)/g) || []).length >= 2, "Automations: create/find record-type pickers exclude locked types");
+  check(has(reportsjs, "function sourceLocked") && has(reportsjs, "!(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key))"), "Analytics/Dashboard widget builder: locked data sources excluded");
 
   console.log("\n===========================================");
   if (failures.length === 0) console.log("ALL CHECKS PASSED \u2705  (page-lock wiring)");

@@ -678,7 +678,9 @@
     wrap.appendChild(el("h2", "settings-h", "Data Administration"));
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const SUBS = [["import", "Import"], ["export", "Export"], ["backup", "Data Backup"], ["history", "Import / Export History"], ["reports", "Reports"], ["recycle", "Recycle Bin"]];
+    const SUBS = [["import", "Import"], ["export", "Export"], ["backup", "Data Backup"], ["history", "Import / Export History"], ["reports", "Reports"], ["recycle", "Recycle Bin"]]
+      // Owner page-lock: the Reports sub-tab is Analytics reporting -> hide when #/reports locked.
+      .filter(([k]) => !(k === "reports" && App.isPageLocked("#/reports")));
     let active = SUBS.some(([k]) => k === initialTab) ? initialTab : "import";
     function setTab(key) {
       active = key;
@@ -712,10 +714,13 @@
     try { types = await App.portalApi("/api/record-types"); } catch (e) { /* empty */ }
     const grid = el("div");
     grid.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;";
-    const cBtn = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(App.label("contact", "many"))}`);
-    cBtn.onclick = () => openImport();
-    grid.appendChild(cBtn);
-    (types || []).filter((t) => t.key !== "contact").forEach((t) => {
+    // Owner page-lock: don't offer import for a locked page's type.
+    if (!App.isPageLocked("#/contacts")) {
+      const cBtn = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(App.label("contact", "many"))}`);
+      cBtn.onclick = () => openImport();
+      grid.appendChild(cBtn);
+    }
+    (types || []).filter((t) => t.key !== "contact" && !App.isRecordTypeLocked(t.key)).forEach((t) => {
       const b = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(t.labelPlural || t.label)}`);
       b.onclick = async () => {
         let fields = [];
@@ -724,6 +729,7 @@
       };
       grid.appendChild(b);
     });
+    if (!grid.children.length) grid.appendChild(el("div", "cell-muted", "Nothing available to import."));
     host.appendChild(grid);
   }
 
@@ -757,11 +763,13 @@
     let types = [];
     try { types = await App.portalApi("/api/record-types"); } catch (e) { /* empty */ }
     const isAdmin = !!(App.state.me && App.isAdminTier(App.state.me.role));
-    const options = [{ value: "contact", label: App.label("contact", "many") }];
-    (types || []).filter((t) => t.key !== "contact").forEach((t) => options.push({ value: "rt:" + t.key, label: t.labelPlural || t.label }));
-    options.push({ value: "call", label: "Calls" });
+    // Owner page-lock: a locked page's export target must not appear. Events has no nav
+    // page, so it always stays (and keeps this tab non-empty).
+    const options = App.isPageLocked("#/contacts") ? [] : [{ value: "contact", label: App.label("contact", "many") }];
+    (types || []).filter((t) => t.key !== "contact" && !App.isRecordTypeLocked(t.key)).forEach((t) => options.push({ value: "rt:" + t.key, label: t.labelPlural || t.label }));
+    if (!App.isPageLocked("#/calls")) options.push({ value: "call", label: "Calls" });
     options.push({ value: "event", label: "Events" });
-    if (isAdmin) options.push({ value: "feedback", label: "Feedback" });
+    if (isAdmin && !App.isPageLocked("#/feedback")) options.push({ value: "feedback", label: "Feedback" });
 
     // Button row mirroring the Import tab (same flex-wrap btn-ghost row with the ⇩
     // icon); each button renders that type's export form INLINE below via the SAME
@@ -931,8 +939,16 @@
     host.innerHTML = "";
     const isAdmin = !!(App.state.me && App.isAdminTier(App.state.me.role));
     const wrap = el("div");
+    // Owner page-lock: name only the types this tenant can still see (locked pages' data
+    // is also blocked server-side, so their sheets come back empty regardless).
+    const bkTypes = [];
+    if (!App.isPageLocked("#/contacts")) bkTypes.push(esc(App.label("contact", "many")));
+    if (!App.isAreaLocked("records")) bkTypes.push("every record type");
+    if (!App.isPageLocked("#/calls")) bkTypes.push("Calls");
+    bkTypes.push("Events", "Resources");
+    if (isAdmin && !App.isPageLocked("#/feedback")) bkTypes.push("Feedback");
     wrap.innerHTML = `
-      <p class="cell-muted" style="margin-top:4px">Download a complete backup of this portal's data — one tab (Excel) or file (CSV zip) per data type: ${esc(App.label("contact", "many"))}, every record type, Calls, Events, Resources${isAdmin ? ", Feedback" : ""}, and optionally automations and team. Sign-in credentials and connected-account tokens are never included.</p>
+      <p class="cell-muted" style="margin-top:4px">Download a complete backup of this portal's data — one tab (Excel) or file (CSV zip) per data type: ${bkTypes.join(", ")}, and optionally automations and team. Sign-in credentials and connected-account tokens are never included.</p>
       <div style="max-width:640px">
         <div style="display:flex;gap:36px;flex-wrap:wrap;align-items:flex-start;margin-top:14px">
           <div style="display:flex;flex-direction:column;gap:8px">
@@ -1087,6 +1103,8 @@
     } catch (e) { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
     rows = Array.isArray(rows) ? rows : [];
     recordTypes = Array.isArray(recordTypes) ? recordTypes : [];
+    // Owner page-lock: don't offer reporting on a locked page's type.
+    recordTypes = recordTypes.filter((t) => !App.isRecordTypeLocked(t.key));
     const portalTz = (settings && settings.timezone) || "America/New_York";
 
     const nextRunText = (r) => (r.mode !== "recurring" ? "—" : (!r.active ? "Paused" : (r.nextRunAt ? fmtDate(r.nextRunAt) : "—")));
@@ -1934,9 +1952,12 @@
     // Contacts live in their own table/endpoint; records (jobs/bookings/custom)
     // come back across ALL types from one endpoint and get split per type below.
     let delContacts, delRecords, types, resources, cFields, cCols;
+    // Owner page-lock: don't even fetch a locked page's deleted rows (its API 403s), and
+    // don't render its recycle section.
+    const rbContactsLocked = App.isPageLocked("#/contacts");
     try {
       [delContacts, delRecords, types, resources, cFields, cCols] = await Promise.all([
-        App.portalApi("/api/contacts/deleted"),
+        rbContactsLocked ? Promise.resolve([]) : App.portalApi("/api/contacts/deleted"),
         App.portalApi("/api/records/deleted").catch(() => []),
         App.portalApi("/api/record-types").catch(() => []),
         App.portalApi("/api/resources").catch(() => []),
@@ -1953,7 +1974,7 @@
     // Group deleted records by record type, keep types in their display order.
     const recsByType = {};
     (delRecords || []).forEach((r) => { (recsByType[r.recordTypeId] = recsByType[r.recordTypeId] || []).push(r); });
-    const typesWithDeleted = (types || []).filter((t) => (recsByType[t.id] || []).length);
+    const typesWithDeleted = (types || []).filter((t) => !App.isRecordTypeLocked(t.key) && (recsByType[t.id] || []).length);
 
     // Each such type's fields drive its columns (same as the live list). Parallel.
     const fieldsByType = {};
@@ -1965,8 +1986,8 @@
     const container = el("div", "fade-in");
     const head = el("div", "rb-head");
     head.innerHTML = `<div><h1 class="rb-title">&#128465; Recycle Bin</h1><p class="cell-muted">Deleted items are kept for 30 days, then permanently removed. They don't appear anywhere else.</p></div>`;
-    const backBtn = el("a", "btn btn-ghost btn-sm", ("← Back to " + App.label("contact", "many")));
-    backBtn.href = "#/contacts";
+    const backBtn = el("a", "btn btn-ghost btn-sm", (rbContactsLocked ? "← Back" : ("← Back to " + App.label("contact", "many"))));
+    backBtn.href = rbContactsLocked ? (App.firstAvailableNav ? App.firstAvailableNav() : "#/settings") : "#/contacts";
     head.appendChild(backBtn);
     container.appendChild(head);
     host.appendChild(container);
@@ -2003,9 +2024,11 @@
       if (handle.toolbarLeft) { handle.toolbarLeft.appendChild(restoreBtn); handle.toolbarLeft.appendChild(rc); }
     }
 
-    // Contacts table.
-    const contactCols = withCountdown(applyColumnLayout(contactColumnDefs(cFields), (cCols && cCols.layout) || {}).slice(), "name", (r) => r.name || "Unknown");
-    section(App.label("contact", "many"), contactCols, delContacts || [], "/api/contacts/restore", "#/recycle/contact/");
+    // Contacts table (skipped entirely when Contacts is locked for this tenant).
+    if (!rbContactsLocked) {
+      const contactCols = withCountdown(applyColumnLayout(contactColumnDefs(cFields), (cCols && cCols.layout) || {}).slice(), "name", (r) => r.name || "Unknown");
+      section(App.label("contact", "many"), contactCols, delContacts || [], "/api/contacts/restore", "#/recycle/contact/");
+    }
 
     // One table per record type that has deleted items (Jobs, Bookings, custom…).
     typesWithDeleted.forEach((t) => {
@@ -3293,7 +3316,7 @@
         m.addEventListener("input", () => { row.touched = true; });
         rows.push(row);
       }
-      (types || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((t) => {
+      (types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((t) => {
         addRow("type", t.key, t.label || "", t.labelPlural || pluralize(t.label || ""));
       });
       GENERIC_WORDS.forEach((w) => {
@@ -3432,7 +3455,17 @@
       { key: "account", label: "Your account", admin: false, build: secAccount },
       { key: "labels", label: "Labels", admin: true, build: secLabels },
       { key: "fields", label: "Fields", admin: true, build: secFields },
-    ].filter((s) => canEditPortal || !s.admin);
+    ].filter((s) => canEditPortal || !s.admin)
+      // Owner page-lock: hide a settings tab that exists only to serve a locked page.
+      //   scheduling -> Scheduling & Resources serves Bookings (#/bookings).
+      //   fields     -> needs at least one editable record type (Contacts OR a records type).
+      //   data       -> stays (its Events export target has no nav page); contents filter below.
+      // general/appearance/team/leadcapture/integrations/account/labels are not page-dependent.
+      .filter((s) => {
+        if (s.key === "scheduling") return !App.isPageLocked("#/bookings");
+        if (s.key === "fields") return !(App.isPageLocked("#/contacts") && App.isAreaLocked("records"));
+        return true;
+      });
 
     // Allow an optional sub-tab after the section, e.g. #/settings/data/recycle.
     const [secKey, ...rest] = String(sub || "").split("/");

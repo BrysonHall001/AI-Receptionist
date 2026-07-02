@@ -16,6 +16,17 @@
   const App = global.App || (global.App = {});
   const { el, esc } = App.util;
 
+  // Owner page-lock: the "finding your way around" guide lists the nav sections in one
+  // sentence. Render it dynamically so locked pages aren't named. This sentinel is
+  // swapped for the computed sentence at render time.
+  const NAV_SECTIONS_SENTINEL = "@@NAV_SECTIONS@@";
+  function listJoin(a) { if (a.length <= 1) return a.join(""); if (a.length === 2) return a[0] + " and " + a[1]; return a.slice(0, -1).join(", ") + ", and " + a[a.length - 1]; }
+  function navSectionsSentence() {
+    const NAV_LABELS = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts"], ["#/jobs", "Jobs"], ["#/bookings", "Bookings"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
+    const names = NAV_LABELS.filter((x) => !(App.isPageLocked && App.isPageLocked(x[0]))).map((x) => x[1]);
+    return "The left navigation lists the main sections: " + listJoin(names) + ".";
+  }
+
   const GUIDES = [
     {
       cat: "Getting started",
@@ -26,7 +37,7 @@
           blocks: [
             { p: "After you sign in, the screen has three parts: the left navigation, the top bar, and the main area." },
             { steps: [
-              "The left navigation lists the main sections: Home Dashboard, Calls, Contacts, Jobs, Fields, Analytics, Automations, Learning Center, and Feedback.",
+              NAV_SECTIONS_SENTINEL,
               "Settings isn't in the left menu — open it from the gear icon in the top-right.",
               "Near the bottom-left you'll find the Recycle Bin link and your user box with a Sign out button.",
               "The top bar shows where you are, with a Refresh button and the settings gear on the right.",
@@ -37,6 +48,7 @@
         },
         {
           id: "today",
+          page: "#/dashboard",
           title: "Using the Home Dashboard",
           blocks: [
             { p: "The Home Dashboard is your landing page — a build-your-own dashboard of charts and numbers drawn from your live data." },
@@ -174,7 +186,7 @@
       ],
     },
     {
-      cat: "Finding & organizing",
+      cat: "Finding & organizing", pagesAll: ["#/contacts", "#/jobs"],
       items: [
         {
           id: "search",
@@ -232,7 +244,7 @@
       ],
     },
     {
-      cat: "Bulk actions",
+      cat: "Bulk actions", pagesAll: ["#/contacts", "#/jobs"],
       items: [
         {
           id: "select",
@@ -262,7 +274,7 @@
       ],
     },
     {
-      cat: "Importing & exporting",
+      cat: "Importing & exporting", pagesAll: ["#/contacts", "#/jobs"],
       items: [
         {
           id: "import",
@@ -292,7 +304,7 @@
       ],
     },
     {
-      cat: "Custom fields",
+      cat: "Custom fields", pagesAll: ["#/contacts", "#/jobs"],
       items: [
         {
           id: "fields",
@@ -507,7 +519,7 @@
       ],
     },
     {
-      cat: "Recycle Bin",
+      cat: "Recycle Bin", pagesAll: ["#/contacts", "#/jobs"],
       items: [
         {
           id: "recycle",
@@ -666,7 +678,7 @@
     if (b.shot) return null;
     if (b.steps) {
       const ol = el("ol", "learn-steps");
-      b.steps.forEach((s) => ol.appendChild(el("li", null, esc(App.relabelText(s)))));
+      b.steps.forEach((s) => { const text = s === NAV_SECTIONS_SENTINEL ? navSectionsSentence() : App.relabelText(s); ol.appendChild(el("li", null, esc(text))); });
       return ol;
     }
     return null;
@@ -696,9 +708,20 @@
     nav.appendChild(navList);
 
     // Owner page-lock: hide guides for pages locked for this tenant — a locked page must
-    // not appear (or be openable) in the Learning Center. Page-specific categories carry a
-    // `page` href; cross-cutting categories (no page) always show. Empty on the master hub.
-    const guides = GUIDES.filter((g) => !(g.page && App.isPageLocked && App.isPageLocked(g.page)));
+    // not appear (or be openable) in the Learning Center. A category/guide is hidden when
+    // its `page` is locked, or (for cross-cutting data guides) when EVERY page in its
+    // `pagesAll` is locked. Cross-cutting categories with neither tag always show. Empty on
+    // the master hub. Filtering runs at BOTH the category and the individual-guide level.
+    const blocked = (x) => {
+      if (!App.isPageLocked) return false;
+      if (x.page && App.isPageLocked(x.page)) return true;
+      if (x.pagesAll && x.pagesAll.length && x.pagesAll.every((h) => App.isPageLocked(h))) return true;
+      return false;
+    };
+    const guides = GUIDES
+      .filter((g) => !blocked(g))
+      .map((g) => Object.assign({}, g, { items: (g.items || []).filter((it) => !blocked(it)) }))
+      .filter((g) => g.items.length);
 
     let currentId = guides[0] && guides[0].items[0] && guides[0].items[0].id;
 

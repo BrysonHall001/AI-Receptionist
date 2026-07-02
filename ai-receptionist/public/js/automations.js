@@ -1936,7 +1936,7 @@
       cfg.appendChild(small("Record type to create:"));
       const typeSel = el("select", "input");
       const tb = el("option", null, "— choose —"); tb.value = ""; typeSel.appendChild(tb);
-      (meta.recordTypes || []).forEach((t) => { const o = el("option", null, esc(t.label)); o.value = t.key; if (c.recordType === t.key) o.selected = true; typeSel.appendChild(o); });
+      (meta.recordTypes || []).filter((t) => !App.isRecordTypeLocked(t.key)).forEach((t) => { const o = el("option", null, esc(t.label)); o.value = t.key; if (c.recordType === t.key) o.selected = true; typeSel.appendChild(o); });
       cfg.appendChild(typeSel);
       cfg.appendChild(small("Title (supports {{field}}):"));
       cfg.appendChild(text("title", App.relabelText("New record title", { all: true })));
@@ -1958,7 +1958,7 @@
       cfg.appendChild(small("An automated change does not set off other automations (loop-safe)."));
     } else if (act.type === "find_record_items") {
       cfg.appendChild(small("Find records of this type:"));
-      cfg.appendChild(selectOf("recordType", (meta.recordTypes || []).map((t) => ({ value: t.key, label: t.label }))));
+      cfg.appendChild(selectOf("recordType", (meta.recordTypes || []).filter((t) => !App.isRecordTypeLocked(t.key)).map((t) => ({ value: t.key, label: t.label }))));
       cfg.appendChild(small("…matching these conditions (leave empty to match all of that type). A later Delete records action will act on the matches:"));
       if (!Array.isArray(c.conditions)) c.conditions = [];
       const w = el("div", "cond-wrap");

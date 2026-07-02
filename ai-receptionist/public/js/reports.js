@@ -275,7 +275,9 @@
         const dashReq = opts.home ? App.portalApi("/api/dashboards/home") : App.portalApi("/api/dashboards");
         const [d, contacts, contactFields, recordTypes, pipeline, calls, resources] = await Promise.all([
           dashReq,
-          App.portalApi("/api/contacts"),
+          // Owner page-lock: a locked page's data API 403s — catch so the builder still
+          // loads (that source is filtered out of the picker below).
+          App.portalApi("/api/contacts").catch(() => []),
           App.portalApi("/api/fields"),
           App.portalApi("/api/record-types"),
           // Defensive: if the pipeline route isn't present yet, the funnel source
@@ -291,12 +293,13 @@
         (Array.isArray(resources) ? resources : []).forEach((r) => { if (r && r.id) resourcesById[r.id] = r.name; });
 
         const sources = { contacts: buildContactSource(contacts, contactFields) };
-        // Every record type except the built-in "contact" one becomes a source.
-        const types = (Array.isArray(recordTypes) ? recordTypes : []).filter((rt) => rt && rt.key && rt.key !== "contact");
+        // Every record type except the built-in "contact" one becomes a source — minus any
+        // whose page is locked for this tenant (owner page-lock).
+        const types = (Array.isArray(recordTypes) ? recordTypes : []).filter((rt) => rt && rt.key && rt.key !== "contact" && !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
         const loaded = await Promise.all(types.map(async (rt) => {
           const [rows, fields] = await Promise.all([
-            App.portalApi("/api/records?type=" + encodeURIComponent(rt.key)),
-            App.portalApi("/api/fields?recordType=" + encodeURIComponent(rt.key)),
+            App.portalApi("/api/records?type=" + encodeURIComponent(rt.key)).catch(() => []),
+            App.portalApi("/api/fields?recordType=" + encodeURIComponent(rt.key)).catch(() => []),
           ]);
           return buildRecordSource(rt, Array.isArray(rows) ? rows : [], Array.isArray(fields) ? fields : [], resourcesById);
         }));
@@ -317,10 +320,18 @@
     function sourceForWidget(w) {
       return state.sources[(w && w.source) || "contacts"] || state.sources.contacts;
     }
-    // Sources offered in the builder dropdown: Contacts first, then record types.
+    // Sources offered in the builder dropdown: Contacts first, then record types — minus
+    // any whose page is locked for this tenant (owner page-lock).
+    function sourceLocked(k) {
+      if (!App.isPageLocked) return false;
+      if (k === "contacts") return App.isPageLocked("#/contacts");
+      if (k === "calls") return App.isPageLocked("#/calls");
+      if (k === "pipeline") return App.isPageLocked("#/contacts") || (App.isAreaLocked && App.isAreaLocked("records"));
+      return App.isRecordTypeLocked ? App.isRecordTypeLocked(k) : false;
+    }
     function sourceOptions() {
-      const keys = Object.keys(state.sources);
-      const ordered = ["contacts"].concat(keys.filter((k) => k !== "contacts"));
+      const keys = Object.keys(state.sources).filter((k) => !sourceLocked(k));
+      const ordered = keys.indexOf("contacts") !== -1 ? ["contacts"].concat(keys.filter((k) => k !== "contacts")) : keys;
       return ordered.map((k) => ({ key: k, label: state.sources[k] ? state.sources[k].label : k }));
     }
     function current() { return state.dashboards.find((d) => d.id === state.currentId) || null; }
