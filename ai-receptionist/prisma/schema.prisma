@@ -879,6 +879,12 @@ model CommunicationSend {
   recipientCount Int      @default(0)
   sentCount      Int      @default(0)
   failCount      Int      @default(0)
+  // Per-recipient list captured at send time so the Sent-log detail view can show
+  // WHO each blast went to (not just counts). Array of
+  //   { contactId: string|null, email: string, name: string|null, status: "sent"|"failed" }
+  // Defaults to [] so rows written before this field existed remain valid (they
+  // just have no list, which the UI renders as "not recorded for older sends").
+  recipients     Json     @default("[]")
   createdById    String?
   createdAt      DateTime @default(now())
 

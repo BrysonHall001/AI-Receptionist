@@ -69,6 +69,9 @@ export async function sendEmailBlast(input: {
     ? await db.contact.findMany({ where: { tenantId: input.tenantId, id: { in: recipients.map((r) => r.id) } } })
     : [];
   const byId = new Map(fullContacts.map((c: any) => [c.id, c]));
+  // Per-recipient log captured with the actual outcome, persisted on the row so the
+  // Sent-log detail view can show WHO each blast went to (and who failed).
+  const recipientLog: Array<{ contactId: string | null; email: string; name: string | null; status: "sent" | "failed" }> = [];
   let sentCount = 0;
   let failCount = 0;
   for (const r of recipients) {
@@ -76,8 +79,10 @@ export async function sendEmailBlast(input: {
       const contact = byId.get(r.id) || null;
       await sendRichEmail({ to: r.email, subject: resolver.apply(input.subject, contact), html: resolver.apply(input.html || "", contact), fromEmail: input.fromEmail, fromName: input.fromName ?? null });
       sentCount++;
+      recipientLog.push({ contactId: r.id, email: r.email, name: r.name ?? null, status: "sent" });
     } catch (e) {
       failCount++;
+      recipientLog.push({ contactId: r.id, email: r.email, name: r.name ?? null, status: "failed" });
       logger.error(`[communication] email to ${r.email} failed: ${(e as Error).message}`);
     }
   }
@@ -85,8 +90,10 @@ export async function sendEmailBlast(input: {
     try {
       await sendRichEmail({ to: addr, subject: resolver.apply(input.subject, null), html: resolver.apply(input.html || "", null), fromEmail: input.fromEmail, fromName: input.fromName ?? null });
       sentCount++;
+      recipientLog.push({ contactId: null, email: addr, name: null, status: "sent" });
     } catch (e) {
       failCount++;
+      recipientLog.push({ contactId: null, email: addr, name: null, status: "failed" });
       logger.error(`[communication] email to ${addr} failed: ${(e as Error).message}`);
     }
   }
@@ -100,6 +107,7 @@ export async function sendEmailBlast(input: {
       recipientCount,
       sentCount,
       failCount,
+      recipients: recipientLog,
       createdById: input.createdById ?? null,
     },
   });
@@ -111,6 +119,7 @@ export async function sendEmailBlast(input: {
 export async function listSends(tenantId: string, limit = 500): Promise<Array<{
   id: string; channel: string; subject: string; body: string;
   recipientCount: number; sentCount: number; failCount: number;
+  recipients: Array<{ contactId: string | null; email: string; name: string | null; status: string }>;
   createdById: string | null; createdByName: string | null; createdAt: string;
 }>> {
   const rows = await db.communicationSend.findMany({
@@ -132,6 +141,9 @@ export async function listSends(tenantId: string, limit = 500): Promise<Array<{
     recipientCount: r.recipientCount,
     sentCount: r.sentCount,
     failCount: r.failCount,
+    // Stored as JSON; default [] for rows written before this field existed. Coerce
+    // to an array defensively so the client always receives a list.
+    recipients: Array.isArray(r.recipients) ? r.recipients : [],
     createdById: r.createdById ?? null,
     createdByName: r.createdById ? (nameById[r.createdById] ?? null) : null,
     createdAt: r.createdAt.toISOString(),

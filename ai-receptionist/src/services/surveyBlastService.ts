@@ -77,6 +77,10 @@ export async function sendSurveyBlast(input: {
   let sentCount = 0;
   let failCount = 0;
   const links: Array<{ contactId: string; url: string }> = [];
+  // Per-recipient log captured with the actual outcome, persisted on the row so the
+  // Sent-log detail view can show WHO the survey blast went to (survey blasts are
+  // contact-only, so contactId is always set and there are no typed addresses).
+  const recipientLog: Array<{ contactId: string | null; email: string; name: string | null; status: "sent" | "failed" }> = [];
 
   for (const r of recipients) {
     // One DISTINCT token per recipient → resolves SERVER-SIDE to THIS contact.
@@ -87,8 +91,10 @@ export async function sendSurveyBlast(input: {
     try {
       await sendRichEmail({ to: r.email, subject: resolver.apply(input.subject, contact), html: resolver.apply(personalize(input.html, url), contact), fromEmail: input.fromEmail, fromName: input.fromName ?? null });
       sentCount++;
+      recipientLog.push({ contactId: r.id, email: r.email, name: r.name ?? null, status: "sent" });
     } catch (e) {
       failCount++;
+      recipientLog.push({ contactId: r.id, email: r.email, name: r.name ?? null, status: "failed" });
       logger.error(`[survey-blast] email to ${r.email} failed: ${(e as Error).message}`);
     }
   }
@@ -103,6 +109,7 @@ export async function sendSurveyBlast(input: {
       recipientCount: recipients.length,
       sentCount,
       failCount,
+      recipients: recipientLog,
       createdById: input.createdById ?? null,
     },
   });

@@ -422,6 +422,41 @@
     bodyBox.style.cssText = "padding:14px;max-height:50vh;overflow:auto";
     bodyBox.innerHTML = r.body && r.body.trim() ? r.body : `<span class="cell-muted">(no message body)</span>`;
     body.appendChild(bodyBox);
+
+    // Recipients section (added): WHO the blast went to, with per-address status.
+    const rcps = Array.isArray(r.recipients) ? r.recipients : [];
+    const rcpSection = el("div");
+    rcpSection.style.marginTop = "14px";
+    if (!rcps.length && r.recipientCount > 0) {
+      // Sent before recipient capture existed — show a muted note, not a broken list.
+      const head = el("div", "", "Recipients");
+      head.style.cssText = "font-weight:600;margin-bottom:6px";
+      const note = el("div", "cell-muted", "Recipient list wasn't recorded for sends before this update.");
+      note.style.fontSize = "12.5px";
+      rcpSection.appendChild(head); rcpSection.appendChild(note);
+    } else if (rcps.length) {
+      const head = el("div", "", `Recipients (${rcps.length})`);
+      head.style.cssText = "font-weight:600;margin-bottom:6px";
+      rcpSection.appendChild(head);
+      const listBox = el("div", "card");
+      listBox.style.cssText = "padding:4px 0;max-height:34vh;overflow:auto";
+      rcps.forEach((p) => {
+        const hasName = !!(p && p.name && String(p.name).trim());
+        const primary = hasName ? p.name : (p && p.email ? p.email : "—");
+        const row = el("div");
+        row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 14px";
+        const who = el("div");
+        who.style.minWidth = "0";
+        who.innerHTML = `<div style="font-size:13.5px;overflow:hidden;text-overflow:ellipsis">${esc(primary)}</div>` +
+          (hasName ? `<div class="cell-muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis">${esc(p.email || "")}</div>` : "");
+        const badge = el("div");
+        badge.innerHTML = (p && p.status === "failed") ? `<span class="pill failed">failed</span>` : `<span class="pill success">sent</span>`;
+        row.appendChild(who); row.appendChild(badge);
+        listBox.appendChild(row);
+      });
+      rcpSection.appendChild(listBox);
+    }
+    body.appendChild(rcpSection);
     const foot = el("div", "modal-foot");
     const close = el("button", "btn btn-ghost btn-sm", "Close");
     foot.appendChild(close);

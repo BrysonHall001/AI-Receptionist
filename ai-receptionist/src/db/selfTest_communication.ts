@@ -93,6 +93,10 @@ async function main() {
     const rows = await db.communicationSend.findMany({ where: { tenantId } });
     check(rows.length === 1, "exactly one CommunicationSend row written");
     check(rows[0].channel === "email" && rows[0].subject === "Hello all" && rows[0].recipientCount === 2 && rows[0].sentCount === 2 && rows[0].createdById === "user-123", "row has correct channel/subject/counts/createdById");
+    // NEW: the per-recipient list is captured on the row (2 contact recipients, id2 dropped for no email).
+    const storedRcps = Array.isArray(rows[0].recipients) ? rows[0].recipients : [];
+    check(storedRcps.length === 2 && storedRcps.every((p: any) => p.contactId && p.email && p.status === "sent"),
+      "recipients list captured on the row (2 contacts, each with contactId + email + sent status)");
 
     // ---------- (4) role gate ----------
     console.log("\n(4) role gate (same as bulk-email = contacts:edit):");

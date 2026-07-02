@@ -53,6 +53,13 @@ async function main() {
     check(res.recipientCount === 3 && res.sentCount === 3, "2 contacts + 1 unique-valid typed = 3 (typed dup of a contact dropped)");
     const rec = await db.communicationSend.findFirst({ where: { tenantId } });
     check(!!rec && rec.recipientCount === 3, "logged CommunicationSend count includes typed");
+    // NEW: the stored recipient list distinguishes contacts (contactId set) from typed
+    // addresses (contactId null): 2 contacts + 1 unique-valid typed = 3.
+    const storedRcps = rec && Array.isArray(rec.recipients) ? rec.recipients : [];
+    check(storedRcps.length === 3, "recipients list stored with 3 entries");
+    check(storedRcps.filter((p: any) => p.contactId).length === 2 && storedRcps.filter((p: any) => !p.contactId).length === 1,
+      "2 contact recipients (contactId set) + 1 typed recipient (contactId null) captured");
+    check(storedRcps.every((p: any) => p.email && p.status === "sent"), "each stored recipient has an email and sent status");
 
     // ---------- (3) typed-only send (no criteria) ----------
     console.log("\n(3) typed-only send:");

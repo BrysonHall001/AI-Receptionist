@@ -94,6 +94,11 @@ async function main() {
     const rec = await db.communicationSend.findFirst({ where: { tenantId, channel: "survey", surveyId } });
     check(!!rec, "a CommunicationSend with channel 'survey' + surveyId was written");
     check(!!rec && rec.recipientCount === 2 && rec.sentCount === 2 && rec.failCount === 0, "send record has correct counts");
+    // NEW: the per-recipient list is captured on the survey blast row (2 contacts, both sent).
+    const recById = await db.communicationSend.findUnique({ where: { id: res.id } });
+    const storedRcps = recById && Array.isArray(recById.recipients) ? recById.recipients : [];
+    check(storedRcps.length === 2 && storedRcps.every((p: any) => p.contactId && p.email && p.status === "sent"),
+      "survey blast recipients captured (2 contacts, each with contactId + email + sent status)");
 
     // ---------- (6) active gating ----------
     console.log("\n(6) active gating:");
