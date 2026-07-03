@@ -121,21 +121,22 @@ export async function aggregateAll(fromRaw: Date | null, toRaw: Date | null, buc
   // Macro number rental = sum of every tenant's number count (each tenant has 0 or 1 number).
   const macroNumberCount = tenants.reduce((n: number, t: any) => n + (t.phoneNumber ? 1 : 0), 0);
 
-  // Per-tenant breakdown over the whole range.
+  // Per-tenant breakdown over the whole range — EVERY tenant (zeros where there's no usage).
   const byTenant = new Map<string, any[]>();
   for (const r of rows) { const arr = byTenant.get(r.tenantId) ?? []; arr.push(r); byTenant.set(r.tenantId, arr); }
-  const perTenant = Array.from(byTenant.entries()).map(([tenantId, trows]) => {
+  const perTenant = tenants.map((t: any) => {
+    const trows = byTenant.get(t.id) ?? [];
     const u = sumUnits(trows);
-    const numberCount = tById[tenantId]?.phoneNumber ? 1 : 0;
+    const numberCount = t.phoneNumber ? 1 : 0;
     return {
-      tenantId,
-      tenantName: tById[tenantId]?.name ?? null,
-      billingStatus: tById[tenantId]?.billingStatus ?? null,
+      tenantId: t.id,
+      tenantName: t.name ?? null,
+      billingStatus: t.billingStatus ?? null,
       numberCount,
       units: u,
       cost: rangeCost(unitsToCostInput(u), rates, { numberCount, months }),
     };
-  }).sort((a, b) => b.cost.total - a.cost.total);
+  }).sort((a: any, b: any) => b.cost.total - a.cost.total);
 
   const totalUnits = sumUnits(rows);
   return {

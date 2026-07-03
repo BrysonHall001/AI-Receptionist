@@ -1266,6 +1266,41 @@
   }
   const usageSource = (rows) => ({ key: "usage", label: "Usage", topLevel: USAGE_TOP, rows: rows || [], reportFields: USAGE_FIELDS });
 
+  // Portfolio source: one row per tenant (all portals) over the range. Inherently macro.
+  const PORTFOLIO_FIELDS = [
+    { key: "tenant", label: "Portal", type: "text" },
+    { key: "billingStatus", label: "Billing status", type: "text" },
+    { key: "calls", label: "Calls", type: "number" },
+    { key: "callMinutes", label: "Call minutes", type: "number" },
+    { key: "promptTokens", label: "Prompt tokens", type: "number" },
+    { key: "completionTokens", label: "Completion tokens", type: "number" },
+    { key: "totalTokens", label: "Total tokens", type: "number" },
+    { key: "emails", label: "Emails", type: "number" },
+    { key: "estCost", label: "Est. cost", type: "number" },
+    { key: "billed", label: "Billed", type: "number" },
+    { key: "paid", label: "Paid", type: "number" },
+    { key: "outstanding", label: "Outstanding", type: "number" },
+  ];
+  const PORTFOLIO_TOP = PORTFOLIO_FIELDS.map((f) => f.key);
+  const portfolioSource = (rows) => ({ key: "portfolio", label: "By portal (all portals)", topLevel: PORTFOLIO_TOP, rows: rows || [], reportFields: PORTFOLIO_FIELDS, defaultGroupByKey: "tenant", defaultScope: "macro" });
+
+  // Charges source: one row per charge over the range (all tenants for macro, one tenant otherwise).
+  const CHARGES_FIELDS = [
+    { key: "tenant", label: "Portal", type: "text" },
+    { key: "billingStatus", label: "Billing status", type: "text" },
+    { key: "status", label: "Status", type: "text" },
+    { key: "periodStart", label: "Period start", type: "date" },
+    { key: "periodEnd", label: "Period end", type: "date" },
+    { key: "createdAt", label: "Created", type: "date" },
+    { key: "approvedAt", label: "Approved", type: "date" },
+    { key: "paidAt", label: "Paid", type: "date" },
+    { key: "amount", label: "Amount", type: "number" },
+    { key: "paid", label: "Paid amount", type: "number" },
+    { key: "outstanding", label: "Outstanding", type: "number" },
+  ];
+  const CHARGES_TOP = CHARGES_FIELDS.map((f) => f.key);
+  const chargesSource = (rows) => ({ key: "charges", label: "Charges", topLevel: CHARGES_TOP, rows: rows || [], reportFields: CHARGES_FIELDS, defaultScope: "both" });
+
   // A titled chart card whose body is sized so Chart.js (maintainAspectRatio:false) fills it.
   function usageChartCard(title, widgetDef, source, grouping, charts) {
     const card = el("div", "card"); card.style.cssText = "padding:16px";
@@ -1318,16 +1353,24 @@
   // cfg: { context: "macro"|"tenant", load(from,to) -> usage rows }.
   function renderBillingDashboards(host, cfg) {
     const context = cfg.context;
+    const tenantId = cfg.tenantId || null;
     // One range control shared by buildSources (reads current range) + renderTop (triggers reload).
     let reloadFn = () => {};
     const ctrl = usageRangeControl(() => reloadFn());
     function buildUsageSource() {
       const r = ctrl.get();
-      // load returns a promise of rows for the current range.
-      return Promise.resolve(cfg.load(r.from, r.to)).then((rows) => {
-        const src = usageSource(rows);
-        src.dateKey = "date"; src.grouping = r.grouping; src.rangeFrom = r.from; src.rangeTo = r.to;
-        return { usage: src };
+      const chargesUrl = `/api/admin/billing/charges-source?from=${r.from}&to=${r.to}` + (tenantId ? `&tenantId=${encodeURIComponent(tenantId)}` : "");
+      return Promise.all([
+        Promise.resolve(cfg.load(r.from, r.to)),
+        App.api(`/api/admin/billing/portfolio?from=${r.from}&to=${r.to}`).catch(() => ({ rows: [] })),
+        App.api(chargesUrl).catch(() => ({ rows: [] })),
+      ]).then(([usageRows, portfolio, charges]) => {
+        const usage = usageSource(usageRows);
+        usage.dateKey = "date"; usage.grouping = r.grouping; usage.rangeFrom = r.from; usage.rangeTo = r.to;
+        const port = portfolioSource((portfolio && portfolio.rows) || []); // range baked in server-side; no dateKey
+        const chg = chargesSource((charges && charges.rows) || []);
+        chg.dateKey = "createdAt"; chg.grouping = r.grouping; chg.rangeFrom = r.from; chg.rangeTo = r.to;
+        return { usage, portfolio: port, charges: chg };
       });
     }
     const engine = App.reports.createDashboardEngine(host, {
@@ -1370,6 +1413,7 @@
   function renderTenantUsageDash(host, tenantId, tenantName) {
     return renderBillingDashboards(host, {
       context: "tenant",
+      tenantId: tenantId,
       load: async (from, to) => {
         const d = await App.api(`/api/admin/usage/tenant/${encodeURIComponent(tenantId)}?bucket=day&from=${from}&to=${to}`);
         return usageRowsFromBuckets(d.buckets, d.tenantName || tenantName);
@@ -1589,7 +1633,7 @@
     $("#d-void").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Void charge", message: "Void this charge? It will be excluded from billed/outstanding totals.", confirmText: "Void charge" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/void`, { method: "POST" }); toast("Charge voided"); overlay.remove(); refreshBilling(tenantId, tenantName); } catch (e) { toast(e.message, true); } };
   }
 
-  // ---- Macro Billing & Usage page: Overview (editable) / By portal (clickable) / Billing Rates ----
+  // ---- Macro Billing & Usage page: Overview (editable dashboards) / Billing Rates ----
   async function renderUsageBilling() {
     view().innerHTML = "";
     const wrap = el("div", "fade-in");
@@ -1598,21 +1642,10 @@
 
     const tabsBar = el("div", "tabs");
     const bodyEl = el("div", "tab-body");
-    const TABS = [["overview", "Overview"], ["byportal", "By portal"], ["rates", "Billing Rates"]];
+    const TABS = [["overview", "Overview"], ["rates", "Billing Rates"]];
     let active = "overview";
     const charts = [];
     function destroyCharts() { charts.forEach((c) => { try { c.destroy(); } catch (e) {} }); charts.length = 0; }
-
-    // Drill from a By-portal row into that tenant's usage view (same render as the Tenants panel).
-    function openTenantDrill(tenantId, name) {
-      destroyCharts(); bodyEl.innerHTML = "";
-      const back = el("button", "btn btn-ghost btn-sm", "← Back to By portal");
-      back.onclick = () => { active = "byportal"; paint(); };
-      bodyEl.appendChild(back);
-      bodyEl.appendChild(el("h2", "settings-h", name || "Portal"));
-      const host = el("div"); bodyEl.appendChild(host);
-      renderTenantUsageInto(host, tenantId, name).catch((e) => { host.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc((e && e.message) || "error")}</div>`; });
-    }
 
     async function paint() {
       destroyCharts();
@@ -1632,49 +1665,6 @@
         });
         return;
       }
-
-      // By portal: per-tenant breakdown for the range — sortable, CLICKABLE table + cost bar chart.
-      const ctrlHost = el("div"); bodyEl.appendChild(ctrlHost);
-      const out = el("div"); bodyEl.appendChild(out);
-      async function load() {
-        destroyCharts();
-        const { from, to } = ctrl.get();
-        out.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
-        let data;
-        try { data = await App.api(`/api/admin/usage?bucket=day&from=${from}&to=${to}`); }
-        catch (e) { out.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
-        out.innerHTML = "";
-        const per = (data.perTenant || []).map((p) => ({
-          tenantId: p.tenantId, tenant: p.tenantName || p.tenantId, billingStatus: p.billingStatus || "—",
-          calls: p.units.calls, callMinutes: Math.round((p.units.callSeconds / 60) * 1000) / 1000,
-          totalTokens: p.units.totalTokens, emails: p.units.emails, totalCost: p.cost.total,
-        }));
-        out.appendChild(usageChartCard("Estimated cost by portal", { type: "bar", groupBy: [{ key: "tenant" }], measure: { op: "sum", field: "totalCost" } }, usageSource(per), null, charts));
-        const tHost = el("div"); tHost.style.marginTop = "16px"; out.appendChild(tHost);
-        App.table.mount({
-          container: tHost, rows: per, rowId: (r) => r.tenantId, scrollX: true,
-          defaultSort: "totalCost", defaultSortDir: "desc",
-          columns: [
-            { key: "tenant", label: "Tenant", type: "text", get: (r) => r.tenant, render: (r) => `<a class="link-btn" data-tid="${esc(r.tenantId)}">${esc(r.tenant)}</a>` },
-            { key: "billingStatus", label: "Billing", type: "text", get: (r) => r.billingStatus, render: (r) => esc(cap(r.billingStatus)) },
-            { key: "calls", label: "Calls", type: "number", get: (r) => r.calls },
-            { key: "callMinutes", label: "Minutes", type: "number", get: (r) => r.callMinutes },
-            { key: "totalTokens", label: "Tokens", type: "number", get: (r) => r.totalTokens },
-            { key: "emails", label: "Emails", type: "number", get: (r) => r.emails },
-            { key: "totalCost", label: "Est. cost", type: "number", get: (r) => r.totalCost, render: (r) => fmtMoney(r.totalCost) },
-          ],
-          onRender: () => {
-            App.util.$$("a.link-btn[data-tid]", tHost).forEach((a) => {
-              a.style.cssText = "cursor:pointer;color:var(--accent, #2563eb);text-decoration:underline";
-              a.onclick = (e) => { e.preventDefault(); const row = per.find((x) => x.tenantId === a.dataset.tid); openTenantDrill(a.dataset.tid, row ? row.tenant : ""); };
-            });
-          },
-          emptyHtml: `<div class="card cell-muted" style="padding:18px">No usage in this range.</div>`,
-        });
-      }
-      const ctrl = usageRangeControl(load);
-      ctrlHost.appendChild(ctrl.el);
-      await load();
     }
 
     TABS.forEach(([k, label]) => {

@@ -237,7 +237,7 @@
       const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
       $("#w-close").onclick = () => overlay.remove();
       $("#w-source").value = curSrcKey; $("#w-type").value = w.type; $("#w-mop").value = w.measure.op;
-      if (cfg.showScope && $("#w-scope")) $("#w-scope").value = ["both", "macro", "tenant"].indexOf(w.scope) >= 0 ? w.scope : "both";
+      if (cfg.showScope && $("#w-scope")) $("#w-scope").value = ["both", "macro", "tenant"].indexOf(w.scope) >= 0 ? w.scope : ((sources[curSrcKey] && sources[curSrcKey].defaultScope) || "both");
       // Per-widget date range override (optional; unset = use the page's global range).
       if (w.range && w.range.from && w.range.to) { $("#w-range-on").checked = true; $("#w-range-from").value = String(w.range.from).slice(0, 10); $("#w-range-to").value = String(w.range.to).slice(0, 10); $("#w-range-wrap").style.display = "flex"; }
       $("#w-range-on").addEventListener("change", () => { $("#w-range-wrap").style.display = $("#w-range-on").checked ? "flex" : "none"; });
@@ -284,7 +284,7 @@
         return base;
       }
       function preview() { previewCharts.forEach((c) => { try { c.destroy(); } catch (e) {} }); previewCharts = []; try { const s = curSource(); renderWidgetBody($("#w-preview"), collect(), s, s.rows, s.reportFields, previewCharts); } catch (e) { $("#w-preview").innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; } }
-      $("#w-source").addEventListener("change", () => { curSrcKey = $("#w-source").value; rebuildForSource(false); sync(); });
+      $("#w-source").addEventListener("change", () => { curSrcKey = $("#w-source").value; if (cfg.showScope && $("#w-scope") && !existing) { const ds = (sources[curSrcKey] && sources[curSrcKey].defaultScope) || "both"; $("#w-scope").value = ds; } rebuildForSource(false); sync(); });
       ["#w-type", "#w-mop", "#w-mfield", "#w-title"].forEach((s) => { $(s).addEventListener("change", sync); $(s).addEventListener("input", preview); });
       rebuildForSource(true); sync();
       $("#w-save").onclick = async () => { const widget = collectFull(); try { await cfg.onSave(widget); overlay.remove(); toast(existing ? "Widget saved" : "Widget added"); } catch (e) { toast((e && e.message) || "Save failed", true); } };

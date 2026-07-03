@@ -10,6 +10,7 @@ import { listChangeLog } from "../services/changelogService";
 import { listGroupedEmailSends, listEmailSendRecipients } from "../services/emailLogService";
 import { getBillingRates, updateBillingRates } from "../services/billingRateService";
 import { aggregateTenant, aggregateAll, isBucket, parseDate, type Bucket } from "../services/usageAggregationService";
+import { portfolioRows, chargeRows } from "../services/billingSourceService";
 import { listBillingDashboards, createBillingDashboard, renameBillingDashboard, updateBillingDashboardWidgets, deleteBillingDashboard, reorderBillingDashboards } from "../services/billingDashboardService";
 import { getBillingConfig, updateBillingConfig } from "../services/billingConfigService";
 import { computeSuggestedCharge } from "../services/chargeComputeService";
@@ -421,6 +422,20 @@ adminRouter.get("/usage/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), 
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
+});
+
+// Billing reporting sources for widgets.
+// portfolio: one row per tenant (all tenants) over a range — usage + est cost + billed/paid/outstanding.
+adminRouter.get("/billing/portfolio", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await portfolioRows(parseDate(req.query.from), parseDate(req.query.to))); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+// charges: one row per charge over a range — all tenants (macro) or a single tenant (?tenantId=).
+adminRouter.get("/billing/charges-source", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try {
+    const tenantId = typeof req.query.tenantId === "string" && req.query.tenantId ? req.query.tenantId : null;
+    res.json(await chargeRows(parseDate(req.query.from), parseDate(req.query.to), tenantId));
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
 // Global billing dashboards (OWNER/SUPER_ADMIN). GET returns a scope's widget layout (seeded
