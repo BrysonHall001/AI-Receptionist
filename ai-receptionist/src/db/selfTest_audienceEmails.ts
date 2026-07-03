@@ -60,6 +60,13 @@ async function main() {
     check(storedRcps.filter((p: any) => p.contactId).length === 2 && storedRcps.filter((p: any) => !p.contactId).length === 1,
       "2 contact recipients (contactId set) + 1 typed recipient (contactId null) captured");
     check(storedRcps.every((p: any) => p.email && p.status === "sent"), "each stored recipient has an email and sent status");
+    // NEW (email send records): EmailLog mirrors the union — 3 rows linked to the blast,
+    // 2 with a contactId (contacts) and 1 without (typed address), all status "mock".
+    const logs = await db.emailLog.findMany({ where: { communicationSendId: rec.id } });
+    check(logs.length === 3, `3 EmailLog rows linked to the blast (got ${logs.length})`);
+    check(logs.filter((l: any) => l.contactId).length === 2 && logs.filter((l: any) => !l.contactId).length === 1,
+      "EmailLog distinguishes 2 contact rows (contactId set) from 1 typed row (contactId null)");
+    check(logs.every((l: any) => l.type === "email_blast" && l.status === "mock"), "each EmailLog row is type email_blast + status mock");
 
     // ---------- (3) typed-only send (no criteria) ----------
     console.log("\n(3) typed-only send:");
@@ -86,7 +93,7 @@ async function main() {
   } finally {
     console.log("\nCleaning up the temporary tenant…");
     if (tId) {
-      try { await db.tenant.delete({ where: { id: tId } }); }
+      try { await db.emailLog.deleteMany({ where: { tenantId: tId } }); await db.tenant.delete({ where: { id: tId } }); }
       catch (e) { console.error("cleanup failed", e); failures.push("cleanup failed"); }
     }
     try { await db.tenant.deleteMany({ where: { name: T_NAME } }); } catch {}

@@ -891,6 +891,37 @@ model CommunicationSend {
   @@index([tenantId, createdAt])
 }
 
+// One row per INDIVIDUAL email the app sends (per recipient). Written centrally by
+// the three senders in notificationService.ts so every outbound email is recorded
+// with its delivery outcome and Resend tracking id — no more silent success. Sends
+// that are mocked in dev/self-tests are still recorded (status "mock").
+//
+// tenantId is nullable because some sends aren't tenant-scoped (super-admin/auditor
+// invites, feedback, password reset). There is deliberately NO FK to Tenant: this is
+// an append-only audit log that must survive even if a tenant row is later removed.
+// Blast rows carry communicationSendId so the Communication "Sent" detail can list
+// every recipient of a blast (with per-recipient status).
+model EmailLog {
+  id                  String   @id @default(cuid())
+  tenantId            String?                 // null for non-tenant sends (some invites, feedback, password reset)
+  type                String                  // "call_summary"|"invite"|"feedback"|"report"|"survey_blast"|"email_blast"|"single"|"password_reset"|"automation"
+  toEmail             String
+  toName              String?
+  contactId           String?                 // set when the recipient is a known contact
+  subject             String   @default("")
+  sentById            String?                 // user who initiated, when applicable
+  communicationSendId String?                 // links per-recipient rows to a blast's CommunicationSend row
+  providerMessageId   String?                 // Resend's data.id
+  status              String                  // "sent"|"failed"|"mock"
+  errorMessage        String?
+  createdAt           DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([status])
+  @@index([providerMessageId])
+  @@index([communicationSendId])
+}
+
 // ===================== Surveys (Communication → Surveys) =====================
 // Phase 3 Batch 1: the model + builder. Responses/answers are defined now so the
 // response-page batch can write to them, but NOTHING in this batch creates them.

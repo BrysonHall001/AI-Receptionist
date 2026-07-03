@@ -165,7 +165,12 @@ const EXECUTORS: Record<string, Executor> = {
     }
     subject = resolveMergeTags(subject, tmpl);
     html = resolveMergeTags(html, tmpl);
-    await sendRichEmail({ to: contact.email, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name });
+    await sendRichEmail({ to: contact.email, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name }, {
+      type: "automation",
+      tenantId: ctx.tenantId,
+      contactId: contact.id,
+      toName: contact.name ?? null,
+    });
     await logActivity({ tenantId: ctx.tenantId, contactId: contact.id, type: "email_sent", summary: `Email sent: ${subject}`, detail: { subject, to: contact.email, via: "automation" }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
     await emitEvent({ tenantId: ctx.tenantId, type: EVENT_TYPES.EmailSent, actor: ctx.actor, subject: { type: "contact", id: contact.id }, payload: { subject, to: contact.email } });
     return { type: "send_email", status: "success", detail: `to ${contact.email}` };
@@ -215,7 +220,12 @@ const EXECUTORS: Record<string, Executor> = {
           ? body.split("\n").map((line) => `<p style="margin:0 0 8px">${escHtml(line)}</p>`).join("")
           : "<p>A new lead just came in.</p>";
         try {
-          await sendRichEmail({ to, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name });
+          await sendRichEmail({ to, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name }, {
+            // Internal alert about the lead sent to the business inbox, not to the
+            // contact -> contactId stays null.
+            type: "automation",
+            tenantId: ctx.tenantId,
+          });
           parts.push(`emailed ${to}`); anySent = true;
         } catch (e) { parts.push(`email failed: ${(e as Error).message}`); anyFail = true; }
       }
@@ -343,7 +353,12 @@ const EXECUTORS: Record<string, Executor> = {
           if (!cand.email) { fail++; errs.push(`${who}: no email`); continue; }
           const subject = renderTemplate(String(cfg.subject ?? ""), tokens);
           const html = renderTemplate(String(cfg.html ?? cfg.body ?? ""), tokens);
-          await sendRichEmail({ to: cand.email, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name });
+          await sendRichEmail({ to: cand.email, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name }, {
+            type: "automation",
+            tenantId: ctx.tenantId,
+            contactId: cand.id,
+            toName: cand.name ?? null,
+          });
           await logActivity({ tenantId: ctx.tenantId, contactId: cand.id, type: "email_sent", summary: `Email sent: ${subject}`, detail: { subject, to: cand.email, via: "automation" }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
           await emitEvent({ tenantId: ctx.tenantId, type: EVENT_TYPES.EmailSent, actor: ctx.actor, subject: { type: "contact", id: cand.id }, payload: { subject, to: cand.email } });
           ok++;

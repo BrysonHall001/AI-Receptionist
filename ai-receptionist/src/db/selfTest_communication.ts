@@ -98,6 +98,13 @@ async function main() {
     check(storedRcps.length === 2 && storedRcps.every((p: any) => p.contactId && p.email && p.status === "sent"),
       "recipients list captured on the row (2 contacts, each with contactId + email + sent status)");
 
+    // NEW (email send records): every recipient also gets an EmailLog row, linked to the
+    // blast by communicationSendId, typed "email_blast", status "mock" (mock mode on).
+    const logs = await db.emailLog.findMany({ where: { communicationSendId: rows[0].id } });
+    check(logs.length === 2, `one EmailLog row per recipient linked to the blast (got ${logs.length})`);
+    check(logs.every((l: any) => l.type === "email_blast" && l.status === "mock" && l.tenantId === tenantId && l.contactId),
+      "each EmailLog row is type email_blast, status mock, tenant-scoped, with a contactId");
+
     // ---------- (4) role gate ----------
     console.log("\n(4) role gate (same as bulk-email = contacts:edit):");
     check((await can({ role: "CLIENT_USER" } as any, "contacts", "edit")) === false, "CLIENT_USER cannot contacts:edit -> blocked from the send endpoint");
@@ -108,7 +115,7 @@ async function main() {
   } finally {
     console.log("\nCleaning up the temporary tenant…");
     if (tId) {
-      try { await db.communicationSend.deleteMany({ where: { tenantId: tId } }); await db.tenant.delete({ where: { id: tId } }); }
+      try { await db.emailLog.deleteMany({ where: { tenantId: tId } }); await db.communicationSend.deleteMany({ where: { tenantId: tId } }); await db.tenant.delete({ where: { id: tId } }); }
       catch (e) { console.error("cleanup failed", e); failures.push("cleanup failed"); }
     }
     try { await db.tenant.deleteMany({ where: { name: T_NAME } }); } catch {}

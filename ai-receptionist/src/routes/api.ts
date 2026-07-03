@@ -16,7 +16,7 @@ import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDe
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
 import { sendRichEmail } from "../services/notificationService";
-import { sendEmailBlast, listSends } from "../services/communicationService";
+import { sendEmailBlast, listSends, listSendRecipients } from "../services/communicationService";
 import { listSurveys, getSurvey, upsertSurvey, deleteSurvey, setSurveyStatus, duplicateSurvey } from "../services/surveyService";
 import { aggregateResults, getResponseExport } from "../services/surveyResultsService";
 import { listResponses, createRecipient } from "../services/surveyResponseService";
@@ -406,7 +406,13 @@ apiRouter.post("/contacts/:id/email", async (req: Request, res: Response) => {
     const mergeVals = contactMergeValues(contact, await loadFieldDefs(tenantId));
     const finalSubject = resolveMergeTags(subject, mergeVals);
     const finalHtml = resolveMergeTags(html || "", mergeVals);
-    await sendRichEmail({ to: contact.email, subject: finalSubject, html: finalHtml, fromEmail: req.user!.email, fromName: req.user!.name });
+    await sendRichEmail({ to: contact.email, subject: finalSubject, html: finalHtml, fromEmail: req.user!.email, fromName: req.user!.name }, {
+      type: "single",
+      tenantId,
+      sentById: req.user!.id,
+      contactId: req.params.id,
+      toName: contact.name ?? null,
+    });
     await logActivity({
       tenantId,
       contactId: req.params.id,
@@ -455,6 +461,18 @@ apiRouter.get("/communication/sends", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await listSends(tenantId));
+});
+
+// Per-recipient list for ONE past send, read from EmailLog (one row per address, with
+// its real delivery status incl. "mock"). Tenant-scoped: the send must belong to this
+// tenant. Returns 404 for a send that isn't this tenant's; [] means the send exists but
+// predates recipient capture (the client shows the "not recorded" note).
+apiRouter.get("/communication/sends/:id/recipients", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const rows = await listSendRecipients(tenantId, req.params.id);
+  if (rows === null) { res.status(404).json({ error: "Send not found" }); return; }
+  res.json(rows);
 });
 
 // ---- Surveys (Communication → Surveys) — builder CRUD ----

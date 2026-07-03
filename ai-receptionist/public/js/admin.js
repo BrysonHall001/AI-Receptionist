@@ -533,14 +533,19 @@
         catch (e) { problems.push("receptionist"); }
       }
       let invited = 0;
+      let emailFailed = 0; // invite record created, but the email couldn't be sent
       for (const u of draft.users) {
-        try { await App.api(`/api/admin/portals/${portal.id}/invites`, { method: "POST", body: JSON.stringify({ email: u.email, role: u.role }) }); invited++; }
-        catch (e) { problems.push("invite " + u.email); }
+        try {
+          const r = await App.api(`/api/admin/portals/${portal.id}/invites`, { method: "POST", body: JSON.stringify({ email: u.email, role: u.role }) });
+          invited++;
+          if (r && r.emailed === false) emailFailed++;
+        } catch (e) { problems.push("invite " + u.email); }
       }
 
       // 3) Report + enter the tenant (never leave an orphan silently).
       const okMsg = `Tenant created${draft.users.length ? `, ${invited}/${draft.users.length} invite(s) sent` : ""}`;
       if (problems.length) toast(`${okMsg}. Couldn't apply: ${problems.join(", ")} — you can finish those inside the tenant.`, true);
+      else if (emailFailed) toast(`${okMsg}, but ${emailFailed} invite email${emailFailed === 1 ? "" : "s"} couldn't be sent — open the tenant's Users to copy the link${emailFailed === 1 ? "" : "s"}.`, true);
       else toast(okMsg);
       enterPortal(portal); // sets currentPortalId + navigates into the new tenant
     };

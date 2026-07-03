@@ -224,7 +224,9 @@ adminRouter.post("/portals/:id/invites", async (req: Request, res: Response) => 
     logger.info(`Invite created for ${invite.email} -> portal ${tenantId} (emailed: ${emailed})`);
     // `link` is returned ONLY because email is mocked, so the super-admin can copy
     // it to test. With real email this field would simply stop being returned.
-    res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link });
+    // `emailed` reports whether delivery actually succeeded so callers (e.g. the
+    // tenant-create wizard) can warn when the invite record exists but no email went out.
+    res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link, emailed });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

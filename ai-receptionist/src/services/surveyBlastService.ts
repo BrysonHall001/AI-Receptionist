@@ -74,6 +74,24 @@ export async function sendSurveyBlast(input: {
     : [];
   const byId = new Map(fullContacts.map((c: any) => [c.id, c]));
 
+  // Create the blast's CommunicationSend row FIRST so every per-recipient EmailLog row
+  // can link back to it via communicationSendId. Counts + the recipient list are filled
+  // in once the fan-out completes (below).
+  const send = await db.communicationSend.create({
+    data: {
+      tenantId: input.tenantId,
+      channel: "survey",
+      surveyId: input.surveyId,
+      subject: (input.subject || "").slice(0, 998),
+      body: input.html || "", // store the template (with the {{survey_link}} token) for the record
+      recipientCount: recipients.length,
+      sentCount: 0,
+      failCount: 0,
+      recipients: [],
+      createdById: input.createdById ?? null,
+    },
+  });
+
   let sentCount = 0;
   let failCount = 0;
   const links: Array<{ contactId: string; url: string }> = [];
@@ -89,7 +107,14 @@ export async function sendSurveyBlast(input: {
     links.push({ contactId: r.id, url });
     const contact = byId.get(r.id) || null;
     try {
-      await sendRichEmail({ to: r.email, subject: resolver.apply(input.subject, contact), html: resolver.apply(personalize(input.html, url), contact), fromEmail: input.fromEmail, fromName: input.fromName ?? null });
+      await sendRichEmail({ to: r.email, subject: resolver.apply(input.subject, contact), html: resolver.apply(personalize(input.html, url), contact), fromEmail: input.fromEmail, fromName: input.fromName ?? null }, {
+        type: "survey_blast",
+        tenantId: input.tenantId,
+        sentById: input.createdById ?? null,
+        contactId: r.id,
+        toName: r.name ?? null,
+        communicationSendId: send.id,
+      });
       sentCount++;
       recipientLog.push({ contactId: r.id, email: r.email, name: r.name ?? null, status: "sent" });
     } catch (e) {
@@ -99,22 +124,13 @@ export async function sendSurveyBlast(input: {
     }
   }
 
-  const rec = await db.communicationSend.create({
-    data: {
-      tenantId: input.tenantId,
-      channel: "survey",
-      surveyId: input.surveyId,
-      subject: (input.subject || "").slice(0, 998),
-      body: input.html || "", // store the template (with the {{survey_link}} token) for the record
-      recipientCount: recipients.length,
-      sentCount,
-      failCount,
-      recipients: recipientLog,
-      createdById: input.createdById ?? null,
-    },
+  // Backfill the final counts + recipient list now that the fan-out is done.
+  await db.communicationSend.update({
+    where: { id: send.id },
+    data: { sentCount, failCount, recipients: recipientLog },
   });
 
-  return { id: rec.id, recipientCount: recipients.length, sentCount, failCount, links };
+  return { id: send.id, recipientCount: recipients.length, sentCount, failCount, links };
 }
 
 // Send ONE preview copy to the sender, using the survey's anonymous link as the sample
@@ -139,6 +155,11 @@ export async function sendSurveyTest(input: {
   const sample = { name: input.sampleName || "", email: input.toEmail };
   const html = resolver.apply(personalize(input.html, sampleUrl), sample);
   const subject = `[Test] ${resolver.apply(input.subject, sample)}`;
-  await sendRichEmail({ to: input.toEmail, subject, html, fromEmail: input.fromEmail, fromName: input.fromName ?? null });
+  await sendRichEmail({ to: input.toEmail, subject, html, fromEmail: input.fromEmail, fromName: input.fromName ?? null }, {
+    // A preview to the sender: no CommunicationSend row, no contact, no known user id.
+    type: "survey_blast",
+    tenantId: input.tenantId,
+    toName: input.sampleName ?? null,
+  });
   return { sent: true };
 }

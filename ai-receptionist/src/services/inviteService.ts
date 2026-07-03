@@ -72,6 +72,10 @@ export async function sendInvite(invite: { email: string; role?: string }, link:
       subject: "You're invited to Clarity CRM",
       html,
       fromEmail: env.RESEND_FROM, // send address is RESEND_FROM (no Reply-To set)
+    }, {
+      // An invitee isn't a contact and the invite may be master-scope (no tenant),
+      // so contactId/tenantId stay null here.
+      type: "invite",
     });
     return true;
   } catch (err) {
@@ -114,6 +118,8 @@ export async function sendCustomInvite(
       subject: finalSubject,
       html,
       fromEmail: env.RESEND_FROM,
+    }, {
+      type: "invite",
     });
     return true;
   } catch (err) {

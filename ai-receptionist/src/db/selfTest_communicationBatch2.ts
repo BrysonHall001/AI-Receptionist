@@ -9,7 +9,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { prisma, disconnectDb } from "./client";
 import { can } from "../services/permissionService";
-import { sendEmailBlast, listSends, resolveEmailableRecipients } from "../services/communicationService";
+import { sendEmailBlast, listSends, listSendRecipients, resolveEmailableRecipients } from "../services/communicationService";
 import { listTemplates, createTemplate } from "../services/templateService";
 import { env } from "../config/env";
 
@@ -58,6 +58,13 @@ async function main() {
     check(s.recipientCount === 2 && s.sentCount === 2 && s.failCount === 0, "counts correct in the Sent log row");
     check(s.createdByName === "Send Er", "Sent-by resolves to the creator's name");
 
+    // NEW (email send records): the Sent-detail recipient list now comes from EmailLog
+    // via listSendRecipients — tenant-scoped, one entry per recipient, with real status.
+    const detailRcps = await listSendRecipients(tenantId, s.id);
+    check(!!detailRcps && detailRcps.length === 2, `listSendRecipients returns 2 EmailLog rows for the send (got ${detailRcps ? detailRcps.length : "null"})`);
+    check(!!detailRcps && detailRcps.every((p) => p.toEmail && p.status === "mock"), "each detail recipient has an email + mock status (mock mode)");
+    check((await listSendRecipients("no-such-tenant", s.id)) === null, "listSendRecipients is tenant-scoped (foreign tenant -> null, not another tenant's list)");
+
     // newest-first ordering
     await new Promise((r) => setTimeout(r, 5));
     await sendEmailBlast({ tenantId, subject: "Second", html: "<p>2</p>", contactIds: [id1], fromEmail: "sender@example.invalid", fromName: "Send Er", createdById: u1.id });
@@ -89,6 +96,7 @@ async function main() {
     console.log("\nCleaning up the temporary tenant…");
     if (tId) {
       try {
+        await db.emailLog.deleteMany({ where: { tenantId: tId } });
         await db.communicationSend.deleteMany({ where: { tenantId: tId } });
         await db.emailTemplate.deleteMany({ where: { tenantId: tId } });
         await db.tenant.delete({ where: { id: tId } });

@@ -99,6 +99,12 @@ async function main() {
     const storedRcps = recById && Array.isArray(recById.recipients) ? recById.recipients : [];
     check(storedRcps.length === 2 && storedRcps.every((p: any) => p.contactId && p.email && p.status === "sent"),
       "survey blast recipients captured (2 contacts, each with contactId + email + sent status)");
+    // NEW (email send records): each recipient also gets an EmailLog row linked to the
+    // blast (type "survey_blast", status "mock", contactId set — survey blasts are contact-only).
+    const blastLogs = await db.emailLog.findMany({ where: { communicationSendId: res.id } });
+    check(blastLogs.length === 2, `one EmailLog row per survey recipient linked to the blast (got ${blastLogs.length})`);
+    check(blastLogs.every((l: any) => l.type === "survey_blast" && l.status === "mock" && l.contactId && l.communicationSendId === res.id),
+      "each survey EmailLog row is type survey_blast, status mock, with contactId + communicationSendId");
 
     // ---------- (6) active gating ----------
     console.log("\n(6) active gating:");
@@ -139,7 +145,7 @@ async function main() {
   } finally {
     console.log("\nCleaning up the temporary tenant…");
     if (tId) {
-      try { await db.tenant.delete({ where: { id: tId } }); }
+      try { await db.emailLog.deleteMany({ where: { tenantId: tId } }); await db.tenant.delete({ where: { id: tId } }); }
       catch (e) { console.error("cleanup failed", e); failures.push("cleanup failed"); }
     }
     try { await db.tenant.deleteMany({ where: { name: T_NAME } }); } catch {}

@@ -84,7 +84,7 @@ authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => 
     if (result) {
       const link = `${env.APP_BASE_URL}/#/reset?token=${result.token}`;
       try {
-        await sendPlainEmail(email, "Reset your password", `Use this link to reset your password:\n\n${link}\n\nThis link expires in 1 hour.`);
+        await sendPlainEmail(email, "Reset your password", `Use this link to reset your password:\n\n${link}\n\nThis link expires in 1 hour.`, { type: "password_reset" });
       } catch (err) {
         logger.error(`reset email failed: ${(err as Error).message}`);
       }

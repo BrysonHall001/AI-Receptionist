@@ -423,40 +423,53 @@
     bodyBox.innerHTML = r.body && r.body.trim() ? r.body : `<span class="cell-muted">(no message body)</span>`;
     body.appendChild(bodyBox);
 
-    // Recipients section (added): WHO the blast went to, with per-address status.
-    const rcps = Array.isArray(r.recipients) ? r.recipients : [];
+    // Recipients section: WHO the blast went to, with per-address status. Sourced from
+    // the EmailLog table (one row per address, real delivery status incl. "mock") via a
+    // tenant-scoped endpoint, loaded on demand once the modal is open.
     const rcpSection = el("div");
     rcpSection.style.marginTop = "14px";
-    if (!rcps.length && r.recipientCount > 0) {
-      // Sent before recipient capture existed — show a muted note, not a broken list.
-      const head = el("div", "", "Recipients");
-      head.style.cssText = "font-weight:600;margin-bottom:6px";
-      const note = el("div", "cell-muted", "Recipient list wasn't recorded for sends before this update.");
-      note.style.fontSize = "12.5px";
-      rcpSection.appendChild(head); rcpSection.appendChild(note);
-    } else if (rcps.length) {
-      const head = el("div", "", `Recipients (${rcps.length})`);
-      head.style.cssText = "font-weight:600;margin-bottom:6px";
-      rcpSection.appendChild(head);
+    const rcpHead = el("div", "", "Recipients");
+    rcpHead.style.cssText = "font-weight:600;margin-bottom:6px";
+    rcpSection.appendChild(rcpHead);
+    const rcpBody = el("div", "cell-muted", "Loading…");
+    rcpBody.style.fontSize = "12.5px";
+    rcpSection.appendChild(rcpBody);
+    body.appendChild(rcpSection);
+
+    App.portalApi("/api/communication/sends/" + encodeURIComponent(r.id) + "/recipients").then((rcps) => {
+      rcps = Array.isArray(rcps) ? rcps : [];
+      if (!rcps.length) {
+        // No linked EmailLog rows. If the send had recipients, it predates this update.
+        rcpBody.textContent = r.recipientCount > 0
+          ? "Recipient list wasn't recorded for sends before this update."
+          : "No recipients recorded for this send.";
+        return;
+      }
+      rcpHead.textContent = `Recipients (${rcps.length})`;
+      rcpBody.remove();
       const listBox = el("div", "card");
       listBox.style.cssText = "padding:4px 0;max-height:34vh;overflow:auto";
       rcps.forEach((p) => {
-        const hasName = !!(p && p.name && String(p.name).trim());
-        const primary = hasName ? p.name : (p && p.email ? p.email : "—");
+        const hasName = !!(p && p.toName && String(p.toName).trim());
+        const primary = hasName ? p.toName : (p && p.toEmail ? p.toEmail : "—");
         const row = el("div");
         row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 14px";
         const who = el("div");
         who.style.minWidth = "0";
         who.innerHTML = `<div style="font-size:13.5px;overflow:hidden;text-overflow:ellipsis">${esc(primary)}</div>` +
-          (hasName ? `<div class="cell-muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis">${esc(p.email || "")}</div>` : "");
+          (hasName ? `<div class="cell-muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis">${esc(p.toEmail || "")}</div>` : "");
         const badge = el("div");
-        badge.innerHTML = (p && p.status === "failed") ? `<span class="pill failed">failed</span>` : `<span class="pill success">sent</span>`;
+        // sent -> green, failed -> red, mock (dev/test, not actually delivered) -> muted.
+        const cls = p && p.status === "failed" ? "pill failed" : (p && p.status === "mock" ? "pill report" : "pill success");
+        const label = p && (p.status === "failed" || p.status === "mock") ? p.status : "sent";
+        badge.innerHTML = `<span class="${cls}">${esc(label)}</span>`;
         row.appendChild(who); row.appendChild(badge);
         listBox.appendChild(row);
       });
       rcpSection.appendChild(listBox);
-    }
-    body.appendChild(rcpSection);
+    }).catch((e) => {
+      rcpBody.textContent = (e && e.message) ? e.message : "Couldn't load the recipient list.";
+    });
     const foot = el("div", "modal-foot");
     const close = el("button", "btn btn-ghost btn-sm", "Close");
     foot.appendChild(close);

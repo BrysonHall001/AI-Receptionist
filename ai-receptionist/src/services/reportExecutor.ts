@@ -246,7 +246,12 @@ export async function runAndDeliverReport(input: {
     ? (input.emailBody as string)
     : `<p>Your report <strong>${escapeHtml(name)}</strong> is attached (${escapeHtml(artifact.ext.toUpperCase())}).</p><p>Included: ${escapeHtml(sheetList)}.</p>`;
   for (const to of recipients) {
-    await sendRichEmail({ to, subject, html, fromEmail: portal?.notifyEmail || "", fromName: portal?.name || null, attachments: [{ filename: artifact.filename, content: artifact.content }] });
+    await sendRichEmail({ to, subject, html, fromEmail: portal?.notifyEmail || "", fromName: portal?.name || null, attachments: [{ filename: artifact.filename, content: artifact.content }] }, {
+      // Report recipients are typed addresses, not contacts -> contactId null.
+      type: "report",
+      tenantId,
+      sentById: input.createdById ?? null,
+    });
   }
 
   // Log the run to ExportRecord (kind:"report"). Store the EXACT emitted artifact so

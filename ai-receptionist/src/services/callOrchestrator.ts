@@ -325,6 +325,12 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
         transcript,
         startedAt: session.createdAt,
         completed: finalState === "COMPLETED",
+      }, {
+        // The recipient is the tenant's own notify inbox (the business), not the
+        // caller — so contactId stays null; toName is the business's display name.
+        type: "call_summary",
+        tenantId: tenant.id,
+        toName: tenant.name,
       });
       await markEmailSent(callSid);
     } catch (err) {

@@ -377,7 +377,7 @@ async function notifyNewTicket(p: {
     `Problem:\n${p.problem}\n\n` +
     `Description:\n${p.description}\n`;
   try {
-    await sendPlainEmail(NOTIFY_EMAIL, subject, body);
+    await sendPlainEmail(NOTIFY_EMAIL, subject, body, { type: "feedback" });
   } catch (e) {
     logger.error(`feedback new-ticket email failed: ${(e as Error).message}`);
   }
@@ -416,7 +416,7 @@ async function notifyReply(p: { ticket: any; actor: AuthUser; body: string }): P
 
   for (const to of recipients) {
     try {
-      await sendPlainEmail(to, subject, text);
+      await sendPlainEmail(to, subject, text, { type: "feedback", tenantId: ticket.tenantId ?? null });
     } catch (e) {
       logger.error(`feedback reply email to ${to} failed: ${(e as Error).message}`);
     }
