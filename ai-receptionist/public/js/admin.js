@@ -31,7 +31,7 @@
     current = v;
     if (v === "users") return renderUsers();
     if (v === "email") return renderEmail();
-    if (v === "billing") return renderBilling();
+    if (v === "usage") return renderUsageBilling();
     if (v === "feedback") return App.feedback.renderMaster(view());
     if (v === "changelog") return renderChangelog();
     return renderPortals();
@@ -534,11 +534,19 @@
       usersHost.innerHTML = `<h2 class="settings-h">Users</h2><div class="cell-muted" style="padding:6px">Loading users…</div>`;
       wrap.appendChild(usersHost);
 
+      // Per-tenant Billing & Usage drill-in (KPIs + charts + editable billing status above).
+      const usageHost = el("div"); usageHost.style.marginTop = "26px";
+      usageHost.innerHTML = `<h2 class="settings-h">Billing &amp; Usage</h2><div class="cell-muted" style="padding:6px">Loading usage…</div>`;
+      wrap.appendChild(usageHost);
+
       // Render the shell (Back + Suspend + Page access) IMMEDIATELY, then fill Users async
       // so a slow or failing users fetch can't block or hang the panel.
       view().innerHTML = ""; view().appendChild(wrap);
       usersSectionInto(usersHost, portal).catch((e) => {
         usersHost.innerHTML = `<h2 class="settings-h">Users</h2><div class="card"><p class="cell-muted">Couldn’t load users: ${esc((e && e.message) || "error")}</p></div>`;
+      });
+      usageSectionInto(usageHost, portal).catch((e) => {
+        usageHost.innerHTML = `<h2 class="settings-h">Billing &amp; Usage</h2><div class="card"><p class="cell-muted">Couldn’t load usage: ${esc((e && e.message) || "error")}</p></div>`;
       });
     } catch (e) {
       view().innerHTML = `<div class="card"><p class="cell-muted">Couldn’t open this tenant: ${esc((e && e.message) || "error")}</p></div>`;
@@ -1097,47 +1105,47 @@
     wrap.appendChild(card);
   }
 
-  // ---------------- Master-hub Billing rates (OWNER/SUPER_ADMIN) ----------------
-  // Simple view/edit for the editable cost rates. No dollar math yet — this only stores
-  // the numbers later batches will use to estimate costs from raw usage.
-  async function renderBilling() {
-    loading();
+  // ---------------- Billing rates editor (Billing & Usage → Billing Rates tab) ----------------
+  // Renders the editable rate form into `host`. Reuses the SINGLE existing rates store +
+  // endpoint (GET/PUT /api/admin/billing-rates) — no duplicate store. Brand logos reuse the
+  // same /img assets the Integrations cards use.
+  async function billingRatesInto(host) {
+    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading rates…</div>`;
     let rates;
     try { rates = await App.api("/api/admin/billing-rates"); }
-    catch (e) { view().innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+    catch (e) { host.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
     rates = rates || {};
+    host.innerHTML = "";
 
-    view().innerHTML = "";
-    const wrap = el("div", "fade-in");
-    view().appendChild(wrap);
-    const head = el("div");
-    head.innerHTML = `<h1 class="page-title">Billing rates</h1>` +
-      `<p class="cell-muted" style="font-size:12.5px;margin:2px 0 14px">Editable cost rates used later to estimate dollar costs from recorded usage. Changing these does not bill anyone — it only affects future estimates.</p>`;
-    wrap.appendChild(head);
+    const intro = el("p", "cell-muted");
+    intro.style.cssText = "font-size:12.5px;margin:0 0 14px";
+    intro.textContent = "Editable cost rates used to estimate dollar costs from recorded usage. Changing these does not bill anyone — it only affects future estimates.";
+    host.appendChild(intro);
 
     const card = el("div", "card");
-    card.style.cssText = "padding:22px;max-width:560px";
+    card.style.cssText = "padding:22px;max-width:600px";
+    const OPENAI = "/img/openai.webp", TWILIO = "/img/twilio.png";
     const fields = [
-      ["openAiInputPer1kTokens", "OpenAI input — $ per 1K tokens"],
-      ["openAiOutputPer1kTokens", "OpenAI output — $ per 1K tokens"],
-      ["twilioPerCallMinute", "Twilio — $ per call minute"],
-      ["twilioPerNumberMonthly", "Twilio — $ per phone number / month"],
-      ["twilioPerSms", "Twilio — $ per SMS"],
+      ["openAiInputPer1kTokens", "OpenAI input — $ per 1K tokens", OPENAI],
+      ["openAiOutputPer1kTokens", "OpenAI output — $ per 1K tokens", OPENAI],
+      ["twilioPerCallMinute", "Twilio — $ per call minute", TWILIO],
+      ["twilioPerNumberMonthly", "Twilio — $ per phone number / month", TWILIO],
+      ["twilioPerSms", "Twilio — $ per SMS", TWILIO],
     ];
     const inputs = {};
-    const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 140px;gap:10px 16px;align-items:center";
-    fields.forEach(([key, label]) => {
+    const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:24px 1fr 140px;gap:12px 14px;align-items:center";
+    fields.forEach(([key, label, logo]) => {
+      const ic = el("span"); ic.innerHTML = `<img src="${logo}" alt="" style="width:20px;height:20px;object-fit:contain;border-radius:4px;display:block">`;
       const l = el("label", "field-label", label); l.style.cssText = "margin:0";
       const inp = el("input", "input"); inp.type = "number"; inp.min = "0"; inp.step = "0.0001"; inp.style.cssText = "margin:0";
       inp.value = rates[key] != null ? String(rates[key]) : "0";
       inputs[key] = inp;
-      grid.appendChild(l); grid.appendChild(inp);
+      grid.appendChild(ic); grid.appendChild(l); grid.appendChild(inp);
     });
     card.appendChild(grid);
 
     const foot = el("div"); foot.style.cssText = "margin-top:18px;display:flex;gap:8px;align-items:center";
     const save = el("button", "btn btn-primary btn-sm", "Save rates");
-    const note = el("span", "cell-muted"); note.style.fontSize = "12.5px";
     save.onclick = async () => {
       const body = {};
       for (const [key] of fields) {
@@ -1145,14 +1153,224 @@
         if (!isFinite(n) || n < 0) { toast(`${key} must be a non-negative number`, true); return; }
         body[key] = n;
       }
-      save.disabled = true; note.textContent = "";
-      try { const updated = await App.api("/api/admin/billing-rates", { method: "PUT", body: JSON.stringify(body) }); for (const [key] of fields) if (updated && updated[key] != null) inputs[key].value = String(updated[key]); toast("Rates saved"); note.textContent = "Saved."; }
+      save.disabled = true;
+      try { const updated = await App.api("/api/admin/billing-rates", { method: "PUT", body: JSON.stringify(body) }); for (const [key] of fields) if (updated && updated[key] != null) inputs[key].value = String(updated[key]); toast("Rates saved"); }
       catch (e) { toast(e.message, true); }
       finally { save.disabled = false; }
     };
-    foot.appendChild(save); foot.appendChild(note);
+    foot.appendChild(save);
     card.appendChild(foot);
-    wrap.appendChild(card);
+    host.appendChild(card);
+  }
+
+  // ================= Billing & Usage (reuses the reports widget engine) =================
+  // The "usage" reporting source: one row per (tenant, day) bucket returned by the usage
+  // endpoints. reportFields let the shared engine chart/sum any measure over time or tenant.
+  const USAGE_FIELDS = [
+    { key: "date", label: "Date", type: "date" },
+    { key: "tenant", label: "Tenant", type: "text" },
+    { key: "calls", label: "Calls", type: "number" },
+    { key: "callMinutes", label: "Call minutes", type: "number" },
+    { key: "promptTokens", label: "Prompt tokens", type: "number" },
+    { key: "completionTokens", label: "Completion tokens", type: "number" },
+    { key: "totalTokens", label: "Total tokens", type: "number" },
+    { key: "emails", label: "Emails", type: "number" },
+    { key: "sms", label: "SMS", type: "number" },
+    { key: "callCost", label: "Call cost", type: "number" },
+    { key: "tokenCost", label: "Token cost", type: "number" },
+    { key: "numberCost", label: "Number cost", type: "number" },
+    { key: "totalCost", label: "Total cost", type: "number" },
+  ];
+  const USAGE_TOP = USAGE_FIELDS.map((f) => f.key);
+
+  function fmtMoney(v) {
+    const n = Number(v) || 0;
+    if (n !== 0 && Math.abs(n) < 0.01) return "$" + n.toFixed(4);
+    return "$" + n.toFixed(2);
+  }
+  // Map endpoint day-buckets -> engine rows. Bucket start is a plain YYYY-MM-DD; we anchor it
+  // at local noon so the engine's date bucketing never drifts across timezones. numberCost is
+  // a monthly line item carried at the range level (not per-day), so it's 0 on each row; the
+  // per-row totalCost is the usage-driven call+token+sms cost that sums cleanly over time.
+  function usageRowsFromBuckets(buckets, tenantName) {
+    return (buckets || []).map((b) => {
+      const u = b.units || {}, c = b.cost || {};
+      const totalCost = (c.callCost || 0) + (c.tokenCost || 0) + (c.smsCost || 0);
+      return {
+        date: b.start + "T12:00:00",
+        tenant: tenantName || "All",
+        calls: u.calls || 0,
+        callMinutes: Math.round(((u.callSeconds || 0) / 60) * 100) / 100,
+        promptTokens: u.promptTokens || 0,
+        completionTokens: u.completionTokens || 0,
+        totalTokens: u.totalTokens || 0,
+        emails: u.emails || 0,
+        sms: u.sms || 0,
+        callCost: c.callCost || 0,
+        tokenCost: c.tokenCost || 0,
+        numberCost: 0,
+        totalCost: Math.round(totalCost * 1e6) / 1e6,
+      };
+    });
+  }
+  const usageSource = (rows) => ({ key: "usage", label: "Usage", topLevel: USAGE_TOP, rows: rows || [], reportFields: USAGE_FIELDS });
+
+  // A titled chart card whose body is sized so Chart.js (maintainAspectRatio:false) fills it.
+  function usageChartCard(title, widgetDef, source, grouping, charts) {
+    const card = el("div", "card"); card.style.cssText = "padding:16px";
+    card.appendChild(el("div", null, esc(title))).style.cssText = "font-weight:600;font-size:13.5px;margin-bottom:10px";
+    const body = el("div"); body.style.cssText = "height:240px;position:relative";
+    card.appendChild(body);
+    const w = Object.assign({}, widgetDef);
+    if (grouping && Array.isArray(w.groupBy)) w.groupBy = w.groupBy.map((d) => (d.key === "date" ? { key: "date", date: grouping } : d));
+    try { App.reports.renderWidgetBody(body, w, source, source.rows, source.reportFields, charts); }
+    catch (e) { body.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; }
+    return card;
+  }
+  function kpiCard(label, value) {
+    const card = el("div", "card"); card.style.cssText = "padding:16px 18px";
+    const v = el("div", null, String(value)); v.style.cssText = "font-size:22px;font-weight:700;line-height:1.1";
+    const l = el("div", "cell-muted", label); l.style.cssText = "font-size:12px;margin-top:4px";
+    card.appendChild(v); card.appendChild(l);
+    return card;
+  }
+  function usageKpis(totals) {
+    const u = (totals && totals.units) || {}, c = (totals && totals.cost) || {};
+    const grid = el("div", "widget-grid"); grid.style.marginBottom = "16px";
+    grid.appendChild(kpiCard("Total est. cost", fmtMoney(c.total)));
+    grid.appendChild(kpiCard("Calls", u.calls || 0));
+    grid.appendChild(kpiCard("Call minutes", Math.round((u.callSeconds || 0) / 60)));
+    grid.appendChild(kpiCard("Total tokens", u.totalTokens || 0));
+    grid.appendChild(kpiCard("Emails", u.emails || 0));
+    return grid;
+  }
+  // Over-time chart defs (grouping applied at render time). Number rental is range-level, so
+  // the cost line shows usage-driven cost over time; the headline KPI carries the full total.
+  const OVER_TIME_DEFS = [
+    ["Estimated usage cost over time", { type: "line", groupBy: [{ key: "date" }], measure: { op: "sum", field: "totalCost" } }],
+    ["Calls over time", { type: "bar", groupBy: [{ key: "date" }], measure: { op: "sum", field: "calls" } }],
+    ["Call minutes over time", { type: "bar", groupBy: [{ key: "date" }], measure: { op: "sum", field: "callMinutes" } }],
+  ];
+
+  // Range + grouping control. Defaults to the last 30 days, grouped by day. onChange fires
+  // with { from, to, grouping } whenever any input changes.
+  function usageRangeControl(onChange) {
+    const wrap = el("div"); wrap.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px";
+    const today = new Date();
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const from0 = iso(new Date(Date.now() - 29 * 86400000)), to0 = iso(today);
+    function field(label, node) { const d = el("div"); d.style.cssText = "display:flex;flex-direction:column;gap:3px"; const l = el("span", "cell-muted", label); l.style.fontSize = "11.5px"; d.appendChild(l); d.appendChild(node); return d; }
+    const fromEl = el("input", "input"); fromEl.type = "date"; fromEl.value = from0; fromEl.style.cssText = "margin:0;width:auto";
+    const toEl = el("input", "input"); toEl.type = "date"; toEl.value = to0; toEl.style.cssText = "margin:0;width:auto";
+    const grpEl = el("select", "input"); grpEl.style.cssText = "margin:0;width:auto";
+    [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]].forEach(([v, lbl]) => { const o = el("option", null, lbl); o.value = v; grpEl.appendChild(o); });
+    const fire = () => onChange({ from: fromEl.value, to: toEl.value, grouping: grpEl.value });
+    [fromEl, toEl, grpEl].forEach((n) => n.addEventListener("change", fire));
+    wrap.appendChild(field("From", fromEl)); wrap.appendChild(field("To", toEl)); wrap.appendChild(field("Group by", grpEl));
+    return { el: wrap, get: () => ({ from: fromEl.value, to: toEl.value, grouping: grpEl.value }) };
+  }
+
+  // ---- Per-tenant drill-in (Task 2): filled into the tenant detail panel ----
+  async function usageSectionInto(host, portal) {
+    host.innerHTML = `<h2 class="settings-h">Billing &amp; Usage</h2><div class="cell-muted" style="padding:6px">Loading usage…</div>`;
+    const charts = [];
+    const body = el("div");
+    async function load() {
+      charts.forEach((c) => { try { c.destroy(); } catch (e) {} }); charts.length = 0;
+      const { from, to, grouping } = ctrl.get();
+      body.innerHTML = `<div class="cell-muted" style="padding:6px">Loading…</div>`;
+      let data;
+      try { data = await App.api(`/api/admin/usage/tenant/${encodeURIComponent(portal.id)}?bucket=day&from=${from}&to=${to}`); }
+      catch (e) { body.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+      const src = usageSource(usageRowsFromBuckets(data.buckets, data.tenantName || portal.name));
+      body.innerHTML = "";
+      body.appendChild(usageKpis(data.totals));
+      const grid = el("div", "widget-grid");
+      OVER_TIME_DEFS.forEach(([title, def]) => grid.appendChild(usageChartCard(title, def, src, grouping, charts)));
+      body.appendChild(grid);
+    }
+    const ctrl = usageRangeControl(load);
+    host.innerHTML = `<h2 class="settings-h">Billing &amp; Usage</h2>`;
+    host.appendChild(ctrl.el);
+    host.appendChild(body);
+    await load();
+  }
+
+  // ---- Macro Billing & Usage page (Task 3): Overview / By portal / Billing Rates ----
+  async function renderUsageBilling() {
+    view().innerHTML = "";
+    const wrap = el("div", "fade-in");
+    view().appendChild(wrap);
+    wrap.appendChild(el("h1", "page-title", "Billing & Usage"));
+
+    const tabsBar = el("div", "tabs");
+    const bodyEl = el("div", "tab-body");
+    const TABS = [["overview", "Overview"], ["byportal", "By portal"], ["rates", "Billing Rates"]];
+    let active = "overview";
+    const charts = [];
+    function destroyCharts() { charts.forEach((c) => { try { c.destroy(); } catch (e) {} }); charts.length = 0; }
+
+    async function paint() {
+      destroyCharts();
+      bodyEl.innerHTML = "";
+      Array.from(tabsBar.children).forEach((b) => b.classList.toggle("active", b.dataset.k === active));
+      if (active === "rates") { await billingRatesInto(bodyEl); return; }
+
+      // Overview + By portal share the macro fetch (buckets + perTenant + totals).
+      const ctrlHost = el("div"); bodyEl.appendChild(ctrlHost);
+      const out = el("div"); bodyEl.appendChild(out);
+      async function load() {
+        destroyCharts();
+        const { from, to, grouping } = ctrl.get();
+        out.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+        let data;
+        try { data = await App.api(`/api/admin/usage?bucket=day&from=${from}&to=${to}`); }
+        catch (e) { out.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+        out.innerHTML = "";
+        if (active === "overview") {
+          const src = usageSource(usageRowsFromBuckets(data.buckets, "All"));
+          out.appendChild(usageKpis(data.totals));
+          const grid = el("div", "widget-grid");
+          OVER_TIME_DEFS.forEach(([title, def]) => grid.appendChild(usageChartCard(title, def, src, grouping, charts)));
+          out.appendChild(grid);
+        } else {
+          // By portal: per-tenant breakdown for the range — sortable table + cost bar chart.
+          const per = (data.perTenant || []).map((p) => ({
+            tenant: p.tenantName || p.tenantId, billingStatus: p.billingStatus || "—",
+            calls: p.units.calls, callMinutes: Math.round((p.units.callSeconds / 60) * 100) / 100,
+            totalTokens: p.units.totalTokens, emails: p.units.emails, totalCost: p.cost.total,
+          }));
+          const chartCard = usageChartCard("Estimated cost by portal", { type: "bar", groupBy: [{ key: "tenant" }], measure: { op: "sum", field: "totalCost" } }, usageSource(per), null, charts);
+          out.appendChild(chartCard);
+          const tHost = el("div"); tHost.style.marginTop = "16px"; out.appendChild(tHost);
+          App.table.mount({
+            container: tHost, rows: per, rowId: (r) => r.tenant, scrollX: true,
+            defaultSort: "totalCost", defaultSortDir: "desc",
+            columns: [
+              { key: "tenant", label: "Tenant", type: "text", get: (r) => r.tenant, render: (r) => esc(r.tenant) },
+              { key: "billingStatus", label: "Billing", type: "text", get: (r) => r.billingStatus, render: (r) => esc(cap(r.billingStatus)) },
+              { key: "calls", label: "Calls", type: "number", get: (r) => r.calls },
+              { key: "callMinutes", label: "Minutes", type: "number", get: (r) => r.callMinutes },
+              { key: "totalTokens", label: "Tokens", type: "number", get: (r) => r.totalTokens },
+              { key: "emails", label: "Emails", type: "number", get: (r) => r.emails },
+              { key: "totalCost", label: "Est. cost", type: "number", get: (r) => r.totalCost, render: (r) => fmtMoney(r.totalCost) },
+            ],
+            emptyHtml: `<div class="card cell-muted" style="padding:18px">No usage in this range.</div>`,
+          });
+        }
+      }
+      const ctrl = usageRangeControl(load);
+      ctrlHost.appendChild(ctrl.el);
+      await load();
+    }
+
+    TABS.forEach(([k, label]) => {
+      const b = el("button", "tab" + (k === active ? " active" : ""), label); b.dataset.k = k;
+      b.onclick = () => { if (active === k) return; active = k; paint(); };
+      tabsBar.appendChild(b);
+    });
+    wrap.appendChild(tabsBar); wrap.appendChild(bodyEl);
+    await paint();
   }
 
   App.admin = { render };

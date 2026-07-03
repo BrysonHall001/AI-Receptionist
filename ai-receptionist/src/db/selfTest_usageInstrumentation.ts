@@ -146,12 +146,12 @@ async function main() {
   check(/finalizeCall\(p\.callSid, "COMPLETED", \{ durationSeconds: p\.callDuration/.test(read("../routes/twilioWebhooks.ts")), "status webhook passes Twilio CallDuration into finalizeCall");
 
   const appJs = read("../../public/js/app.js");
-  check(has(appJs, '["#/admin/billing", "Billing"]'), "app.js ADMIN_NAV includes Billing");
-  check(has(appJs, 'it[0] !== "#/admin/email" && it[0] !== "#/admin/billing"'), "Billing nav hidden from non-OWNER/SUPER_ADMIN");
-  check(has(appJs, 'path === "/admin/billing" ? "billing"'), "router dispatches /admin/billing");
+  check(has(appJs, '["#/admin/usage", "Billing & Usage"]') && !has(appJs, '"#/admin/billing"'), "standalone Billing nav removed; Billing & Usage nav present");
+  check(has(appJs, 'it[0] !== "#/admin/email" && it[0] !== "#/admin/usage"'), "Billing & Usage nav hidden from non-OWNER/SUPER_ADMIN");
+  check(has(appJs, 'path === "/admin/usage" ? "usage"'), "router dispatches /admin/usage");
 
   const adminJs = read("../../public/js/admin.js");
-  check(has(adminJs, 'if (v === "billing") return renderBilling()') && has(adminJs, "async function renderBilling"), "admin renders the Billing rates page");
+  check(has(adminJs, 'if (v === "usage") return renderUsageBilling()') && has(adminJs, "async function billingRatesInto"), "rates live under the Billing & Usage page (billingRatesInto)");
   check(has(adminJs, "sp-billing") && has(adminJs, "Pick a billing status"), "create-tenant wizard requires a billing status");
   check(has(adminJs, "Billing status") && has(adminJs, 'billingStatus: next'), "tenant detail panel edits billingStatus");
 

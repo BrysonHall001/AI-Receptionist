@@ -58,7 +58,7 @@
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
   const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
-  const ADMIN_NAV = [["#/admin/portals", "Tenants"], ["#/admin/users", "Users"], ["#/admin/email", "Email"], ["#/admin/billing", "Billing"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
+  const ADMIN_NAV = [["#/admin/portals", "Tenants"], ["#/admin/users", "Users"], ["#/admin/email", "Email"], ["#/admin/usage", "Billing & Usage"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
   // Exposed so the Settings → Labels → "Pages & navigation" editor builds its rows
   // from the same canonical list the sidebar uses (no drift, no second definition).
   App.PORTAL_NAV = PORTAL_NAV;
@@ -504,7 +504,7 @@
     // The cross-tenant Email + Billing pages are OWNER/SUPER_ADMIN only — hide them from
     // Auditors (the backend endpoints enforce the same, this just keeps the nav honest).
     if (isAdmin && !(me.role === "OWNER" || me.role === "SUPER_ADMIN")) {
-      items = items.filter(function (it) { return it[0] !== "#/admin/email" && it[0] !== "#/admin/billing"; });
+      items = items.filter(function (it) { return it[0] !== "#/admin/email" && it[0] !== "#/admin/usage"; });
     }
     // Hide the Calls nav item when this portal has the AI Receptionist turned off.
     // Only hide when we KNOW it's off (flag explicitly false); while it's still
@@ -552,7 +552,7 @@
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
     } else {
-      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/billing": "Billing", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
+      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/usage": "Billing & Usage", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
       topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Home Dashboard"));
     }
     topbar.appendChild(topLeft);
@@ -613,8 +613,8 @@
     if (path.indexOf("/admin") === 0) {
       if (!App.isAdminTier(me.role)) return App.go(App.firstAvailableNav());
       // Email + Billing are OWNER/SUPER_ADMIN only; an Auditor who deep-links is bounced to Tenants.
-      if ((path === "/admin/email" || path === "/admin/billing") && !(me.role === "OWNER" || me.role === "SUPER_ADMIN")) return App.go("#/admin/portals");
-      const sub = path === "/admin/users" ? "users" : path === "/admin/email" ? "email" : path === "/admin/billing" ? "billing" : path === "/admin/feedback" ? "feedback" : path === "/admin/changelog" ? "changelog" : "portals";
+      if ((path === "/admin/email" || path === "/admin/usage") && !(me.role === "OWNER" || me.role === "SUPER_ADMIN")) return App.go("#/admin/portals");
+      const sub = path === "/admin/users" ? "users" : path === "/admin/email" ? "email" : path === "/admin/usage" ? "usage" : path === "/admin/feedback" ? "feedback" : path === "/admin/changelog" ? "changelog" : "portals";
       buildShell("admin", "#/admin/" + sub);
       return App.admin.render(sub);
     }

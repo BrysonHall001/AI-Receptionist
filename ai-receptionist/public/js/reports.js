@@ -619,6 +619,6 @@
   App.reports = {
     render: (host) => createView(host, {}).boot(),
     mountHome: (host) => createView(host, { compact: true, home: true }).boot(),
-    aggregate, valueOf, bucketDate, measureValue,
+    aggregate, valueOf, bucketDate, measureValue, renderWidgetBody,
   };
 })(typeof window !== "undefined" ? window : globalThis);
