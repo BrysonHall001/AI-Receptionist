@@ -54,7 +54,7 @@ function main() {
 
   console.log("\n(5) removals + trimmed actions:");
   check(!has(admin, 'label: "Manage"'), "Manage column removed");
-  check(has(admin, "App.table.manageColumns(handle"), "Manage Columns button present (shared component)");
+  check(has(portals, "App.table.openColumnManager(columns, tenantsLayout"), "Manage button opens the shared column manager (table view)");
   check(has(portals, 'label: "Open tenant"'), "Actions column header renamed to 'Open tenant'");
   check(has(portals, "data-act=\"open\"") && has(portals, "t-openbtn"), "Open-tenant arrow button present (compact, single action)");
   check(!has(portals, 'data-act="toggle"'), "Suspend removed from the actions column (moved to detail panel)");
@@ -63,10 +63,31 @@ function main() {
   console.log("\n(6) column layout persistence + badge removal:");
   check(has(portals, "admincols:tenants"), "tenants column layout uses a stable localStorage key (admincols:tenants)");
   check(has(portals, "localStorage.getItem(TENANTS_COLS_KEY") && has(portals, "localStorage.setItem(TENANTS_COLS_KEY"), "layout loaded on mount + saved on change (per-browser, like portal record tables)");
-  check(has(portals, "order: tenantsLayout.order") && has(portals, "hidden: tenantsLayout.hidden") && has(portals, "onSave:"), "saved order/hidden passed into manageColumns + onSave persists changes");
+  check(has(portals, "saveTenantsLayout(tenantsLayout)") && has(portals, "handle.setColumns(App.table.applyColumnLayout(columns, tenantsLayout"), "column changes persist to localStorage + re-apply to the live table");
   check(has(portals, "App.table.applyColumnLayout(columns, tenantsLayout"), "saved layout applied to the initial mount columns (no default-layout flash)");
   check(!has(portals, "const mark =") && !has(portals, "border-radius:50%") && !has(portals, "charAt(0).toUpperCase()"), "initials badge helper + markup removed from tenant name cells");
   check(has(portals, 'render: (p) => `<span style="font-weight:600">${esc(p.name)}</span>`'), "name cell renders just the name (font-weight kept, no badge wrapper)");
+
+  console.log("\n(7) Panel (card) view + Table/Panel toggle:");
+  // onRender hook is backwards-compatible (opt-in) and fires with the filtered rows.
+  check(has(table, "if (opts.onRender) opts.onRender(filtered, state)"), "table.js render() calls opts.onRender(filtered, state) at the end (opt-in hook)");
+  check((table.match(/opts\.onRender/g) || []).length >= 2, "onRender also fires on the empty-state path (both render exits notify)");
+  check(has(portals, "onRender: (filtered) => renderCards(filtered)"), "tenants table passes onRender to mirror filtered rows into the card grid");
+  // View toggle: persisted, live switch, correct right-group order.
+  check(has(portals, 'adminview:tenants') && has(portals, "localStorage.setItem(VIEW_KEY") && has(portals, "localStorage.getItem(VIEW_KEY"), "view choice persists in localStorage (adminview:tenants), like the column layout");
+  check(has(portals, "view-toggle") && has(portals, 'applyView("table")') && has(portals, 'applyView("panel")'), "compact Table | Panels toggle switches the view");
+  check(has(portals, "insertBefore(manageBtn, handle.toolbarRight.firstChild)") && has(portals, "insertBefore(toggle, handle.toolbarRight.firstChild)"), "right group order is [toggle][Manage][Create][Search] (toggle inserted last, before Manage)");
+  check(has(portals, "function applyView") && has(portals, 'tableBody.style.display = isPanel ? "none"') && has(portals, 'panelGrid.style.display = isPanel ? ""'), "toggling swaps the table body for the card grid live (no reload)");
+  // Cards: fresh markup, no old portal-card/grid, reuse the SAME inline controls.
+  check(has(portals, "tenants-panel-grid") && has(portals, "tenants-panel-card"), "card grid + card use fresh (non-portal-card) classes");
+  check(has(portals, "function buildCard") && has(portals, "renderCards(handle.getFiltered())"), "cards are built from the current filtered rows");
+  check(has(portals, 'portal-recep-sel t-voice" data-id') && (portals.match(/data-act="open"/g) || []).length >= 2, "cards reuse the SAME AI-select + Open-arrow markup (delegated handlers work in both views)");
+  check(has(portals, 'e.target.closest("button, a, input, select, label")') , "card click ignores inline controls (same guard as a table row)");
+  // Context-aware Manage button + caption swap.
+  check(has(portals, "Manage panels") && has(portals, "Manage columns"), "Manage button relabels between columns/panels");
+  check(has(portals, "noReorder: true") && has(portals, "openColumnManager(panelFieldCols, panelLayout"), "Panel view opens a check-on/off-only field picker (no reorder)");
+  check(has(portals, "panelfields:tenants") && has(portals, "savePanelFields("), "panel field visibility persists (panelfields:tenants)");
+  check(has(portals, "Click a tenant row to edit its properties (page access, users, status).") && has(portals, "Click a tenant panel to edit its properties (page access, users, status)."), "caption swaps between row/panel wording");
 
   console.log("\n=====================================");
   if (failures.length === 0) console.log("ALL CHECKS PASSED \u2705  (tenants table UI)");

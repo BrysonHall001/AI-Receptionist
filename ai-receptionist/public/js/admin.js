@@ -133,6 +133,88 @@
     // before mount) so there's no flash of the default layout before it settles.
     const initialColumns = App.table.applyColumnLayout(columns, tenantsLayout, tenantsDefaultKeys);
 
+    // ---- Table/Panel view toggle + per-card field visibility (both persisted per-browser,
+    // same localStorage pattern as the column layout above) ----
+    const VIEW_KEY = "adminview:tenants";       // "table" | "panel" (default "table")
+    const loadView = () => { try { const v = localStorage.getItem(VIEW_KEY); return v === "panel" ? "panel" : "table"; } catch (e) { return "table"; } };
+    const saveView = (v) => { try { localStorage.setItem(VIEW_KEY, v); } catch (e) {} };
+    const PANEL_FIELDS_KEY = "panelfields:tenants"; // { hidden: [...] } — which card fields are hidden
+    const loadPanelFields = () => { try { return JSON.parse(localStorage.getItem(PANEL_FIELDS_KEY) || "{}") || {}; } catch (e) { return {}; } };
+    const savePanelFields = (layout) => { try { localStorage.setItem(PANEL_FIELDS_KEY, JSON.stringify(layout || {})); } catch (e) {} };
+    // Panel cards expose the SAME fields as the table columns (same keys/labels) so the
+    // "Manage panels" picker and the cards stay in lock-step. Order on the card is fixed,
+    // so the picker is check-on/off only (no reorder).
+    const panelFieldCols = columns.map((c) => ({ key: c.key, label: c.label }));
+    const panelDefaultKeys = panelFieldCols.map((c) => c.key);
+    let panelLayout = loadPanelFields();
+
+    // The card grid lives alongside the table body (inside .table-area) so the filter rail,
+    // toolbar, search, saved filters, etc. are shared and behave identically in both views.
+    let panelGrid = null;
+    function buildCard(p) {
+      const hidden = new Set(panelLayout.hidden || []);
+      const shows = (key) => !hidden.has(key);
+      const card = el("div", "card tenants-panel-card");
+      card.style.cssText = "padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:8px";
+
+      // Header: prominent NAME (no initials badge) + the Open-tenant arrow (same markup).
+      const head = el("div");
+      head.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:10px";
+      const title = el("div");
+      title.style.cssText = "font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis";
+      if (shows("name")) title.textContent = p.name;
+      head.appendChild(title);
+      if (shows("actions")) {
+        const openWrap = el("div");
+        openWrap.innerHTML = `<button class="btn btn-primary btn-sm t-openbtn" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant" style="padding:4px 9px;line-height:1;min-width:0;font-size:14px">\u2197</button>`;
+        head.appendChild(openWrap);
+      }
+      card.appendChild(head);
+
+      if (shows("status")) { const s = el("div"); s.innerHTML = statusBadge(p.status); card.appendChild(s); }
+
+      if (shows("ai")) {
+        const aiWrap = el("div");
+        aiWrap.style.cssText = "display:flex;flex-direction:column;gap:3px";
+        const lbl = el("span", "cell-muted", "AI Receptionist"); lbl.style.fontSize = "11.5px";
+        aiWrap.appendChild(lbl);
+        const selWrap = el("div");
+        selWrap.innerHTML = `<select class="input portal-recep-sel t-voice" data-id="${esc(p.id)}">${voiceOptionsHtml(voiceModeOf(p))}</select>`;
+        aiWrap.appendChild(selWrap);
+        card.appendChild(aiWrap);
+      }
+
+      const stats = el("div");
+      stats.style.cssText = "display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px";
+      const stat = (label, val) => { const d = el("div"); d.innerHTML = `<span class="cell-muted">${esc(label)}:</span> ${esc(String(val == null ? "—" : val))}`; return d; };
+      if (shows("created")) stats.appendChild(stat("Created", fmtDate(p.createdAt)));
+      if (shows("calls")) stats.appendChild(stat("Calls", p.calls));
+      if (shows("contacts")) stats.appendChild(stat("Contacts", p.contacts));
+      if (shows("users")) stats.appendChild(stat("Users", p.users));
+      if (stats.children.length) card.appendChild(stats);
+
+      // Card click opens the detail panel — but, exactly like the table's row click, ignore
+      // clicks that land on an inline control (the AI select or the Open arrow).
+      card.addEventListener("click", (e) => {
+        if (e.target && e.target.closest("button, a, input, select, label")) return;
+        renderTenantDetail(p);
+      });
+      return card;
+    }
+    // Re-render the whole grid from the CURRENT filtered/sorted rows. Called by the table's
+    // onRender hook so cards always mirror Filters/Saved Filters/Search/sort.
+    function renderCards(list) {
+      if (!panelGrid) return;
+      panelGrid.innerHTML = "";
+      if (!list || !list.length) {
+        const none = el("div", "cell-muted", portals.length ? "No results match your filters." : "No tenants yet.");
+        none.style.cssText = "padding:24px;grid-column:1/-1;text-align:center";
+        panelGrid.appendChild(none);
+        return;
+      }
+      list.forEach((p) => panelGrid.appendChild(buildCard(p)));
+    }
+
     const handle = App.table.mount({
       container: tableHost,
       rows: portals,
@@ -145,27 +227,63 @@
       // button/select/input/label) opens the admin-side detail panel. It never enters
       // the portal.
       onRowClick: (p) => renderTenantDetail(p),
+      // Mirror the exact filtered/sorted rows into the card grid on every table render,
+      // so the Panel view stays in sync with Filters/Saved Filters/Search/sort. No-op
+      // until the grid element exists (created just after mount).
+      onRender: (filtered) => renderCards(filtered),
       emptyHtml: `<div class="empty"><div class="empty-emoji">&#127970;</div><h3>No tenants yet</h3><p>Create your first client tenant to get started.</p></div>`,
     });
 
-    // Top button row, left->right: [Filters][Saved filters] … [Manage columns][+ Create tenant][Search].
+    // Create the card grid inside the table area (next to the filter rail) and hide it until
+    // Panel view is selected. Populated immediately from the current filtered rows.
+    const tableArea = tableHost.querySelector(".table-area");
+    const tableBody = tableHost.querySelector(".table-wrap");
+    panelGrid = el("div", "tenants-panel-grid");
+    panelGrid.style.display = "none";
+    if (tableArea) tableArea.appendChild(panelGrid); else wrap.appendChild(panelGrid);
+    renderCards(handle.getFiltered());
+
+    // Top button row, left->right: [Filters][Saved filters] … [Table|Panels toggle][Manage][+ Create tenant][Search].
     // Filters stays flush-left (first in toolbar-left); Saved filters sits beside it. In the
-    // right group we insert Create BEFORE Search, then Manage Columns before Create — so the
-    // shared column manager ends up to the LEFT of Create tenant.
+    // right group we insert Create BEFORE Search, then the Manage button before Create, then
+    // the view toggle before Manage — so the final order is [toggle][Manage][Create][Search].
     mountAdminSavedFilters(handle, "admin-tenants");
     const create = el("button", "btn btn-primary btn-sm", "+ Create tenant");
     create.onclick = () => renderSetupScreen();
     if (handle.toolbarRight) handle.toolbarRight.insertBefore(create, handle.toolbarRight.firstChild);
-    // Standard shared Manage Columns control (same component as Contacts/Records). Because
-    // it inserts before toolbarRight.firstChild (now Create), it lands left of Create.
-    // Pass the loaded order/hidden so it opens showing the persisted layout, and onSave
-    // writes changes back to localStorage.
-    App.table.manageColumns(handle, columns, {
-      defaultKeys: tenantsDefaultKeys,
-      order: tenantsLayout.order,
-      hidden: tenantsLayout.hidden,
-      onSave: (newLayout) => saveTenantsLayout(newLayout),
-    });
+
+    // ONE context-aware Manage button. In Table view it manages columns (reorder + show/hide,
+    // persisted like before); in Panel view the SAME button relabels to "Manage panels" and
+    // opens a check-on/off-only picker for which fields show on each card. Inserted before
+    // Create so it lands to the left of it (mirroring the old shared control's position).
+    const manageBtn = el("button", "btn btn-ghost btn-sm", "");
+    manageBtn.onclick = () => {
+      if (currentView === "panel") {
+        App.table.openColumnManager(panelFieldCols, panelLayout, panelDefaultKeys, (nl) => {
+          panelLayout = { order: nl.order, hidden: nl.hidden };
+          savePanelFields(panelLayout);
+          renderCards(handle.getFiltered());
+        }, { title: "Manage panels", help: "Check to show a field on each card.", saveText: "Save panels", savedToast: "Panels updated", noReorder: true });
+      } else {
+        App.table.openColumnManager(columns, tenantsLayout, tenantsDefaultKeys, (nl) => {
+          tenantsLayout = { order: nl.order, hidden: nl.hidden };
+          saveTenantsLayout(tenantsLayout);
+          handle.setColumns(App.table.applyColumnLayout(columns, tenantsLayout, tenantsDefaultKeys));
+        });
+      }
+    };
+    if (handle.toolbarRight) handle.toolbarRight.insertBefore(manageBtn, handle.toolbarRight.firstChild);
+
+    // Compact Table | Panels segmented toggle, inserted before Manage so it ends up leftmost
+    // in the right group. Persists the choice and switches the view live (no reload).
+    const toggle = el("div", "view-toggle");
+    const tBtn = el("button", "view-toggle-btn", "Table");
+    const pBtn = el("button", "view-toggle-btn", "Panels");
+    tBtn.type = "button"; pBtn.type = "button";
+    toggle.appendChild(tBtn); toggle.appendChild(pBtn);
+    tBtn.onclick = () => applyView("table");
+    pBtn.onclick = () => applyView("panel");
+    if (handle.toolbarRight) handle.toolbarRight.insertBefore(toggle, handle.toolbarRight.firstChild);
 
     // Caption below the button/search row, above the table. Its left edge must line up
     // with the Filters button and the first table column — both of which sit 18px in
@@ -174,9 +292,30 @@
     // set it to 0, which is why it read 18px too far left).
     const caption = el("p", "cell-muted");
     caption.style.cssText = "font-size:12.5px;margin:4px 0 10px 18px";
-    caption.textContent = "Click a tenant row to edit its properties (page access, users, status).";
     const tbEl = tableHost.querySelector(".table-toolbar");
     if (tbEl) tbEl.insertAdjacentElement("afterend", caption); else tableHost.insertBefore(caption, tableHost.firstChild);
+
+    // Switch between table & panel views live. Toggling swaps which body is visible, relabels
+    // the Manage button + caption, updates the toggle's active state, and persists the choice.
+    // Filters / Saved Filters / Search / sort are shared by both views (single source of truth).
+    let currentView = loadView();
+    function applyView(v) {
+      currentView = (v === "panel") ? "panel" : "table";
+      saveView(currentView);
+      const isPanel = currentView === "panel";
+      if (tableBody) tableBody.style.display = isPanel ? "none" : "";
+      if (panelGrid) panelGrid.style.display = isPanel ? "" : "none";
+      tBtn.classList.toggle("active", !isPanel);
+      pBtn.classList.toggle("active", isPanel);
+      manageBtn.innerHTML = isPanel
+        ? `<span class="btn-icon">&#9776;</span> Manage panels`
+        : `<span class="btn-icon">&#9776;</span> Manage columns`;
+      caption.textContent = isPanel
+        ? "Click a tenant panel to edit its properties (page access, users, status)."
+        : "Click a tenant row to edit its properties (page access, users, status).";
+      if (isPanel) renderCards(handle.getFiltered());
+    }
+    applyView(currentView);
 
     // Delegated handlers live on the stable host so they survive App.table's internal
     // re-renders. AI Receptionist select (change) + the Open-tenant arrow (click).

@@ -220,6 +220,7 @@
         tableWrap.innerHTML = emptyHtml;
         if (opts.onEmptyMount) opts.onEmptyMount(tableWrap);
         renderChips();
+        if (opts.onRender) opts.onRender(filtered, state);
         return;
       }
       const table = el("table");
@@ -348,6 +349,10 @@
         tableWrap.appendChild(pager);
       }
       renderChips();
+      // Opt-in notify hook: lets a caller mirror the EXACT filtered/sorted rows into an
+      // alternate view (e.g. a card/panel grid) so Filters/Saved Filters/Search/sort stay
+      // the single source of truth. Backwards-compatible — no-op unless opts.onRender is set.
+      if (opts.onRender) opts.onRender(filtered, state);
     }
 
     function openColPopover(anchor, col) {
@@ -518,7 +523,16 @@
     return ordered.filter((c) => !hidden.has(c.key));
   }
 
-  function openColumnManager(allColumns, layout, defaultKeys, onSave) {
+  // options (all optional, defaults preserve the original "Manage columns" behavior):
+  //   title     — modal heading (default "Manage columns")
+  //   help      — helper line under the heading
+  //   saveText  — primary button label (default "Save columns")
+  //   savedToast— toast on save (default "Columns updated")
+  //   noReorder — check-on/off ONLY, no drag handles / no reordering (for the panel
+  //               field picker, where card layout order is fixed)
+  function openColumnManager(allColumns, layout, defaultKeys, onSave, options) {
+    options = options || {};
+    const noReorder = !!options.noReorder;
     const el = App.util.el, esc = App.util.esc;
     const byKey = {}; allColumns.forEach((c) => (byKey[c.key] = c));
     let order = (layout && layout.order && layout.order.length) ? layout.order.filter((k) => byKey[k]) : (defaultKeys || allColumns.map((c) => c.key)).filter((k) => byKey[k]);
@@ -527,40 +541,48 @@
 
     const overlay = el("div", "modal-overlay");
     const modal = el("div", "modal");
-    modal.innerHTML = `<div class="modal-head"><h2>Manage columns</h2><button class="icon-btn" id="mc-close">&times;</button></div>`;
+    modal.innerHTML = `<div class="modal-head"><h2>${esc(options.title || "Manage columns")}</h2><button class="icon-btn" id="mc-close">&times;</button></div>`;
     const body = el("div", "modal-body");
-    const help = el("p", "cell-muted", "Check to show, drag to reorder."); help.style.marginBottom = "10px";
+    const help = el("p", "cell-muted", options.help || (noReorder ? "Check to show." : "Check to show, drag to reorder.")); help.style.marginBottom = "10px";
     body.appendChild(help);
     const list = el("div", "mc-list"); body.appendChild(list);
     function paint() {
       list.innerHTML = "";
       order.forEach((key) => {
         const c = byKey[key]; if (!c) return;
-        const row = el("div", "mc-row"); row.draggable = true; row.dataset.key = key;
-        const grip = el("span", "mc-drag", "\u283F");
+        const row = el("div", "mc-row"); row.dataset.key = key;
         const lab = el("label", "mc-label");
         const cb = el("input"); cb.type = "checkbox"; cb.checked = !hidden.has(key);
         cb.onchange = () => { if (cb.checked) hidden.delete(key); else hidden.add(key); };
+        // Drag-to-reorder is opt-out: the panel field picker (noReorder) shows check
+        // boxes only, since cards render fields in a fixed layout.
+        if (!noReorder) {
+          row.draggable = true;
+          const grip = el("span", "mc-drag", "\u283F");
+          row.appendChild(grip);
+        }
         lab.appendChild(cb); lab.appendChild(document.createTextNode(" " + (c.label || key)));
-        row.appendChild(grip); row.appendChild(lab);
-        row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.setData("text/plain", key); });
-        row.addEventListener("dragend", () => row.classList.remove("dragging"));
-        row.addEventListener("dragover", (e) => { e.preventDefault(); });
-        row.addEventListener("drop", (e) => {
-          e.preventDefault();
-          const from = e.dataTransfer.getData("text/plain"); const to = key;
-          if (from === to) return;
-          order = order.filter((k) => k !== from);
-          order.splice(order.indexOf(to), 0, from);
-          paint();
-        });
+        row.appendChild(lab);
+        if (!noReorder) {
+          row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.setData("text/plain", key); });
+          row.addEventListener("dragend", () => row.classList.remove("dragging"));
+          row.addEventListener("dragover", (e) => { e.preventDefault(); });
+          row.addEventListener("drop", (e) => {
+            e.preventDefault();
+            const from = e.dataTransfer.getData("text/plain"); const to = key;
+            if (from === to) return;
+            order = order.filter((k) => k !== from);
+            order.splice(order.indexOf(to), 0, from);
+            paint();
+          });
+        }
         list.appendChild(row);
       });
     }
     paint();
     const foot = el("div", "modal-foot");
     const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
-    const save = el("button", "btn btn-primary btn-sm", "Save columns");
+    const save = el("button", "btn btn-primary btn-sm", options.saveText || "Save columns");
     foot.appendChild(cancel); foot.appendChild(save);
     modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -568,7 +590,7 @@
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
     modal.querySelector("#mc-close").onclick = close;
     cancel.onclick = close;
-    save.onclick = () => { onSave({ order: order.slice(), hidden: Array.from(hidden) }); close(); if (App.util.toast) App.util.toast("Columns updated"); };
+    save.onclick = () => { onSave({ order: order.slice(), hidden: Array.from(hidden) }); close(); if (App.util.toast) App.util.toast(options.savedToast || "Columns updated"); };
   }
 
   // Wire the button into a mounted table handle. `allColumns` is the full set; the table
@@ -586,5 +608,5 @@
     return { getLayout: () => layout };
   }
 
-  App.table = { pipeline, evalRule, evalRules, ruleComplete, mount, ruleEditor, OPS, manageColumns: mountColumnManager, applyColumnLayout };
+  App.table = { pipeline, evalRule, evalRules, ruleComplete, mount, ruleEditor, OPS, manageColumns: mountColumnManager, openColumnManager, applyColumnLayout };
 })(typeof window !== "undefined" ? window : globalThis);
