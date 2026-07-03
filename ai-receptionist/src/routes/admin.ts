@@ -10,6 +10,7 @@ import { listChangeLog } from "../services/changelogService";
 import { listGroupedEmailSends, listEmailSendRecipients } from "../services/emailLogService";
 import { getBillingRates, updateBillingRates } from "../services/billingRateService";
 import { aggregateTenant, aggregateAll, isBucket, parseDate, type Bucket } from "../services/usageAggregationService";
+import { getBillingDashboard, updateBillingDashboard, isBillingDashboardScope } from "../services/billingDashboardService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -414,6 +415,26 @@ adminRouter.get("/usage/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), 
     res.json(await aggregateTenant(req.params.tenantId, parseDate(req.query.from), parseDate(req.query.to), readBucket(req)));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Global billing dashboards (OWNER/SUPER_ADMIN). GET returns a scope's widget layout (seeded
+// with defaults on first access); PATCH replaces it — same { widgets } contract the reports
+// editor already uses, so its save logic is reused as-is. scope ∈ tenant_drilldown | macro.
+adminRouter.get("/billing-dashboards/:scope", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  if (!isBillingDashboardScope(req.params.scope)) { res.status(400).json({ error: "unknown dashboard scope" }); return; }
+  try {
+    res.json(await getBillingDashboard(req.params.scope));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+adminRouter.patch("/billing-dashboards/:scope", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  if (!isBillingDashboardScope(req.params.scope)) { res.status(400).json({ error: "unknown dashboard scope" }); return; }
+  try {
+    res.json(await updateBillingDashboard(req.params.scope, (req.body ?? {}).widgets));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 

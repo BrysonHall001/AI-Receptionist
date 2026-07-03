@@ -960,6 +960,18 @@ model BillingRate {
   updatedAt               DateTime @updatedAt
 }
 
+// Master-hub billing dashboards — GLOBAL (not per-portal). Each `scope` holds one widget
+// layout (reports-engine widget JSON) shared across the hub:
+//   "tenant_drilldown" — the SHARED template rendered in every tenant's Billing & Usage
+//                        drill-in (one layout, applied to all tenants, each with its own data)
+//   "macro"            — the dashboard on the Billing & Usage page's Overview area (all tenants)
+model BillingDashboard {
+  scope     String   @id
+  widgets   Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // Daily per-tenant usage rollup — ONE row per tenant per calendar day (UTC). Raw usage
 // (CallSession, EmailLog) is summed into these by the rollup service; days sum cleanly into
 // weeks/months/years for analytics. Deliberately no finer than daily. Recompute is

@@ -172,6 +172,106 @@
   }
 
   // ===================== view factory =====================
+  // ===================== reusable widget editor =====================
+  // Self-contained "Add/Edit widget" modal, driven entirely by cfg so it can serve BOTH the
+  // portal Reports dashboards and the master-hub Billing & Usage dashboards. cfg:
+  //   sources: { key -> source }, sourceKeys: string[], widget: existing|null,
+  //   defaultSourceKey: string, onSave: async (widget) => void
+  function openWidgetEditor(cfg) {
+    const { el, esc, toast } = U();
+    function modal(inner) { const overlay = el("div", "modal-overlay"); const box = el("div", "modal modal-wide"); box.appendChild(inner); overlay.appendChild(box); overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); }; document.body.appendChild(overlay); return overlay; }
+    function dimListEditor(host2, fields, initialDims, onChange) {
+      const rows = []; const list = el("div", "dim-list"); host2.appendChild(list);
+      const addBtn = el("button", "btn btn-ghost btn-sm", "+ Add dimension"); host2.appendChild(addBtn);
+      function addRow(initial) {
+        const row = el("div", "dim-row");
+        const sel = el("select", "input"); const blank = el("option", null, "— select —"); blank.value = ""; sel.appendChild(blank);
+        fields.forEach((f) => { const o = el("option", null, f.label); o.value = f.key; sel.appendChild(o); });
+        const dateSel = el("select", "input"); [["day", "By day"], ["week", "By week"], ["month", "By month"], ["year", "By year"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (v === "month") o.selected = true; dateSel.appendChild(o); }); dateSel.style.display = "none";
+        const rm = el("button", "icon-btn", "×");
+        const entry = { get: () => { if (!sel.value) return null; const f = fields.find((x) => x.key === sel.value); return f && f.type === "date" ? { key: sel.value, date: dateSel.value } : { key: sel.value }; } };
+        function syncDate() { const f = fields.find((x) => x.key === sel.value); dateSel.style.display = f && f.type === "date" ? "" : "none"; }
+        sel.onchange = () => { syncDate(); onChange && onChange(); }; dateSel.onchange = () => onChange && onChange();
+        rm.onclick = () => { list.removeChild(row); const i = rows.indexOf(entry); if (i >= 0) rows.splice(i, 1); onChange && onChange(); };
+        if (initial) { sel.value = initial.key; if (initial.date) dateSel.value = initial.date; } syncDate();
+        row.appendChild(sel); row.appendChild(dateSel); row.appendChild(rm); rows.push(entry); list.appendChild(row);
+      }
+      (initialDims && initialDims.length ? initialDims : []).forEach(addRow);
+      addBtn.onclick = () => { addRow(null); onChange && onChange(); };
+      return { getDims: () => rows.map((r) => r.get()).filter(Boolean) };
+    }
+    try {
+      const sources = cfg.sources;
+      const defaultKey = cfg.defaultSourceKey;
+      const existing = cfg.widget || null;
+      const w = existing ? JSON.parse(JSON.stringify(existing)) : { id: "w" + Date.now(), title: "", type: "kpi", measure: { op: "count" }, groupBy: [], series: [], filters: [] };
+      if (!w.measure) w.measure = { op: "count" };
+      let previewCharts = [];
+      let curSrcKey = (w.source && sources[w.source]) ? w.source : defaultKey;
+      const srcOpts = (cfg.sourceKeys || Object.keys(sources)).map((k) => ({ key: k, label: sources[k] ? sources[k].label : k }));
+      const inner = el("div");
+      inner.innerHTML = `<div class="modal-head"><h2>${existing ? "Edit widget" : "Add widget"}</h2><button class="icon-btn" id="w-close">&times;</button></div>
+        <div class="modal-body">
+          <label class="field-label">Title</label><input id="w-title" class="input" value="${esc(w.title || "")}" placeholder="e.g. Cost by month" />
+          <label class="field-label">Data source</label>
+          <select id="w-source" class="input">${srcOpts.map((o) => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join("")}</select>
+          <label class="field-label">Type</label>
+          <select id="w-type" class="input"><option value="kpi">KPI (single number)</option><option value="bar">Bar chart</option><option value="stacked">Stacked bar</option><option value="line">Line chart</option><option value="pie">Pie chart</option><option value="heatmap">Heat map</option><option value="list">List / table</option></select>
+          <div id="w-measure-wrap"><label class="field-label">Measure</label>
+          <div class="w-row"><select id="w-mop" class="input"><option value="count">Count</option><option value="sum">Sum of…</option><option value="avg">Average of…</option></select>
+          <select id="w-mfield" class="input" style="display:none"></select></div></div>
+          <div id="w-group-wrap"><label class="field-label">Group by</label><div id="w-group"></div></div>
+          <div id="w-series-wrap" style="display:none"><label class="field-label" id="w-series-label">Stack by</label><div id="w-series"></div></div>
+          <div id="w-list-wrap" style="display:none"><label class="field-label">Columns</label><div id="w-list-cols" class="w-list-cols"></div></div>
+          <label class="field-label">Filters</label><div id="w-filters"></div>
+          <div class="w-preview-label">Preview</div><div id="w-preview" class="w-preview"></div>
+          <button id="w-save" class="btn btn-primary btn-block">${existing ? "Save widget" : "Add widget"}</button>
+        </div>`;
+      const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
+      $("#w-close").onclick = () => overlay.remove();
+      $("#w-source").value = curSrcKey; $("#w-type").value = w.type; $("#w-mop").value = w.measure.op;
+      function curSource() { return sources[curSrcKey] || sources[defaultKey]; }
+      let groupEd, seriesEd, listColsEd;
+      function listColsEditor(hostEl, flds, chosen, onChange) {
+        const sel = new Set(chosen || []); const boxes = [];
+        flds.forEach((f) => { const lab = el("label", "w-list-col"); const cb = el("input"); cb.type = "checkbox"; cb.value = f.key; if (sel.has(f.key)) cb.checked = true; cb.onchange = () => onChange && onChange(); lab.appendChild(cb); lab.appendChild(document.createTextNode(" " + f.label)); hostEl.appendChild(lab); boxes.push(cb); });
+        return { getCols: () => boxes.filter((b) => b.checked).map((b) => b.value) };
+      }
+      function rebuildForSource(initial) {
+        const src = curSource();
+        const numericFields = src.reportFields.filter((f) => f.type === "number" || f.type === "percent");
+        $("#w-mfield").innerHTML = numericFields.map((f) => `<option value="${esc(f.key)}">${esc(f.label)}</option>`).join("");
+        if (initial && w.measure && w.measure.field) $("#w-mfield").value = w.measure.field;
+        $("#w-mop").options[0].textContent = "Count of " + String(src.label || "records").toLowerCase();
+        if (!initial) w.filters = [];
+        $("#w-group").innerHTML = ""; $("#w-series").innerHTML = "";
+        const gInit = initial ? toDims(w.groupBy, w.groupByDate) : (src.defaultGroupByKey ? [{ key: src.defaultGroupByKey }] : []);
+        groupEd = dimListEditor($("#w-group"), src.reportFields, gInit, () => preview());
+        seriesEd = dimListEditor($("#w-series"), src.reportFields, initial ? toDims(w.series, w.seriesDate) : [], () => preview());
+        $("#w-filters").innerHTML = "";
+        $("#w-filters").appendChild(App.table.ruleEditor(buildColumns(src, src.reportFields), src.rows, w.filters, () => preview()));
+        $("#w-list-cols").innerHTML = "";
+        const colInit = (initial && Array.isArray(w.columns) && w.columns.length) ? w.columns : defaultListColumns(src);
+        listColsEd = listColsEditor($("#w-list-cols"), src.reportFields, colInit, () => preview());
+      }
+      function sync() { const t = $("#w-type").value; const isList = t === "list"; $("#w-measure-wrap").style.display = isList ? "none" : "block"; $("#w-mfield").style.display = (!isList && $("#w-mop").value !== "count") ? "block" : "none"; $("#w-group-wrap").style.display = (isList || t === "kpi") ? "none" : "block"; const ns = t === "stacked" || t === "heatmap"; $("#w-series-wrap").style.display = ns ? "block" : "none"; $("#w-series-label").textContent = t === "heatmap" ? "Rows (second dimension)" : "Stack by"; $("#w-list-wrap").style.display = isList ? "block" : "none"; preview(); }
+      function collect() {
+        const t = $("#w-type").value; const mop = $("#w-mop").value;
+        const base = { id: w.id, title: $("#w-title").value.trim() || "Untitled", source: curSrcKey, type: t, filters: w.filters, cw: w.cw, ch: w.ch };
+        if (t === "list") { base.columns = listColsEd ? listColsEd.getCols() : []; base.measure = { op: "count" }; base.groupBy = []; base.series = []; return base; }
+        base.measure = mop === "count" ? { op: "count" } : { op: mop, field: $("#w-mfield").value };
+        base.groupBy = t === "kpi" ? [] : groupEd.getDims();
+        base.series = (t === "stacked" || t === "heatmap") ? seriesEd.getDims() : [];
+        return base;
+      }
+      function preview() { previewCharts.forEach((c) => { try { c.destroy(); } catch (e) {} }); previewCharts = []; try { const s = curSource(); renderWidgetBody($("#w-preview"), collect(), s, s.rows, s.reportFields, previewCharts); } catch (e) { $("#w-preview").innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; } }
+      $("#w-source").addEventListener("change", () => { curSrcKey = $("#w-source").value; rebuildForSource(false); sync(); });
+      ["#w-type", "#w-mop", "#w-mfield", "#w-title"].forEach((s) => { $(s).addEventListener("change", sync); $(s).addEventListener("input", preview); });
+      rebuildForSource(true); sync();
+      $("#w-save").onclick = async () => { const widget = collect(); try { await cfg.onSave(widget); overlay.remove(); toast(existing ? "Widget saved" : "Widget added"); } catch (e) { toast((e && e.message) || "Save failed", true); } };
+    } catch (err) { console.error("widget editor error", err); U().toast("Couldn't open editor: " + (err && err.message ? err.message : err), true); }
+  }
+
   function createView(host, opts) {
     opts = opts || {};
     const compact = !!opts.compact;
@@ -521,94 +621,21 @@
     }
 
     function openEditor(existing) {
-     try {
       let dash = current();
       if (!dash && state.dashboards.length) { state.currentId = state.dashboards[0].id; dash = current(); }
       if (!dash) { toast("Create a dashboard first", true); return; }
-      const w = existing ? JSON.parse(JSON.stringify(existing)) : { id: "w" + Date.now(), title: "", type: "kpi", measure: { op: "count" }, groupBy: [], series: [], filters: [] };
-      if (!w.measure) w.measure = { op: "count" };
-      let previewCharts = [];
-      // Which source this widget reports on (default Contacts; unknown -> Contacts).
-      let curSrcKey = (w.source && state.sources[w.source]) ? w.source : "contacts";
-      const inner = el("div");
-      inner.innerHTML = `<div class="modal-head"><h2>${existing ? "Edit widget" : "Add widget"}</h2><button class="icon-btn" id="w-close">&times;</button></div>
-        <div class="modal-body">
-          <label class="field-label">Title</label><input id="w-title" class="input" value="${esc(w.title || "")}" placeholder="e.g. Leads by tier" />
-          <label class="field-label">Data source</label>
-          <select id="w-source" class="input">${sourceOptions().map((o) => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join("")}</select>
-          <label class="field-label">Type</label>
-          <select id="w-type" class="input"><option value="kpi">KPI (single number)</option><option value="bar">Bar chart</option><option value="stacked">Stacked bar</option><option value="line">Line chart</option><option value="pie">Pie chart</option><option value="heatmap">Heat map</option><option value="list">List / table</option></select>
-          <div id="w-measure-wrap"><label class="field-label">Measure</label>
-          <div class="w-row"><select id="w-mop" class="input"><option value="count">Count</option><option value="sum">Sum of…</option><option value="avg">Average of…</option></select>
-          <select id="w-mfield" class="input" style="display:none"></select></div></div>
-          <div id="w-group-wrap"><label class="field-label">Group by</label><div id="w-group"></div></div>
-          <div id="w-series-wrap" style="display:none"><label class="field-label" id="w-series-label">Stack by</label><div id="w-series"></div></div>
-          <div id="w-list-wrap" style="display:none"><label class="field-label">Columns</label><div id="w-list-cols" class="w-list-cols"></div></div>
-          <label class="field-label">Filters</label><div id="w-filters"></div>
-          <div class="w-preview-label">Preview</div><div id="w-preview" class="w-preview"></div>
-          <button id="w-save" class="btn btn-primary btn-block">${existing ? "Save widget" : "Add widget"}</button>
-        </div>`;
-      const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
-      $("#w-close").onclick = () => overlay.remove();
-      $("#w-source").value = curSrcKey;
-      $("#w-type").value = w.type; $("#w-mop").value = w.measure.op;
-
-      function curSource() { return state.sources[curSrcKey] || state.sources.contacts; }
-      let groupEd, seriesEd, listColsEd;
-      // A simple checkbox column picker for the List widget (mirrors the manage-
-      // columns pattern); chosen keys are stored in the widget JSON as w.columns.
-      function listColsEditor(hostEl, flds, chosen, onChange) {
-        const sel = new Set(chosen || []); const boxes = [];
-        flds.forEach((f) => {
-          const lab = el("label", "w-list-col");
-          const cb = el("input"); cb.type = "checkbox"; cb.value = f.key; if (sel.has(f.key)) cb.checked = true;
-          cb.onchange = () => onChange && onChange();
-          lab.appendChild(cb); lab.appendChild(document.createTextNode(" " + f.label));
-          hostEl.appendChild(lab); boxes.push(cb);
-        });
-        return { getCols: () => boxes.filter((b) => b.checked).map((b) => b.value) };
-      }
-      // (Re)build every source-dependent control from the chosen source's fields.
-      // initial=true restores the widget's saved selections; a manual source
-      // switch (initial=false) clears them, since field keys differ per source.
-      function rebuildForSource(initial) {
-        const src = curSource();
-        const numericFields = src.reportFields.filter((f) => f.type === "number" || f.type === "percent");
-        $("#w-mfield").innerHTML = numericFields.map((f) => `<option value="${esc(f.key)}">${esc(f.label)}</option>`).join("");
-        if (initial && w.measure && w.measure.field) $("#w-mfield").value = w.measure.field;
-        // Honest count label reflects the chosen source.
-        $("#w-mop").options[0].textContent = "Count of " + String(src.label || "records").toLowerCase();
-        if (!initial) w.filters = [];
-        $("#w-group").innerHTML = ""; $("#w-series").innerHTML = "";
-        // On a manual source switch, prefill the source's natural group-by (the
-        // funnel declares Stage) so the common case is one click. Editing an
-        // existing widget restores its saved dimensions instead.
-        const gInit = initial ? toDims(w.groupBy, w.groupByDate) : (src.defaultGroupByKey ? [{ key: src.defaultGroupByKey }] : []);
-        groupEd = dimListEditor($("#w-group"), src.reportFields, gInit, () => preview());
-        seriesEd = dimListEditor($("#w-series"), src.reportFields, initial ? toDims(w.series, w.seriesDate) : [], () => preview());
-        $("#w-filters").innerHTML = "";
-        $("#w-filters").appendChild(App.table.ruleEditor(buildColumns(src, src.reportFields), src.rows, w.filters, () => preview()));
-        $("#w-list-cols").innerHTML = "";
-        const colInit = (initial && Array.isArray(w.columns) && w.columns.length) ? w.columns : defaultListColumns(src);
-        listColsEd = listColsEditor($("#w-list-cols"), src.reportFields, colInit, () => preview());
-      }
-      function sync() { const t = $("#w-type").value; const isList = t === "list"; $("#w-measure-wrap").style.display = isList ? "none" : "block"; $("#w-mfield").style.display = (!isList && $("#w-mop").value !== "count") ? "block" : "none"; $("#w-group-wrap").style.display = (isList || t === "kpi") ? "none" : "block"; const ns = t === "stacked" || t === "heatmap"; $("#w-series-wrap").style.display = ns ? "block" : "none"; $("#w-series-label").textContent = t === "heatmap" ? "Rows (second dimension)" : "Stack by"; $("#w-list-wrap").style.display = isList ? "block" : "none"; preview(); }
-      function collect() {
-        const t = $("#w-type").value; const mop = $("#w-mop").value;
-        const base = { id: w.id, title: $("#w-title").value.trim() || "Untitled", source: curSrcKey, type: t, filters: w.filters, cw: w.cw, ch: w.ch };
-        if (t === "list") { base.columns = listColsEd ? listColsEd.getCols() : []; base.measure = { op: "count" }; base.groupBy = []; base.series = []; return base; }
-        base.measure = mop === "count" ? { op: "count" } : { op: mop, field: $("#w-mfield").value };
-        base.groupBy = t === "kpi" ? [] : groupEd.getDims();
-        base.series = (t === "stacked" || t === "heatmap") ? seriesEd.getDims() : [];
-        return base;
-      }
-      function preview() { previewCharts.forEach((c) => { try { c.destroy(); } catch (e) {} }); previewCharts = []; try { const s = curSource(); renderWidgetBody($("#w-preview"), collect(), s, s.rows, s.reportFields, previewCharts); } catch (e) { $("#w-preview").innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; } }
-      $("#w-source").addEventListener("change", () => { curSrcKey = $("#w-source").value; rebuildForSource(false); sync(); });
-      ["#w-type", "#w-mop", "#w-mfield", "#w-title"].forEach((s) => { $(s).addEventListener("change", sync); $(s).addEventListener("input", preview); });
-      rebuildForSource(true);
-      sync();
-      $("#w-save").onclick = async () => { const widget = collect(); const d = current(); d.widgets = d.widgets || []; const idx = d.widgets.findIndex((x) => x.id === widget.id); if (idx >= 0) d.widgets[idx] = widget; else d.widgets.push(widget); await persist(d); overlay.remove(); paint(); toast(existing ? "Widget saved" : "Widget added"); };
-     } catch (err) { console.error("widget editor error", err); toast("Couldn't open editor: " + (err && err.message ? err.message : err), true); }
+      openWidgetEditor({
+        sources: state.sources,
+        sourceKeys: sourceOptions().map((o) => o.key),
+        widget: existing,
+        defaultSourceKey: "contacts",
+        onSave: async (widget) => {
+          dash.widgets = dash.widgets || [];
+          const idx = dash.widgets.findIndex((x) => x.id === widget.id);
+          if (idx >= 0) dash.widgets[idx] = widget; else dash.widgets.push(widget);
+          await persist(dash); paint();
+        },
+      });
     }
 
     function modal(inner) { const overlay = el("div", "modal-overlay"); const box = el("div", "modal modal-wide"); box.appendChild(inner); overlay.appendChild(box); overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); }; document.body.appendChild(overlay); return overlay; }
@@ -619,6 +646,6 @@
   App.reports = {
     render: (host) => createView(host, {}).boot(),
     mountHome: (host) => createView(host, { compact: true, home: true }).boot(),
-    aggregate, valueOf, bucketDate, measureValue, renderWidgetBody,
+    aggregate, valueOf, bucketDate, measureValue, renderWidgetBody, openWidgetEditor,
   };
 })(typeof window !== "undefined" ? window : globalThis);
