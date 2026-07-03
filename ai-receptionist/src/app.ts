@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import { attachUser } from "./middleware/auth";
 import { twilioRouter } from "./routes/twilioWebhooks";
 import { conversationRelayRouter } from "./routes/conversationRelayWebhook";
+import { resendWebhookRouter } from "./routes/resendWebhook";
 import { internalRouter } from "./routes/internal";
 import { inboundRouter } from "./routes/inbound";
 import { inviteRouter } from "./routes/invites";
@@ -26,6 +27,11 @@ export function createApp(): express.Express {
 
   // Subscribe the automation engine to the event bus (idempotent).
   registerAutomationEngine();
+
+  // Resend delivery webhook — MUST see the RAW request body for Svix signature
+  // verification, so it is mounted with express.raw BEFORE the global urlencoded/JSON
+  // parsers below. Public (no auth), like the Twilio webhooks.
+  app.use("/webhooks/resend", express.raw({ type: "*/*" }), resendWebhookRouter);
 
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json({ limit: "2mb" })); // imports can be largish

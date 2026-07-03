@@ -30,6 +30,7 @@
   async function render(v) {
     current = v;
     if (v === "users") return renderUsers();
+    if (v === "email") return renderEmail();
     if (v === "feedback") return App.feedback.renderMaster(view());
     if (v === "changelog") return renderChangelog();
     return renderPortals();
@@ -913,6 +914,109 @@
       defaultSort: "date", defaultSortDir: "desc",
       emptyHtml: empty, pageSize: 25,
     });
+  }
+
+  // ---------------- Master-hub Email deliverability page (OWNER/SUPER_ADMIN) ----------------
+  // Combined status: prefer the live delivery status (from the Resend webhook), else fall
+  // back to the send outcome. Bounced/complained/failed render red (badge-failed).
+  function emailStatusInfo(r) {
+    const d = r && r.deliveryStatus;
+    if (d) {
+      const map = {
+        delivered: ["badge-completed", "Delivered"],
+        opened: ["badge-completed", "Opened"],
+        clicked: ["badge-completed", "Clicked"],
+        delivery_delayed: ["badge-progress", "Delayed"],
+        bounced: ["badge-failed", "Bounced"],
+        complained: ["badge-failed", "Complained"],
+        failed: ["badge-failed", "Failed"],
+      };
+      return map[d] || ["badge-neutral", d];
+    }
+    const smap = { sent: ["badge-neutral", "Sent"], failed: ["badge-failed", "Failed"], mock: ["badge-neutral", "Mock"] };
+    return smap[r && r.status] || ["badge-neutral", (r && r.status) || "—"];
+  }
+  const emailStatusText = (r) => emailStatusInfo(r)[1];
+  function emailStatusBadge(r) { const p = emailStatusInfo(r); return `<span class="badge ${p[0]}">${esc(p[1])}</span>`; }
+  const cap = (s) => (s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : "—");
+
+  async function renderEmail() {
+    loading();
+    let rows;
+    try { rows = await App.api("/api/admin/email-logs"); }
+    catch (e) { view().innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+    if (!Array.isArray(rows)) rows = [];
+
+    view().innerHTML = "";
+    const wrap = el("div", "fade-in");
+    view().appendChild(wrap);
+    const host = el("div");
+    wrap.appendChild(host);
+
+    const columns = [
+      { key: "date", label: "Date", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${esc(fmtDate(r.createdAt))}</span>` },
+      { key: "tenant", label: "Tenant", type: "text", get: (r) => r.tenantName || "", render: (r) => esc(r.tenantName || "—") },
+      { key: "sentby", label: "Sent by", type: "text", get: (r) => r.sentByName || "", render: (r) => esc(r.sentByName || "—") },
+      { key: "to", label: "To", type: "text", get: (r) => r.toName || r.toEmail, render: (r) => r.toName ? `${esc(r.toName)} <span class="cell-muted">${esc(r.toEmail)}</span>` : esc(r.toEmail || "—") },
+      { key: "type", label: "Type", type: "text", get: (r) => r.type, render: (r) => esc(r.type || "—") },
+      { key: "subject", label: "Subject", type: "text", get: (r) => r.subject, render: (r) => esc(r.subject || "—") },
+      { key: "status", label: "Status", type: "status", get: (r) => emailStatusText(r), render: (r) => emailStatusBadge(r) },
+    ];
+    const empty = `<div class="card cell-muted" style="padding:18px">No emails sent yet.</div>`;
+    App.table.mount({
+      container: host, columns, rows,
+      rowId: (r) => r.id,
+      scrollX: true,
+      defaultSort: "date", defaultSortDir: "desc",
+      onRowClick: (r) => renderEmailDetail(r),
+      emptyHtml: empty, pageSize: 50,
+    });
+
+    const caption = el("p", "cell-muted");
+    caption.style.cssText = "font-size:12.5px;margin:4px 0 10px 18px";
+    caption.textContent = "Every email sent across all tenants, with live Resend delivery status. Click a row to see the full record.";
+    const tbEl = host.querySelector(".table-toolbar");
+    if (tbEl) tbEl.insertAdjacentElement("afterend", caption); else host.insertBefore(caption, host.firstChild);
+  }
+
+  function renderEmailDetail(r) {
+    view().innerHTML = "";
+    const wrap = el("div", "fade-in");
+    view().appendChild(wrap);
+    const back = el("button", "btn btn-ghost btn-sm", "\u2190 Back to Email");
+    back.onclick = () => renderEmail();
+    wrap.appendChild(back);
+
+    const card = el("div", "card");
+    card.style.cssText = "padding:22px;margin-top:12px;max-width:760px";
+    const head = el("div"); head.style.cssText = "display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap";
+    const title = el("h2", null, esc(r.subject || "(no subject)")); title.style.cssText = "margin:0;font-size:18px";
+    head.appendChild(title);
+    const badge = el("span"); badge.innerHTML = emailStatusBadge(r); head.appendChild(badge);
+    card.appendChild(head);
+
+    const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:150px 1fr;gap:9px 16px;font-size:13.5px;align-items:start";
+    const line = (label, html) => {
+      const l = el("div", "cell-muted", esc(label));
+      const v = el("div"); v.innerHTML = (html == null || html === "") ? "\u2014" : html;
+      grid.appendChild(l); grid.appendChild(v);
+    };
+    line("Recipient", r.toName ? `${esc(r.toName)} <span class="cell-muted">&lt;${esc(r.toEmail)}&gt;</span>` : esc(r.toEmail || "—"));
+    line("Tenant", esc(r.tenantName || "—"));
+    line("Sent by", esc(r.sentByName || "—"));
+    line("Type", esc(r.type || "—"));
+    line("Subject", esc(r.subject || "—"));
+    line("Send status", esc(cap(r.status)));
+    line("Delivery status", r.deliveryStatus
+      ? emailStatusBadge(r) + (r.deliveryDetail ? ` <span class="cell-muted">${esc(r.deliveryDetail)}</span>` : "")
+      : `<span class="cell-muted">No delivery events yet</span>`);
+    line("Sent at", esc(fmtDate(r.createdAt)));
+    line("Last event", esc(r.lastEventAt ? fmtDate(r.lastEventAt) : "—"));
+    line("Opened at", esc(r.openedAt ? fmtDate(r.openedAt) : "—"));
+    if (r.errorMessage) line("Error", `<span style="color:var(--red)">${esc(r.errorMessage)}</span>`);
+    if (r.providerMessageId) line("Message ID", `<span class="cell-muted" style="font-family:monospace;font-size:12px">${esc(r.providerMessageId)}</span>`);
+    card.appendChild(grid);
+    wrap.appendChild(card);
   }
 
   App.admin = { render };

@@ -23,6 +23,10 @@ const envSchema = z.object({
   // Defaults to the verified vaala.io domain so mail delivers to any recipient.
   // Override in Render env if you ever change domains.
   RESEND_FROM: z.string().default("Clarity <noreply@vaala.io>"),
+  // Svix signing secret (whsec_...) for verifying Resend delivery webhooks at
+  // POST /webhooks/resend. OPTIONAL: when unset the webhook endpoint no-ops (200)
+  // so the app boots and deploys fine before the secret is configured in Render.
+  RESEND_WEBHOOK_SECRET: z.string().default(""),
   PORT: z.coerce.number().int().positive().default(3000),
   TWILIO_VALIDATE_SIGNATURE: z.enum(["true", "false"]).default("false"),
   // Master switch for ALL texting/SMS. Default OFF: SMS UI is hidden and the send

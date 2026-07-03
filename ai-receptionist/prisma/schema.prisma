@@ -914,12 +914,21 @@ model EmailLog {
   providerMessageId   String?                 // Resend's data.id
   status              String                  // "sent"|"failed"|"mock"
   errorMessage        String?
+  // ---- Delivery lifecycle (populated by the Resend webhook; null until an event arrives) ----
+  // deliveryStatus layers ON TOP of the send `status` above: it's the latest delivery
+  // outcome reported by Resend/Svix — "delivered"|"bounced"|"complained"|"delivery_delayed"
+  // |"opened"|"clicked"|"failed". deliveryDetail carries a bounce reason/subtype when present.
+  deliveryStatus      String?
+  deliveryDetail      String?
+  lastEventAt         DateTime?               // created_at of the most-recent delivery event applied (ordering guard)
+  openedAt            DateTime?               // first email.opened
   createdAt           DateTime @default(now())
 
   @@index([tenantId, createdAt])
   @@index([status])
   @@index([providerMessageId])
   @@index([communicationSendId])
+  @@index([deliveryStatus])
 }
 
 // ===================== Surveys (Communication → Surveys) =====================

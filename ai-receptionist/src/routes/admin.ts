@@ -7,6 +7,7 @@ import { prisma } from "../db/client";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, listAllFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { createExport, listMasterExports, getMasterExportCsv } from "../services/exportService";
 import { listChangeLog } from "../services/changelogService";
+import { listAllEmailLogs } from "../services/emailLogService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -352,6 +353,17 @@ adminRouter.delete("/feedback/:id", requireRole("OWNER", "SUPER_ADMIN"), async (
 adminRouter.get("/changelog", async (_req: Request, res: Response) => {
   try {
     res.json(await listChangeLog());
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Cross-tenant Email deliverability feed for the master-hub Email page. The whole router
+// is already gated to OWNER/SUPER_ADMIN/AUDITOR; this per-route requireRole tightens it to
+// OWNER/SUPER_ADMIN only (auditors don't get the cross-tenant email view).
+adminRouter.get("/email-logs", requireRole("OWNER", "SUPER_ADMIN"), async (_req: Request, res: Response) => {
+  try {
+    res.json(await listAllEmailLogs());
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
