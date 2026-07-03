@@ -35,7 +35,7 @@ async function main() {
   const before = await db.tenant.count();
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "calsync@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "calsync@example.invalid" } })).id;
     // Connected Google connection: status "connected" + a refresh token present is
     // what getConnectionStatus treats as connected. Start with sync ENABLED.
     await db.googleConnection.create({ data: { tenantId: tId, status: "connected", refreshTokenEnc: "selftest-not-a-real-token", syncEnabled: true } });

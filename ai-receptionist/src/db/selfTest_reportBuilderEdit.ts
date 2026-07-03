@@ -43,7 +43,7 @@ async function main() {
   let tId: string | null = null;
   const beforeExports = await db.exportRecord.count();
   try {
-    const tenant = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid", timezone: ZONE } });
+    const tenant = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid", timezone: ZONE } });
     tId = tenant.id;
     const tenantId: string = tenant.id;
     await listRecordTypes(tenantId);

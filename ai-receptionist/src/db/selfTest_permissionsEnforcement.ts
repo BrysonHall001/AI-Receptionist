@@ -82,7 +82,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "enf@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "enf@example.invalid" } })).id;
 
     console.log("(A) ADMIN NO-OP — every admin role allowed on every gated route:");
     for (const role of ["OWNER", "SUPER_ADMIN", "AUDITOR", "PORTAL_ADMIN"]) {

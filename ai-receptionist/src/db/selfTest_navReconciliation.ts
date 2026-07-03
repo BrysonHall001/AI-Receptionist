@@ -69,7 +69,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "nav@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "nav@example.invalid" } })).id;
 
     console.log("(A) NO-OP — every system role's menu == the full nav (unchanged):");
     for (const role of ["OWNER", "SUPER_ADMIN", "AUDITOR", "PORTAL_ADMIN", "CLIENT_USER"]) {

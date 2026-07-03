@@ -55,7 +55,7 @@ async function main() {
   const userIds: string[] = [];
 
   try {
-    const tenant = await db.tenant.create({ data: { name: T_NAME } });
+    const tenant = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME } });
     tId = tenant.id;
 
     // A real admin who will impersonate (admin-tier, tenantless).

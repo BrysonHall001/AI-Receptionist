@@ -52,7 +52,7 @@ async function main() {
 
   let tId = "";
   try {
-    const t = await db.tenant.create({ data: { name: T, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
     tId = t.id;
 
     // Business hours: Monday 7:00 AM – 10:30 PM, 30-minute default, no buffer.

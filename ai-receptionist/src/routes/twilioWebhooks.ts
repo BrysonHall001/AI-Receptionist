@@ -95,7 +95,7 @@ twilioRouter.post("/status", async (req: Request, res: Response) => {
   const status = (p.callStatus || "").toLowerCase();
   try {
     if (status === "completed") {
-      await finalizeCall(p.callSid, "COMPLETED");
+      await finalizeCall(p.callSid, "COMPLETED", { durationSeconds: p.callDuration ?? null });
     } else if (["busy", "failed", "no-answer", "canceled"].includes(status)) {
       await failCall(p.callSid, status);
     }

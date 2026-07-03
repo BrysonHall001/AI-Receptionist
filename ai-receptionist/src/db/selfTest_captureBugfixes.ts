@@ -35,7 +35,7 @@ async function main() {
   const before = await db.tenant.count();
   let tId = "", bob = "", alice = "", rtId = "";
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "cb@example.invalid", timezone: "America/New_York" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "cb@example.invalid", timezone: "America/New_York" } })).id;
     bob = (await db.resource.create({ data: { tenantId: tId, name: "Bob" } })).id;   // first in list
     alice = (await db.resource.create({ data: { tenantId: tId, name: "Alice" } })).id;
     await ensureBookingRecordType(tId);

@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { requireRole } from "../middleware/auth";
-import { listPortals, getPortal, createPortal, updatePortal } from "../services/portalService";
+import { listPortals, getPortal, createPortal, updatePortal, isBillingStatus, BILLING_STATUSES } from "../services/portalService";
 import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
 import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvite, sendInvite, sendCustomInvite, hasInviteLinkToken, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
@@ -8,6 +8,7 @@ import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessa
 import { createExport, listMasterExports, getMasterExportCsv } from "../services/exportService";
 import { listChangeLog } from "../services/changelogService";
 import { listGroupedEmailSends, listEmailSendRecipients } from "../services/emailLogService";
+import { getBillingRates, updateBillingRates } from "../services/billingRateService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -38,9 +39,14 @@ adminRouter.get("/portals/:id", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/portals", async (req: Request, res: Response) => {
-  const { name, notifyEmail, lockedPages } = (req.body ?? {}) as Record<string, any>;
+  const { name, notifyEmail, lockedPages, billingStatus } = (req.body ?? {}) as Record<string, any>;
   if (!name) {
     res.status(400).json({ error: "name is required" });
+    return;
+  }
+  // Billing status is REQUIRED at creation (no default) and must be a known value.
+  if (!isBillingStatus(billingStatus)) {
+    res.status(400).json({ error: "billingStatus is required and must be one of: " + BILLING_STATUSES.join(", ") });
     return;
   }
   try {
@@ -48,7 +54,7 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
     // phone, greeting, and the identity rule are no longer set here (dead/decoupled or
     // set later under Integrations); requireEmail is hard-set true and not accepted.
     // lockedPages (owner page-lock) may be set atomically at creation.
-    const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages });
+    const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages, billingStatus });
     logger.info(`Portal created: ${portal.name} (${portal.id})`);
     res.json(portal);
   } catch (err) {
@@ -64,6 +70,15 @@ adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
     const data: any = {};
     for (const k of ["name", "phoneNumber", "notifyEmail", "status", "lockedPages"]) {
       if (b[k] !== undefined) data[k] = b[k];
+    }
+    // Billing status is editable later (same OWNER/SUPER_ADMIN/AUDITOR master-hub gate as
+    // other tenant edits). Validate against the allowed set when provided.
+    if (b.billingStatus !== undefined) {
+      if (!isBillingStatus(b.billingStatus)) {
+        res.status(400).json({ error: "billingStatus must be one of: " + BILLING_STATUSES.join(", ") });
+        return;
+      }
+      data.billingStatus = b.billingStatus;
     }
     // Voice mode is the authoritative 3-way choice. Validate it server-side and
     // keep the receptionistEnabled boolean mirror in sync (= mode != OFF). If an
@@ -355,6 +370,25 @@ adminRouter.get("/changelog", async (_req: Request, res: Response) => {
     res.json(await listChangeLog());
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Editable cost rates (OWNER/SUPER_ADMIN only). GET returns the current rates (creating
+// the singleton on first access); PUT updates any subset. No $ math here yet — storage
+// + edit only.
+adminRouter.get("/billing-rates", requireRole("OWNER", "SUPER_ADMIN"), async (_req: Request, res: Response) => {
+  try {
+    res.json(await getBillingRates());
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+adminRouter.put("/billing-rates", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try {
+    res.json(await updateBillingRates((req.body ?? {}) as Record<string, unknown>));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 

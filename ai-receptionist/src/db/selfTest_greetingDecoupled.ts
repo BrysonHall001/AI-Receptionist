@@ -29,7 +29,7 @@ async function main() {
   try {
     // Tenant carries a sentinel greeting in the (now-orphaned) column.
     const tenant = await db.tenant.create({
-      data: { name: T_NAME, notifyEmail: "selftest@example.invalid", greeting: SENTINEL, phoneNumber: "+15550009999" },
+      data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid", greeting: SENTINEL, phoneNumber: "+15550009999" },
     });
     tId = tenant.id;
 

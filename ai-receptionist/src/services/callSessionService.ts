@@ -86,6 +86,32 @@ export async function markEmailSent(callSid: string) {
   return prisma.callSession.update({ where: { callSid }, data: { emailSentAt: new Date() } });
 }
 
+// Accumulate OpenAI token usage onto the call (summed across turns) + record the model.
+// Best-effort: callers wrap this so usage capture can NEVER break a call.
+export async function addCallUsage(
+  callSid: string,
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number },
+  llmModel?: string | null,
+) {
+  await prisma.callSession.update({
+    where: { callSid },
+    data: {
+      promptTokens: { increment: Math.max(0, Math.trunc(usage.promptTokens || 0)) },
+      completionTokens: { increment: Math.max(0, Math.trunc(usage.completionTokens || 0)) },
+      totalTokens: { increment: Math.max(0, Math.trunc(usage.totalTokens || 0)) },
+      ...(llmModel ? { llmModel } : {}),
+    } as any,
+  });
+}
+
+// Store the billable call duration (whole seconds). Written once at finalize.
+export async function setCallDuration(callSid: string, durationSeconds: number) {
+  await prisma.callSession.update({
+    where: { callSid },
+    data: { durationSeconds: Math.max(0, Math.trunc(durationSeconds)) } as any,
+  });
+}
+
 export async function linkContact(callSid: string, contactId: string) {
   return prisma.callSession.update({ where: { callSid }, data: { contactId } });
 }

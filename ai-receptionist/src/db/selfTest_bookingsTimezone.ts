@@ -50,7 +50,7 @@ async function main() {
   const before = await db.tenant.count();
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "tz@example.invalid", timezone: "America/New_York" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "tz@example.invalid", timezone: "America/New_York" } })).id;
 
     // ---- Owner writes timezone; booking-config reads back the SAME field ----
     console.log("(Owner) writes timezone -> tenant.timezone, and booking-config reflects it:");

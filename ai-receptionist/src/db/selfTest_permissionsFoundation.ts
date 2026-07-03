@@ -41,7 +41,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "perm@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "perm@example.invalid" } })).id;
 
     console.log("(A) System roles = today's behavior (no-op), incl. proof routes:");
     check((await can(sys("OWNER"), "users", "view")) === true, "OWNER -> users.view = true");

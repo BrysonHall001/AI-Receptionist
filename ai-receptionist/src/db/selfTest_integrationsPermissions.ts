@@ -56,7 +56,7 @@ async function main() {
   const before = await db.tenant.count();
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "intg@example.invalid", phoneNumber: uniquePhone(), receptionistEnabled: false, voiceMode: "OFF" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "intg@example.invalid", phoneNumber: uniquePhone(), receptionistEnabled: false, voiceMode: "OFF" } })).id;
 
     // ---------- Twilio EDIT (admin-tier only) ----------
     console.log("(Twilio edit) admin-tier can edit; portal admin + client user are blocked:");

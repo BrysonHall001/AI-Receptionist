@@ -49,6 +49,7 @@ async function seed(): Promise<void> {
     update: { notifyEmail },
     create: {
       name: process.env.SEED_BUSINESS_NAME || "Acme Services",
+      billingStatus: "trial",
       businessType: process.env.SEED_BUSINESS_TYPE || "home services company",
       phoneNumber: env.TWILIO_PHONE_NUMBER,
       greeting: process.env.SEED_GREETING || "Thanks for calling Acme Services. How can I help you today?",

@@ -164,6 +164,7 @@ async function ensureTenantId(): Promise<string> {
   if (existing) return existing.id;
   const created = await prisma.tenant.create({
     data: {
+      billingStatus: "trial",
       name: process.env.SEED_BUSINESS_NAME || "Acme Services",
       businessType: process.env.SEED_BUSINESS_TYPE || "home services company",
       phoneNumber: env.TWILIO_PHONE_NUMBER,

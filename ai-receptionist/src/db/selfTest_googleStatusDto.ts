@@ -25,7 +25,7 @@ async function main() {
   const before = await db.tenant.count();
   let tId = "";
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "e-dto@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "e-dto@example.invalid" } })).id;
     const syncedAt = new Date("2026-06-20T12:00:00Z");
     await db.googleConnection.create({ data: {
       tenantId: tId, status: "connected", accountEmail: "owner@example.invalid",
@@ -60,7 +60,7 @@ async function main() {
     check(s.syncStatus === "degraded" && (s.lastSyncError || "").length > 0, "degraded + error surfaced");
 
     console.log("\n(5) no connection row => safe defaults:");
-    const t2 = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "e2@example.invalid" } })).id;
+    const t2 = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "e2@example.invalid" } })).id;
     const s2 = await getConnectionStatus(t2);
     check(s2.connected === false && s2.writeGranted === false && s2.syncStatus === null, "unconnected tenant: all false/null");
     await db.tenant.delete({ where: { id: t2 } });

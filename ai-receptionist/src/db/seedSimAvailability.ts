@@ -12,6 +12,7 @@ async function main() {
   const win = [{ start: "09:00", end: "17:00" }];
   const t = await db.tenant.create({
     data: {
+      billingStatus: "trial",
       name: "__SIM_AVAIL__",
       businessType: "salon",
       notifyEmail: "sim@example.invalid",

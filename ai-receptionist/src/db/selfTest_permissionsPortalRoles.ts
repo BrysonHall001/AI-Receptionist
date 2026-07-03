@@ -39,7 +39,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "portalroles@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "portalroles@example.invalid" } })).id;
 
     console.log("(1) Per-portal reference list = Portal Admin + Client User only:");
     const list = portalRoleList();

@@ -35,7 +35,7 @@ async function main() {
 
   let tId = "", cuId = "";
   try {
-    const t = await db.tenant.create({ data: { name: T, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
     tId = t.id;
     const cu = await db.user.create({ data: { email: `fbatt_${Date.now()}@example.invalid`, passwordHash: "x", role: "CLIENT_USER", tenantId: tId, name: "Creator Cory" } });
     cuId = cu.id;

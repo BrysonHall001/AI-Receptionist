@@ -39,7 +39,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "dataadmin@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "dataadmin@example.invalid" } })).id;
 
     // A spread of real history across types + kinds.
     await createExport({ tenantId: tId, dataType: "contact", name: "Contacts export", rowCount: 5, fields: [], csv: "x", createdById: "u1" });

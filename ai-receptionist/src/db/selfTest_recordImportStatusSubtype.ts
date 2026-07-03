@@ -51,7 +51,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "recimport@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "recimport@example.invalid" } })).id;
     // Ensure the default "job" type (subtypes: technical/...; recordStages: open/on_hold/filled/closed).
     const rtId = await resolveRecordTypeId(tId, "job");
     const rt = await db.recordType.findFirst({ where: { tenantId: tId, id: rtId } });

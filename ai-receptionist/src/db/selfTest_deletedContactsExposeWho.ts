@@ -36,7 +36,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "delwho@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "delwho@example.invalid" } })).id;
     const byUser = await db.contact.create({ data: { tenantId: tId, name: "Deleted ByUser", phone: phone() } });
     const legacy = await db.contact.create({ data: { tenantId: tId, name: "Deleted Legacy", phone: phone() } });
 

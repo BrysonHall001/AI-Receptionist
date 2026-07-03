@@ -25,7 +25,7 @@ async function main() {
 
   let tId: string | null = null;
   try {
-    const tenant = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid" } });
+    const tenant = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid" } });
     tId = tenant.id;
     const tenantId: string = tenant.id;
 

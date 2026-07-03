@@ -57,7 +57,7 @@ async function main() {
   let tId = "", uId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "backup@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "backup@example.invalid" } })).id;
     uId = (await db.user.create({ data: { email: `backup_${Date.now()}@example.invalid`, passwordHash: PW_HASH, name: "Casey Owner", role: "OWNER", tenantId: tId } })).id;
     // Seed credential-bearing + ordinary data so exclusion is a real (not vacuous) test.
     await db.googleConnection.create({ data: { tenantId: tId, accountEmail: "g@example.invalid", accessTokenEnc: OAUTH_TOKEN, refreshTokenEnc: OAUTH_TOKEN } });

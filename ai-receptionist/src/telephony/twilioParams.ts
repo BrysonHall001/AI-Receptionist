@@ -9,17 +9,20 @@ export interface TwilioVoiceParams {
   to: string;
   callStatus?: string;
   speechResult?: string;
+  callDuration?: number; // Twilio "CallDuration" — billable whole seconds (status callback)
 }
 
 /** Extract the fields we care about from a Twilio voice webhook (urlencoded). */
 export function parseVoiceParams(req: Request): TwilioVoiceParams {
   const b = (req.body ?? {}) as Record<string, unknown>;
+  const durRaw = b.CallDuration !== undefined ? Number(b.CallDuration) : NaN;
   return {
     callSid: String(b.CallSid ?? ""),
     from: String(b.From ?? ""),
     to: String(b.To ?? ""),
     callStatus: b.CallStatus !== undefined ? String(b.CallStatus) : undefined,
     speechResult: b.SpeechResult !== undefined ? String(b.SpeechResult) : undefined,
+    callDuration: Number.isFinite(durRaw) ? durRaw : undefined,
   };
 }
 

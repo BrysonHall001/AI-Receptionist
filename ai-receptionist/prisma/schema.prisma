@@ -84,6 +84,10 @@ model Tenant {
   // zoneless wall-clock model until then; this field changes no current time logic.
   timezone     String        @default("America/New_York")
   status       TenantStatus  @default(ACTIVE)
+  // Billing status is REQUIRED and has NO default: the creator must pick one of
+  // "free" | "trial" | "paid" | "exception" when a portal is created. Existing rows
+  // were backfilled to "trial" by the introducing migration so nothing is null.
+  billingStatus String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   contacts     Contact[]
@@ -251,6 +255,16 @@ model CallSession {
   extracted   Json       @default("{}")
   turnCount   Int        @default(0)
   emptyCount  Int        @default(0)
+  // ---- Usage metering (foundation; no rollups/UI yet) ----
+  // OpenAI token usage accumulated across every completion of this call (from the
+  // API `usage` object). llmModel records env.OPENAI_MODEL that produced them.
+  // durationSeconds is Twilio's billable CallDuration (whole seconds) captured on the
+  // status callback, or a finalizedAt-createdAt fallback. Minutes are derived later.
+  promptTokens     Int    @default(0)
+  completionTokens Int    @default(0)
+  totalTokens      Int    @default(0)
+  llmModel         String?
+  durationSeconds  Int?
   // Backend-owned booking commitment, captured the moment the AI calls the
   // confirm_booking tool (not reconstructed at finalize from the AI's extracted
   // blob). committedAppointmentAt is the SAME zoneless wall-clock string the rest
@@ -929,6 +943,21 @@ model EmailLog {
   @@index([providerMessageId])
   @@index([communicationSendId])
   @@index([deliveryStatus])
+}
+
+// Editable cost rates — a SINGLE-ROW settings table (id fixed to "singleton") read by
+// later batches to turn raw usage (tokens / minutes / numbers / SMS) into estimated
+// dollars. Provider prices are NEVER hardcoded in logic; all $ math reads these. This
+// batch only stores + edits them (sensible editable defaults of 0). OWNER/SUPER_ADMIN only.
+model BillingRate {
+  id                      String   @id @default("singleton")
+  openAiInputPer1kTokens  Decimal  @default(0) @db.Decimal(12, 6)
+  openAiOutputPer1kTokens Decimal  @default(0) @db.Decimal(12, 6)
+  twilioPerCallMinute     Decimal  @default(0) @db.Decimal(12, 6)
+  twilioPerNumberMonthly  Decimal  @default(0) @db.Decimal(12, 6)
+  twilioPerSms            Decimal  @default(0) @db.Decimal(12, 6)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 // ===================== Surveys (Communication → Surveys) =====================

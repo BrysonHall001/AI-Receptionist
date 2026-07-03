@@ -113,7 +113,16 @@ export interface CommittedBooking {
 
 /** runAITurn returns the normal AIResponse plus, when the model committed a
  *  booking this turn, the backend-owned commitment to persist. */
-export type AITurnResult = AIResponse & { committedBooking?: CommittedBooking };
+export type AITurnResult = AIResponse & { committedBooking?: CommittedBooking; usage?: TurnUsage };
+
+// Accumulated OpenAI token usage for one turn (summed across every completion the turn
+// makes: tool rounds + finalize). Foundation for usage metering — captured best-effort
+// and NEVER allowed to break a call.
+export interface TurnUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
 
 /**
  * The availability tool's handler. READ-ONLY: resolves the resource NAME via the
@@ -309,7 +318,19 @@ export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Prom
   // Backend-owned commitment captured if the model calls confirm_booking this turn;
   // attached to whatever AIResponse we return so handleTurn can persist it.
   let committedBooking: CommittedBooking | undefined;
-  const attach = (r: AIResponse): AITurnResult => (committedBooking ? { ...r, committedBooking } : r);
+  // Token usage accumulated across every completion this turn makes. Best-effort: a
+  // malformed/absent usage object can never break the turn.
+  const usage: TurnUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  function accumulateUsage(completion: ChatResult): void {
+    try {
+      const u = (completion as any)?.usage;
+      if (!u) return;
+      usage.promptTokens += Number(u.prompt_tokens) || 0;
+      usage.completionTokens += Number(u.completion_tokens) || 0;
+      usage.totalTokens += Number(u.total_tokens) || 0;
+    } catch { /* usage capture must never break a call */ }
+  }
+  const attach = (r: AIResponse): AITurnResult => ({ ...r, ...(committedBooking ? { committedBooking } : {}), usage });
 
   // --- TOOL PHASE ---
   let lookupSignalled = false; // ensure the filler fires at most once per turn
@@ -321,6 +342,7 @@ export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Prom
       tool_choice: "auto",
       messages,
     });
+    accumulateUsage(completion);
     const msg = completion.choices[0]?.message;
     const toolCalls = msg?.tool_calls;
     if (toolCalls && toolCalls.length) {
@@ -363,6 +385,7 @@ export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Prom
         response_format: { type: "json_object" },
         messages,
       });
+      accumulateUsage(completion);
       const raw = completion.choices[0]?.message?.content ?? "";
       return attach(AIResponseSchema.parse(JSON.parse(raw)));
     } catch (err) {

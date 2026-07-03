@@ -43,7 +43,7 @@ async function main() {
   let tId = "";
   const SID = `INTR_${Date.now()}`;
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, businessType: "salon", notifyEmail: "selftest@example.invalid", greeting: "Hi, thanks for calling!" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, businessType: "salon", notifyEmail: "selftest@example.invalid", greeting: "Hi, thanks for calling!" } });
     tId = t.id;
     await startCall({ callSid: SID, from: "+15551110003", tenantId: tId });
 

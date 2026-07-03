@@ -25,7 +25,7 @@ async function main() {
   console.log("==========================================");
   let tId: string | null = null;
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "inv@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "inv@example.invalid" } })).id;
 
     // create-on-send: no invite for this email yet.
     const before = await db.invite.count({ where: { email: EMAIL } });

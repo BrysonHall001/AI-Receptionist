@@ -15,7 +15,7 @@ async function main() {
   console.log("=======================================");
   let tId = "";
   try {
-    const t = await createPortal({ name: "LockCo_" + Date.now() });
+    const t = await createPortal({ name: "LockCo_" + Date.now(), billingStatus: "trial" });
     tId = t.id;
 
     // Lock Contacts + the Jobs & Bookings unit.

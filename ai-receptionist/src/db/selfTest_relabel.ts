@@ -62,7 +62,7 @@ async function main() {
 
   let tId = "";
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid" } });
     tId = t.id;
     const mkContact = (name: string, extra: any = {}) => db.contact.create({ data: { tenantId: tId, name, email: `${name.toLowerCase().replace(/[^a-z0-9]/g, "")}@example.invalid`, phone: null, ...extra } });
     const mkAuto = (name: string, actions: any[]) => db.automation.create({ data: { tenantId: tId, name, enabled: true, triggerType: "ContactCreated", conditions: [], actions } }).then((a: any) => a.id);

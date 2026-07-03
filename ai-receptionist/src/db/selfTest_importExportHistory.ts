@@ -36,7 +36,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "imphist@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "imphist@example.invalid" } })).id;
     await ensureBookingRecordType(tId);
 
     console.log("(1) A record (booking) EXPORT now saves to history, typed:");

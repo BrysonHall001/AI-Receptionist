@@ -66,7 +66,7 @@ async function main() {
   const before = await db.tenant.count();
   let tId = "", rId = "", rUnmapped = "";
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "push@example.invalid", timezone: "America/New_York" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "push@example.invalid", timezone: "America/New_York" } });
     tId = t.id;
     rId = (await db.resource.create({ data: { tenantId: tId, name: "Mapped Stylist" } })).id;
     rUnmapped = (await db.resource.create({ data: { tenantId: tId, name: "Unmapped Stylist" } })).id;

@@ -44,9 +44,9 @@ async function main() {
 
   let aId = "", bId = "";
   try {
-    const tA = await db.tenant.create({ data: { name: A_NAME, notifyEmail: "selftest@example.invalid" } });
+    const tA = await db.tenant.create({ data: { billingStatus: "trial", name: A_NAME, notifyEmail: "selftest@example.invalid" } });
     aId = tA.id;
-    const tB = await db.tenant.create({ data: { name: B_NAME, notifyEmail: "selftest@example.invalid" } });
+    const tB = await db.tenant.create({ data: { billingStatus: "trial", name: B_NAME, notifyEmail: "selftest@example.invalid" } });
     bId = tB.id;
     // Ensure both portals have their built-in contact + job types.
     await listRecordTypes(aId);

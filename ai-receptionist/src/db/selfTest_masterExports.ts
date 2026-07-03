@@ -31,8 +31,8 @@ async function main() {
 
   let aId = "", bId = "", uId = "";
   try {
-    const A = await db.tenant.create({ data: { name: `${PFX} Portal A`, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
-    const B = await db.tenant.create({ data: { name: `${PFX} Portal B`, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
+    const A = await db.tenant.create({ data: { billingStatus: "trial", name: `${PFX} Portal A`, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
+    const B = await db.tenant.create({ data: { billingStatus: "trial", name: `${PFX} Portal B`, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
     aId = A.id; bId = B.id;
     const u = await db.user.create({ data: { email: `mexp_${Date.now()}@example.invalid`, passwordHash: "x", role: "OWNER", tenantId: aId, name: "Owner Olivia" } });
     uId = u.id;

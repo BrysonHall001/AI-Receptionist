@@ -66,7 +66,7 @@ async function main() {
   let tId = "", rId = "";
   let t2 = "";
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid", timezone: "America/New_York" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid", timezone: "America/New_York" } });
     tId = t.id;
     rId = (await db.resource.create({ data: { tenantId: tId, name: "Stylist A" } })).id;
     await ensureBookingRecordType(tId);
@@ -165,7 +165,7 @@ async function main() {
 
     // (10) multi-resource: a calendar mapped to two resources blocks BOTH
     console.log("\n(10) shared calendar blocks every mapped resource:");
-    const t2row = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "s2@example.invalid", timezone: "America/New_York" } });
+    const t2row = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "s2@example.invalid", timezone: "America/New_York" } });
     t2 = t2row.id;
     const r1 = (await db.resource.create({ data: { tenantId: t2, name: "R1" } })).id;
     const r2 = (await db.resource.create({ data: { tenantId: t2, name: "R2" } })).id;

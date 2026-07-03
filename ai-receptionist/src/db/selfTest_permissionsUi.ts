@@ -41,7 +41,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "permui@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "permui@example.invalid" } })).id;
 
     console.log("(1) Creating a custom role saves its permission set:");
     const role = await createPortalRole(tId, "Front Desk", { contacts: { view: true, edit: true }, records: { view: true } });

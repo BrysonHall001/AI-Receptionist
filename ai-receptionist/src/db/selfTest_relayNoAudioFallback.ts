@@ -77,7 +77,7 @@ async function main() {
   const before = await db.tenant.count();
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, businessType: "salon", phoneNumber: PHONE, greeting: GREETING, notifyEmail: "relay@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, businessType: "salon", phoneNumber: PHONE, greeting: GREETING, notifyEmail: "relay@example.invalid" } })).id;
 
     server = createServer();
     attachConversationRelay(server);

@@ -52,7 +52,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "elog@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "elog@example.invalid" } })).id;
 
     // Real writes to the Event table (what emitEvent persists), with varied
     // type / actor / date so each filter has a known correct subset.

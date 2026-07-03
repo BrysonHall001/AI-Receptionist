@@ -70,7 +70,7 @@ async function main() {
 
   let tId = "";
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid", bookingConfig: { hours: openAllWeek(), defaultDurationMin: 30, bufferMin: 0, serviceDurations: {}, allowDoubleBooking: false } } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid", bookingConfig: { hours: openAllWeek(), defaultDurationMin: 30, bufferMin: 0, serviceDurations: {}, allowDoubleBooking: false } } });
     tId = t.id;
 
     // Booking record type (key MUST be "booking"); no subtypes => Type optional.

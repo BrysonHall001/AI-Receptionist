@@ -31,6 +31,7 @@
     current = v;
     if (v === "users") return renderUsers();
     if (v === "email") return renderEmail();
+    if (v === "billing") return renderBilling();
     if (v === "feedback") return App.feedback.renderMaster(view());
     if (v === "changelog") return renderChangelog();
     return renderPortals();
@@ -504,6 +505,25 @@
       bar.appendChild(back); bar.appendChild(title); bar.appendChild(status); bar.appendChild(toggle);
       wrap.appendChild(bar);
 
+      // Billing status — viewable + editable here (same OWNER/SUPER_ADMIN/AUDITOR master-hub
+      // gate as the rest of this panel). Changing it PATCHes the tenant immediately.
+      const billRow = el("div"); billRow.style.cssText = "display:flex;align-items:center;gap:10px;margin:2px 0 14px";
+      const billLbl = el("span", "cell-muted", "Billing status"); billLbl.style.fontSize = "13px";
+      const billSel = el("select", "input"); billSel.style.cssText = "width:auto;margin:0;padding:4px 8px";
+      [["free", "Free"], ["trial", "Trial"], ["paid", "Paid"], ["exception", "Exception"]].forEach(([v, lbl]) => {
+        const o = el("option", null, lbl); o.value = v; if ((portal.billingStatus || "") === v) o.selected = true; billSel.appendChild(o);
+      });
+      if (!portal.billingStatus) { const o = el("option", null, "—"); o.value = ""; o.selected = true; billSel.insertBefore(o, billSel.firstChild); }
+      billSel.onchange = async () => {
+        const next = billSel.value; if (!next) return;
+        billSel.disabled = true;
+        try { await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ billingStatus: next }) }); portal.billingStatus = next; toast("Billing status updated"); }
+        catch (e) { toast(e.message, true); billSel.value = portal.billingStatus || ""; }
+        finally { billSel.disabled = false; }
+      };
+      billRow.appendChild(billLbl); billRow.appendChild(billSel);
+      wrap.appendChild(billRow);
+
       const caption = el("p", "cell-muted"); caption.style.cssText = "margin:-4px 0 16px;font-size:12.5px";
       caption.textContent = "Configure this tenant’s page access, users, and status. This does not enter the portal.";
       wrap.appendChild(caption);
@@ -572,7 +592,16 @@
     f1.innerHTML = `
       <label class="field-label">Business name *</label><input id="sp-name" class="input" placeholder="Acme Plumbing" />
       <label class="field-label">Notify email</label><input id="sp-email" class="input" placeholder="owner@acme.com" />
-      <p class="cell-muted" style="font-size:12.5px;margin:8px 0 0">Notify email is optional — it's where call summaries and notifications go.</p>`;
+      <p class="cell-muted" style="font-size:12.5px;margin:8px 0 0">Notify email is optional — it's where call summaries and notifications go.</p>
+      <label class="field-label" style="margin-top:12px">Billing status *</label>
+      <select id="sp-billing" class="input">
+        <option value="">Select a billing status…</option>
+        <option value="free">Free</option>
+        <option value="trial">Trial</option>
+        <option value="paid">Paid</option>
+        <option value="exception">Exception</option>
+      </select>
+      <p class="cell-muted" style="font-size:12.5px;margin:8px 0 0">Required — pick how this tenant is billed. You can change it later from the tenant's detail panel.</p>`;
     s1.appendChild(f1);
     wrap.appendChild(s1);
 
@@ -648,15 +677,18 @@
     finish.onclick = async () => {
       const nameEl = document.querySelector("#sp-name");
       const emailEl = document.querySelector("#sp-email");
+      const billingEl = document.querySelector("#sp-billing");
       const name = nameEl ? nameEl.value.trim() : "";
       const notifyEmail = emailEl ? emailEl.value.trim() : "";
+      const billingStatus = billingEl ? billingEl.value : "";
       if (!name) { toast("Business name is required", true); if (nameEl) nameEl.focus(); return; }
+      if (!billingStatus) { toast("Pick a billing status to create the tenant", true); if (billingEl) billingEl.focus(); return; }
       finish.disabled = true;
 
       // 1) Create the tenant. If THIS fails, nothing was persisted — stay on the screen.
       let portal;
       try {
-        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages }) });
+        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages, billingStatus }) });
       } catch (err) { toast(err.message || "Could not create the tenant", true); finish.disabled = false; return; }
 
       // 2) Apply the queued draft in sequence. Collect failures instead of throwing, so
@@ -1062,6 +1094,64 @@
     if (r.errorMessage) line("Error", `<span style="color:var(--red)">${esc(r.errorMessage)}</span>`);
     if (r.providerMessageId) line("Message ID", `<span class="cell-muted" style="font-family:monospace;font-size:12px">${esc(r.providerMessageId)}</span>`);
     card.appendChild(grid);
+    wrap.appendChild(card);
+  }
+
+  // ---------------- Master-hub Billing rates (OWNER/SUPER_ADMIN) ----------------
+  // Simple view/edit for the editable cost rates. No dollar math yet — this only stores
+  // the numbers later batches will use to estimate costs from raw usage.
+  async function renderBilling() {
+    loading();
+    let rates;
+    try { rates = await App.api("/api/admin/billing-rates"); }
+    catch (e) { view().innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+    rates = rates || {};
+
+    view().innerHTML = "";
+    const wrap = el("div", "fade-in");
+    view().appendChild(wrap);
+    const head = el("div");
+    head.innerHTML = `<h1 class="page-title">Billing rates</h1>` +
+      `<p class="cell-muted" style="font-size:12.5px;margin:2px 0 14px">Editable cost rates used later to estimate dollar costs from recorded usage. Changing these does not bill anyone — it only affects future estimates.</p>`;
+    wrap.appendChild(head);
+
+    const card = el("div", "card");
+    card.style.cssText = "padding:22px;max-width:560px";
+    const fields = [
+      ["openAiInputPer1kTokens", "OpenAI input — $ per 1K tokens"],
+      ["openAiOutputPer1kTokens", "OpenAI output — $ per 1K tokens"],
+      ["twilioPerCallMinute", "Twilio — $ per call minute"],
+      ["twilioPerNumberMonthly", "Twilio — $ per phone number / month"],
+      ["twilioPerSms", "Twilio — $ per SMS"],
+    ];
+    const inputs = {};
+    const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 140px;gap:10px 16px;align-items:center";
+    fields.forEach(([key, label]) => {
+      const l = el("label", "field-label", label); l.style.cssText = "margin:0";
+      const inp = el("input", "input"); inp.type = "number"; inp.min = "0"; inp.step = "0.0001"; inp.style.cssText = "margin:0";
+      inp.value = rates[key] != null ? String(rates[key]) : "0";
+      inputs[key] = inp;
+      grid.appendChild(l); grid.appendChild(inp);
+    });
+    card.appendChild(grid);
+
+    const foot = el("div"); foot.style.cssText = "margin-top:18px;display:flex;gap:8px;align-items:center";
+    const save = el("button", "btn btn-primary btn-sm", "Save rates");
+    const note = el("span", "cell-muted"); note.style.fontSize = "12.5px";
+    save.onclick = async () => {
+      const body = {};
+      for (const [key] of fields) {
+        const n = Number(inputs[key].value);
+        if (!isFinite(n) || n < 0) { toast(`${key} must be a non-negative number`, true); return; }
+        body[key] = n;
+      }
+      save.disabled = true; note.textContent = "";
+      try { const updated = await App.api("/api/admin/billing-rates", { method: "PUT", body: JSON.stringify(body) }); for (const [key] of fields) if (updated && updated[key] != null) inputs[key].value = String(updated[key]); toast("Rates saved"); note.textContent = "Saved."; }
+      catch (e) { toast(e.message, true); }
+      finally { save.disabled = false; }
+    };
+    foot.appendChild(save); foot.appendChild(note);
+    card.appendChild(foot);
     wrap.appendChild(card);
   }
 

@@ -57,7 +57,7 @@ function ev(tenantId: string, actorType: string, contactId: string, newStage: st
 }
 
 async function makeTenant(name: string) {
-  const t = await db.tenant.create({ data: { name, notifyEmail: "selftest@example.invalid" } });
+  const t = await db.tenant.create({ data: { billingStatus: "trial", name, notifyEmail: "selftest@example.invalid" } });
   const rt = await db.recordType.create({ data: { tenantId: t.id, key: "job", label: "Job" } });
   const rec = await db.record.create({ data: { tenantId: t.id, recordTypeId: rt.id, title: "Loop Test Job" } });
   const contact = await db.contact.create({ data: { tenantId: t.id, name: "Loop Cand" } });

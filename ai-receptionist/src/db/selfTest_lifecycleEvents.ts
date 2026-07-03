@@ -36,7 +36,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "life@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "life@example.invalid" } })).id;
     // A non-booking record type (Job) with no subtypes (so no Type is required).
     await db.recordType.create({ data: { tenantId: tId, key: "job", label: "Job", labelPlural: "Jobs", system: false, stages: [], recordStages: [], subtypes: [], order: 1 } });
     await ensureBookingRecordType(tId);

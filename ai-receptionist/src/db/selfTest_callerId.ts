@@ -35,7 +35,7 @@ async function main() {
 
   let tId = "";
   try {
-    const t = await db.tenant.create({ data: { name: T, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T, businessType: "salon", notifyEmail: "selftest@example.invalid" } });
     tId = t.id;
     const C = (phone: string, callerId: string | null, name: string) =>
       createOrUpdateContact({ tenantId: tId, phone, callerId, name, source: "phone" });

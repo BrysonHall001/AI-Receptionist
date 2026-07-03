@@ -42,7 +42,7 @@ async function main() {
 
     // ---- end-to-end against real contacts + the per-tenant resolver ----
     console.log("\n(3) per-recipient (DB):");
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "m@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "m@example.invalid" } })).id;
     const tenantId: string = tId!;
     const withName = await db.contact.create({ data: { tenantId, name: "Grace Hopper", email: "grace@example.invalid" } });
     const noName = await db.contact.create({ data: { tenantId, name: "", email: "anon@example.invalid" } });

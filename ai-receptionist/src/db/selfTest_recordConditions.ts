@@ -55,7 +55,7 @@ async function main() {
 
   let aId = "", bId = "";
   try {
-    const tA = await db.tenant.create({ data: { name: A_NAME, notifyEmail: "selftest@example.invalid" } });
+    const tA = await db.tenant.create({ data: { billingStatus: "trial", name: A_NAME, notifyEmail: "selftest@example.invalid" } });
     aId = tA.id;
     const rt = await db.recordType.create({ data: { tenantId: aId, key: "job", label: "Job", recordStages: [{ key: "open", label: "Open", order: 0 }, { key: "filled", label: "Filled", order: 1 }], subtypes: [{ key: "k", label: "K", order: 0, stages: [{ key: "x", label: "X", order: 0 }] }] } });
     await db.fieldDef.create({ data: { tenantId: aId, recordTypeId: rt.id, key: "priority", label: "Priority", type: "text", order: 0 } });
@@ -71,7 +71,7 @@ async function main() {
     const autoContact = await note(aId, "contact intent", "StageChanged", [{ field: "intent", op: "is", value: "buy" }]);
 
     // tenant B (isolation)
-    const tB = await db.tenant.create({ data: { name: B_NAME, notifyEmail: "selftest@example.invalid" } });
+    const tB = await db.tenant.create({ data: { billingStatus: "trial", name: B_NAME, notifyEmail: "selftest@example.invalid" } });
     bId = tB.id;
     const rtB = await db.recordType.create({ data: { tenantId: bId, key: "job", label: "Job", recordStages: [{ key: "open", label: "Open", order: 0 }], subtypes: [] } });
     const jobB = await db.record.create({ data: { tenantId: bId, recordTypeId: rtB.id, title: "TB", stageKey: "open", customFields: {} } });

@@ -81,7 +81,7 @@ async function main() {
     // ---------- (5) automation safety: SMS action no-ops while off, no throw ----------
     console.log("\n(5) automation referencing SMS runs while off (no throw, no send):");
     (env as any).SMS_ENABLED = "false";
-    const tenant = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid", phoneNumber: "+15557654321" } });
+    const tenant = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid", phoneNumber: "+15557654321" } });
     tId = tenant.id;
     const u1 = await db.user.create({ data: { tenantId: tenant.id, email: `sg_${Date.now()}@example.invalid`, name: "Owner", role: "OWNER", passwordHash: "x" } });
     const contact = await db.contact.create({ data: { tenantId: tenant.id, name: "Pat", phone: "+15551239999", source: "web" } });

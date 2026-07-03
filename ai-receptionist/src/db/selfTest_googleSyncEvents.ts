@@ -60,7 +60,7 @@ async function main() {
   const recBy = (eid: string, activeOnly = false) => db.record.findFirst({ where: { tenantId: tId, externalEventId: eid, ...(activeOnly ? { deletedAt: null } : {}) } });
 
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "synce@example.invalid", timezone: "America/New_York" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "synce@example.invalid", timezone: "America/New_York" } });
     tId = t.id;
     const rId = (await db.resource.create({ data: { tenantId: tId, name: "Stylist A" } })).id;
     await ensureBookingRecordType(tId);

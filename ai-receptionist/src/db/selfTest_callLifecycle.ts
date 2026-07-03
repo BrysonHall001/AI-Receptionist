@@ -46,7 +46,7 @@ async function main() {
 
   try {
     const win = [{ start: "09:00", end: "17:00" }];
-    const t = await db.tenant.create({ data: { name: T_NAME, businessType: "salon", notifyEmail: "selftest@example.invalid", bookingConfig: { hours: { sun: win, mon: win, tue: win, wed: win, thu: win, fri: win, sat: win }, defaultDurationMin: 30, bufferMin: 0, serviceDurations: {}, allowDoubleBooking: false } } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, businessType: "salon", notifyEmail: "selftest@example.invalid", bookingConfig: { hours: { sun: win, mon: win, tue: win, wed: win, thu: win, fri: win, sat: win }, defaultDurationMin: 30, bufferMin: 0, serviceDurations: {}, allowDoubleBooking: false } } });
     tId = t.id;
     const rt = await db.recordType.create({ data: { tenantId: tId, key: BOOKING_RECORD_TYPE_KEY, label: "Booking", recordStages: [{ key: "requested", label: "Requested", order: 0 }], subtypes: [] } });
     bookingTypeId = rt.id;

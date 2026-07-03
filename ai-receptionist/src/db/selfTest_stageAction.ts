@@ -40,7 +40,7 @@ const linksInStage = (tenantId: string, recordId: string, stageKey: string) => d
 const latestEvent = (tenantId: string, type: string) => db.event.findFirst({ where: { tenantId, type }, orderBy: { occurredAt: "desc" } });
 
 async function makeJobTenant(name: string) {
-  const t = await db.tenant.create({ data: { name, notifyEmail: "selftest@example.invalid" } });
+  const t = await db.tenant.create({ data: { billingStatus: "trial", name, notifyEmail: "selftest@example.invalid" } });
   const rt = await db.recordType.create({ data: {
     tenantId: t.id, key: "job", label: "Job",
     subtypes: [{ key: "k", label: "K", order: 0, stages: [{ key: "x", label: "X", order: 0 }, { key: "y", label: "Y", order: 1 }] }],

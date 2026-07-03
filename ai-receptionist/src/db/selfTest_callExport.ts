@@ -41,7 +41,7 @@ async function main() {
   let tId = "", uId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "callexport@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "callexport@example.invalid" } })).id;
     uId = (await db.user.create({ data: { email: `callexport_${Date.now()}@example.invalid`, passwordHash: "x", name: "Riley Agent", role: "OWNER", tenantId: tId } })).id;
     await db.callSession.create({ data: { tenantId: tId, callSid: `CA_${Date.now()}`, fromNumber: "+15550100", status: "COMPLETED", extracted: { name: "Pat Caller", phone: "+15550100", intent: "Booking" }, turnCount: 4 } });
 

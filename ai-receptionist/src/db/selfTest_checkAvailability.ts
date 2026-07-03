@@ -66,7 +66,7 @@ async function main() {
 
   let tId = "";
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid", bookingConfig: { hours: openAllWeek(), defaultDurationMin: 30, bufferMin: 0, serviceDurations: {}, allowDoubleBooking: false } } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid", bookingConfig: { hours: openAllWeek(), defaultDurationMin: 30, bufferMin: 0, serviceDurations: {}, allowDoubleBooking: false } } });
     tId = t.id;
     await db.recordType.create({ data: { tenantId: tId, key: BOOKING_RECORD_TYPE_KEY, label: "Booking", recordStages: [{ key: "requested", label: "Requested", order: 0 }, { key: "no_show", label: "No-show", order: 1 }], subtypes: [] } });
 

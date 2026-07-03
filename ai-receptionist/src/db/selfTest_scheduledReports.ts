@@ -34,7 +34,7 @@ async function main() {
   let tId: string | null = null;
   try {
     // ---------- temp tenant + creating user ----------
-    const tenant = await db.tenant.create({ data: { name: T_NAME } });
+    const tenant = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME } });
     tId = tenant.id;
     const tenantId: string = tenant.id;
     const user = await db.user.create({ data: { tenantId, name: "Self Test", email: `selftest-${Date.now()}@example.invalid`, passwordHash: "x", role: "PORTAL_ADMIN" } });

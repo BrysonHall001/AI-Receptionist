@@ -13,6 +13,8 @@ import {
   markEmailSent,
   linkContact,
   setCommittedBooking,
+  addCallUsage,
+  setCallDuration,
 } from "./callSessionService";
 import { createOrUpdateContact, phoneFromExtracted } from "./contactService";
 import { sendCallSummaryEmail } from "./notificationService";
@@ -173,6 +175,17 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
     extracted = mergeExtracted(extracted, ai.extracted, session.fromNumber);
     nextState = resolveNextState(state, ai.state_update as CallState);
 
+    // USAGE METERING (best-effort): accumulate this turn's OpenAI token usage onto the
+    // call. Wrapped so a metering failure can NEVER break the call. Mock turns report
+    // no usage (undefined) -> nothing to add.
+    if (ai.usage) {
+      try {
+        await addCallUsage(params.callSid, ai.usage, env.OPENAI_MODEL);
+      } catch (e) {
+        logger.warn(`[orchestrator] usage capture failed for ${params.callSid}: ${(e as Error).message}`);
+      }
+    }
+
     // COMMITMENT MOMENT: if the AI called confirm_booking this turn, the backend
     // already decided the resource + wall-clock time. Persist it on the session
     // NOW (before the per-turn update and any same-turn finalize) so finalize
@@ -226,7 +239,7 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
  * LAYER 5/6: finalize a call exactly once — persist the contact, then notify.
  * Idempotent via claimFinalization(); safe under the call-end race.
  */
-export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "FAILED"): Promise<void> {
+export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "FAILED", meta?: { durationSeconds?: number | null }): Promise<void> {
   const claimed = await claimFinalization(callSid, finalState);
   if (!claimed) {
     logger.info(`Call ${callSid} already finalized; skipping.`);
@@ -237,6 +250,19 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
   if (!session) return;
   const tenant = await prisma.tenant.findUnique({ where: { id: session.tenantId } });
   if (!tenant) return;
+
+  // BILLABLE DURATION (best-effort): prefer Twilio's CallDuration; otherwise fall back to
+  // finalizedAt - createdAt (finalization just happened, so "now"). Store seconds; minutes
+  // are derived later. Never let metering break finalize.
+  try {
+    let durationSeconds = meta && typeof meta.durationSeconds === "number" ? meta.durationSeconds : null;
+    if (durationSeconds == null && session.createdAt) {
+      durationSeconds = Math.round((Date.now() - new Date(session.createdAt).getTime()) / 1000);
+    }
+    if (durationSeconds != null) await setCallDuration(callSid, durationSeconds);
+  } catch (e) {
+    logger.warn(`[finalize] duration capture failed for ${callSid}: ${(e as Error).message}`);
+  }
 
   const extracted = session.extracted as unknown as Extracted;
   const transcript = session.transcript as unknown as TranscriptTurn[];

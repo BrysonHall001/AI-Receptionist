@@ -56,7 +56,7 @@ async function main() {
   let tId = "", uId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "dafixes@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "dafixes@example.invalid" } })).id;
     uId = (await db.user.create({ data: { email: `dafixes_${Date.now()}@example.invalid`, passwordHash: "x", name: "Dana Tester", role: "OWNER", tenantId: tId } })).id;
 
     // Record types as the real API returns them (includes the system "contact" type).

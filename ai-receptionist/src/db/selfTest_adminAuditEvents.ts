@@ -51,7 +51,7 @@ async function main() {
   }
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "audit@example.invalid", timezone: "America/New_York" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "audit@example.invalid", timezone: "America/New_York" } })).id;
     const OWNER: any = { id: "owner_audit_1", name: "Olga Owner", email: "olga@example.invalid", role: "OWNER", tenantId: tId };
     const mkReq = (body: any): any => ({ user: OWNER, realUser: OWNER, impersonation: undefined, body: { ...body, tenantId: tId }, query: {}, params: {}, headers: {} });
     const mkRes = (): any => { const r: any = { code: 200, body: null, status(c: number) { r.code = c; return r; }, json(x: any) { r.body = x; return r; } }; return r; };

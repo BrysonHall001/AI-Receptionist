@@ -40,7 +40,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "assign@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "assign@example.invalid" } })).id;
     const portalActor = { id: "actor-pa", role: "PORTAL_ADMIN" };
     const role = await createPortalRole(tId, "Front Desk", { contacts: { view: true, edit: true }, records: { view: true } });
 

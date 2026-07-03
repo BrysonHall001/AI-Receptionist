@@ -32,7 +32,7 @@ function check(cond: boolean, label: string) {
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000);
 
 async function makeTenant(name: string): Promise<string> {
-  const t = await db.tenant.create({ data: { name, notifyEmail: "selftest@example.invalid" } });
+  const t = await db.tenant.create({ data: { billingStatus: "trial", name, notifyEmail: "selftest@example.invalid" } });
   const rt = await db.recordType.create({ data: { tenantId: t.id, key: "job", label: "Job" } });
   const rec = await db.record.create({ data: { tenantId: t.id, recordTypeId: rt.id, title: "Test Job" } });
   // stash the record id on the tenant object we return via a map

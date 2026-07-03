@@ -73,7 +73,7 @@ async function main() {
   const before = { tenants: await db.tenant.count() };
   let tId = "";
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid" } });
     tId = t.id;
 
     console.log("\n(4) refresh token is PRESERVED across a reconnect that returns none:");

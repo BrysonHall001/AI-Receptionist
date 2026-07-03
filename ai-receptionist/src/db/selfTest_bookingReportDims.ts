@@ -41,7 +41,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "rep@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "rep@example.invalid" } })).id;
     const bookingTypeId = await ensureBookingRecordType(tId);
     const dana = await db.resource.create({ data: { tenantId: tId, name: "Dana" } });
 

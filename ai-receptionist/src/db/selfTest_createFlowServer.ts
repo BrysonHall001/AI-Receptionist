@@ -19,7 +19,7 @@ async function main() {
   try {
     // (1) optional notify email — create with NAME only.
     const before = await db.tenant.count();
-    const t = await createPortal({ name: NAME });
+    const t = await createPortal({ name: NAME, billingStatus: "trial" });
     tId = t.id;
     const after = await db.tenant.count();
     check(!!t.id && after === before + 1, "createPortal with name only creates exactly one tenant");

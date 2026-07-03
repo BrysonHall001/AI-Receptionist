@@ -39,7 +39,7 @@ async function main() {
   let tId = "";
 
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "coerce@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "coerce@example.invalid" } })).id;
     const rtId = await resolveRecordTypeId(tId, "job");
     await db.fieldDef.create({ data: { tenantId: tId, recordTypeId: rtId, scope: "record", key: "budget", label: "Budget", type: "number", required: false } });
     await db.fieldDef.create({ data: { tenantId: tId, recordTypeId: rtId, scope: "record", key: "due", label: "Due", type: "date", required: false } });

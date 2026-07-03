@@ -42,7 +42,7 @@ async function main() {
   try {
     // (1) default-on-create: create WITHOUT a timezone, expect the column default.
     console.log("(1) the column exists and defaults correctly on create:");
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid" } });
     tId = t.id;
     check((t as any).timezone === DEFAULT_TIMEZONE, `new tenant timezone defaults to ${DEFAULT_TIMEZONE} (got ${(t as any).timezone})`);
     const p0: any = await getPortal(tId);

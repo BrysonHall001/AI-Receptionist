@@ -93,7 +93,7 @@ async function main() {
 
   let tId = "";
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid", phoneNumber: "+15555550100" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid", phoneNumber: "+15555550100" } });
     tId = t.id;
 
     // A booking record type (key MUST be "booking" so the engine treats it as one)

@@ -44,6 +44,7 @@ export async function listPortals() {
     notifyEmail: t.notifyEmail,
     greeting: t.greeting,
     status: t.status,
+    billingStatus: (t as any).billingStatus ?? null,
     requireEmail: (t as any).requireEmail !== false,
     receptionistEnabled: (t as any).receptionistEnabled === true,
     voiceMode: ((t as any).voiceMode as string) || ((t as any).receptionistEnabled === true ? "WALKIE" : "OFF"),
@@ -68,6 +69,7 @@ export async function getPortal(id: string) {
     labels: (t as any).labels ?? {},
     lockedPages: sanitizeLockedPages((t as any).lockedPages),
     status: t.status,
+    billingStatus: (t as any).billingStatus ?? null,
     requireEmail: (t as any).requireEmail !== false,
     receptionistEnabled: (t as any).receptionistEnabled === true,
     voiceMode: ((t as any).voiceMode as string) || ((t as any).receptionistEnabled === true ? "WALKIE" : "OFF"),
@@ -131,27 +133,40 @@ export async function setTenantNav(
   return current.nav;
 }
 
+// Allowed billing statuses. REQUIRED at creation (no default) — see Tenant.billingStatus.
+export const BILLING_STATUSES = ["free", "trial", "paid", "exception"] as const;
+export type BillingStatus = (typeof BILLING_STATUSES)[number];
+export function isBillingStatus(v: unknown): v is BillingStatus {
+  return typeof v === "string" && (BILLING_STATUSES as readonly string[]).includes(v);
+}
+
 export async function createPortal(input: {
   name: string;
   notifyEmail?: string;
   lockedPages?: string[];
+  billingStatus: BillingStatus;
 }) {
   // Create writes only name + (optional) notifyEmail now. greeting, businessType and
   // requireEmail fall back to their column defaults (they're no longer collected at
   // creation — greeting/businessType are dead, the identity rule is hard-set on).
   // lockedPages (owner page-lock) can be set atomically at creation.
+  // billingStatus is REQUIRED (no column default) — the caller must supply a valid value.
+  if (!isBillingStatus(input.billingStatus)) {
+    throw new Error("billingStatus must be one of: " + BILLING_STATUSES.join(", "));
+  }
   return prisma.tenant.create({
     data: {
       name: input.name,
       notifyEmail: input.notifyEmail || "",
       lockedPages: sanitizeLockedPages(input.lockedPages),
+      billingStatus: input.billingStatus,
     } as any,
   });
 }
 
 export async function updatePortal(
   id: string,
-  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; voiceId: string; timezone: string; aiInstructions: string; lockedPages: string[] }>,
+  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; voiceId: string; timezone: string; aiInstructions: string; lockedPages: string[]; billingStatus: string }>,
 ) {
   const clean: any = { ...data };
   if (clean.lockedPages !== undefined) clean.lockedPages = sanitizeLockedPages(clean.lockedPages);

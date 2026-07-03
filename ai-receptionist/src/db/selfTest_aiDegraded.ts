@@ -20,7 +20,7 @@ async function main() {
   const before = await db.tenant.count();
   let tId = "";
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "deg@example.invalid", timezone: "America/New_York" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "deg@example.invalid", timezone: "America/New_York" } })).id;
     await ensureBookingRecordType(tId);
     const d = new Date(); d.setUTCDate(d.getUTCDate() + 3);
     const DATE = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;

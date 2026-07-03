@@ -55,7 +55,7 @@ async function main() {
 
   let tId = "", rId = "";
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "selftest@example.invalid" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "selftest@example.invalid" } });
     tId = t.id;
     const r = await db.resource.create({ data: { tenantId: tId, name: "Test Resource" } });
     rId = r.id;

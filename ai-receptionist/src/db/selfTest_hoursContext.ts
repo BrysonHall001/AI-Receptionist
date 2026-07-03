@@ -50,7 +50,7 @@ async function main() {
   let tId = "";
   let out = "";
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, businessType: "salon", notifyEmail: "selftest@example.invalid", bookingConfig: { hours: BIZ_HOURS, defaultDurationMin: 30, bufferMin: 0, serviceDurations: {}, allowDoubleBooking: false } } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, businessType: "salon", notifyEmail: "selftest@example.invalid", bookingConfig: { hours: BIZ_HOURS, defaultDurationMin: 30, bufferMin: 0, serviceDurations: {}, allowDoubleBooking: false } } });
     tId = t.id;
     await db.resource.create({ data: { tenantId: tId, name: "Bob", color: "#111111", order: 0, hours: BOB_HOURS } });
     await db.resource.create({ data: { tenantId: tId, name: "Alice", color: "#222222", order: 1, hours: null } }); // inherits

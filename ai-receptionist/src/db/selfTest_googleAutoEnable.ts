@@ -28,7 +28,7 @@ async function main() {
   const before = await db.tenant.count();
   let tId = "", rId = "";
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "ae@example.invalid" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "ae@example.invalid" } })).id;
     rId = (await db.resource.create({ data: { tenantId: tId, name: "Bob" } })).id;
     await ensureBookingRecordType(tId);
 
@@ -52,7 +52,7 @@ async function main() {
     check(f.sync === false && f.push === false, "auto-enable does NOT re-flip a user-disabled sync");
 
     console.log("\n(4) fresh tenant, map WITHOUT write scope -> read-in on, push GATED:");
-    const t2 = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "ae2@example.invalid" } })).id;
+    const t2 = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "ae2@example.invalid" } })).id;
     const r2 = (await db.resource.create({ data: { tenantId: t2, name: "Bob2" } })).id;
     await ensureBookingRecordType(t2);
     await db.googleConnection.create({ data: { tenantId: t2, status: "connected", refreshTokenEnc: "ENC", scope: RO } }); // readonly only
@@ -69,7 +69,7 @@ async function main() {
     check(f2b.push === true, "push auto-enabled after write scope granted (mapping already present)");
 
     console.log("\n(6) not connected -> auto-enable is a no-op:");
-    const t3 = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "ae3@example.invalid" } })).id;
+    const t3 = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "ae3@example.invalid" } })).id;
     await autoEnableOnConnect(t3); // no connection row at all
     check(true, "no crash when there's no connection");
   } catch (e) {

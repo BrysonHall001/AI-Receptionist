@@ -53,7 +53,7 @@ async function main() {
   console.log(`(test date: ${DATE}, a weekday open 09:00–17:00)\n`);
   const before = await db.tenant.count();
   try {
-    const t = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "au@example.invalid", timezone: "America/New_York" } });
+    const t = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "au@example.invalid", timezone: "America/New_York" } });
     tId = t.id;
     bob = (await db.resource.create({ data: { tenantId: tId, name: "Bob" } })).id;
     alice = (await db.resource.create({ data: { tenantId: tId, name: "Alice" } })).id;
@@ -151,7 +151,7 @@ async function main() {
     const cntAfter = await db.record.count({ where: { tenantId: tId, recordTypeId: rtId } });
     check(id2 === null && cntAfter === cntBefore, "none free -> no booking placed (fail safe, no double-book)");
     // (c) zero-resource tenant -> Unassigned still allowed (fallback unchanged).
-    const t2 = await db.tenant.create({ data: { name: T_NAME, notifyEmail: "au2@example.invalid", timezone: "America/New_York" } });
+    const t2 = await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "au2@example.invalid", timezone: "America/New_York" } });
     await ensureBookingRecordType(t2.id);
     const c2 = await db.contact.create({ data: { tenantId: t2.id, name: "Caller2", phone: "+15555550001" } });
     const id3 = await createBookingFromCall({ tenantId: t2.id, contactId: c2.id, appointmentDatetime: `${DATE}T10:00`, service: "consultation", resource: null });

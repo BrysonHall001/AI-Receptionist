@@ -34,7 +34,7 @@ async function main() {
   const before = await db.tenant.count();
   let tId = "", rId = "";
   try {
-    tId = (await db.tenant.create({ data: { name: T_NAME, notifyEmail: "edge@example.invalid", timezone: "America/New_York" } })).id;
+    tId = (await db.tenant.create({ data: { billingStatus: "trial", name: T_NAME, notifyEmail: "edge@example.invalid", timezone: "America/New_York" } })).id;
     rId = (await db.resource.create({ data: { tenantId: tId, name: "Bob" } })).id;
     await ensureBookingRecordType(tId);
     await setResourceCalendarMap(tId, rId, CAL, "Cal");
