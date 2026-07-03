@@ -9,6 +9,7 @@ import { sweepResolvedFeedback } from "./services/feedbackService";
 import { processDueJobs } from "./automation/scheduler";
 import { processDueReports } from "./services/reportScheduler";
 import { recomputeUsageDaily, backfillUsageDailyIfEmpty } from "./services/usageRollupService";
+import { backfillCallDurationsFromTwilio } from "./services/usageBackfillService";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -122,6 +123,14 @@ async function main(): Promise<void> {
   // guarded, .unref()'d pattern as the sweeps above. recomputeUsageDaily upserts whole days
   // from raw data, so nothing double-counts and re-runs are safe.
   void backfillUsageDailyIfEmpty().catch((e) => logger.error(`[usage-rollup] backfill failed: ${(e as Error).message}`));
+
+  // One-time (per boot) recovery of missing call durations from the Twilio API for existing
+  // REAL calls, then a rollup recompute so recovered minutes appear. Runs where the creds +
+  // real data live (production), no-ops in mock mode, and is idempotent (only null-duration
+  // rows, only real Twilio CallSids). Fire-and-forget so it never blocks or crashes boot.
+  void backfillCallDurationsFromTwilio()
+    .then((r) => { if (r.updated) logger.info(`[usage-backfill] recovered ${r.updated} call duration(s) from Twilio; rollups recomputed=${r.recomputed}`); })
+    .catch((e) => logger.error(`[usage-backfill] startup backfill failed: ${(e as Error).message}`));
   let usageSweeping = false;
   const runUsageSweep = async () => {
     if (usageSweeping) return;

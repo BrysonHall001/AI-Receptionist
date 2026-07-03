@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { parseVoiceParams, validateTwilioSignature } from "../telephony/twilioParams";
 import { sayAndGather, sayAndHangup } from "../telephony/twiml";
 import { startCall, handleTurn, finalizeCall, failCall, resolveTenantId } from "../services/callOrchestrator";
-import { getCallSession } from "../services/callSessionService";
+import { getCallSession, setCallDuration } from "../services/callSessionService";
 import { connectConversationRelayTwiml } from "../telephony/conversationRelayTwiml";
 import { isValidVoiceId } from "../config/voices";
 import { buildWssUrl } from "./conversationRelayWebhook";
@@ -94,6 +94,16 @@ twilioRouter.post("/status", async (req: Request, res: Response) => {
   const p = parseVoiceParams(req);
   const status = (p.callStatus || "").toLowerCase();
   try {
+    // DURATION (billable minutes): Twilio's CallDuration only arrives here, on the status
+    // callback. Write it as a STANDALONE update that ALWAYS runs when present — NOT gated
+    // behind finalizeCall's idempotent claim. Otherwise, when the ConversationRelay WS-close
+    // finalize wins the race and claims first, this callback's finalize returns early and the
+    // real duration is lost (the bug that showed Call minutes = 0). setCallDuration is a safe,
+    // repeatable updateMany, so it works even if the row is already finalized.
+    if (p.callDuration != null && Number.isFinite(p.callDuration)) {
+      try { await setCallDuration(p.callSid, p.callDuration); }
+      catch (e) { logger.warn(`[status] duration write failed for ${p.callSid}: ${(e as Error).message}`); }
+    }
     if (status === "completed") {
       await finalizeCall(p.callSid, "COMPLETED", { durationSeconds: p.callDuration ?? null });
     } else if (["busy", "failed", "no-answer", "canceled"].includes(status)) {

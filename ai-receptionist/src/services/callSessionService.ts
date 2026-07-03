@@ -104,9 +104,11 @@ export async function addCallUsage(
   });
 }
 
-// Store the billable call duration (whole seconds). Written once at finalize.
+// Store the billable call duration (whole seconds). Uses updateMany so it is a safe no-op if
+// the row is absent, and can run STANDALONE (independent of finalize) any number of times —
+// last write wins, so Twilio's authoritative CallDuration overwrites any earlier fallback.
 export async function setCallDuration(callSid: string, durationSeconds: number) {
-  await prisma.callSession.update({
+  await prisma.callSession.updateMany({
     where: { callSid },
     data: { durationSeconds: Math.max(0, Math.trunc(durationSeconds)) } as any,
   });
