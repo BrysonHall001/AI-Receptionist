@@ -13,7 +13,9 @@ import { aggregateTenant, aggregateAll, isBucket, parseDate, type Bucket } from 
 import { getBillingDashboard, updateBillingDashboard, isBillingDashboardScope } from "../services/billingDashboardService";
 import { getBillingConfig, updateBillingConfig } from "../services/billingConfigService";
 import { computeSuggestedCharge } from "../services/chargeComputeService";
-import { listCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment } from "../services/chargeService";
+import { listCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
+import { getBillingNotifyConfig, updateBillingNotifyConfig } from "../services/billingNotifyConfigService";
+import { runBillingAutomationSweep } from "../services/billingSweepService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -488,9 +490,29 @@ adminRouter.post("/charges/:id/void", requireRole("OWNER", "SUPER_ADMIN"), async
   try { res.json(await voidCharge(req.params.id)); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
+adminRouter.post("/charges/:id/approve", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await approveCharge(req.params.id)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
 adminRouter.post("/charges/:id/payments", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
   try { res.status(201).json(await recordPayment(req.params.id, req.body ?? {})); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// Approval-notification settings (global).
+adminRouter.get("/billing-notify-config", requireRole("OWNER", "SUPER_ADMIN"), async (_req: Request, res: Response) => {
+  try { res.json(await getBillingNotifyConfig()); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+adminRouter.patch("/billing-notify-config", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await updateBillingNotifyConfig(req.body ?? {})); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// Manual trigger for the billing automation sweep (auto-draft + reminders) — for testing/ops.
+adminRouter.post("/billing/run-sweep", requireRole("OWNER", "SUPER_ADMIN"), async (_req: Request, res: Response) => {
+  try { res.json(await runBillingAutomationSweep()); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
 // LEVEL 1 — cross-tenant Email feed, ONE ROW PER SEND (grouped by communicationSendId;

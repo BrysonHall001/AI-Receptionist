@@ -1163,6 +1163,70 @@
     foot.appendChild(save);
     card.appendChild(foot);
     host.appendChild(card);
+
+    await billingNotifySettingsInto(host);
+  }
+
+  // Approval-notification settings (global): recipients, lead days, cadence, enabled.
+  async function billingNotifySettingsInto(host) {
+    const card = el("div", "card"); card.style.cssText = "padding:20px;margin-top:16px";
+    card.appendChild(el("h3", null, "Approval notifications")).style.cssText = "margin:0 0 4px;font-size:15px";
+    const note = el("p", "cell-muted"); note.style.cssText = "margin:0 0 14px;font-size:12.5px"; note.textContent = "Who gets emailed to approve auto-drafted charges, and how far ahead of the due date.";
+    card.appendChild(note);
+    const bodyWrap = el("div"); bodyWrap.innerHTML = `<div class="cell-muted" style="font-size:12px">Loading…</div>`; card.appendChild(bodyWrap);
+    host.appendChild(card);
+
+    let cfg;
+    try { cfg = await App.api("/api/admin/billing-notify-config"); }
+    catch (e) { bodyWrap.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+    bodyWrap.innerHTML = "";
+
+    // Enabled toggle.
+    const enWrap = el("label"); enWrap.style.cssText = "display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px";
+    const enCb = el("input"); enCb.type = "checkbox"; enCb.checked = !!cfg.enabled;
+    enWrap.appendChild(enCb); enWrap.appendChild(document.createTextNode("Send approval reminder emails"));
+    bodyWrap.appendChild(enWrap);
+
+    // Recipients (add/remove).
+    bodyWrap.appendChild(el("label", "field-label", "Recipients")).style.margin = "0 0 6px";
+    let recipients = (cfg.recipients || []).slice();
+    const chips = el("div"); chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px";
+    function paintChips() {
+      chips.innerHTML = "";
+      if (!recipients.length) { const e = el("span", "cell-muted", "No recipients — the owner won’t be emailed."); e.style.fontSize = "12px"; chips.appendChild(e); }
+      recipients.forEach((r, i) => {
+        const chip = el("span"); chip.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:var(--surface-2,#eef1f5);border-radius:14px;padding:3px 6px 3px 10px;font-size:12.5px";
+        chip.appendChild(document.createTextNode(r));
+        const x = el("button", "icon-btn", "×"); x.style.cssText = "width:18px;height:18px;line-height:1"; x.onclick = () => { recipients.splice(i, 1); paintChips(); };
+        chip.appendChild(x); chips.appendChild(chip);
+      });
+    }
+    paintChips(); bodyWrap.appendChild(chips);
+    const addRow = el("div"); addRow.style.cssText = "display:flex;gap:8px;margin-bottom:14px";
+    const addInp = el("input", "input"); addInp.type = "email"; addInp.placeholder = "name@example.com"; addInp.style.cssText = "margin:0;max-width:280px";
+    const addBtn = el("button", "btn btn-ghost btn-sm", "Add");
+    function addEmail() { const v = (addInp.value || "").trim().toLowerCase(); if (!v) return; if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { toast("Enter a valid email", true); return; } if (!recipients.includes(v)) recipients.push(v); addInp.value = ""; paintChips(); }
+    addBtn.onclick = addEmail; addInp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); addEmail(); } };
+    addRow.appendChild(addInp); addRow.appendChild(addBtn); bodyWrap.appendChild(addRow);
+
+    // Lead days + cadence.
+    const row = el("div"); row.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px";
+    const leadInp = el("input", "input"); leadInp.type = "number"; leadInp.min = "0"; leadInp.max = "365"; leadInp.step = "1"; leadInp.style.cssText = "margin:0;width:90px"; leadInp.value = String(cfg.leadDays);
+    const cadSel = el("select", "input"); cadSel.style.cssText = "margin:0;width:auto";
+    [["once", "Once"], ["daily_until_approved", "Daily until approved"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (cfg.cadence === v) o.selected = true; cadSel.appendChild(o); });
+    row.appendChild(field("Lead days before due", leadInp));
+    row.appendChild(field("Cadence", cadSel));
+    bodyWrap.appendChild(row);
+
+    const save = el("button", "btn btn-primary btn-sm", "Save notification settings");
+    save.onclick = async () => {
+      const body = { enabled: enCb.checked, recipients, leadDays: Number(leadInp.value || 0), cadence: cadSel.value };
+      save.disabled = true;
+      try { const u = await App.api("/api/admin/billing-notify-config", { method: "PATCH", body: JSON.stringify(body) }); recipients = (u.recipients || []).slice(); paintChips(); toast("Notification settings saved"); }
+      catch (e) { toast(e.message, true); }
+      finally { save.disabled = false; }
+    };
+    bodyWrap.appendChild(save);
   }
 
   // ================= Billing & Usage (reuses the reports widget engine) =================
@@ -1566,6 +1630,7 @@
         <label class="field-label" style="margin-top:10px">Payments (${esc(fmtMoney(charge.paidTotal))} paid · ${esc(fmtMoney(charge.outstanding))} outstanding)</label>
         <table class="table mini-table" style="width:100%"><thead><tr><th>Date</th><th>Amount</th><th>Method</th></tr></thead><tbody>${pays}</tbody></table>
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+          ${charge.status === "draft" ? `<button id="d-approve" class="btn btn-primary btn-sm">Approve</button>` : ""}
           <button id="d-edit" class="btn btn-ghost btn-sm">Edit</button>
           <button id="d-pay" class="btn btn-ghost btn-sm">Record payment</button>
           <button id="d-void" class="btn btn-ghost btn-sm" style="color:#dc2626">Void</button>
@@ -1573,6 +1638,7 @@
       </div>`;
     const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
     $("#d-close").onclick = () => overlay.remove();
+    if (charge.status === "draft" && $("#d-approve")) $("#d-approve").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Approve charge", message: "Approve this charge? It becomes finalized and unpaid until a payment covers it. Reminder emails stop.", confirmText: "Approve" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/approve`, { method: "POST" }); toast("Charge approved"); overlay.remove(); refreshBilling(tenantId, tenantName); } catch (e) { toast(e.message, true); } };
     $("#d-status").onchange = async () => { try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/status`, { method: "POST", body: JSON.stringify({ status: $("#d-status").value }) }); toast("Status updated"); overlay.remove(); refreshBilling(tenantId, tenantName); } catch (e) { toast(e.message, true); } };
     $("#d-edit").onclick = () => { overlay.remove(); openChargeModal(tenantId, tenantName, charge); };
     $("#d-pay").onclick = () => { overlay.remove(); openPaymentModal(tenantId, tenantName, charge); };

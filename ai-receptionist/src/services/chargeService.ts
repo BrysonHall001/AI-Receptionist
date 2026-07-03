@@ -119,6 +119,18 @@ export async function setChargeStatus(id: string, status: string) {
 
 export async function voidCharge(id: string) { return setChargeStatus(id, "void"); }
 
+// Approve a DRAFT charge -> finalized "approved" (stamps approvedAt). The amount is editable
+// while draft; approving locks it in as owed (unpaid until a Payment covers it) and stops
+// approval reminders (the notify job only targets drafts). Stripe will later act on
+// approved+unpaid charges.
+export async function approveCharge(id: string) {
+  const charge = await db.charge.findUnique({ where: { id }, select: { status: true } });
+  if (!charge) throw new Error("charge not found");
+  if (charge.status !== "draft") throw new Error(`only a draft charge can be approved (this one is ${charge.status})`);
+  const row = await db.charge.update({ where: { id }, data: { status: "approved", approvedAt: new Date() }, include: withPayments });
+  return serializeCharge(row);
+}
+
 // Record a manual payment against a charge. If the charge is now fully covered, flip it to paid.
 export async function recordPayment(chargeId: string, input: { amount: number; paidAt?: string | Date; method?: string | null; notes?: string | null }) {
   const charge = await db.charge.findUnique({ where: { id: chargeId }, include: withPayments });

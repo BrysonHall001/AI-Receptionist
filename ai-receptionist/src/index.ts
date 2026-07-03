@@ -10,6 +10,7 @@ import { processDueJobs } from "./automation/scheduler";
 import { processDueReports } from "./services/reportScheduler";
 import { recomputeUsageDaily, backfillUsageDailyIfEmpty } from "./services/usageRollupService";
 import { backfillCallDurationsFromTwilio } from "./services/usageBackfillService";
+import { runBillingAutomationSweep } from "./services/billingSweepService";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -131,6 +132,14 @@ async function main(): Promise<void> {
   void backfillCallDurationsFromTwilio()
     .then((r) => { if (r.updated) logger.info(`[usage-backfill] recovered ${r.updated} call duration(s) from Twilio; rollups recomputed=${r.recomputed}`); })
     .catch((e) => logger.error(`[usage-backfill] startup backfill failed: ${(e as Error).message}`));
+
+  // Billing automation: auto-draft each portal's current-period charge and send approval
+  // reminders for drafts nearing their due date. Idempotent (dedupes on tenant+period; reminder
+  // cadence is tracked per charge), so it runs once at startup and hourly thereafter. Guarded +
+  // .unref()'d like the other sweeps so it can never block or crash the process.
+  void runBillingAutomationSweep().catch((e) => logger.error(`[billing-sweep] startup run failed: ${(e as Error).message}`));
+  const billingSweepTimer = setInterval(() => { void runBillingAutomationSweep().catch((e) => logger.error(`[billing-sweep] tick failed: ${(e as Error).message}`)); }, 60 * 60_000);
+  billingSweepTimer.unref();
   let usageSweeping = false;
   const runUsageSweep = async () => {
     if (usageSweeping) return;

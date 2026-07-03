@@ -998,11 +998,26 @@ model Charge {
   dueDate     DateTime?
   notes       String?
   approvedAt  DateTime?
+  reminderSentAt DateTime?
+  reminderCount  Int      @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   payments    Payment[]
 
   @@index([tenantId, periodStart])
+}
+
+// Global approval-notification settings (single row). Controls who gets approval-request
+// emails for auto-drafted charges, how far ahead of the due date, and whether to remind once
+// or daily until approved.
+model BillingNotifyConfig {
+  id         String   @id @default("singleton")
+  recipients Json     @default("[]")
+  leadDays   Int      @default(7)
+  cadence    String   @default("once") // "once" | "daily_until_approved"
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 // A payment recorded against a charge (manual entry now; Stripe will create these later).
