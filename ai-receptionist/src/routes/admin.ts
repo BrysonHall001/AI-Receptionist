@@ -7,7 +7,7 @@ import { prisma } from "../db/client";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, listAllFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
 import { createExport, listMasterExports, getMasterExportCsv } from "../services/exportService";
 import { listChangeLog } from "../services/changelogService";
-import { listAllEmailLogs } from "../services/emailLogService";
+import { listGroupedEmailSends, listEmailSendRecipients } from "../services/emailLogService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -358,12 +358,28 @@ adminRouter.get("/changelog", async (_req: Request, res: Response) => {
   }
 });
 
-// Cross-tenant Email deliverability feed for the master-hub Email page. The whole router
-// is already gated to OWNER/SUPER_ADMIN/AUDITOR; this per-route requireRole tightens it to
-// OWNER/SUPER_ADMIN only (auditors don't get the cross-tenant email view).
+// LEVEL 1 — cross-tenant Email feed, ONE ROW PER SEND (grouped by communicationSendId;
+// one-off sends are groups of one). The whole router is already OWNER/SUPER_ADMIN/AUDITOR;
+// this per-route requireRole tightens it to OWNER/SUPER_ADMIN only.
 adminRouter.get("/email-logs", requireRole("OWNER", "SUPER_ADMIN"), async (_req: Request, res: Response) => {
   try {
-    res.json(await listAllEmailLogs());
+    res.json(await listGroupedEmailSends());
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// LEVEL 2 — the per-recipient EmailLog rows for ONE send group. `group` is
+// "send:<communicationSendId>" or "single:<emailLogId>" (from the Level-1 rows). Same
+// OWNER/SUPER_ADMIN gating as the grouped feed.
+adminRouter.get("/email-logs/recipients", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  const group = typeof req.query.group === "string" ? req.query.group : "";
+  if (!group) {
+    res.status(400).json({ error: "group is required" });
+    return;
+  }
+  try {
+    res.json(await listEmailSendRecipients(group));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

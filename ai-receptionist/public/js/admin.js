@@ -940,6 +940,9 @@
   function emailStatusBadge(r) { const p = emailStatusInfo(r); return `<span class="badge ${p[0]}">${esc(p[1])}</span>`; }
   const cap = (s) => (s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : "—");
 
+  // LEVEL 1 — one row per SEND (grouped by communicationSendId; one-off sends are groups
+  // of one). Columns: Date, Tenant, Sent by, Subject, Recipients (count), Status (count
+  // summary). No Type column here. Click a send -> its recipient list (Level 2).
   async function renderEmail() {
     loading();
     let rows;
@@ -953,38 +956,81 @@
     const host = el("div");
     wrap.appendChild(host);
 
+    const recipientsLabel = (n) => `${n} recipient${n === 1 ? "" : "s"}`;
     const columns = [
-      { key: "date", label: "Date", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${esc(fmtDate(r.createdAt))}</span>` },
+      { key: "date", label: "Date", type: "date", get: (r) => r.date, text: (r) => fmtDate(r.date), render: (r) => `<span class="cell-muted">${esc(fmtDate(r.date))}</span>` },
       { key: "tenant", label: "Tenant", type: "text", get: (r) => r.tenantName || "", render: (r) => esc(r.tenantName || "—") },
       { key: "sentby", label: "Sent by", type: "text", get: (r) => r.sentByName || "", render: (r) => esc(r.sentByName || "—") },
-      { key: "to", label: "To", type: "text", get: (r) => r.toName || r.toEmail, render: (r) => r.toName ? `${esc(r.toName)} <span class="cell-muted">${esc(r.toEmail)}</span>` : esc(r.toEmail || "—") },
-      { key: "type", label: "Type", type: "text", get: (r) => r.type, render: (r) => esc(r.type || "—") },
       { key: "subject", label: "Subject", type: "text", get: (r) => r.subject, render: (r) => esc(r.subject || "—") },
-      { key: "status", label: "Status", type: "status", get: (r) => emailStatusText(r), render: (r) => emailStatusBadge(r) },
+      { key: "recipients", label: "Recipients", type: "number", get: (r) => r.recipientCount, render: (r) => String(r.recipientCount) },
+      // Status at this level is a SIMPLE COUNT SUMMARY — per-recipient statuses live in the drill-in.
+      { key: "status", label: "Status", type: "text", get: (r) => recipientsLabel(r.recipientCount), render: (r) => `<span class="cell-muted">${esc(recipientsLabel(r.recipientCount))}</span>` },
     ];
     const empty = `<div class="card cell-muted" style="padding:18px">No emails sent yet.</div>`;
     App.table.mount({
       container: host, columns, rows,
-      rowId: (r) => r.id,
+      rowId: (r) => r.groupKey,
       scrollX: true,
       defaultSort: "date", defaultSortDir: "desc",
-      onRowClick: (r) => renderEmailDetail(r),
+      onRowClick: (r) => renderEmailRecipients(r),
       emptyHtml: empty, pageSize: 50,
     });
 
     const caption = el("p", "cell-muted");
     caption.style.cssText = "font-size:12.5px;margin:4px 0 10px 18px";
-    caption.textContent = "Every email sent across all tenants, with live Resend delivery status. Click a row to see the full record.";
+    caption.textContent = "Every email send across all tenants (one row per send). Click a send to see its recipients and delivery status.";
     const tbEl = host.querySelector(".table-toolbar");
     if (tbEl) tbEl.insertAdjacentElement("afterend", caption); else host.insertBefore(caption, host.firstChild);
   }
 
-  function renderEmailDetail(r) {
+  // LEVEL 2 — the recipient list for ONE send. Always shown (even for a single-recipient
+  // send, which renders a one-row list). Click a recipient -> full detail (Level 3).
+  async function renderEmailRecipients(group) {
+    loading();
+    let rows;
+    try { rows = await App.api("/api/admin/email-logs/recipients?group=" + encodeURIComponent(group.groupKey)); }
+    catch (e) { view().innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+    if (!Array.isArray(rows)) rows = [];
+
     view().innerHTML = "";
     const wrap = el("div", "fade-in");
     view().appendChild(wrap);
     const back = el("button", "btn btn-ghost btn-sm", "\u2190 Back to Email");
     back.onclick = () => renderEmail();
+    wrap.appendChild(back);
+
+    const hd = el("div"); hd.style.cssText = "margin:12px 0 8px";
+    const count = group.recipientCount != null ? group.recipientCount : rows.length;
+    hd.innerHTML = `<h2 style="margin:0;font-size:18px">${esc(group.subject || "(no subject)")}</h2>` +
+      `<div class="cell-muted" style="font-size:12.5px;margin-top:2px">${esc(group.tenantName || "—")} \u00b7 ${count} recipient${count === 1 ? "" : "s"}${group.sentByName ? " \u00b7 sent by " + esc(group.sentByName) : ""}</div>`;
+    wrap.appendChild(hd);
+
+    const host = el("div");
+    wrap.appendChild(host);
+    const columns = [
+      { key: "to", label: "Recipient", type: "text", get: (r) => r.toName || r.toEmail, render: (r) => r.toName ? `${esc(r.toName)} <span class="cell-muted">${esc(r.toEmail)}</span>` : esc(r.toEmail || "—") },
+      { key: "status", label: "Status", type: "status", get: (r) => emailStatusText(r), render: (r) => emailStatusBadge(r) },
+      { key: "date", label: "Sent at", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${esc(fmtDate(r.createdAt))}</span>` },
+    ];
+    const empty = `<div class="card cell-muted" style="padding:18px">No recipients recorded for this send.</div>`;
+    App.table.mount({
+      container: host, columns, rows,
+      rowId: (r) => r.id,
+      scrollX: true,
+      defaultSort: "to", defaultSortDir: "asc",
+      onRowClick: (r) => renderEmailDetail(r, () => renderEmailRecipients(group)),
+      emptyHtml: empty, pageSize: 50,
+    });
+  }
+
+  // LEVEL 3 — full single-email detail. `onBack` returns to the recipient list (Level 2);
+  // falls back to the Email list if somehow opened without a parent send.
+  function renderEmailDetail(r, onBack) {
+    view().innerHTML = "";
+    const wrap = el("div", "fade-in");
+    view().appendChild(wrap);
+    const back = el("button", "btn btn-ghost btn-sm", onBack ? "\u2190 Back to recipients" : "\u2190 Back to Email");
+    back.onclick = onBack || (() => renderEmail());
     wrap.appendChild(back);
 
     const card = el("div", "card");

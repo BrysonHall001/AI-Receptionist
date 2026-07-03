@@ -11,7 +11,7 @@ import { resolve } from "path";
 import crypto from "crypto";
 import { prisma, disconnectDb } from "./client";
 import { verifyResendSignature } from "../routes/resendWebhook";
-import { applyResendEvent } from "../services/emailLogService";
+import { applyResendEvent, listGroupedEmailSends, listEmailSendRecipients } from "../services/emailLogService";
 
 const db = prisma as any;
 const failures: string[] = [];
@@ -121,6 +121,42 @@ async function main() {
     if (logId) { try { await db.emailLog.delete({ where: { id: logId } }); } catch {} }
   }
 
+  // ---------- (3b) Level-1 grouping + Level-2 recipient lookup (DB) ----------
+  console.log("\n(3b) send grouping (Level 1) + per-send recipients (Level 2):");
+  const GTAG = "grp_" + Date.now();
+  const cid = "cs_" + GTAG;
+  const madeIds: string[] = [];
+  try {
+    // A blast: 3 recipients sharing one communicationSendId.
+    for (let i = 0; i < 3; i++) {
+      const row = await db.emailLog.create({ data: { type: "email_blast", toEmail: `b${i}.${GTAG}@example.invalid`, subject: "Blast " + GTAG, status: "mock", communicationSendId: cid } });
+      madeIds.push(row.id);
+    }
+    // Two one-off sends (no communicationSendId) -> each its own single-recipient send.
+    const single1 = await db.emailLog.create({ data: { type: "password_reset", toEmail: `s1.${GTAG}@example.invalid`, subject: "Reset " + GTAG, status: "sent" } });
+    const single2 = await db.emailLog.create({ data: { type: "call_summary", toEmail: `s2.${GTAG}@example.invalid`, subject: "Call " + GTAG, status: "sent" } });
+    madeIds.push(single1.id, single2.id);
+
+    const groups = await listGroupedEmailSends();
+    const mine = groups.filter((g: any) => String(g.subject || "").includes(GTAG) || g.groupKey === "send:" + cid || g.groupKey === "single:" + single1.id || g.groupKey === "single:" + single2.id);
+    check(mine.length === 3, `3 send-groups for this batch: 1 blast + 2 one-offs (got ${mine.length})`);
+    const blast = mine.find((g: any) => g.groupKey === "send:" + cid);
+    check(!!blast && blast.recipientCount === 3, "blast collapses to ONE row with recipientCount 3");
+    const singles = mine.filter((g: any) => g.groupKey.startsWith("single:"));
+    check(singles.length === 2 && singles.every((g: any) => g.recipientCount === 1), "each one-off send is a single-recipient group (recipientCount 1)");
+
+    const blastRecips = await listEmailSendRecipients("send:" + cid);
+    check(blastRecips.length === 3, `Level 2: blast group returns its 3 recipients (got ${blastRecips.length})`);
+    const singleRecips = await listEmailSendRecipients("single:" + single1.id);
+    check(singleRecips.length === 1 && singleRecips[0].toEmail.includes(GTAG), "Level 2: a single-recipient send returns a ONE-row recipient list (not skipped)");
+    check((await listEmailSendRecipients("send:cs_does_not_exist")).length === 0, "Level 2: unknown group -> empty list (graceful)");
+  } catch (e) {
+    console.log("   (grouping DB section failed: " + (e as Error).message + ")");
+    failures.push("grouping DB section error: " + (e as Error).message);
+  } finally {
+    for (const id of madeIds) { try { await db.emailLog.delete({ where: { id } }); } catch {} }
+  }
+
   // ---------- (4) structural wiring ----------
   console.log("\n(4) structural wiring (raw webhook, optional secret, gating, dashboard):");
   const appTs = read("../app.ts");
@@ -150,14 +186,40 @@ async function main() {
   check(has(appJs, 'path === "/admin/email" ? "email"'), "router dispatches /admin/email");
 
   const adminJs = read("../../public/js/admin.js");
+  const sliceFn = (name: string, until: string) => { const i = adminJs.indexOf(name); if (i === -1) return ""; const j = adminJs.indexOf(until, i + name.length); return adminJs.slice(i, j === -1 ? undefined : j); };
   check(has(adminJs, 'if (v === "email") return renderEmail()'), "admin render() dispatches to renderEmail");
-  check(has(adminJs, "async function renderEmail") && has(adminJs, "/api/admin/email-logs"), "renderEmail fetches the cross-tenant feed");
-  check(has(adminJs, "App.table.mount(") && has(adminJs, "onRowClick: (r) => renderEmailDetail(r)"), "dashboard renders via App.table with row-click detail");
-  for (const col of ['"Date"', '"Tenant"', '"Sent by"', '"To"', '"Type"', '"Subject"', '"Status"']) {
-    check(has(adminJs, "label: " + col), `Status/columns present: ${col}`);
+
+  // LEVEL 1 — one row per SEND, no Type column, click -> recipient list (not detail).
+  const lvl1 = sliceFn("async function renderEmail(", "async function renderEmailRecipients");
+  check(has(lvl1, "/api/admin/email-logs") && has(lvl1, "App.table.mount("), "Level 1 renders grouped sends via App.table");
+  check(has(lvl1, "onRowClick: (r) => renderEmailRecipients(r)"), "Level 1 row click opens the recipient list (Level 2), not detail");
+  check(has(lvl1, "rowId: (r) => r.groupKey"), "Level 1 rows keyed by send groupKey");
+  for (const col of ['"Date"', '"Tenant"', '"Sent by"', '"Subject"', '"Recipients"', '"Status"']) {
+    check(has(lvl1, "label: " + col), `Level 1 column present: ${col}`);
   }
+  check(!has(lvl1, 'label: "Type"'), "Level 1 has NO Type column (removed)");
+  check(!has(lvl1, 'label: "To"'), "Level 1 has NO per-recipient To column (grouped now)");
+  check(has(lvl1, "recipient") && has(lvl1, "recipientCount"), "Level 1 Status is a simple recipient-count summary");
+
+  // LEVEL 2 — recipient list for one send; always shown; click -> detail (Level 3).
+  const lvl2 = sliceFn("async function renderEmailRecipients", "// LEVEL 3");
+  check(has(adminJs, "async function renderEmailRecipients"), "Level 2 renderEmailRecipients exists");
+  check(has(lvl2, "/api/admin/email-logs/recipients?group=") && has(lvl2, "encodeURIComponent(group.groupKey)"), "Level 2 fetches recipients for the send group");
+  check(has(lvl2, "onRowClick: (r) => renderEmailDetail(r, () => renderEmailRecipients(group))"), "Level 2 row click opens detail with Back-to-recipients");
+  check(has(lvl2, '"\\u2190 Back to Email"'), "Level 2 has Back to Email");
+
+  // LEVEL 3 — detail unchanged; back goes to recipients; Type still shown on the record.
+  check(has(adminJs, "function renderEmailDetail(r, onBack)"), "Level 3 detail takes an onBack (Back to recipients)");
+  check(has(adminJs, "Back to recipients"), "Level 3 back label is 'Back to recipients' when drilled in");
+  check(has(adminJs, 'line("Type"'), "Level 3 detail STILL shows Type (only the column was removed)");
+  check(has(adminJs, "Delivery status") && has(adminJs, "Last event") && has(adminJs, "Opened at"), "Level 3 detail shows delivery status + timestamps");
   check(has(adminJs, "badge-failed") && has(adminJs, "bounced") && has(adminJs, "complained"), "bounced/complained/failed render visually distinct (red)");
-  check(has(adminJs, "function renderEmailDetail") && has(adminJs, "Delivery status") && has(adminJs, "Last event") && has(adminJs, "Opened at"), "detail panel shows delivery status + timestamps");
+
+  // Backend: grouped feed + per-send recipients, both OWNER/SUPER_ADMIN gated.
+  check(/email-logs"[\s\S]*?requireRole\("OWNER", "SUPER_ADMIN"\)[\s\S]*?listGroupedEmailSends/.test(adminTs), "Level 1 endpoint returns grouped sends, OWNER/SUPER_ADMIN gated");
+  check(/email-logs\/recipients"[\s\S]*?requireRole\("OWNER", "SUPER_ADMIN"\)[\s\S]*?listEmailSendRecipients/.test(adminTs), "Level 2 recipients endpoint gated OWNER/SUPER_ADMIN");
+  const svc = read("../services/emailLogService.ts");
+  check(has(svc, "listGroupedEmailSends") && has(svc, 'r.communicationSendId ? `send:') && has(svc, '`single:${r.id}`'), "grouping keys by communicationSendId; ungrouped rows are single-recipient sends");
 
   const envExample = read("../../.env.example");
   check(has(envExample, "RESEND_WEBHOOK_SECRET"), ".env.example documents RESEND_WEBHOOK_SECRET");

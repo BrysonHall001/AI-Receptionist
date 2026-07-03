@@ -113,12 +113,7 @@ export async function applyResendEvent(event: ResendEvent): Promise<ApplyResult>
 
 // Cross-tenant feed for the master-hub Email dashboard. Most-recent first, capped.
 // Joined to tenant name + sender name via id->name lookups (mirrors listSends()).
-export async function listAllEmailLogs(limit = 1000) {
-  const rows = await db.emailLog.findMany({
-    orderBy: { createdAt: "desc" },
-    take: limit,
-  });
-
+async function mapEmailRows(rows: any[]) {
   const tenantIds = Array.from(new Set(rows.map((r: any) => r.tenantId).filter(Boolean))) as string[];
   const userIds = Array.from(new Set(rows.map((r: any) => r.sentById).filter(Boolean))) as string[];
 
@@ -148,7 +143,74 @@ export async function listAllEmailLogs(limit = 1000) {
     deliveryDetail: r.deliveryDetail ?? null,
     providerMessageId: r.providerMessageId ?? null,
     errorMessage: r.errorMessage ?? null,
+    communicationSendId: r.communicationSendId ?? null,
     lastEventAt: r.lastEventAt ? (r.lastEventAt instanceof Date ? r.lastEventAt.toISOString() : r.lastEventAt) : null,
     openedAt: r.openedAt ? (r.openedAt instanceof Date ? r.openedAt.toISOString() : r.openedAt) : null,
   }));
+}
+
+// Flat per-recipient feed (kept for completeness / ad-hoc use).
+export async function listAllEmailLogs(limit = 1000) {
+  const rows = await db.emailLog.findMany({ orderBy: { createdAt: "desc" }, take: limit });
+  return mapEmailRows(rows);
+}
+
+// A stable key for one "send" as shown on the master-hub Email page (Level 1):
+//   - "send:<communicationSendId>" groups every recipient of a blast into one row
+//   - "single:<emailLogId>"        is a one-off send (no communicationSendId) as a group of one
+function groupKeyFor(r: { communicationSendId?: string | null; id: string }): string {
+  return r.communicationSendId ? `send:${r.communicationSendId}` : `single:${r.id}`;
+}
+
+/**
+ * LEVEL 1 — one row per SEND across all tenants. EmailLog rows are grouped by
+ * communicationSendId; rows without one (call_summary, password_reset, single-contact,
+ * some invites/feedback) each become their own single-recipient send. Most-recent first.
+ * `limit` caps the underlying EmailLog scan; grouping happens in-process.
+ */
+export async function listGroupedEmailSends(limit = 5000) {
+  const rows = await db.emailLog.findMany({ orderBy: { createdAt: "desc" }, take: limit });
+  const mapped = await mapEmailRows(rows);
+
+  const groups = new Map<string, any>();
+  for (const r of mapped) {
+    const key = groupKeyFor(r);
+    let g = groups.get(key);
+    if (!g) {
+      // rows arrive newest-first, so the first row seen for a key is its latest event.
+      g = {
+        groupKey: key,
+        communicationSendId: r.communicationSendId ?? null,
+        date: r.createdAt,
+        tenantId: r.tenantId,
+        tenantName: r.tenantName,
+        sentById: r.sentById,
+        sentByName: r.sentByName,
+        subject: r.subject,
+        recipientCount: 0,
+      };
+      groups.set(key, g);
+    }
+    g.recipientCount++;
+    if (new Date(r.createdAt).getTime() > new Date(g.date).getTime()) g.date = r.createdAt;
+  }
+  return Array.from(groups.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+/**
+ * LEVEL 2 — the recipient list for one send group. `groupKey` is either
+ * "send:<communicationSendId>" (all recipients of a blast) or "single:<emailLogId>"
+ * (a one-off send — returns exactly that one row, so single-recipient sends still show
+ * a one-row recipient list rather than skipping to detail).
+ */
+export async function listEmailSendRecipients(groupKey: string) {
+  let rows: any[] = [];
+  if (typeof groupKey === "string" && groupKey.startsWith("send:")) {
+    const cid = groupKey.slice("send:".length);
+    if (cid) rows = await db.emailLog.findMany({ where: { communicationSendId: cid }, orderBy: { createdAt: "asc" } });
+  } else if (typeof groupKey === "string" && groupKey.startsWith("single:")) {
+    const id = groupKey.slice("single:".length);
+    if (id) rows = await db.emailLog.findMany({ where: { id }, orderBy: { createdAt: "asc" } });
+  }
+  return mapEmailRows(rows);
 }
