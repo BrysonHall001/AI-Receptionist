@@ -10,7 +10,7 @@ import { listChangeLog } from "../services/changelogService";
 import { listGroupedEmailSends, listEmailSendRecipients } from "../services/emailLogService";
 import { getBillingRates, updateBillingRates } from "../services/billingRateService";
 import { aggregateTenant, aggregateAll, isBucket, parseDate, type Bucket } from "../services/usageAggregationService";
-import { getBillingDashboard, updateBillingDashboard, isBillingDashboardScope } from "../services/billingDashboardService";
+import { listBillingDashboards, createBillingDashboard, renameBillingDashboard, updateBillingDashboardWidgets, deleteBillingDashboard, reorderBillingDashboards } from "../services/billingDashboardService";
 import { getBillingConfig, updateBillingConfig } from "../services/billingConfigService";
 import { computeSuggestedCharge } from "../services/chargeComputeService";
 import { listCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
@@ -426,21 +426,31 @@ adminRouter.get("/usage/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), 
 // Global billing dashboards (OWNER/SUPER_ADMIN). GET returns a scope's widget layout (seeded
 // with defaults on first access); PATCH replaces it — same { widgets } contract the reports
 // editor already uses, so its save logic is reused as-is. scope ∈ tenant_drilldown | macro.
-adminRouter.get("/billing-dashboards/:scope", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  if (!isBillingDashboardScope(req.params.scope)) { res.status(400).json({ error: "unknown dashboard scope" }); return; }
-  try {
-    res.json(await getBillingDashboard(req.params.scope));
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
-  }
+// Shared billing dashboards (OWNER/SUPER_ADMIN). A SET of named dashboards: list / create /
+// rename+update-widgets / delete / reorder. Rendered in both Overview and tenant panels.
+adminRouter.get("/billing-dashboards", requireRole("OWNER", "SUPER_ADMIN"), async (_req: Request, res: Response) => {
+  try { res.json(await listBillingDashboards()); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
-adminRouter.patch("/billing-dashboards/:scope", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  if (!isBillingDashboardScope(req.params.scope)) { res.status(400).json({ error: "unknown dashboard scope" }); return; }
+adminRouter.post("/billing-dashboards", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.status(201).json(await createBillingDashboard((req.body ?? {}).name)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+adminRouter.post("/billing-dashboards/reorder", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await reorderBillingDashboards((req.body ?? {}).ids)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+adminRouter.patch("/billing-dashboards/:id", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  const body = req.body ?? {};
   try {
-    res.json(await updateBillingDashboard(req.params.scope, (req.body ?? {}).widgets));
-  } catch (err) {
-    res.status(400).json({ error: (err as Error).message });
-  }
+    if ("widgets" in body) { res.json(await updateBillingDashboardWidgets(req.params.id, body.widgets)); return; }
+    if ("name" in body) { res.json(await renameBillingDashboard(req.params.id, body.name)); return; }
+    res.status(400).json({ error: "nothing to update" });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+adminRouter.delete("/billing-dashboards/:id", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await deleteBillingDashboard(req.params.id)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
 // ---- Billing ledger (OWNER/SUPER_ADMIN): per-portal terms, charges, payments ----

@@ -1037,14 +1037,15 @@ model Payment {
   @@index([tenantId])
 }
 
-// Master-hub billing dashboards — GLOBAL (not per-portal). Each `scope` holds one widget
-// layout (reports-engine widget JSON) shared across the hub:
-//   "tenant_drilldown" — the SHARED template rendered in every tenant's Billing & Usage
-//                        drill-in (one layout, applied to all tenants, each with its own data)
-//   "macro"            — the dashboard on the Billing & Usage page's Overview area (all tenants)
+// Shared master-hub billing dashboards (global; OWNER/SUPER_ADMIN). A SET of named dashboards
+// (not one-per-scope). Each is rendered in BOTH the master-hub Overview (all-tenants data) and
+// each tenant panel (that tenant's data); per-widget `scope` ("both"|"macro"|"tenant") controls
+// where a widget appears.
 model BillingDashboard {
-  scope     String   @id
+  id        String   @id @default(cuid())
+  name      String
   widgets   Json     @default("[]")
+  sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

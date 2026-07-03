@@ -1,23 +1,19 @@
-// Global master-hub billing dashboards. Two fixed scopes, each storing a reports-engine
-// widget layout (JSON). Shared across the hub (NOT per-portal): the tenant_drilldown layout
-// is applied to every tenant's drill-in, computed against that tenant's own usage.
+// Shared master-hub billing dashboards (a SET of named dashboards, global). Rendered in both
+// the Overview (all-tenants) and each tenant panel (that tenant's data); per-widget `scope`
+// controls where each widget shows.
 import { prisma } from "../db/client";
 
 const db = prisma as any;
 
-export const BILLING_DASHBOARD_SCOPES = ["tenant_drilldown", "macro"] as const;
-export type BillingDashboardScope = (typeof BILLING_DASHBOARD_SCOPES)[number];
-export function isBillingDashboardScope(v: unknown): v is BillingDashboardScope {
-  return typeof v === "string" && (BILLING_DASHBOARD_SCOPES as readonly string[]).includes(v);
+export const WIDGET_SCOPES = ["both", "macro", "tenant"] as const;
+export type WidgetScope = (typeof WIDGET_SCOPES)[number];
+export function isWidgetScope(v: unknown): v is WidgetScope {
+  return typeof v === "string" && (WIDGET_SCOPES as readonly string[]).includes(v);
 }
 
-// Default widgets — the CURRENT built-in set (KPIs + cost/calls/minutes over time), expressed
-// as reports-engine widget JSON over the "usage" source. Both scopes seed with this so nothing
-// starts empty. Over-time widgets group by date; the drill-in's grouping control re-buckets
-// them to day/week/month/year at render time.
-const kpi = (id: string, title: string, field: string) => ({ id, title, source: "usage", type: "kpi", measure: { op: "sum", field }, groupBy: [] as any[], series: [] as any[], filters: [] as any[] });
-const overTime = (id: string, title: string, type: string, field: string) => ({ id, title, source: "usage", type, measure: { op: "sum", field }, groupBy: [{ key: "date" }], series: [] as any[], filters: [] as any[] });
-
+// Default widgets for a brand-new install (KPIs + cost/calls/minutes over time), scope "both".
+const kpi = (id: string, title: string, field: string) => ({ id, title, source: "usage", type: "kpi", scope: "both", measure: { op: "sum", field }, groupBy: [] as any[], series: [] as any[], filters: [] as any[] });
+const overTime = (id: string, title: string, type: string, field: string) => ({ id, title, source: "usage", type, scope: "both", measure: { op: "sum", field }, groupBy: [{ key: "date" }], series: [] as any[], filters: [] as any[] });
 export const DEFAULT_BILLING_WIDGETS = [
   kpi("bw_cost", "Total est. cost", "totalCost"),
   kpi("bw_calls", "Calls", "calls"),
@@ -29,24 +25,51 @@ export const DEFAULT_BILLING_WIDGETS = [
   overTime("bw_minutes_ot", "Call minutes over time", "bar", "callMinutes"),
 ];
 
-// Read a scope, creating it (seeded with the defaults) on first access so it's never empty.
-export async function getBillingDashboard(scope: BillingDashboardScope): Promise<{ scope: string; widgets: any[] }> {
-  const row = await db.billingDashboard.upsert({
-    where: { scope },
-    update: {},
-    create: { scope, widgets: DEFAULT_BILLING_WIDGETS },
-  });
-  return { scope: row.scope, widgets: Array.isArray(row.widgets) ? row.widgets : [] };
+function serialize(d: any) {
+  return { id: d.id, name: d.name, widgets: Array.isArray(d.widgets) ? d.widgets : [], sortOrder: d.sortOrder, createdAt: d.createdAt, updatedAt: d.updatedAt };
 }
 
-// Replace a scope's widget layout. Validates that widgets is an array (matching the reports
-// PATCH contract, which sends the full widget list).
-export async function updateBillingDashboard(scope: BillingDashboardScope, widgets: unknown): Promise<{ scope: string; widgets: any[] }> {
+// List all dashboards (seed a default "Overview" if the set is empty).
+export async function listBillingDashboards() {
+  let rows = await db.billingDashboard.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+  if (!rows.length) {
+    await db.billingDashboard.create({ data: { name: "Overview", widgets: DEFAULT_BILLING_WIDGETS, sortOrder: 0 } });
+    rows = await db.billingDashboard.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+  }
+  return rows.map(serialize);
+}
+
+export async function createBillingDashboard(name: string) {
+  const nm = String(name || "").trim();
+  if (!nm) throw new Error("name is required");
+  const max = await db.billingDashboard.aggregate({ _max: { sortOrder: true } });
+  const sortOrder = (max?._max?.sortOrder ?? -1) + 1;
+  const row = await db.billingDashboard.create({ data: { name: nm, widgets: [], sortOrder } });
+  return serialize(row);
+}
+
+export async function renameBillingDashboard(id: string, name: string) {
+  const nm = String(name || "").trim();
+  if (!nm) throw new Error("name is required");
+  const row = await db.billingDashboard.update({ where: { id }, data: { name: nm } });
+  return serialize(row);
+}
+
+export async function updateBillingDashboardWidgets(id: string, widgets: unknown) {
   if (!Array.isArray(widgets)) throw new Error("widgets must be an array");
-  const row = await db.billingDashboard.upsert({
-    where: { scope },
-    update: { widgets },
-    create: { scope, widgets },
-  });
-  return { scope: row.scope, widgets: Array.isArray(row.widgets) ? row.widgets : [] };
+  const normalized = (widgets as any[]).map((w) => ({ ...w, scope: isWidgetScope(w && w.scope) ? w.scope : "both" }));
+  const row = await db.billingDashboard.update({ where: { id }, data: { widgets: normalized } });
+  return serialize(row);
+}
+
+export async function deleteBillingDashboard(id: string) {
+  await db.billingDashboard.delete({ where: { id } });
+  return { ok: true };
+}
+
+// Reorder by an ordered list of ids (index -> sortOrder).
+export async function reorderBillingDashboards(ids: unknown) {
+  if (!Array.isArray(ids)) throw new Error("ids must be an array");
+  await db.$transaction((ids as string[]).map((id, i) => db.billingDashboard.update({ where: { id }, data: { sortOrder: i } })));
+  return listBillingDashboards();
 }

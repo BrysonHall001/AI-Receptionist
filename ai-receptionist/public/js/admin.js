@@ -505,25 +505,6 @@
       bar.appendChild(back); bar.appendChild(title); bar.appendChild(status); bar.appendChild(toggle);
       wrap.appendChild(bar);
 
-      // Billing status — viewable + editable here (same OWNER/SUPER_ADMIN/AUDITOR master-hub
-      // gate as the rest of this panel). Changing it PATCHes the tenant immediately.
-      const billRow = el("div"); billRow.style.cssText = "display:flex;align-items:center;gap:10px;margin:2px 0 14px";
-      const billLbl = el("span", "cell-muted", "Billing status"); billLbl.style.fontSize = "13px";
-      const billSel = el("select", "input"); billSel.style.cssText = "width:auto;margin:0;padding:4px 8px";
-      [["free", "Free"], ["trial", "Trial"], ["paid", "Paid"], ["exception", "Exception"]].forEach(([v, lbl]) => {
-        const o = el("option", null, lbl); o.value = v; if ((portal.billingStatus || "") === v) o.selected = true; billSel.appendChild(o);
-      });
-      if (!portal.billingStatus) { const o = el("option", null, "—"); o.value = ""; o.selected = true; billSel.insertBefore(o, billSel.firstChild); }
-      billSel.onchange = async () => {
-        const next = billSel.value; if (!next) return;
-        billSel.disabled = true;
-        try { await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ billingStatus: next }) }); portal.billingStatus = next; toast("Billing status updated"); }
-        catch (e) { toast(e.message, true); billSel.value = portal.billingStatus || ""; }
-        finally { billSel.disabled = false; }
-      };
-      billRow.appendChild(billLbl); billRow.appendChild(billSel);
-      wrap.appendChild(billRow);
-
       const caption = el("p", "cell-muted"); caption.style.cssText = "margin:-4px 0 16px;font-size:12.5px";
       caption.textContent = "Configure this tenant’s page access, users, and status. This does not enter the portal.";
       wrap.appendChild(caption);
@@ -1162,14 +1143,18 @@
     };
     foot.appendChild(save);
     card.appendChild(foot);
-    host.appendChild(card);
+    // Task 6c: rates card + notifications card sit side by side (wrap on narrow screens).
+    const row = el("div"); row.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start";
+    card.style.flex = "1 1 340px"; card.style.minWidth = "300px";
+    row.appendChild(card);
+    host.appendChild(row);
 
-    await billingNotifySettingsInto(host);
+    await billingNotifySettingsInto(row);
   }
 
   // Approval-notification settings (global): recipients, lead days, cadence, enabled.
   async function billingNotifySettingsInto(host) {
-    const card = el("div", "card"); card.style.cssText = "padding:20px;margin-top:16px";
+    const card = el("div", "card"); card.style.cssText = "padding:20px;flex:1 1 340px;min-width:300px";
     card.appendChild(el("h3", null, "Approval notifications")).style.cssText = "margin:0 0 4px;font-size:15px";
     const note = el("p", "cell-muted"); note.style.cssText = "margin:0 0 14px;font-size:12.5px"; note.textContent = "Who gets emailed to approve auto-drafted charges, and how far ahead of the due date.";
     card.appendChild(note);
@@ -1266,7 +1251,7 @@
         date: b.start + "T12:00:00",
         tenant: tenantName || "All",
         calls: u.calls || 0,
-        callMinutes: Math.round(((u.callSeconds || 0) / 60) * 100) / 100,
+        callMinutes: Math.round(((u.callSeconds || 0) / 60) * 1000) / 1000,
         promptTokens: u.promptTokens || 0,
         completionTokens: u.completionTokens || 0,
         totalTokens: u.totalTokens || 0,
@@ -1328,83 +1313,42 @@
   // usage rows for the current range; the range/grouping controls re-fetch + re-render. Because
   // the layout lives in the shared scope, editing from any tenant changes every tenant's layout,
   // while the DATA stays per-tenant (each cfg.load pulls that tenant's usage).
-  async function renderUsageDashboardInto(host, cfg) {
-    const canEdit = cfg.canEdit !== false;
-    host.innerHTML = "";
-    const ctrlHost = el("div"); host.appendChild(ctrlHost);
-    const toolbar = el("div"); toolbar.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:10px";
-    const addBtn = el("button", "btn btn-primary btn-sm", "+ Add widget");
-    if (canEdit) { toolbar.appendChild(addBtn); host.appendChild(toolbar); }
-    const grid = el("div", "widget-grid"); host.appendChild(grid);
-    const charts = [];
-    let dashboard = { scope: cfg.scope, widgets: [] };
-    let source = usageSource([]);
-    let grouping = "day";
-
-    async function loadDashboard() { try { dashboard = await App.api(`/api/admin/billing-dashboards/${cfg.scope}`); } catch (e) { dashboard = { scope: cfg.scope, widgets: [] }; } if (!Array.isArray(dashboard.widgets)) dashboard.widgets = []; }
-    async function persist() { try { await App.api(`/api/admin/billing-dashboards/${cfg.scope}`, { method: "PATCH", body: JSON.stringify({ widgets: dashboard.widgets }) }); } catch (e) { toast(e.message, true); } }
-
-    function widgetCard(w) {
-      const card = el("div", "card"); card.style.cssText = "padding:16px";
-      const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px";
-      const title = el("div", null, esc(w.title || "Untitled")); title.style.cssText = "font-weight:600;font-size:13.5px";
-      head.appendChild(title);
-      if (canEdit) {
-        const actions = el("div"); actions.style.cssText = "display:flex;gap:4px";
-        const edit = el("button", "icon-btn", "✎"); edit.title = "Edit"; edit.onclick = () => openEditor(w);
-        const del = el("button", "icon-btn", "×"); del.title = "Remove"; del.onclick = () => removeWidget(w);
-        actions.appendChild(edit); actions.appendChild(del); head.appendChild(actions);
-      }
-      card.appendChild(head);
-      const body = el("div"); body.style.cssText = w.type === "kpi" ? "" : "height:240px;position:relative";
-      card.appendChild(body);
-      // Apply the current grouping to any date dimension so the range control drives the buckets.
-      const rw = Object.assign({}, w);
-      if (Array.isArray(rw.groupBy)) rw.groupBy = rw.groupBy.map((d) => (d && d.key === "date" ? { key: "date", date: grouping } : d));
-      try { App.reports.renderWidgetBody(body, rw, source, source.rows, source.reportFields, charts); }
-      catch (e) { body.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; }
-      return card;
-    }
-    function paintGrid() {
-      charts.forEach((c) => { try { c.destroy(); } catch (e) {} }); charts.length = 0;
-      grid.innerHTML = "";
-      const widgets = dashboard.widgets || [];
-      if (!widgets.length) { const e = el("div", "card"); e.style.cssText = "padding:18px"; e.innerHTML = `<div class="cell-muted">No widgets yet.${canEdit ? " Click “+ Add widget” to build one." : ""}</div>`; grid.appendChild(e); return; }
-      widgets.forEach((w) => grid.appendChild(widgetCard(w)));
-    }
-    function openEditor(existing) {
-      App.reports.openWidgetEditor({
-        sources: { usage: source }, sourceKeys: ["usage"], widget: existing, defaultSourceKey: "usage",
-        onSave: async (widget) => {
-          dashboard.widgets = dashboard.widgets || [];
-          const i = dashboard.widgets.findIndex((x) => x.id === widget.id);
-          if (i >= 0) dashboard.widgets[i] = widget; else dashboard.widgets.push(widget);
-          await persist(); paintGrid();
-        },
+  // ---- Billing dashboards via the FULL reports engine (resize, reorder, multiple dashboards,
+  // per-widget range + scope). Shared across the hub; rendered per-context (macro/tenant). ----
+  // cfg: { context: "macro"|"tenant", load(from,to) -> usage rows }.
+  function renderBillingDashboards(host, cfg) {
+    const context = cfg.context;
+    // One range control shared by buildSources (reads current range) + renderTop (triggers reload).
+    let reloadFn = () => {};
+    const ctrl = usageRangeControl(() => reloadFn());
+    function buildUsageSource() {
+      const r = ctrl.get();
+      // load returns a promise of rows for the current range.
+      return Promise.resolve(cfg.load(r.from, r.to)).then((rows) => {
+        const src = usageSource(rows);
+        src.dateKey = "date"; src.grouping = r.grouping; src.rangeFrom = r.from; src.rangeTo = r.to;
+        return { usage: src };
       });
     }
-    async function removeWidget(w) {
-      if (!(await App.ui.confirmModal({ title: "Remove widget", message: "Remove this widget from the shared layout?", confirmText: "Remove widget" }))) return;
-      dashboard.widgets = (dashboard.widgets || []).filter((x) => x.id !== w.id); await persist(); paintGrid();
-    }
-    addBtn.onclick = () => openEditor(null);
-
-    async function reloadData() {
-      const r = ctrl.get(); grouping = r.grouping;
-      grid.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
-      let rows = [];
-      try { rows = await cfg.load(r.from, r.to); } catch (e) { grid.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
-      source = usageSource(rows);
-      paintGrid();
-    }
-    const ctrl = usageRangeControl(reloadData);
-    ctrlHost.appendChild(ctrl.el);
-    await loadDashboard();
-    await reloadData();
+    const engine = App.reports.createDashboardEngine(host, {
+      defaultSourceKey: "usage",
+      showScope: true,
+      applyGrouping: true,
+      widgetFilter: (w) => {
+        const s = w && w.scope ? w.scope : "both";
+        return context === "macro" ? s !== "tenant" : s !== "macro";
+      },
+      hiddenNote: context === "tenant" ? "Some widgets appear only on the master-hub overview." : null,
+      loadDashboards: () => App.api("/api/admin/billing-dashboards"),
+      buildSources: buildUsageSource,
+      persistDashboard: (d) => App.api(`/api/admin/billing-dashboards/${encodeURIComponent(d.id)}`, { method: "PATCH", body: JSON.stringify({ widgets: d.widgets }) }),
+      createDashboard: (name) => App.api("/api/admin/billing-dashboards", { method: "POST", body: JSON.stringify({ name }) }),
+      renameDashboard: (id, name) => App.api(`/api/admin/billing-dashboards/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+      deleteDashboard: (id) => App.api(`/api/admin/billing-dashboards/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      renderTop: (reload) => { reloadFn = reload; return ctrl.el; },
+    });
+    return engine.boot();
   }
-
-  // Per-tenant drill-in — the SINGLE reusable render used by BOTH the Tenants panel and the
-  // By-portal click. Now a two-subtab view: Usage (charts) + Billing (terms + charge ledger).
   function renderTenantUsageInto(host, tenantId, tenantName) {
     host.innerHTML = "";
     const sub = el("div", "tabs"); sub.style.marginBottom = "12px";
@@ -1424,8 +1368,8 @@
   }
 
   function renderTenantUsageDash(host, tenantId, tenantName) {
-    return renderUsageDashboardInto(host, {
-      scope: "tenant_drilldown",
+    return renderBillingDashboards(host, {
+      context: "tenant",
       load: async (from, to) => {
         const d = await App.api(`/api/admin/usage/tenant/${encodeURIComponent(tenantId)}?bucket=day&from=${from}&to=${to}`);
         return usageRowsFromBuckets(d.buckets, d.tenantName || tenantName);
@@ -1679,8 +1623,8 @@
       if (active === "overview") {
         // Editable macro dashboard (scope "macro"), all-tenants data.
         const host = el("div"); bodyEl.appendChild(host);
-        await renderUsageDashboardInto(host, {
-          scope: "macro",
+        await renderBillingDashboards(host, {
+          context: "macro",
           load: async (from, to) => {
             const d = await App.api(`/api/admin/usage?bucket=day&from=${from}&to=${to}`);
             return usageRowsFromBuckets(d.buckets, "All");
@@ -1702,7 +1646,7 @@
         out.innerHTML = "";
         const per = (data.perTenant || []).map((p) => ({
           tenantId: p.tenantId, tenant: p.tenantName || p.tenantId, billingStatus: p.billingStatus || "—",
-          calls: p.units.calls, callMinutes: Math.round((p.units.callSeconds / 60) * 100) / 100,
+          calls: p.units.calls, callMinutes: Math.round((p.units.callSeconds / 60) * 1000) / 1000,
           totalTokens: p.units.totalTokens, emails: p.units.emails, totalCost: p.cost.total,
         }));
         out.appendChild(usageChartCard("Estimated cost by portal", { type: "bar", groupBy: [{ key: "tenant" }], measure: { op: "sum", field: "totalCost" } }, usageSource(per), null, charts));

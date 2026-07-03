@@ -224,12 +224,23 @@
           <div id="w-series-wrap" style="display:none"><label class="field-label" id="w-series-label">Stack by</label><div id="w-series"></div></div>
           <div id="w-list-wrap" style="display:none"><label class="field-label">Columns</label><div id="w-list-cols" class="w-list-cols"></div></div>
           <label class="field-label">Filters</label><div id="w-filters"></div>
+          ${cfg.showScope ? `<label class="field-label">Show in</label>
+          <select id="w-scope" class="input"><option value="both">Both (overview + tenant panels)</option><option value="macro">Overview only</option><option value="tenant">Tenant panels only</option></select>` : ""}
+          <label class="w-list-col" style="display:flex;align-items:center;gap:8px;margin-top:6px"><input type="checkbox" id="w-range-on"> Use a custom date range for this widget</label>
+          <div id="w-range-wrap" style="display:none;gap:10px;margin-top:6px">
+            <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label" style="margin:0">From</label><input id="w-range-from" class="input" type="date" style="margin:0;width:auto"></div>
+            <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label" style="margin:0">To</label><input id="w-range-to" class="input" type="date" style="margin:0;width:auto"></div>
+          </div>
           <div class="w-preview-label">Preview</div><div id="w-preview" class="w-preview"></div>
           <button id="w-save" class="btn btn-primary btn-block">${existing ? "Save widget" : "Add widget"}</button>
         </div>`;
       const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
       $("#w-close").onclick = () => overlay.remove();
       $("#w-source").value = curSrcKey; $("#w-type").value = w.type; $("#w-mop").value = w.measure.op;
+      if (cfg.showScope && $("#w-scope")) $("#w-scope").value = ["both", "macro", "tenant"].indexOf(w.scope) >= 0 ? w.scope : "both";
+      // Per-widget date range override (optional; unset = use the page's global range).
+      if (w.range && w.range.from && w.range.to) { $("#w-range-on").checked = true; $("#w-range-from").value = String(w.range.from).slice(0, 10); $("#w-range-to").value = String(w.range.to).slice(0, 10); $("#w-range-wrap").style.display = "flex"; }
+      $("#w-range-on").addEventListener("change", () => { $("#w-range-wrap").style.display = $("#w-range-on").checked ? "flex" : "none"; });
       function curSource() { return sources[curSrcKey] || sources[defaultKey]; }
       let groupEd, seriesEd, listColsEd;
       function listColsEditor(hostEl, flds, chosen, onChange) {
@@ -264,11 +275,19 @@
         base.series = (t === "stacked" || t === "heatmap") ? seriesEd.getDims() : [];
         return base;
       }
+      // scope + per-widget range are applied to whatever collect() returns, on every path.
+      function collectFull() {
+        const base = collect();
+        if (cfg.showScope && $("#w-scope")) base.scope = $("#w-scope").value;
+        else if (w.scope) base.scope = w.scope;
+        if ($("#w-range-on").checked && $("#w-range-from").value && $("#w-range-to").value) base.range = { from: $("#w-range-from").value, to: $("#w-range-to").value };
+        return base;
+      }
       function preview() { previewCharts.forEach((c) => { try { c.destroy(); } catch (e) {} }); previewCharts = []; try { const s = curSource(); renderWidgetBody($("#w-preview"), collect(), s, s.rows, s.reportFields, previewCharts); } catch (e) { $("#w-preview").innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; } }
       $("#w-source").addEventListener("change", () => { curSrcKey = $("#w-source").value; rebuildForSource(false); sync(); });
       ["#w-type", "#w-mop", "#w-mfield", "#w-title"].forEach((s) => { $(s).addEventListener("change", sync); $(s).addEventListener("input", preview); });
       rebuildForSource(true); sync();
-      $("#w-save").onclick = async () => { const widget = collect(); try { await cfg.onSave(widget); overlay.remove(); toast(existing ? "Widget saved" : "Widget added"); } catch (e) { toast((e && e.message) || "Save failed", true); } };
+      $("#w-save").onclick = async () => { const widget = collectFull(); try { await cfg.onSave(widget); overlay.remove(); toast(existing ? "Widget saved" : "Widget added"); } catch (e) { toast((e && e.message) || "Save failed", true); } };
     } catch (err) { console.error("widget editor error", err); U().toast("Couldn't open editor: " + (err && err.message ? err.message : err), true); }
   }
 
@@ -293,7 +312,7 @@
         { key: "createdAt", label: "Time Created", type: "date" },
         { key: "callCount", label: "Number of calls", type: "number" },
       ]);
-      return { key: "contacts", label: "Contacts", topLevel: CONTACT_TOP, rows: contacts || [], reportFields: reportFields };
+      return { key: "contacts", label: "Contacts", topLevel: CONTACT_TOP, rows: contacts || [], reportFields: reportFields, dateKey: "createdAt" };
     }
     function buildRecordSource(rt, rows, fields, resourcesById) {
       // Synthetic top-level fields mirror what Contacts get. Keys are the real
@@ -326,6 +345,7 @@
         topLevel: topLevel,
         rows: rows || [],
         reportFields: reportFields,
+        dateKey: "createdAt",
       };
     }
     // Pipeline / Funnel source: one row per contact-in-a-policy link. Stage is an
@@ -355,6 +375,7 @@
         rows: rows || [],
         reportFields: reportFields,
         defaultGroupByKey: "stageLabel",
+        dateKey: "createdAt",
       };
     }
     // Calls source — the call log as a reportable dataset (all fields top-level).
@@ -366,11 +387,28 @@
         { key: "status", label: "Status", type: "text" },
         { key: "createdAt", label: "Time Created", type: "date" },
       ];
-      return { key: "calls", label: "Calls", topLevel: ["name", "phone", "intent", "status", "createdAt"], rows: calls || [], reportFields: reportFields };
+      return { key: "calls", label: "Calls", topLevel: ["name", "phone", "intent", "status", "createdAt"], rows: calls || [], reportFields: reportFields, dateKey: "createdAt" };
+    }
+
+    async function reloadSources() {
+      if (!opts.buildSources) return;
+      try { state.sources = await opts.buildSources(); } catch (e) { toast(e.message, true); }
+      paint();
     }
 
     async function boot() {
       host.innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`;
+      // Billing / custom engine path: dashboards + sources come from opts hooks.
+      if (opts.loadDashboards || opts.buildSources) {
+        try {
+          if (opts.loadDashboards) state.dashboards = await opts.loadDashboards();
+          if (opts.buildSources) state.sources = await opts.buildSources();
+        } catch (e) { host.innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return api; }
+        if (opts.renderTop && !state.topNode) state.topNode = opts.renderTop(reloadSources);
+        if (!state.currentId && state.dashboards.length) state.currentId = state.dashboards[0].id;
+        paint();
+        return api;
+      }
       try {
         const dashReq = opts.home ? App.portalApi("/api/dashboards/home") : App.portalApi("/api/dashboards");
         const [d, contacts, contactFields, recordTypes, pipeline, calls, resources] = await Promise.all([
@@ -475,8 +513,12 @@
       }
 
       const dash = current();
+      if (state.topNode) wrap.appendChild(state.topNode);
       if (!dash) { const e = el("div", "card"); e.innerHTML = `<div class="empty"><div class="empty-emoji">📊</div><h3>Create your first dashboard</h3><p>Build KPIs and charts from your CRM data.</p></div>`; wrap.appendChild(e); host.appendChild(wrap); return; }
-      const widgets = dash.widgets || [];
+      const allWidgets = dash.widgets || [];
+      const widgets = opts.widgetFilter ? allWidgets.filter(opts.widgetFilter) : allWidgets;
+      const hiddenCount = allWidgets.length - widgets.length;
+      if (opts.hiddenNote && hiddenCount > 0) { const n = el("div", "cell-muted"); n.style.cssText = "font-size:12px;margin:2px 0 10px"; n.textContent = opts.hiddenNote; wrap.appendChild(n); }
       if (!widgets.length) { const e = el("div", "card"); e.innerHTML = `<div class="empty"><div class="empty-emoji">➕</div><h3>No widgets yet</h3><p>Click “Add widget” to build your first chart.</p></div>`; wrap.appendChild(e); host.appendChild(wrap); return; }
 
       const grid = el("div", "widget-grid");
@@ -567,19 +609,44 @@
       return card;
     }
 
+    // Filter a source's rows to a [from,to] window (inclusive) using the source's date key.
+    // Backwards-compatible: no dateKey or no range -> rows unchanged.
+    function filterRowsByRange(src, rows, range) {
+      if (!src || !src.dateKey || !range || !range.from || !range.to) return rows;
+      const lo = new Date(String(range.from).slice(0, 10) + "T00:00:00.000Z").getTime();
+      const hi = new Date(String(range.to).slice(0, 10) + "T23:59:59.999Z").getTime();
+      return (rows || []).filter((r) => { const v = r && r[src.dateKey]; if (!v) return false; const t = new Date(v).getTime(); return t >= lo && t <= hi; });
+    }
+    // Apply the page grouping to a widget's date dimensions (billing only).
+    function applyGroupingToWidget(w, grouping) {
+      if (!grouping) return w;
+      const c = Object.assign({}, w);
+      if (Array.isArray(c.groupBy)) c.groupBy = c.groupBy.map((dm) => (dm && dm.key === "date" ? { key: "date", date: grouping } : dm));
+      return c;
+    }
+
     function renderBodies(dash) {
       destroyCharts();
       U().$$(".widget-card", host).forEach((card) => {
         const w = (dash.widgets || []).find((x) => x.id === card.dataset.id);
         const body = card.querySelector(".widget-body");
-        if (w && body) { try { const src = sourceForWidget(w); renderWidgetBody(body, w, src, src.rows, src.reportFields, state.charts); } catch (e) { body.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; } }
+        if (w && body) {
+          try {
+            const src = sourceForWidget(w);
+            const rw = opts.applyGrouping ? applyGroupingToWidget(w, src.grouping) : w;
+            // Per-widget range override wins; otherwise fall back to the source's page range.
+            const range = (w.range && w.range.from && w.range.to) ? w.range : (src.rangeFrom && src.rangeTo ? { from: src.rangeFrom, to: src.rangeTo } : null);
+            const rows = filterRowsByRange(src, src.rows, range);
+            renderWidgetBody(body, rw, src, rows, src.reportFields, state.charts);
+          } catch (e) { body.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; }
+        }
       });
     }
 
-    async function persist(dash) { try { await App.portalApi(`/api/dashboards/${dash.id}`, { method: "PATCH", body: JSON.stringify({ name: dash.name, widgets: dash.widgets }) }); } catch (e) { toast(e.message, true); } }
-    async function newDashboard() { const name = await App.ui.promptModal({ title: "New dashboard", label: "Dashboard name", value: "New dashboard", okText: "Create" }); if (!name || !name.trim()) return; try { const d = await App.portalApi("/api/dashboards", { method: "POST", body: JSON.stringify({ name: name.trim() }) }); state.dashboards.push(d); state.currentId = d.id; paint(); toast("Dashboard created"); } catch (e) { toast(e.message, true); } }
-    async function renameDashboard() { const d = current(); if (!d) return; const name = await App.ui.promptModal({ title: "Rename dashboard", label: "Dashboard name", value: d.name, okText: "Rename" }); if (!name || !name.trim()) return; d.name = name.trim(); await persist(d); paint(); }
-    async function deleteCurrent() { const d = current(); if (!d) return; if (!(await App.ui.confirmModal({ title: "Delete dashboard", message: `Delete dashboard “${d.name}” and its widgets?`, confirmText: "Delete dashboard" }))) return; try { await App.portalApi(`/api/dashboards/${d.id}`, { method: "DELETE" }); state.dashboards = state.dashboards.filter((x) => x.id !== d.id); state.currentId = state.dashboards.length ? state.dashboards[0].id : null; paint(); toast("Dashboard deleted"); } catch (e) { toast(e.message, true); } }
+    async function persist(dash) { if (opts.persistDashboard) { try { await opts.persistDashboard(dash); } catch (e) { toast(e.message, true); } return; } try { await App.portalApi(`/api/dashboards/${dash.id}`, { method: "PATCH", body: JSON.stringify({ name: dash.name, widgets: dash.widgets }) }); } catch (e) { toast(e.message, true); } }
+    async function newDashboard() { const name = await App.ui.promptModal({ title: "New dashboard", label: "Dashboard name", value: "New dashboard", okText: "Create" }); if (!name || !name.trim()) return; try { const d = opts.createDashboard ? await opts.createDashboard(name.trim()) : await App.portalApi("/api/dashboards", { method: "POST", body: JSON.stringify({ name: name.trim() }) }); state.dashboards.push(d); state.currentId = d.id; paint(); toast("Dashboard created"); } catch (e) { toast(e.message, true); } }
+    async function renameDashboard() { const d = current(); if (!d) return; const name = await App.ui.promptModal({ title: "Rename dashboard", label: "Dashboard name", value: d.name, okText: "Rename" }); if (!name || !name.trim()) return; d.name = name.trim(); if (opts.renameDashboard) { try { await opts.renameDashboard(d.id, d.name); } catch (e) { toast(e.message, true); } } else { await persist(d); } paint(); }
+    async function deleteCurrent() { const d = current(); if (!d) return; if (!(await App.ui.confirmModal({ title: "Delete dashboard", message: `Delete dashboard “${d.name}” and its widgets?`, confirmText: "Delete dashboard" }))) return; try { if (opts.deleteDashboard) await opts.deleteDashboard(d.id); else await App.portalApi(`/api/dashboards/${d.id}`, { method: "DELETE" }); state.dashboards = state.dashboards.filter((x) => x.id !== d.id); state.currentId = state.dashboards.length ? state.dashboards[0].id : null; paint(); toast("Dashboard deleted"); } catch (e) { toast(e.message, true); } }
     async function removeWidget(wid) { const d = current(); if (!d) return; if (!(await App.ui.confirmModal({ title: "Remove widget", message: "Remove this widget?", confirmText: "Remove widget" }))) return; d.widgets = (d.widgets || []).filter((w) => w.id !== wid); persist(d); paint(); }
 
     function openDuplicate(w) {
@@ -626,9 +693,10 @@
       if (!dash) { toast("Create a dashboard first", true); return; }
       openWidgetEditor({
         sources: state.sources,
-        sourceKeys: sourceOptions().map((o) => o.key),
+        sourceKeys: opts.defaultSourceKey ? Object.keys(state.sources) : sourceOptions().map((o) => o.key),
         widget: existing,
-        defaultSourceKey: "contacts",
+        defaultSourceKey: opts.defaultSourceKey || "contacts",
+        showScope: !!opts.showScope,
         onSave: async (widget) => {
           dash.widgets = dash.widgets || [];
           const idx = dash.widgets.findIndex((x) => x.id === widget.id);
@@ -647,5 +715,6 @@
     render: (host) => createView(host, {}).boot(),
     mountHome: (host) => createView(host, { compact: true, home: true }).boot(),
     aggregate, valueOf, bucketDate, measureValue, renderWidgetBody, openWidgetEditor,
+    createDashboardEngine: (host, o) => createView(host, o || {}),
   };
 })(typeof window !== "undefined" ? window : globalThis);
