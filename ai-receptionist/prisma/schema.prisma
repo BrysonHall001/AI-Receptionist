@@ -118,6 +118,9 @@ model Tenant {
   communicationSends CommunicationSend[]
   surveys          Survey[]
   surveyResponses  SurveyResponse[]
+  billingConfig    BillingConfig?
+  charges          Charge[]
+  payments         Payment[]
 }
 
 model User {
@@ -958,6 +961,65 @@ model BillingRate {
   twilioPerSms            Decimal  @default(0) @db.Decimal(12, 6)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+}
+
+// Per-portal billing terms (one per Tenant). A portal can be billed a flat fee, a passthrough
+// of estimated usage cost with a markup %, or BOTH (bill = flatFee + passthrough, per booleans).
+// Tenant.billingStatus (free/trial/paid/exception) stays separate and is shown alongside this.
+model BillingConfig {
+  id                   String    @id @default(cuid())
+  tenantId             String    @unique
+  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  hasFlatFee           Boolean   @default(false)
+  flatFeeAmount        Decimal   @default(0)
+  hasPassthrough       Boolean   @default(false)
+  passthroughMarkupPct Decimal   @default(0) // e.g. 20 = +20%
+  billingPeriod        String    @default("monthly") // "monthly" | "annual" | "custom"
+  customPeriodDays     Int?
+  contractStart        DateTime?
+  contractEnd          DateTime?
+  currency             String    @default("USD")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+// A charge (ledger line) billed to a portal for a period. Manual in this batch; auto-drafting
+// + Stripe come later. paid/unpaid derives from status + the sum of linked Payments.
+model Charge {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+  periodEnd   DateTime
+  status      String    @default("draft") // "draft" | "approved" | "paid" | "unpaid" | "void"
+  amount      Decimal
+  breakdown   Json // {flatFee, passthroughBaseCost, markupPct, passthroughAmount, usageSnapshot:{calls,minutes,tokens,emails}}
+  currency    String    @default("USD")
+  dueDate     DateTime?
+  notes       String?
+  approvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  payments    Payment[]
+
+  @@index([tenantId, periodStart])
+}
+
+// A payment recorded against a charge (manual entry now; Stripe will create these later).
+model Payment {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chargeId  String
+  charge    Charge   @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  amount    Decimal
+  paidAt    DateTime
+  method    String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([chargeId])
+  @@index([tenantId])
 }
 
 // Master-hub billing dashboards — GLOBAL (not per-portal). Each `scope` holds one widget

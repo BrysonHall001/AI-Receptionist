@@ -11,6 +11,9 @@ import { listGroupedEmailSends, listEmailSendRecipients } from "../services/emai
 import { getBillingRates, updateBillingRates } from "../services/billingRateService";
 import { aggregateTenant, aggregateAll, isBucket, parseDate, type Bucket } from "../services/usageAggregationService";
 import { getBillingDashboard, updateBillingDashboard, isBillingDashboardScope } from "../services/billingDashboardService";
+import { getBillingConfig, updateBillingConfig } from "../services/billingConfigService";
+import { computeSuggestedCharge } from "../services/chargeComputeService";
+import { listCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment } from "../services/chargeService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -436,6 +439,58 @@ adminRouter.patch("/billing-dashboards/:scope", requireRole("OWNER", "SUPER_ADMI
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
+});
+
+// ---- Billing ledger (OWNER/SUPER_ADMIN): per-portal terms, charges, payments ----
+
+// Per-tenant billing terms (config). Seeded on first read.
+adminRouter.get("/billing-config/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await getBillingConfig(req.params.tenantId)); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+adminRouter.patch("/billing-config/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await updateBillingConfig(req.params.tenantId, req.body ?? {})); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// Suggested charge for a period (Task 3) — powers the "suggest amount" button; editable before save.
+adminRouter.post("/charges/suggest/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  const { periodStart, periodEnd } = req.body ?? {};
+  if (!periodStart || !periodEnd) { res.status(400).json({ error: "periodStart and periodEnd are required" }); return; }
+  try { res.json(await computeSuggestedCharge(req.params.tenantId, new Date(periodStart), new Date(periodEnd))); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// List a tenant's charges (+ payments + ledger totals) / create a charge.
+adminRouter.get("/charges/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await listCharges(req.params.tenantId)); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+adminRouter.post("/charges/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.status(201).json(await createCharge(req.params.tenantId, req.body ?? {})); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// Single charge: get / edit / set status / void / record a payment.
+adminRouter.get("/charges/:id", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { const c = await getCharge(req.params.id); if (!c) { res.status(404).json({ error: "not found" }); return; } res.json(c); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+adminRouter.patch("/charges/:id", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await updateCharge(req.params.id, req.body ?? {})); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+adminRouter.post("/charges/:id/status", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await setChargeStatus(req.params.id, (req.body ?? {}).status)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+adminRouter.post("/charges/:id/void", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await voidCharge(req.params.id)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+adminRouter.post("/charges/:id/payments", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.status(201).json(await recordPayment(req.params.id, req.body ?? {})); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
 // LEVEL 1 — cross-tenant Email feed, ONE ROW PER SEND (grouped by communicationSendId;

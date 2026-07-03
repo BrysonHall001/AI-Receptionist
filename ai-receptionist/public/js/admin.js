@@ -1339,9 +1339,27 @@
     await reloadData();
   }
 
-  // Per-tenant Billing & Usage drill-in — the SINGLE reusable render used by BOTH the Tenants
-  // panel and the By-portal click. Shared "tenant_drilldown" layout, this tenant's own data.
+  // Per-tenant drill-in — the SINGLE reusable render used by BOTH the Tenants panel and the
+  // By-portal click. Now a two-subtab view: Usage (charts) + Billing (terms + charge ledger).
   function renderTenantUsageInto(host, tenantId, tenantName) {
+    host.innerHTML = "";
+    const sub = el("div", "tabs"); sub.style.marginBottom = "12px";
+    const body = el("div", "tab-body");
+    let active = "usage";
+    const SUB = [["usage", "Usage"], ["billing", "Billing"]];
+    function paint() {
+      Array.from(sub.children).forEach((b) => b.classList.toggle("active", b.dataset.k === active));
+      body.innerHTML = "";
+      if (active === "usage") renderTenantUsageDash(body, tenantId, tenantName);
+      else renderTenantBillingInto(body, tenantId, tenantName);
+    }
+    SUB.forEach(([k, label]) => { const b = el("button", "tab" + (k === active ? " active" : ""), label); b.dataset.k = k; b.onclick = () => { if (active === k) return; active = k; paint(); }; sub.appendChild(b); });
+    host.appendChild(sub); host.appendChild(body);
+    paint();
+    return Promise.resolve();
+  }
+
+  function renderTenantUsageDash(host, tenantId, tenantName) {
     return renderUsageDashboardInto(host, {
       scope: "tenant_drilldown",
       load: async (from, to) => {
@@ -1349,6 +1367,216 @@
         return usageRowsFromBuckets(d.buckets, d.tenantName || tenantName);
       },
     });
+  }
+
+  // ---- Billing subtab: terms (BillingConfig + billingStatus) + charge/payment ledger ----
+  async function renderTenantBillingInto(host, tenantId, tenantName) {
+    host.dataset.billingHost = tenantId;
+    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading billing…</div>`;
+    let cfg, ledger;
+    try { [cfg, ledger] = await Promise.all([App.api(`/api/admin/billing-config/${encodeURIComponent(tenantId)}`), App.api(`/api/admin/charges/tenant/${encodeURIComponent(tenantId)}`)]); }
+    catch (e) { host.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+    host.innerHTML = "";
+    host.appendChild(billingTermsCard(tenantId, cfg));
+    host.appendChild(chargesLedgerCard(tenantId, tenantName, ledger));
+  }
+
+  function field(label, node) { const d = el("div"); d.style.cssText = "display:flex;flex-direction:column;gap:3px;min-width:150px"; const l = el("span", "cell-muted", label); l.style.fontSize = "11.5px"; d.appendChild(l); d.appendChild(node); return d; }
+  function checkRow(label, checked) { const w = el("label"); w.style.cssText = "display:flex;align-items:center;gap:8px;font-size:13px"; const cb = el("input"); cb.type = "checkbox"; cb.checked = !!checked; w.appendChild(cb); w.appendChild(document.createTextNode(label)); return { el: w, cb }; }
+  function dateInput(v) { const i = el("input", "input"); i.type = "date"; i.style.cssText = "margin:0;width:auto"; if (v) i.value = String(v).slice(0, 10); return i; }
+  function numInput(v, step) { const i = el("input", "input"); i.type = "number"; i.step = step || "0.01"; i.min = "0"; i.style.cssText = "margin:0;width:130px"; i.value = v == null ? "" : String(v); return i; }
+
+  function billingTermsCard(tenantId, cfg) {
+    const card = el("div", "card"); card.style.cssText = "padding:18px;margin-bottom:16px";
+    card.appendChild(el("h3", null, "Billing terms")).style.cssText = "margin:0 0 12px;font-size:15px";
+
+    // billingStatus (updated via the portals endpoint).
+    const statusSel = el("select", "input"); statusSel.style.cssText = "margin:0;width:auto";
+    [["free", "Free"], ["trial", "Trial"], ["paid", "Paid"], ["exception", "Exception"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if ((cfg.billingStatus || "") === v) o.selected = true; statusSel.appendChild(o); });
+    if (!cfg.billingStatus) { const o = el("option", null, "—"); o.value = ""; o.selected = true; statusSel.insertBefore(o, statusSel.firstChild); }
+    statusSel.onchange = async () => { try { await App.api(`/api/admin/portals/${encodeURIComponent(tenantId)}`, { method: "PATCH", body: JSON.stringify({ billingStatus: statusSel.value }) }); toast("Billing status updated"); } catch (e) { toast(e.message, true); statusSel.value = cfg.billingStatus || ""; } };
+
+    const flat = checkRow("Flat fee", cfg.hasFlatFee); const flatAmt = numInput(cfg.flatFeeAmount);
+    const pass = checkRow("Passthrough (usage cost + markup)", cfg.hasPassthrough); const markup = numInput(cfg.passthroughMarkupPct, "0.1");
+    const periodSel = el("select", "input"); periodSel.style.cssText = "margin:0;width:auto";
+    [["monthly", "Monthly"], ["annual", "Annual"], ["custom", "Custom (days)"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (cfg.billingPeriod === v) o.selected = true; periodSel.appendChild(o); });
+    const customDays = numInput(cfg.customPeriodDays, "1"); customDays.step = "1"; customDays.style.width = "90px";
+    const customWrap = field("Custom days", customDays);
+    function syncCustom() { customWrap.style.display = periodSel.value === "custom" ? "flex" : "none"; }
+    periodSel.onchange = syncCustom;
+    const cStart = dateInput(cfg.contractStart), cEnd = dateInput(cfg.contractEnd);
+    const curr = el("input", "input"); curr.style.cssText = "margin:0;width:80px"; curr.value = cfg.currency || "USD"; curr.maxLength = 3;
+
+    const row1 = el("div"); row1.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px";
+    row1.appendChild(field("Billing status", statusSel));
+    row1.appendChild(field("Period", periodSel));
+    row1.appendChild(customWrap);
+    row1.appendChild(field("Currency", curr));
+    card.appendChild(row1);
+
+    const row2 = el("div"); row2.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px";
+    const flatCell = el("div"); flatCell.style.cssText = "display:flex;flex-direction:column;gap:6px"; flatCell.appendChild(flat.el); flatCell.appendChild(field("Amount", flatAmt));
+    const passCell = el("div"); passCell.style.cssText = "display:flex;flex-direction:column;gap:6px"; passCell.appendChild(pass.el); passCell.appendChild(field("Markup %", markup));
+    row2.appendChild(flatCell); row2.appendChild(passCell);
+    card.appendChild(row2);
+
+    const row3 = el("div"); row3.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end";
+    row3.appendChild(field("Contract start", cStart)); row3.appendChild(field("Contract end", cEnd));
+    card.appendChild(row3);
+
+    syncCustom();
+    const save = el("button", "btn btn-primary btn-sm", "Save terms"); save.style.marginTop = "14px";
+    save.onclick = async () => {
+      const body = {
+        hasFlatFee: flat.cb.checked, flatFeeAmount: Number(flatAmt.value || 0),
+        hasPassthrough: pass.cb.checked, passthroughMarkupPct: Number(markup.value || 0),
+        billingPeriod: periodSel.value, customPeriodDays: periodSel.value === "custom" ? Number(customDays.value || 0) : null,
+        contractStart: cStart.value || null, contractEnd: cEnd.value || null, currency: (curr.value || "USD").toUpperCase(),
+      };
+      try { await App.api(`/api/admin/billing-config/${encodeURIComponent(tenantId)}`, { method: "PATCH", body: JSON.stringify(body) }); toast("Billing terms saved"); }
+      catch (e) { toast(e.message, true); }
+    };
+    card.appendChild(save);
+    return card;
+  }
+
+  function chargeStatusBadge(c) {
+    const map = { draft: "#6b7280", approved: "#2563eb", paid: "#16a34a", unpaid: "#dc2626", void: "#9ca3af" };
+    const b = el("span", null, cap(c.status)); b.style.cssText = `display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;color:#fff;background:${map[c.status] || "#6b7280"}`;
+    return b;
+  }
+
+  function chargesLedgerCard(tenantId, tenantName, ledger) {
+    const card = el("div", "card"); card.style.cssText = "padding:18px";
+    const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px";
+    head.appendChild(el("h3", null, "Charges")).style.cssText = "margin:0;font-size:15px";
+    const addBtn = el("button", "btn btn-primary btn-sm", "+ Create charge");
+    addBtn.onclick = () => openChargeModal(tenantId, tenantName, null);
+    head.appendChild(addBtn);
+    card.appendChild(head);
+
+    const t = ledger.totals || { billed: 0, paid: 0, outstanding: 0 };
+    const totals = el("div"); totals.style.cssText = "display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px";
+    [["Billed", t.billed], ["Paid", t.paid], ["Outstanding", t.outstanding]].forEach(([l, v]) => { const d = el("div"); d.innerHTML = `<div style="font-size:19px;font-weight:700">${esc(fmtMoney(v))}</div><div class="cell-muted" style="font-size:11.5px">${l}</div>`; totals.appendChild(d); });
+    card.appendChild(totals);
+
+    const charges = ledger.charges || [];
+    if (!charges.length) { card.appendChild(el("div", "cell-muted", "No charges yet. Click “+ Create charge”.")); return card; }
+
+    const tbl = el("table", "table"); tbl.style.width = "100%";
+    tbl.innerHTML = `<thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Paid</th><th>Outstanding</th><th>Due</th><th></th></tr></thead>`;
+    const tb = el("tbody");
+    charges.forEach((c) => {
+      const tr = el("tr");
+      const period = `${fmtDateOnly(c.periodStart)} – ${fmtDateOnly(c.periodEnd)}`;
+      tr.appendChild(el("td", null, esc(period)));
+      tr.appendChild(el("td", null, esc(fmtMoney(c.amount) + " " + (c.currency || ""))));
+      const st = el("td"); st.appendChild(chargeStatusBadge(c)); tr.appendChild(st);
+      tr.appendChild(el("td", null, c.isPaid ? "✅" : (c.status === "void" ? "—" : "❌")));
+      tr.appendChild(el("td", null, esc(fmtMoney(c.outstanding))));
+      tr.appendChild(el("td", null, c.dueDate ? esc(fmtDateOnly(c.dueDate)) : "—"));
+      const act = el("td"); act.style.cssText = "display:flex;gap:4px;flex-wrap:wrap";
+      const view = el("button", "btn btn-ghost btn-sm", "View"); view.onclick = () => openChargeDetail(tenantId, tenantName, c);
+      const pay = el("button", "btn btn-ghost btn-sm", "Payment"); pay.onclick = () => openPaymentModal(tenantId, tenantName, c);
+      act.appendChild(view); if (c.status !== "void") act.appendChild(pay);
+      tr.appendChild(act);
+      tb.appendChild(tr);
+    });
+    tbl.appendChild(tb);
+    const scroll = el("div"); scroll.style.cssText = "overflow-x:auto"; scroll.appendChild(tbl);
+    card.appendChild(scroll);
+    return card;
+  }
+
+  function refreshBilling(tenantId, tenantName) {
+    const host = document.querySelector(`[data-billing-host="${tenantId}"]`);
+    if (host) renderTenantBillingInto(host, tenantId, tenantName);
+  }
+
+  function money2(v) { const n = Number(v || 0); return Math.round(n * 100) / 100; }
+
+  function openChargeModal(tenantId, tenantName, existing) {
+    const inner = el("div");
+    const today = new Date(); const iso = (d) => d.toISOString().slice(0, 10);
+    const d0 = existing ? String(existing.periodStart).slice(0, 10) : iso(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+    const d1 = existing ? String(existing.periodEnd).slice(0, 10) : iso(new Date(today.getFullYear(), today.getMonth(), 0));
+    inner.innerHTML = `<div class="modal-head"><h2>${existing ? "Edit charge" : "Create charge"}</h2><button class="icon-btn" id="c-close">&times;</button></div>
+      <div class="modal-body">
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period start</label><input id="c-start" class="input" type="date" value="${d0}"></div>
+          <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period end</label><input id="c-end" class="input" type="date" value="${d1}"></div>
+        </div>
+        <div style="margin:8px 0"><button id="c-suggest" class="btn btn-ghost btn-sm">✨ Suggest amount from terms</button> <span id="c-sugnote" class="cell-muted" style="font-size:11.5px"></span></div>
+        <label class="field-label">Amount</label><input id="c-amount" class="input" type="number" step="0.01" min="0" value="${existing ? money2(existing.amount) : ""}" placeholder="0.00">
+        <label class="field-label">Due date (optional)</label><input id="c-due" class="input" type="date" value="${existing && existing.dueDate ? String(existing.dueDate).slice(0, 10) : ""}">
+        <label class="field-label">Notes</label><input id="c-notes" class="input" value="${existing ? esc(existing.notes || "") : ""}" placeholder="optional">
+        <div id="c-breakdown" class="cell-muted" style="font-size:12px;margin:8px 0"></div>
+        <button id="c-save" class="btn btn-primary btn-block">${existing ? "Save changes" : "Save as draft"}</button>
+      </div>`;
+    const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
+    let breakdown = existing ? existing.breakdown : null;
+    $("#c-close").onclick = () => overlay.remove();
+    function showBreakdown(b) { if (!b) { $("#c-breakdown").innerHTML = ""; return; } const us = b.usageSnapshot || {}; $("#c-breakdown").innerHTML = `Flat ${esc(fmtMoney(b.flatFee))} + passthrough ${esc(fmtMoney(b.passthroughBaseCost))}×(1+${esc(String(b.markupPct))}%) = ${esc(fmtMoney(b.passthroughAmount))}. Usage: ${us.calls || 0} calls, ${us.minutes || 0} min, ${us.tokens || 0} tokens, ${us.emails || 0} emails.`; }
+    showBreakdown(breakdown);
+    $("#c-suggest").onclick = async () => {
+      $("#c-sugnote").textContent = "Computing…";
+      try { const s = await App.api(`/api/admin/charges/suggest/${encodeURIComponent(tenantId)}`, { method: "POST", body: JSON.stringify({ periodStart: $("#c-start").value, periodEnd: $("#c-end").value }) }); $("#c-amount").value = money2(s.amount); breakdown = s.breakdown; showBreakdown(breakdown); $("#c-sugnote").textContent = "Suggested — adjust if needed."; }
+      catch (e) { $("#c-sugnote").textContent = ""; toast(e.message, true); }
+    };
+    $("#c-save").onclick = async () => {
+      const body = { periodStart: $("#c-start").value, periodEnd: $("#c-end").value, amount: Number($("#c-amount").value || 0), breakdown: breakdown || {}, dueDate: $("#c-due").value || null, notes: $("#c-notes").value || null };
+      try {
+        if (existing) await App.api(`/api/admin/charges/${encodeURIComponent(existing.id)}`, { method: "PATCH", body: JSON.stringify(body) });
+        else await App.api(`/api/admin/charges/tenant/${encodeURIComponent(tenantId)}`, { method: "POST", body: JSON.stringify(body) });
+        overlay.remove(); toast(existing ? "Charge updated" : "Charge created"); refreshBilling(tenantId, tenantName);
+      } catch (e) { toast(e.message, true); }
+    };
+  }
+
+  function openPaymentModal(tenantId, tenantName, charge) {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Record payment</h2><button class="icon-btn" id="p-close">&times;</button></div>
+      <div class="modal-body">
+        <div class="cell-muted" style="font-size:12px;margin-bottom:8px">Outstanding: ${esc(fmtMoney(charge.outstanding))} of ${esc(fmtMoney(charge.amount))}</div>
+        <label class="field-label">Amount</label><input id="p-amount" class="input" type="number" step="0.01" min="0" value="${money2(charge.outstanding || charge.amount)}">
+        <label class="field-label">Paid on</label><input id="p-date" class="input" type="date" value="${new Date().toISOString().slice(0, 10)}">
+        <label class="field-label">Method (optional)</label><input id="p-method" class="input" placeholder="card / check / wire">
+        <label class="field-label">Notes</label><input id="p-notes" class="input" placeholder="optional">
+        <button id="p-save" class="btn btn-primary btn-block">Record payment</button>
+      </div>`;
+    const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
+    $("#p-close").onclick = () => overlay.remove();
+    $("#p-save").onclick = async () => {
+      try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/payments`, { method: "POST", body: JSON.stringify({ amount: Number($("#p-amount").value || 0), paidAt: $("#p-date").value || undefined, method: $("#p-method").value || null, notes: $("#p-notes").value || null }) }); overlay.remove(); toast("Payment recorded"); refreshBilling(tenantId, tenantName); }
+      catch (e) { toast(e.message, true); }
+    };
+  }
+
+  function openChargeDetail(tenantId, tenantName, charge) {
+    const inner = el("div");
+    const b = charge.breakdown || {}; const us = b.usageSnapshot || {};
+    const pays = (charge.payments || []).map((p) => `<tr><td>${esc(fmtDateOnly(p.paidAt))}</td><td>${esc(fmtMoney(p.amount))}</td><td>${esc(p.method || "—")}</td></tr>`).join("") || `<tr><td colspan="3" class="cell-muted">No payments</td></tr>`;
+    const STATUSES = ["draft", "approved", "paid", "unpaid", "void"];
+    inner.innerHTML = `<div class="modal-head"><h2>Charge detail</h2><button class="icon-btn" id="d-close">&times;</button></div>
+      <div class="modal-body">
+        <div style="margin-bottom:8px"><b>${esc(fmtDateOnly(charge.periodStart))} – ${esc(fmtDateOnly(charge.periodEnd))}</b> · ${esc(fmtMoney(charge.amount))} ${esc(charge.currency || "")}</div>
+        <div class="cell-muted" style="font-size:12.5px;margin-bottom:10px">Breakdown — flat ${esc(fmtMoney(b.flatFee || 0))}, passthrough base ${esc(fmtMoney(b.passthroughBaseCost || 0))} × (1 + ${esc(String(b.markupPct || 0))}%) = ${esc(fmtMoney(b.passthroughAmount || 0))}.<br>Usage snapshot: ${us.calls || 0} calls · ${us.minutes || 0} min · ${us.tokens || 0} tokens · ${us.emails || 0} emails.</div>
+        <label class="field-label">Status</label>
+        <select id="d-status" class="input" style="width:auto">${STATUSES.map((s) => `<option value="${s}"${charge.status === s ? " selected" : ""}>${cap(s)}</option>`).join("")}</select>
+        <label class="field-label" style="margin-top:10px">Payments (${esc(fmtMoney(charge.paidTotal))} paid · ${esc(fmtMoney(charge.outstanding))} outstanding)</label>
+        <table class="table mini-table" style="width:100%"><thead><tr><th>Date</th><th>Amount</th><th>Method</th></tr></thead><tbody>${pays}</tbody></table>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <button id="d-edit" class="btn btn-ghost btn-sm">Edit</button>
+          <button id="d-pay" class="btn btn-ghost btn-sm">Record payment</button>
+          <button id="d-void" class="btn btn-ghost btn-sm" style="color:#dc2626">Void</button>
+        </div>
+      </div>`;
+    const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
+    $("#d-close").onclick = () => overlay.remove();
+    $("#d-status").onchange = async () => { try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/status`, { method: "POST", body: JSON.stringify({ status: $("#d-status").value }) }); toast("Status updated"); overlay.remove(); refreshBilling(tenantId, tenantName); } catch (e) { toast(e.message, true); } };
+    $("#d-edit").onclick = () => { overlay.remove(); openChargeModal(tenantId, tenantName, charge); };
+    $("#d-pay").onclick = () => { overlay.remove(); openPaymentModal(tenantId, tenantName, charge); };
+    $("#d-void").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Void charge", message: "Void this charge? It will be excluded from billed/outstanding totals.", confirmText: "Void charge" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/void`, { method: "POST" }); toast("Charge voided"); overlay.remove(); refreshBilling(tenantId, tenantName); } catch (e) { toast(e.message, true); } };
   }
 
   // ---- Macro Billing & Usage page: Overview (editable) / By portal (clickable) / Billing Rates ----
