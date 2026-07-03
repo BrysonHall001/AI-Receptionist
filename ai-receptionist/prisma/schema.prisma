@@ -960,6 +960,28 @@ model BillingRate {
   updatedAt               DateTime @updatedAt
 }
 
+// Daily per-tenant usage rollup — ONE row per tenant per calendar day (UTC). Raw usage
+// (CallSession, EmailLog) is summed into these by the rollup service; days sum cleanly into
+// weeks/months/years for analytics. Deliberately no finer than daily. Recompute is
+// idempotent (upsert, last-write-wins) so it can safely backfill + re-run.
+model UsageDaily {
+  id               String   @id @default(cuid())
+  tenantId         String
+  date             DateTime @db.Date
+  calls            Int      @default(0)
+  callSeconds      Int      @default(0)
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  emails           Int      @default(0)
+  sms              Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tenantId, date])
+  @@index([tenantId, date])
+}
+
 // ===================== Surveys (Communication → Surveys) =====================
 // Phase 3 Batch 1: the model + builder. Responses/answers are defined now so the
 // response-page batch can write to them, but NOTHING in this batch creates them.

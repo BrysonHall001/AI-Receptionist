@@ -9,6 +9,7 @@ import { createExport, listMasterExports, getMasterExportCsv } from "../services
 import { listChangeLog } from "../services/changelogService";
 import { listGroupedEmailSends, listEmailSendRecipients } from "../services/emailLogService";
 import { getBillingRates, updateBillingRates } from "../services/billingRateService";
+import { aggregateTenant, aggregateAll, isBucket, parseDate, type Bucket } from "../services/usageAggregationService";
 import { logger } from "../utils/logger";
 
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
@@ -389,6 +390,30 @@ adminRouter.put("/billing-rates", requireRole("OWNER", "SUPER_ADMIN"), async (re
     res.json(await updateBillingRates((req.body ?? {}) as Record<string, unknown>));
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Usage + estimated cost aggregation (OWNER/SUPER_ADMIN). `bucket` = day|week|month|year;
+// `from`/`to` are optional YYYY-MM-DD (default to the data's own range). Returns raw units
+// AND computed $ per bucket, plus range totals.
+function readBucket(req: Request): Bucket {
+  const b = req.query.bucket;
+  return isBucket(b) ? b : "day";
+}
+// Macro across ALL tenants (+ per-tenant breakdown for the range).
+adminRouter.get("/usage", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try {
+    res.json(await aggregateAll(parseDate(req.query.from), parseDate(req.query.to), readBucket(req)));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+// One tenant over a range.
+adminRouter.get("/usage/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try {
+    res.json(await aggregateTenant(req.params.tenantId, parseDate(req.query.from), parseDate(req.query.to), readBucket(req)));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 

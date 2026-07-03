@@ -8,6 +8,7 @@ import { sweepStaleCalls } from "./services/callOrchestrator";
 import { sweepResolvedFeedback } from "./services/feedbackService";
 import { processDueJobs } from "./automation/scheduler";
 import { processDueReports } from "./services/reportScheduler";
+import { recomputeUsageDaily, backfillUsageDailyIfEmpty } from "./services/usageRollupService";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -113,6 +114,28 @@ async function main(): Promise<void> {
   };
   const reportsSweepTimer = setInterval(() => { void runReportsSweep(); }, 2 * 60_000);
   reportsSweepTimer.unref();
+
+  // Usage rollups: (1) a ONE-TIME, guarded backfill of all historical usage into UsageDaily
+  // shortly after boot (no-ops once populated), so existing calls/emails show up without any
+  // manual action; and (2) a periodic recompute of the last couple of days (every 10 min) to
+  // keep recent rollups current as new calls/emails land — same in-process, idempotent,
+  // guarded, .unref()'d pattern as the sweeps above. recomputeUsageDaily upserts whole days
+  // from raw data, so nothing double-counts and re-runs are safe.
+  void backfillUsageDailyIfEmpty().catch((e) => logger.error(`[usage-rollup] backfill failed: ${(e as Error).message}`));
+  let usageSweeping = false;
+  const runUsageSweep = async () => {
+    if (usageSweeping) return;
+    usageSweeping = true;
+    try {
+      await recomputeUsageDaily({ sinceDays: 2 });
+    } catch (e) {
+      logger.error(`[usage-rollup] recompute sweep failed (will retry next tick): ${(e as Error).message}`);
+    } finally {
+      usageSweeping = false;
+    }
+  };
+  const usageSweepTimer = setInterval(() => { void runUsageSweep(); }, 10 * 60_000);
+  usageSweepTimer.unref();
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`Received ${signal}; shutting down…`);
