@@ -1382,6 +1382,7 @@
         return context === "macro" ? s !== "tenant" : s !== "macro";
       },
       hiddenNote: context === "tenant" ? "Some widgets appear only on the master-hub overview." : null,
+      banner: context === "tenant" ? `Showing data for ${cfg.tenantName || "this portal"} only.` : null,
       loadDashboards: () => App.api("/api/admin/billing-dashboards"),
       buildSources: buildUsageSource,
       persistDashboard: (d) => App.api(`/api/admin/billing-dashboards/${encodeURIComponent(d.id)}`, { method: "PATCH", body: JSON.stringify({ widgets: d.widgets }) }),
@@ -1414,6 +1415,7 @@
     return renderBillingDashboards(host, {
       context: "tenant",
       tenantId: tenantId,
+      tenantName: tenantName,
       load: async (from, to) => {
         const d = await App.api(`/api/admin/usage/tenant/${encodeURIComponent(tenantId)}?bucket=day&from=${from}&to=${to}`);
         return usageRowsFromBuckets(d.buckets, d.tenantName || tenantName);
@@ -1540,7 +1542,7 @@
     const defaultKeys = ["period", "amount", "status", "paid", "outstanding", "due"];
     const actionsCol = {
       key: "__act", label: "", type: "text", filterable: false, get: () => "",
-      render: (c) => `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-act="view" data-id="${esc(c.id)}">View</button>${c.status !== "void" ? `<button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button>` : ""}</div>`,
+      render: (c) => (c.status !== "void" ? `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button></div>` : ""),
     };
 
     let layout = loadChargesLayout();
@@ -1554,7 +1556,7 @@
       emptyHtml: `<div class="card cell-muted" style="padding:18px">No charges yet. Click “+ Create charge”.</div>`,
       onRender: () => {
         App.util.$$("button[data-act]", tableHost).forEach((btn) => {
-          btn.onclick = (e) => { e.stopPropagation(); const c = byId[btn.dataset.id]; if (!c) return; if (btn.dataset.act === "view") openChargeDetail(tenantId, tenantName, c); else openPaymentModal(tenantId, tenantName, c); };
+          btn.onclick = (e) => { e.stopPropagation(); const c = byId[btn.dataset.id]; if (!c) return; openPaymentModal(tenantId, tenantName, c); };
         });
       },
     });
@@ -1717,8 +1719,8 @@
         await renderBillingDashboards(host, {
           context: "macro",
           load: async (from, to) => {
-            const d = await App.api(`/api/admin/usage?bucket=day&from=${from}&to=${to}`);
-            return usageRowsFromBuckets(d.buckets, "All");
+            const d = await App.api(`/api/admin/usage/rows?bucket=day&from=${from}&to=${to}`);
+            return d.rows || [];
           },
         });
         return;

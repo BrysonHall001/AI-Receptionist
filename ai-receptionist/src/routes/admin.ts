@@ -9,7 +9,7 @@ import { createExport, listMasterExports, getMasterExportCsv } from "../services
 import { listChangeLog } from "../services/changelogService";
 import { listGroupedEmailSends, listEmailSendRecipients } from "../services/emailLogService";
 import { getBillingRates, updateBillingRates } from "../services/billingRateService";
-import { aggregateTenant, aggregateAll, isBucket, parseDate, type Bucket } from "../services/usageAggregationService";
+import { aggregateTenant, aggregateAll, aggregateAllRows, isBucket, parseDate, type Bucket } from "../services/usageAggregationService";
 import { portfolioRows, chargeRows } from "../services/billingSourceService";
 import { listBillingDashboards, createBillingDashboard, renameBillingDashboard, updateBillingDashboardWidgets, deleteBillingDashboard, reorderBillingDashboards } from "../services/billingDashboardService";
 import { getBillingConfig, updateBillingConfig } from "../services/billingConfigService";
@@ -422,6 +422,13 @@ adminRouter.get("/usage/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), 
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
+});
+
+// Per-tenant, per-bucket usage rows for the master-hub "usage" widget source (rows carry the
+// tenant NAME so name-based widget filters work). All tenants; OWNER/SUPER_ADMIN only.
+adminRouter.get("/usage/rows", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await aggregateAllRows(parseDate(req.query.from), parseDate(req.query.to), readBucket(req))); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
 // Billing reporting sources for widgets.

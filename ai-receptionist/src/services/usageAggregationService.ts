@@ -148,3 +148,53 @@ export async function aggregateAll(fromRaw: Date | null, toRaw: Date | null, buc
     rates,
   };
 }
+
+// Per-tenant, per-bucket flat usage rows for the master-hub "usage" reporting source. Unlike the
+// combined buckets in aggregateAll, each row carries its tenant's NAME + id, so widget filters
+// like "Tenant contains acme" match the human-readable name. Time-series charts grouped by date
+// still sum across tenants to the same totals. callMinutes rounded to 3 decimals for display.
+export async function aggregateAllRows(fromRaw: Date | null, toRaw: Date | null, bucket: Bucket) {
+  const rates = await getBillingRates();
+  const { from, to } = await effectiveRange({}, fromRaw, toRaw);
+  const usage = await db.usageDaily.findMany({ where: { date: { gte: from, lte: to } }, orderBy: { date: "asc" } });
+  const tenants = await db.tenant.findMany({ select: { id: true, name: true } });
+  const nameById: Record<string, string> = {};
+  tenants.forEach((t: any) => (nameById[t.id] = t.name ?? t.id));
+
+  // Group by (tenantId, bucketKey).
+  const map = new Map<string, { tenantId: string; key: string; start: Date; units: Units }>();
+  for (const r of usage) {
+    const day = dUTC(new Date(r.date));
+    const { key, start } = bucketFor(day, bucket);
+    const mapKey = r.tenantId + "|" + key;
+    let g = map.get(mapKey);
+    if (!g) { g = { tenantId: r.tenantId, key, start, units: zero() }; map.set(mapKey, g); }
+    addInto(g.units, r);
+  }
+
+  const rows = Array.from(map.values())
+    .sort((a, b) => a.start.getTime() - b.start.getTime())
+    .map((g) => {
+      const u = g.units;
+      const line = usageLineCosts(unitsToCostInput(u), rates); // call/token/sms; number rental is range-level
+      const totalCost = Math.round((line.callCost + line.tokenCost + line.smsCost) * 1e6) / 1e6;
+      return {
+        date: iso(g.start) + "T12:00:00",
+        tenant: nameById[g.tenantId] ?? g.tenantId,
+        tenantId: g.tenantId,
+        calls: u.calls,
+        callMinutes: Math.round((u.callSeconds / 60) * 1000) / 1000,
+        promptTokens: u.promptTokens,
+        completionTokens: u.completionTokens,
+        totalTokens: u.totalTokens,
+        emails: u.emails,
+        sms: u.sms,
+        callCost: line.callCost,
+        tokenCost: line.tokenCost,
+        numberCost: 0,
+        totalCost,
+      };
+    });
+
+  return { from: iso(from), to: iso(to), bucket, rows };
+}

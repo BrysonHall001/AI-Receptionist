@@ -59,11 +59,15 @@
     return String(v);
   }
   function compoundLabel(src, c, dims, fields) { return dims.map((d) => oneLabel(src, c, dimMeta(fields, d))).join(" / "); }
+  // Round a measure result: call minutes to 3 decimals (they derive from callSeconds/60 and
+  // otherwise show long repeating decimals once summed); everything else to 6 decimals to strip
+  // floating-point noise without changing meaningful precision. Integers/counts are unaffected.
+  function roundMeasure(v, field) { const d = field === "callMinutes" ? 3 : 6; const p = Math.pow(10, d); return Math.round((Number(v) || 0) * p) / p; }
   function measureValue(src, rows, m) {
     if (!m || m.op === "count") return rows.length;
     const nums = rows.map((r) => Number(valueOf(src, r, m.field))).filter((n) => !isNaN(n));
-    if (m.op === "sum") return nums.reduce((a, b) => a + b, 0);
-    if (m.op === "avg") return nums.length ? +(nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2) : 0;
+    if (m.op === "sum") return roundMeasure(nums.reduce((a, b) => a + b, 0), m.field);
+    if (m.op === "avg") return nums.length ? roundMeasure(nums.reduce((a, b) => a + b, 0) / nums.length, m.field) : 0;
     return rows.length;
   }
   function buildColumns(src, fields) { return fields.map((f) => ({ key: f.key, label: f.label, type: f.type === "percent" ? "number" : f.type, get: (r) => valueOf(src, r, f.key), text: (r) => scalar(valueOf(src, r, f.key)) })); }
@@ -518,6 +522,8 @@
       const allWidgets = dash.widgets || [];
       const widgets = opts.widgetFilter ? allWidgets.filter(opts.widgetFilter) : allWidgets;
       const hiddenCount = allWidgets.length - widgets.length;
+      // Scope banner (e.g. tenant panels): makes it obvious every widget is filtered to one portal.
+      if (opts.banner) { const bn = el("div"); bn.style.cssText = "display:inline-block;background:var(--accent-soft,#eef2ff);color:var(--accent,#3730a3);border:1px solid var(--accent,#c7d2fe);border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:600;margin:0 0 10px"; bn.textContent = opts.banner; wrap.appendChild(bn); }
       if (opts.hiddenNote && hiddenCount > 0) { const n = el("div", "cell-muted"); n.style.cssText = "font-size:12px;margin:2px 0 10px"; n.textContent = opts.hiddenNote; wrap.appendChild(n); }
       if (!widgets.length) { const e = el("div", "card"); e.innerHTML = `<div class="empty"><div class="empty-emoji">➕</div><h3>No widgets yet</h3><p>Click “Add widget” to build your first chart.</p></div>`; wrap.appendChild(e); host.appendChild(wrap); return; }
 
