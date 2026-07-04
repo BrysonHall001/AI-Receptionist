@@ -59,6 +59,21 @@ export function serializeCharge(c: any) {
 
 const withPayments = { payments: { orderBy: { paidAt: "desc" as const } } };
 
+// All charges across every tenant (joined to tenant name) for the master-hub central table.
+// Volume is low (dozens of tenants); a generous cap keeps it bounded. Newest first.
+export async function listAllCharges(limit = 5000) {
+  const rows = await db.charge.findMany({
+    include: { ...withPayments, tenant: { select: { name: true, billingStatus: true } } },
+    orderBy: { createdAt: "desc" },
+    take: Math.max(1, Math.min(20000, limit)),
+  });
+  const charges = rows.map((r: any) => {
+    const c = serializeCharge(r);
+    return { ...c, tenant: r.tenant?.name ?? r.tenantId, tenantName: r.tenant?.name ?? null, billingStatus: r.tenant?.billingStatus ?? null };
+  });
+  return { charges };
+}
+
 export async function listCharges(tenantId: string) {
   const rows = await db.charge.findMany({ where: { tenantId }, include: withPayments, orderBy: [{ periodStart: "desc" }, { createdAt: "desc" }] });
   const charges = rows.map(serializeCharge);

@@ -14,7 +14,8 @@ import { portfolioRows, chargeRows } from "../services/billingSourceService";
 import { listBillingDashboards, createBillingDashboard, renameBillingDashboard, updateBillingDashboardWidgets, deleteBillingDashboard, reorderBillingDashboards } from "../services/billingDashboardService";
 import { getBillingConfig, updateBillingConfig } from "../services/billingConfigService";
 import { computeSuggestedCharge } from "../services/chargeComputeService";
-import { listCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
+import { listCharges, listAllCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
+import { verifyPassword } from "../auth/passwords";
 import { getChargeAudit, getTermsAudit } from "../services/billingAuditService";
 import { getBillingNotifyConfig, updateBillingNotifyConfig } from "../services/billingNotifyConfigService";
 import { runBillingAutomationSweep } from "../services/billingSweepService";
@@ -502,6 +503,12 @@ adminRouter.post("/charges/suggest/:tenantId", requireRole("OWNER", "SUPER_ADMIN
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
+// All charges across every portal (master-hub central table). OWNER/SUPER_ADMIN only.
+adminRouter.get("/charges/all", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { const limit = req.query.limit ? Number(req.query.limit) : undefined; res.json(await listAllCharges(limit)); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
 // List a tenant's charges (+ payments + ledger totals) / create a charge.
 adminRouter.get("/charges/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
   try { res.json(await listCharges(req.params.tenantId)); }
@@ -534,8 +541,14 @@ adminRouter.post("/charges/:id/void", requireRole("OWNER", "SUPER_ADMIN"), async
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/charges/:id/approve", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  try { res.json(await approveCharge(req.params.id, billingActor(req))); }
-  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+  try {
+    // Password confirmation gate: re-verify the acting user's password before approving.
+    const password = (req.body ?? {}).password;
+    if (!password || typeof password !== "string") { res.status(400).json({ error: "Password confirmation required" }); return; }
+    const me = req.user?.id ? await prisma.user.findUnique({ where: { id: req.user.id }, select: { passwordHash: true } }) : null;
+    if (!me || !(await verifyPassword(password, me.passwordHash))) { res.status(401).json({ error: "Password confirmation failed" }); return; }
+    res.json(await approveCharge(req.params.id, billingActor(req)));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/charges/:id/payments", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
   try { res.status(201).json(await recordPayment(req.params.id, req.body ?? {}, billingActor(req))); }

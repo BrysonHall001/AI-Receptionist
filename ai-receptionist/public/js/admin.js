@@ -1667,7 +1667,43 @@
     return map[action] || action;
   }
 
-  function openChargeDetail(tenantId, tenantName, chargeInit) {
+  // Approve a charge behind a password-confirmation gate. Used everywhere approve is possible
+  // (per-tenant detail modal + central Charges tab). The server re-verifies the password.
+  function confirmApprove(chargeId, onDone) {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Confirm approval</h2><button class="icon-btn" id="ca-close">&times;</button></div>
+      <div class="modal-body">
+        <p class="cell-muted" style="font-size:13px;margin:0 0 10px">Approving finalizes this charge as owed. Enter your password to confirm.</p>
+        <label class="field-label">Your password</label>
+        <input id="ca-pw" class="input" type="password" autocomplete="current-password" placeholder="Password">
+        <div id="ca-err" style="color:#dc2626;font-size:12.5px;margin:6px 0 0;display:none"></div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button id="ca-ok" class="btn btn-primary btn-sm">Confirm &amp; approve</button>
+          <button id="ca-cancel" class="btn btn-ghost btn-sm">Cancel</button>
+        </div>
+      </div>`;
+    const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
+    const close = () => overlay.remove();
+    $("#ca-close").onclick = close; $("#ca-cancel").onclick = close;
+    const pw = $("#ca-pw"); setTimeout(() => pw.focus(), 30);
+    async function submit() {
+      const password = pw.value;
+      if (!password) { $("#ca-err").style.display = "block"; $("#ca-err").textContent = "Enter your password."; return; }
+      $("#ca-ok").disabled = true; $("#ca-err").style.display = "none";
+      try {
+        await App.api(`/api/admin/charges/${encodeURIComponent(chargeId)}/approve`, { method: "POST", body: JSON.stringify({ password }) });
+        toast("Charge approved"); close(); if (onDone) onDone();
+      } catch (e) {
+        $("#ca-ok").disabled = false; $("#ca-err").style.display = "block";
+        $("#ca-err").textContent = /confirmation failed|password/i.test(e.message || "") ? "Incorrect password — approval blocked." : (e.message || "Approval failed");
+        pw.select();
+      }
+    }
+    $("#ca-ok").onclick = submit;
+    pw.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } };
+  }
+
+  function openChargeDetail(tenantId, tenantName, chargeInit, onChange) {
     const inner = el("div");
     const overlay = modal(inner);
     const chargeId = chargeInit.id;
@@ -1730,7 +1766,7 @@
         </div>`;
       const $ = (s) => inner.querySelector(s);
       $("#d-close").onclick = () => overlay.remove();
-      if (charge.status === "draft" && $("#d-approve")) $("#d-approve").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Approve charge", message: "Approve this charge? It becomes finalized and unpaid until a payment covers it. Reminder emails stop.", confirmText: "Approve" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/approve`, { method: "POST" }); toast("Charge approved"); await reload(); } catch (e) { toast(e.message, true); } };
+      if (charge.status === "draft" && $("#d-approve")) $("#d-approve").onclick = () => confirmApprove(charge.id, reload);
       $("#d-status").onchange = async () => { try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/status`, { method: "POST", body: JSON.stringify({ status: $("#d-status").value }) }); toast("Status updated"); await reload(); } catch (e) { toast(e.message, true); } };
       $("#d-edit").onclick = () => openChargeModal(tenantId, tenantName, charge, reload); // stacked; detail reloads on save
       $("#d-pay").onclick = () => openPaymentModal(tenantId, tenantName, charge, reload);
@@ -1747,10 +1783,83 @@
         render(charge, audit || []);
       } catch (e) { toast((e && e.message) || "Failed to refresh", true); }
       refreshBilling(tenantId, tenantName);
+      if (onChange) onChange();
     }
 
     render(chargeInit, null); // instant paint from the row data
     reload();                 // then load full audit + freshest charge
+  }
+
+  // ---- Central "Charges" tab: every charge across all portals in one App.table. Its column
+  // layout + saved filters are INDEPENDENT of the per-tenant charges table (separate keys). ----
+  const CENTRAL_CHARGES_COLS_KEY = "central-charges-cols";
+  const loadCentralChargesLayout = () => { try { return JSON.parse(localStorage.getItem(CENTRAL_CHARGES_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
+  const saveCentralChargesLayout = (l) => { try { localStorage.setItem(CENTRAL_CHARGES_COLS_KEY, JSON.stringify(l || {})); } catch (e) {} };
+
+  async function renderCentralCharges(host) {
+    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading charges…</div>`;
+    let layout = loadCentralChargesLayout();
+    const period = (c) => `${fmtDateOnly(c.periodStart)} – ${fmtDateOnly(c.periodEnd)}`;
+
+    const manageable = [
+      { key: "tenant", label: "Portal", type: "text", get: (c) => c.tenant, text: (c) => c.tenant, render: (c) => esc(c.tenant || "—") },
+      { key: "period", label: "Period", type: "text", get: (c) => c.periodStart, text: (c) => period(c), render: (c) => esc(period(c)) },
+      { key: "amount", label: "Amount", type: "number", get: (c) => c.amount, text: (c) => fmtMoney(c.amount), render: (c) => esc(fmtMoney(c.amount)) },
+      { key: "currency", label: "Currency", type: "text", get: (c) => c.currency, text: (c) => c.currency || "", render: (c) => esc(c.currency || "—") },
+      { key: "status", label: "Status", type: "text", get: (c) => c.status, text: (c) => cap(c.status), render: (c) => chargeStatusBadgeHTML(c) },
+      { key: "paid", label: "Paid", type: "number", get: (c) => c.paidTotal, text: (c) => fmtMoney(c.paidTotal), render: (c) => esc(fmtMoney(c.paidTotal)) },
+      { key: "outstanding", label: "Outstanding", type: "number", get: (c) => c.outstanding, text: (c) => fmtMoney(c.outstanding), render: (c) => esc(fmtMoney(c.outstanding)) },
+      { key: "due", label: "Due", type: "date", get: (c) => c.dueDate, text: (c) => (c.dueDate ? fmtDateOnly(c.dueDate) : "—"), render: (c) => (c.dueDate ? esc(fmtDateOnly(c.dueDate)) : "—") },
+      { key: "created", label: "Created", type: "date", get: (c) => c.createdAt, text: (c) => fmtDateOnly(c.createdAt), render: (c) => esc(fmtDateOnly(c.createdAt)) },
+      { key: "approved", label: "Approved", type: "date", get: (c) => c.approvedAt, text: (c) => (c.approvedAt ? fmtDateOnly(c.approvedAt) : "—"), render: (c) => (c.approvedAt ? esc(fmtDateOnly(c.approvedAt)) : "—") },
+      { key: "paidDate", label: "Paid date", type: "date", get: (c) => c.paidAt, text: (c) => (c.paidAt ? fmtDateOnly(c.paidAt) : "—"), render: (c) => (c.paidAt ? esc(fmtDateOnly(c.paidAt)) : "—") },
+      { key: "notes", label: "Notes", type: "text", get: (c) => c.notes || "", text: (c) => c.notes || "", render: (c) => (c.notes ? esc(c.notes) : `<span class="cell-muted">—</span>`) },
+    ];
+    const defaultKeys = ["tenant", "period", "amount", "status", "paid", "outstanding", "due", "created"];
+    const actionsCol = {
+      key: "__act", label: "", type: "text", filterable: false, get: () => "",
+      render: (c) => `<div style="display:flex;gap:4px;flex-wrap:wrap">${c.status === "draft" ? `<button class="btn btn-ghost btn-sm" data-act="approve" data-id="${esc(c.id)}">Approve</button>` : ""}${c.status !== "void" ? `<button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button><button class="btn btn-ghost btn-sm" data-act="void" data-id="${esc(c.id)}" style="color:#dc2626">Void</button>` : ""}</div>`,
+    };
+    const applied = () => App.table.applyColumnLayout(manageable, layout, defaultKeys).concat([actionsCol]);
+
+    let handle = null;
+    async function load() {
+      const prev = handle ? handle.getState() : null;
+      let data;
+      try { data = await App.api("/api/admin/charges/all"); }
+      catch (e) { host.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+      const charges = data.charges || [];
+      const byId = {}; charges.forEach((c) => (byId[c.id] = c));
+      host.innerHTML = "";
+      handle = App.table.mount({
+        container: host, rows: charges, rowId: (c) => c.id, columns: applied(), scrollX: true,
+        defaultSort: "created", defaultSortDir: "desc",
+        onRowClick: (c) => openChargeDetail(c.tenantId, c.tenant, c, load),
+        emptyHtml: `<div class="card cell-muted" style="padding:18px">No charges yet.</div>`,
+        onRender: () => {
+          App.util.$$("button[data-act]", host).forEach((btn) => {
+            btn.onclick = async (e) => {
+              e.stopPropagation();
+              const c = byId[btn.dataset.id]; if (!c) return;
+              if (btn.dataset.act === "approve") { confirmApprove(c.id, load); return; }
+              if (btn.dataset.act === "pay") { openPaymentModal(c.tenantId, c.tenant, c, load); return; }
+              if (btn.dataset.act === "void") {
+                if (!(await App.ui.confirmModal({ title: "Void charge", message: `Void this ${fmtMoney(c.amount)} charge for ${c.tenant}? It will be excluded from billed/outstanding totals.`, confirmText: "Void charge" }))) return;
+                try { await App.api(`/api/admin/charges/${encodeURIComponent(c.id)}/void`, { method: "POST" }); toast("Charge voided"); load(); } catch (err) { toast(err.message, true); }
+              }
+            };
+          });
+        },
+      });
+      // Saved filters (own view key) + Manage columns (own localStorage key) — both independent
+      // of the per-tenant charges table. Order in the right group: [Manage columns][Search].
+      mountAdminSavedFilters(handle, "admin-central-charges");
+      const manageBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#9776;</span> Manage columns`);
+      manageBtn.onclick = () => App.table.openColumnManager(manageable, layout, defaultKeys, (nl) => { layout = { order: nl.order, hidden: nl.hidden }; saveCentralChargesLayout(layout); handle.setColumns(applied()); });
+      if (handle.toolbarRight) handle.toolbarRight.insertBefore(manageBtn, handle.toolbarRight.firstChild);
+      if (prev) handle.applyState(prev); // preserve active sort/filter/search across a live reload
+    }
+    await load();
   }
 
   // ---- Macro Billing & Usage page: Overview (editable dashboards) / Billing Rates ----
@@ -1762,7 +1871,7 @@
 
     const tabsBar = el("div", "tabs");
     const bodyEl = el("div", "tab-body");
-    const TABS = [["overview", "Overview"], ["rates", "Billing Rates"]];
+    const TABS = [["overview", "Overview"], ["charges", "Charges"], ["rates", "Billing Rates"]];
     let active = "overview";
     const charts = [];
     function destroyCharts() { charts.forEach((c) => { try { c.destroy(); } catch (e) {} }); charts.length = 0; }
@@ -1772,6 +1881,7 @@
       bodyEl.innerHTML = "";
       Array.from(tabsBar.children).forEach((b) => b.classList.toggle("active", b.dataset.k === active));
       if (active === "rates") { await billingRatesInto(bodyEl); return; }
+      if (active === "charges") { const host = el("div"); bodyEl.appendChild(host); await renderCentralCharges(host); return; }
 
       if (active === "overview") {
         // Editable macro dashboard (scope "macro"), all-tenants data.
