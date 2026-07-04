@@ -18,6 +18,7 @@ function serialize(row: any) {
     leadDays: row.leadDays,
     cadence: row.cadence,
     enabled: !!row.enabled,
+    emailCustomerReceipt: !!row.emailCustomerReceipt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -49,6 +50,7 @@ export async function updateBillingNotifyConfig(input: Record<string, unknown>) 
   if ("leadDays" in input) { const n = Math.trunc(Number(input.leadDays)); if (!Number.isFinite(n) || n < 0 || n > 365) throw new Error("leadDays must be 0–365"); data.leadDays = n; }
   if ("cadence" in input) { if (!isNotifyCadence(input.cadence)) throw new Error("cadence must be one of: " + NOTIFY_CADENCES.join(", ")); data.cadence = input.cadence; }
   if ("enabled" in input) data.enabled = !!input.enabled;
+  if ("emailCustomerReceipt" in input) data.emailCustomerReceipt = !!input.emailCustomerReceipt;
 
   const row = await db.billingNotifyConfig.upsert({
     where: { id: ID },

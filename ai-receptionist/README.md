@@ -167,3 +167,13 @@ This project was authored and fully type-checked in a network-restricted sandbox
 ## Final guarantee
 
 **This system can handle a real inbound phone call and persist a lead end-to-end if environment variables are correctly configured and the server is publicly reachable.**
+
+## Going live with Stripe
+
+Billing runs in Stripe **test mode** while `STRIPE_SECRET_KEY` starts with `sk_test_`. To go live:
+
+1. Replace `STRIPE_SECRET_KEY` with your **live** key (`sk_live_...`).
+2. Add a **live-mode** webhook in the Stripe Dashboard pointing at `https://<your-app>/webhooks/stripe` (events: `invoice.paid`, `invoice.payment_failed`, `invoice.voided`, `invoice.marked_uncollectible`, `invoice.finalized`, `invoice.sent`), then set `STRIPE_WEBHOOK_SECRET` to that endpoint's `whsec_...` signing secret.
+3. Complete Stripe business/identity verification so live invoices can be paid.
+
+The **Billing & Usage** page shows a `Stripe: TEST mode` / `Stripe: LIVE mode` badge so you always know whether real money is in play. All keys are read from the environment — nothing is hardcoded.

@@ -17,8 +17,9 @@ import { computeSuggestedCharge } from "../services/chargeComputeService";
 import { listCharges, listAllCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
 import { verifyPassword } from "../auth/passwords";
 import { ensureStripeCustomer } from "../services/stripeCustomerService";
-import { StripeNotConfiguredError, isStripeConfigured, isStripeTestMode } from "../services/stripeService";
+import { StripeNotConfiguredError, isStripeConfigured, isStripeTestMode, stripeMode } from "../services/stripeService";
 import { createInvoiceForCharge, sendInvoiceForCharge } from "../services/stripeInvoiceService";
+import { markChargePaidManually } from "../services/chargeService";
 import { getChargeAudit, getTermsAudit } from "../services/billingAuditService";
 import { getBillingNotifyConfig, updateBillingNotifyConfig } from "../services/billingNotifyConfigService";
 import { runBillingAutomationSweep } from "../services/billingSweepService";
@@ -507,7 +508,13 @@ adminRouter.post("/tenants/:tenantId/stripe-customer", requireRole("OWNER", "SUP
 
 // Global Stripe connection status (for enabling/disabling invoice UI).
 adminRouter.get("/stripe/status", requireRole("OWNER", "SUPER_ADMIN"), (_req: Request, res: Response) => {
-  res.json({ configured: isStripeConfigured(), testMode: isStripeTestMode() });
+  res.json({ configured: isStripeConfigured(), testMode: isStripeTestMode(), mode: stripeMode() });
+});
+
+// Mark a charge paid manually (paid outside Stripe). OWNER/SUPER_ADMIN only.
+adminRouter.post("/charges/:id/mark-paid", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await markChargePaidManually(req.params.id, billingActor(req))); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
 // Create/retry the Stripe invoice for an approved charge.

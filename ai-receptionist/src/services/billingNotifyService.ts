@@ -91,3 +91,73 @@ export async function sendApprovalReminders(now: Date = new Date()): Promise<Rem
   if (report.sent) logger.info(`[billing-notify] approval reminders sent=${report.sent} candidates=${report.candidates}`);
   return report;
 }
+
+// ---- Payment-failure notification to the OPERATOR (not the customer) + optional customer receipt ----
+
+async function portalName(tenantId: string): Promise<string> {
+  const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+  return t?.name || tenantId;
+}
+
+function failureHtml(name: string, charge: any, invoiceUrl?: string | null): string {
+  const base = (env.APP_BASE_URL || "").replace(/\/+$/, "");
+  return `
+    <div style="font-family:system-ui,Segoe UI,Arial,sans-serif;color:#111">
+      <h2 style="margin:0 0 8px">Invoice payment failed</h2>
+      <p style="margin:0 0 12px">A Stripe payment attempt for <b>${escapeHtml(name)}</b> failed. The charge remains approved and unpaid — you may want to follow up.</p>
+      <table style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
+        <tr><td style="padding:2px 12px 2px 0;color:#555">Period</td><td><b>${d(charge.periodStart)} – ${d(charge.periodEnd)}</b></td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#555">Amount</td><td><b>${money(charge.amount)} ${escapeHtml(charge.currency || "USD")}</b></td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#555">Due</td><td>${d(charge.dueDate)}</td></tr>
+      </table>
+      ${invoiceUrl ? `<p style="margin:0 0 8px"><a href="${escapeHtml(invoiceUrl)}" style="color:#2563eb">View the Stripe invoice</a></p>` : ""}
+      <p style="margin:0 0 4px"><a href="${base}/#/admin/usage" style="background:#dc2626;color:#fff;padding:9px 16px;border-radius:6px;text-decoration:none;display:inline-block">Open billing</a></p>
+    </div>`;
+}
+
+function receiptHtml(name: string, charge: any, amount: number): string {
+  return `
+    <div style="font-family:system-ui,Segoe UI,Arial,sans-serif;color:#111">
+      <h2 style="margin:0 0 8px">Payment received — thank you</h2>
+      <p style="margin:0 0 12px">We've received your payment for <b>${escapeHtml(name)}</b>.</p>
+      <table style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
+        <tr><td style="padding:2px 12px 2px 0;color:#555">Period</td><td><b>${d(charge.periodStart)} – ${d(charge.periodEnd)}</b></td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#555">Amount paid</td><td><b>${money(amount)} ${escapeHtml(charge.currency || "USD")}</b></td></tr>
+      </table>
+      <p style="font-size:12px;color:#888;margin:12px 0 0">This is a courtesy confirmation. Your official receipt comes from Stripe.</p>
+    </div>`;
+}
+
+// Email the operator that a charge's payment failed. Respects notify settings (enabled +
+// recipients). Returns whether anything was sent. Caller ensures once-per-event (webhook dedupe).
+export async function notifyPaymentFailure(charge: any, invoiceUrl?: string | null): Promise<boolean> {
+  const cfg = await getBillingNotifyConfig();
+  if (!cfg.enabled) return false;
+  const recipients: string[] = Array.isArray(cfg.recipients) ? cfg.recipients : [];
+  if (!recipients.length) return false;
+  const name = await portalName(charge.tenantId);
+  const html = failureHtml(name, charge, invoiceUrl);
+  let anySent = false;
+  for (const to of recipients) {
+    try {
+      await sendRichEmail({ to, subject: `Payment failed — ${name} (${money(charge.amount)})`, html, fromEmail: env.RESEND_FROM }, { tenantId: charge.tenantId, type: "billing_payment_failed" });
+      anySent = true;
+    } catch (e) { logger.warn(`[billing-notify] failure email to ${to} for charge ${charge.id} failed: ${(e as Error).message}`); }
+  }
+  return anySent;
+}
+
+// Optionally email the CUSTOMER a short receipt when a charge is paid. Only when the toggle is on
+// AND a billing email exists. Returns whether it sent.
+export async function sendCustomerReceipt(charge: any, amount: number): Promise<boolean> {
+  const cfg = await getBillingNotifyConfig();
+  if (!(cfg as any).emailCustomerReceipt) return false;
+  const bc = await db.billingConfig.findUnique({ where: { tenantId: charge.tenantId }, select: { billingEmail: true } });
+  const to = bc?.billingEmail;
+  if (!to) return false;
+  const name = await portalName(charge.tenantId);
+  try {
+    await sendRichEmail({ to, subject: `Payment received — ${name}`, html: receiptHtml(name, charge, amount), fromEmail: env.RESEND_FROM }, { tenantId: charge.tenantId, type: "billing_receipt" });
+    return true;
+  } catch (e) { logger.warn(`[billing-notify] receipt email to ${to} for charge ${charge.id} failed: ${(e as Error).message}`); return false; }
+}

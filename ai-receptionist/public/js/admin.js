@@ -1203,9 +1203,15 @@
     row.appendChild(field("Cadence", cadSel));
     bodyWrap.appendChild(row);
 
+    // Optional customer receipt on payment (default OFF).
+    const rcpWrap = el("label"); rcpWrap.style.cssText = "display:flex;align-items:center;gap:8px;font-size:13px;margin:0 0 16px;cursor:pointer";
+    const rcpCb = el("input"); rcpCb.type = "checkbox"; rcpCb.checked = !!cfg.emailCustomerReceipt;
+    rcpWrap.appendChild(rcpCb); rcpWrap.appendChild(document.createTextNode("Email the customer a short receipt when a charge is paid (Stripe also sends its own receipt)"));
+    bodyWrap.appendChild(rcpWrap);
+
     const save = el("button", "btn btn-primary btn-sm", "Save notification settings");
     save.onclick = async () => {
-      const body = { enabled: enCb.checked, recipients, leadDays: Number(leadInp.value || 0), cadence: cadSel.value };
+      const body = { enabled: enCb.checked, recipients, leadDays: Number(leadInp.value || 0), cadence: cadSel.value, emailCustomerReceipt: rcpCb.checked };
       save.disabled = true;
       try { const u = await App.api("/api/admin/billing-notify-config", { method: "PATCH", body: JSON.stringify(body) }); recipients = (u.recipients || []).slice(); paintChips(); toast("Notification settings saved"); }
       catch (e) { toast(e.message, true); }
@@ -1517,7 +1523,8 @@
     const sep = el("div"); sep.style.cssText = "border-top:1px solid var(--border,#e5e7eb);margin:16px 0 12px"; card.appendChild(sep);
     const sh = el("div"); sh.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
     sh.appendChild(el("h4", null, "Payments (Stripe)")).style.cssText = "margin:0;font-size:13.5px";
-    if (cfg.stripeConfigured && cfg.stripeTestMode) { const t = el("span", null, "TEST"); t.style.cssText = "font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:6px;padding:1px 6px"; sh.appendChild(t); }
+    if (cfg.stripeConfigured && cfg.stripeMode === "test") { const t = el("span", null, "TEST"); t.style.cssText = "font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:6px;padding:1px 6px"; sh.appendChild(t); }
+    if (cfg.stripeConfigured && cfg.stripeMode === "live") { const t = el("span", null, "LIVE"); t.style.cssText = "font-size:10px;font-weight:700;color:#fff;background:#dc2626;border-radius:6px;padding:1px 6px"; sh.appendChild(t); }
     card.appendChild(sh);
 
     const short = (id) => (id && id.length > 14 ? id.slice(0, 10) + "…" + id.slice(-4) : id);
@@ -1576,6 +1583,23 @@
   }
 
   // Stripe invoice status pill (+ optional hosted-link). "Not invoiced" when none.
+  // Rich lifecycle state (precedence: void > paid > failed > overdue > status). Used for the
+  // filterable "State" column + detail pill so Failed/Overdue are distinct from plain unpaid.
+  function chargeStateLabel(c) {
+    if (c.status === "void") return "Void";
+    if (c.isPaid || c.status === "paid") return "Paid";
+    if (c.paymentFailed) return "Failed";
+    if (c.overdue) return "Overdue";
+    if (c.status === "draft") return "Draft";
+    if (c.status === "approved") return "Approved";
+    return cap(c.status || "");
+  }
+  function chargeStatePillHTML(c) {
+    const label = chargeStateLabel(c);
+    const color = { Void: "#9ca3af", Paid: "#16a34a", Failed: "#dc2626", Overdue: "#b45309", Draft: "#6b7280", Approved: "#2563eb", Unpaid: "#dc2626" }[label] || "#6b7280";
+    return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;color:#fff;background:${color}">${esc(label)}</span>`;
+  }
+
   function invoiceStatusHTML(c) {
     if (!c.stripeInvoiceId) return `<span class="cell-muted">Not invoiced</span>`;
     const map = { draft: "#6b7280", open: "#2563eb", paid: "#16a34a", void: "#9ca3af", uncollectible: "#dc2626" };
@@ -1611,6 +1635,7 @@
       { key: "period", label: "Period", type: "text", get: (c) => c.periodStart, text: (c) => period(c), render: (c) => esc(period(c)) },
       { key: "amount", label: "Amount", type: "number", get: (c) => c.amount, text: (c) => fmtMoney(c.amount) + " " + (c.currency || ""), render: (c) => esc(fmtMoney(c.amount) + " " + (c.currency || "")) },
       { key: "status", label: "Status", type: "text", get: (c) => c.status, text: (c) => cap(c.status), render: (c) => chargeStatusBadgeHTML(c) },
+      { key: "state", label: "State", type: "text", get: (c) => chargeStateLabel(c), text: (c) => chargeStateLabel(c), render: (c) => chargeStatePillHTML(c) },
       { key: "paid", label: "Paid", type: "text", get: (c) => (c.isPaid ? 1 : 0), text: (c) => (c.isPaid ? "Paid" : (c.status === "void" ? "—" : "Unpaid")), render: (c) => (c.isPaid ? "✅" : (c.status === "void" ? "—" : "❌")) },
       { key: "outstanding", label: "Outstanding", type: "number", get: (c) => c.outstanding, text: (c) => fmtMoney(c.outstanding), render: (c) => esc(fmtMoney(c.outstanding)) },
       { key: "due", label: "Due", type: "date", get: (c) => c.dueDate, text: (c) => (c.dueDate ? fmtDateOnly(c.dueDate) : "—"), render: (c) => (c.dueDate ? esc(fmtDateOnly(c.dueDate)) : "—") },
@@ -1620,7 +1645,7 @@
       { key: "notes", label: "Notes", type: "text", get: (c) => c.notes || "", text: (c) => c.notes || "", render: (c) => (c.notes ? esc(c.notes) : `<span class="cell-muted">—</span>`) },
       { key: "invoice", label: "Invoice", type: "text", get: (c) => c.stripeInvoiceStatus || "", text: (c) => (c.stripeInvoiceId ? (c.stripeInvoiceStatus || "open") : "Not invoiced"), render: (c) => invoiceStatusHTML(c) },
     ];
-    const defaultKeys = ["period", "amount", "status", "paid", "outstanding", "due"];
+    const defaultKeys = ["period", "amount", "state", "paid", "outstanding", "due"];
     const actionsCol = {
       key: "__act", label: "", type: "text", filterable: false, get: () => "",
       render: (c) => (c.status !== "void" ? `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button></div>` : ""),
@@ -1809,7 +1834,7 @@
 
       inner.innerHTML = `<div class="modal-head"><h2>Charge detail</h2><button class="icon-btn" id="d-close">&times;</button></div>
         <div class="modal-body">
-          <div style="margin-bottom:6px"><b>${esc(fmtDateOnly(charge.periodStart))} – ${esc(fmtDateOnly(charge.periodEnd))}</b> · ${esc(fmtMoney(charge.amount))} ${esc(charge.currency || "")} · ${chargeStatusBadgeHTML(charge)}</div>
+          <div style="margin-bottom:6px"><b>${esc(fmtDateOnly(charge.periodStart))} – ${esc(fmtDateOnly(charge.periodEnd))}</b> · ${esc(fmtMoney(charge.amount))} ${esc(charge.currency || "")} · ${chargeStatusBadgeHTML(charge)}${(charge.paymentFailed || charge.overdue) ? " " + chargeStatePillHTML(charge) : ""}</div>
           <div class="cell-muted" style="font-size:12.5px;margin-bottom:4px">Breakdown — flat ${esc(fmtMoney(b.flatFee || 0))}, passthrough base ${esc(fmtMoney(b.passthroughBaseCost || 0))} × (1 + ${esc(String(b.markupPct || 0))}%) = ${esc(fmtMoney(b.passthroughAmount || 0))}.<br>Usage snapshot: ${us.calls || 0} calls · ${us.minutes || 0} min · ${us.tokens || 0} tokens · ${us.emails || 0} emails.</div>
           ${charge.dueDate ? `<div class="cell-muted" style="font-size:12.5px">Due ${esc(fmtDateOnly(charge.dueDate))}</div>` : ""}
           ${charge.notes ? `<div style="font-size:12.5px;margin-top:4px">Notes: ${esc(charge.notes)}</div>` : ""}
@@ -1822,6 +1847,7 @@
             ${charge.status === "draft" ? `<button id="d-approve" class="btn btn-primary btn-sm">Approve</button>` : ""}
             <button id="d-edit" class="btn btn-ghost btn-sm">Edit</button>
             <button id="d-pay" class="btn btn-ghost btn-sm">Record payment</button>
+            ${(!charge.isPaid && charge.status !== "draft" && charge.status !== "void") ? `<button id="d-markpaid" class="btn btn-ghost btn-sm">Mark paid manually</button>` : ""}
             <button id="d-void" class="btn btn-ghost btn-sm" style="color:#dc2626">Void</button>
           </div>
           <div style="border-top:1px solid var(--border,#e5e7eb);margin:14px 0 10px"></div>
@@ -1842,6 +1868,7 @@
       $("#d-edit").onclick = () => openChargeModal(tenantId, tenantName, charge, reload); // stacked; detail reloads on save
       $("#d-pay").onclick = () => openPaymentModal(tenantId, tenantName, charge, reload);
       $("#d-void").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Void charge", message: "Void this charge? It will be excluded from billed/outstanding totals.", confirmText: "Void charge" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/void`, { method: "POST" }); toast("Charge voided"); await reload(); } catch (e) { toast(e.message, true); } };
+      if ($("#d-markpaid")) $("#d-markpaid").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Mark paid manually", message: "Record the outstanding balance as paid (e.g. the customer paid outside Stripe)? This can't be undone from here.", confirmText: "Mark paid" }))) return; const btn = $("#d-markpaid"); btn.disabled = true; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/mark-paid`, { method: "POST" }); toast("Charge marked paid"); await reload(); } catch (e) { toast(e.message, true); btn.disabled = false; } };
       if ($("#d-copylink")) $("#d-copylink").onclick = async () => { try { await navigator.clipboard.writeText(charge.stripeInvoiceUrl); toast("Payment link copied"); } catch (e) { window.prompt("Copy the payment link:", charge.stripeInvoiceUrl); } };
       if ($("#d-openlink")) $("#d-openlink").onclick = () => window.open(charge.stripeInvoiceUrl, "_blank", "noopener");
       if ($("#d-invoice")) $("#d-invoice").onclick = async () => { const btn = $("#d-invoice"); btn.disabled = true; try { const r = await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/invoice`, { method: "POST" }); toast(r && r.created === false ? "Invoice already exists" : "Invoice created"); await reload(); } catch (e) { toast(e.message, true); btn.disabled = false; } };
@@ -1883,6 +1910,7 @@
       { key: "amount", label: "Amount", type: "number", get: (c) => c.amount, text: (c) => fmtMoney(c.amount), render: (c) => esc(fmtMoney(c.amount)) },
       { key: "currency", label: "Currency", type: "text", get: (c) => c.currency, text: (c) => c.currency || "", render: (c) => esc(c.currency || "—") },
       { key: "status", label: "Status", type: "text", get: (c) => c.status, text: (c) => cap(c.status), render: (c) => chargeStatusBadgeHTML(c) },
+      { key: "state", label: "State", type: "text", get: (c) => chargeStateLabel(c), text: (c) => chargeStateLabel(c), render: (c) => chargeStatePillHTML(c) },
       { key: "paid", label: "Paid", type: "number", get: (c) => c.paidTotal, text: (c) => fmtMoney(c.paidTotal), render: (c) => esc(fmtMoney(c.paidTotal)) },
       { key: "outstanding", label: "Outstanding", type: "number", get: (c) => c.outstanding, text: (c) => fmtMoney(c.outstanding), render: (c) => esc(fmtMoney(c.outstanding)) },
       { key: "due", label: "Due", type: "date", get: (c) => c.dueDate, text: (c) => (c.dueDate ? fmtDateOnly(c.dueDate) : "—"), render: (c) => (c.dueDate ? esc(fmtDateOnly(c.dueDate)) : "—") },
@@ -1892,7 +1920,7 @@
       { key: "notes", label: "Notes", type: "text", get: (c) => c.notes || "", text: (c) => c.notes || "", render: (c) => (c.notes ? esc(c.notes) : `<span class="cell-muted">—</span>`) },
       { key: "invoice", label: "Invoice", type: "text", get: (c) => c.stripeInvoiceStatus || "", text: (c) => (c.stripeInvoiceId ? (c.stripeInvoiceStatus || "open") : "Not invoiced"), render: (c) => invoiceStatusHTML(c) },
     ];
-    const defaultKeys = ["tenant", "period", "amount", "status", "paid", "outstanding", "due", "created"];
+    const defaultKeys = ["tenant", "period", "amount", "state", "paid", "outstanding", "due", "created"];
     const actionsCol = {
       key: "__act", label: "", type: "text", filterable: false, get: () => "",
       render: (c) => `<div style="display:flex;gap:4px;flex-wrap:wrap">${c.status === "draft" ? `<button class="btn btn-ghost btn-sm" data-act="approve" data-id="${esc(c.id)}">Approve</button>` : ""}${c.status !== "void" ? `<button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button><button class="btn btn-ghost btn-sm" data-act="void" data-id="${esc(c.id)}" style="color:#dc2626">Void</button>` : ""}</div>`,
@@ -1945,6 +1973,19 @@
     const wrap = el("div", "fade-in");
     view().appendChild(wrap);
     wrap.appendChild(el("h1", "page-title", "Billing & Usage"));
+    // Stripe mode badge (TEST/LIVE) so the operator always knows if real money is in play.
+    (async () => {
+      try {
+        const st = await App.api("/api/admin/stripe/status");
+        if (!st || !st.configured) return;
+        const badge = el("span");
+        const live = st.mode === "live";
+        badge.textContent = live ? "Stripe: LIVE mode" : "Stripe: TEST mode";
+        badge.style.cssText = `display:inline-block;margin:0 0 12px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 12px;color:${live ? "#fff" : "#92400e"};background:${live ? "#dc2626" : "#fef3c7"};border:1px solid ${live ? "#dc2626" : "#fde68a"}`;
+        badge.title = live ? "Live keys — real charges and payments." : "Test keys — no real money moves.";
+        wrap.insertBefore(badge, wrap.children[1] || null);
+      } catch (e) { /* ignore */ }
+    })();
 
     const tabsBar = el("div", "tabs");
     const bodyEl = el("div", "tab-body");

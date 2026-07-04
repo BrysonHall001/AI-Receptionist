@@ -41,7 +41,7 @@ export async function getBillingConfig(tenantId: string) {
     create: { tenantId },
   });
   const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { billingStatus: true, name: true, stripeCustomerId: true } });
-  const { isStripeConfigured, isStripeTestMode } = await import("./stripeService");
+  const { isStripeConfigured, isStripeTestMode, stripeMode } = await import("./stripeService");
   return {
     ...serializeConfig(row),
     billingStatus: t?.billingStatus ?? null,
@@ -49,6 +49,7 @@ export async function getBillingConfig(tenantId: string) {
     stripeCustomerId: t?.stripeCustomerId ?? null,
     stripeConfigured: isStripeConfigured(),
     stripeTestMode: isStripeTestMode(),
+    stripeMode: stripeMode(),
   };
 }
 

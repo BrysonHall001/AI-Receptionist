@@ -26,6 +26,15 @@ export function isStripeTestMode(): boolean {
   return isStripeConfigured() && /^sk_test_/.test(env.STRIPE_SECRET_KEY.trim());
 }
 
+// "test" | "live" | null — from the key prefix, so the operator always knows if real money is live.
+export function stripeMode(): "test" | "live" | null {
+  if (!isStripeConfigured()) return null;
+  const k = env.STRIPE_SECRET_KEY.trim();
+  if (/^sk_live_/.test(k) || /^rk_live_/.test(k)) return "live";
+  if (/^sk_test_/.test(k) || /^rk_test_/.test(k)) return "test";
+  return null;
+}
+
 // Test seam: inject a fake Stripe client so self-tests never hit the live API. No effect in
 // normal operation (production always builds the real client from the key).
 export function __setStripeClientForTest(c: unknown): void { client = (c as Stripe) ?? null; }

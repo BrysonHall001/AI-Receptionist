@@ -27,6 +27,10 @@ export function serializeCharge(c: any) {
   const outstanding = Math.max(0, Math.round((amount - paidTotal) * 100) / 100);
   const isVoid = c.status === "void";
   const isPaid = !isVoid && (c.status === "paid" || (paidTotal >= amount && amount > 0));
+  // Failed = a Stripe payment attempt failed and it's still unpaid (distinct from plain unpaid).
+  const paymentFailed = !isVoid && !isPaid && !!c.paymentFailedAt;
+  // Overdue = approved + unpaid past its due date.
+  const overdue = !isVoid && !isPaid && c.status === "approved" && !!c.dueDate && new Date(c.dueDate).getTime() < Date.now();
   // paidAt = when the charge became fully covered: the paidAt of the payment that cleared the
   // balance (payments applied oldest-first). Fallback: latest payment's paidAt if marked paid.
   let paidAt: string | null = null;
@@ -54,6 +58,9 @@ export function serializeCharge(c: any) {
     stripeInvoiceUrl: c.stripeInvoiceUrl ?? null,
     stripeInvoiceStatus: c.stripeInvoiceStatus ?? null,
     stripeInvoicedAt: c.stripeInvoicedAt ?? null,
+    paymentFailedAt: iso(c.paymentFailedAt),
+    paymentFailed,
+    overdue,
     updatedAt: c.updatedAt,
     paidTotal: Math.round(paidTotal * 100) / 100,
     outstanding: isVoid ? 0 : outstanding,
@@ -221,4 +228,24 @@ export async function recordPayment(chargeId: string, input: { amount: number; p
     await writeAudit({ tenantId: charge.tenantId, chargeId, actor, action: "status_changed", field: "status", oldValue: fresh.status, newValue: "paid", note: "Automatically marked paid — fully covered by payments" });
   }
   return getCharge(chargeId);
+}
+
+// Mark a charge paid manually (e.g. customer paid outside Stripe). Records a manual Payment for
+// the outstanding balance, flips to paid, and clears any failure marker. Audited with the actor.
+export async function markChargePaidManually(id: string, actor?: Actor) {
+  const charge = await db.charge.findUnique({ where: { id }, include: withPayments });
+  if (!charge) throw new Error("charge not found");
+  if (charge.status === "void") throw new Error("cannot mark a void charge paid");
+  if (charge.status === "paid") return (await getCharge(id))!;
+  const paidTotal = (charge.payments || []).reduce((s: number, p: any) => s + Number(p.amount), 0);
+  const outstanding = Math.max(0, Math.round((Number(charge.amount) - paidTotal) * 100) / 100);
+  if (outstanding > 0) {
+    // recordPayment flips to paid when covered + logs payment_recorded/status_changed.
+    await recordPayment(id, { amount: outstanding, method: "manual", notes: "Marked paid manually" }, actor);
+  } else {
+    await db.charge.update({ where: { id }, data: { status: "paid" } });
+  }
+  await db.charge.update({ where: { id }, data: { paymentFailedAt: null } });
+  await writeAudit({ tenantId: charge.tenantId, chargeId: id, actor, action: "marked_paid_manual", field: "status", newValue: "paid", note: "Marked paid manually (paid outside Stripe)" });
+  return (await getCharge(id))!;
 }

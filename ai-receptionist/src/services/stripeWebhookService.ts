@@ -75,15 +75,27 @@ async function applyToCharge(charge: any, invoice: any, type: string, event: any
         // "payment_recorded" (+ auto "status_changed") — all with actor "Stripe".
         await recordPayment(chargeId, { amount, paidAt: evtTime(event), method: "stripe", notes: `Stripe invoice ${invoiceId}` }, STRIPE_ACTOR);
       }
-      await db.charge.update({ where: { id: chargeId }, data: { status: "paid", stripeInvoiceStatus: "paid" } });
+      await db.charge.update({ where: { id: chargeId }, data: { status: "paid", stripeInvoiceStatus: "paid", paymentFailedAt: null } });
       await writeAudit({ tenantId: charge.tenantId, chargeId, actor: STRIPE_ACTOR, action: "invoice_paid", field: "stripeInvoiceStatus", newValue: "paid", note: `Invoice paid via Stripe — ${fmtMoney(amount, (invoice?.currency || charge.currency || "USD").toUpperCase())}` });
+      // Optional courtesy receipt to the customer (toggle default OFF).
+      try {
+        const { sendCustomerReceipt } = await import("./billingNotifyService");
+        if (await sendCustomerReceipt(charge, amount)) await writeAudit({ tenantId: charge.tenantId, chargeId, actor: STRIPE_ACTOR, action: "receipt_sent", note: "Customer receipt emailed" });
+      } catch (e) { logger.warn(`[stripe-webhook] receipt send failed for ${chargeId}: ${(e as Error).message}`); }
       return { status: "ok:paid", chargeId };
     }
 
     case "invoice.payment_failed": {
       if (charge.status === "paid") return { status: "ok:ignored_after_paid", chargeId }; // don't regress
-      await db.charge.update({ where: { id: chargeId }, data: { stripeInvoiceStatus: invoice?.status || "open" } });
+      await db.charge.update({ where: { id: chargeId }, data: { stripeInvoiceStatus: invoice?.status || "open", paymentFailedAt: evtTime(event) } });
       await writeAudit({ tenantId: charge.tenantId, chargeId, actor: STRIPE_ACTOR, action: "payment_failed", field: "stripeInvoiceStatus", newValue: invoice?.status || "open", note: "Invoice payment failed at Stripe — charge remains approved + unpaid" });
+      // Notify the operator once (webhook event-id dedupe guarantees once per failure event).
+      try {
+        const { notifyPaymentFailure } = await import("./billingNotifyService");
+        if (await notifyPaymentFailure(charge, invoice?.hosted_invoice_url || charge.stripeInvoiceUrl)) {
+          await writeAudit({ tenantId: charge.tenantId, chargeId, actor: STRIPE_ACTOR, action: "failure_notified", note: "Operator emailed about the failed payment" });
+        }
+      } catch (e) { logger.warn(`[stripe-webhook] failure notify failed for ${chargeId}: ${(e as Error).message}`); }
       return { status: "ok:payment_failed", chargeId };
     }
 

@@ -1006,6 +1006,7 @@ model Charge {
   stripeInvoiceUrl    String?
   stripeInvoiceStatus String?
   stripeInvoicedAt    DateTime?
+  paymentFailedAt     DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   payments    Payment[]
@@ -1022,6 +1023,7 @@ model BillingNotifyConfig {
   leadDays   Int      @default(7)
   cadence    String   @default("once") // "once" | "daily_until_approved"
   enabled    Boolean  @default(true)
+  emailCustomerReceipt Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
