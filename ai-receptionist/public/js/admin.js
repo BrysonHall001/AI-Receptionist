@@ -1719,11 +1719,11 @@
 
   // Action icon/color + label for an audit action.
   function auditDot(action) {
-    const map = { charge_created: "#6b7280", charge_updated: "#d97706", status_changed: "#7c3aed", charge_approved: "#2563eb", charge_voided: "#9ca3af", payment_recorded: "#16a34a", terms_updated: "#0ea5e9" };
+    const map = { charge_created: "#6b7280", charge_updated: "#d97706", status_changed: "#7c3aed", charge_approved: "#2563eb", charge_voided: "#9ca3af", payment_recorded: "#16a34a", terms_updated: "#0ea5e9", invoice_created: "#0ea5e9", invoice_sent: "#0ea5e9", invoice_paid: "#16a34a", payment_failed: "#dc2626", invoice_voided: "#9ca3af", invoice_uncollectible: "#dc2626" };
     return map[action] || "#6b7280";
   }
   function auditActionLabel(action) {
-    const map = { charge_created: "Created", charge_updated: "Edited", status_changed: "Status changed", charge_approved: "Approved", charge_voided: "Voided", payment_recorded: "Payment recorded", terms_updated: "Terms updated" };
+    const map = { charge_created: "Created", charge_updated: "Edited", status_changed: "Status changed", charge_approved: "Approved", charge_voided: "Voided", payment_recorded: "Payment recorded", terms_updated: "Terms updated", invoice_created: "Invoice created", invoice_sent: "Invoice sent", invoice_paid: "Invoice paid", payment_failed: "Payment failed", invoice_voided: "Invoice voided", invoice_uncollectible: "Invoice uncollectible" };
     return map[action] || action;
   }
 

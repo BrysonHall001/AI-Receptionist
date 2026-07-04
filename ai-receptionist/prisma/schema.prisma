@@ -1188,3 +1188,12 @@ model BillingAuditLog {
   @@index([chargeId, createdAt])
   @@index([tenantId, createdAt])
 }
+
+// Idempotency ledger for Stripe webhook delivery (events are at-least-once). A processed
+// eventId is recorded so duplicates are skipped.
+model StripeWebhookEvent {
+  id        String   @id @default(cuid())
+  eventId   String   @unique
+  type      String
+  createdAt DateTime @default(now())
+}

@@ -29,3 +29,9 @@ export function isStripeTestMode(): boolean {
 // Test seam: inject a fake Stripe client so self-tests never hit the live API. No effect in
 // normal operation (production always builds the real client from the key).
 export function __setStripeClientForTest(c: unknown): void { client = (c as Stripe) ?? null; }
+
+// Verify + parse a Stripe webhook using the SDK (HMAC over the RAW body). Throws on a bad
+// signature. Requires the API key (to build the client) and the webhook signing secret.
+export function constructWebhookEvent(rawBody: Buffer | string, signature: string, secret: string): Stripe.Event {
+  return getStripe().webhooks.constructEvent(rawBody, signature, secret);
+}

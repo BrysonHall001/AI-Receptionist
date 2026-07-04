@@ -67,6 +67,8 @@ const envSchema = z.object({
   // Stripe (test mode). OPTIONAL — the app boots without it; Stripe endpoints return a clear
   // "not configured" error until STRIPE_SECRET_KEY (use a sk_test_... key) is set.
   STRIPE_SECRET_KEY: z.string().default(""),
+  // Stripe webhook signing secret (whsec_...). OPTIONAL — if unset, /webhooks/stripe no-ops (200).
+  STRIPE_WEBHOOK_SECRET: z.string().default(""),
 
   // ---- GOOGLE CALENDAR (read-only; connection plumbing) ----
   // All OPTIONAL so the app boots fine with Google unconfigured. The OAuth

@@ -6,6 +6,7 @@ import { attachUser } from "./middleware/auth";
 import { twilioRouter } from "./routes/twilioWebhooks";
 import { conversationRelayRouter } from "./routes/conversationRelayWebhook";
 import { resendWebhookRouter } from "./routes/resendWebhook";
+import { stripeWebhookRouter } from "./routes/stripeWebhook";
 import { internalRouter } from "./routes/internal";
 import { inboundRouter } from "./routes/inbound";
 import { inviteRouter } from "./routes/invites";
@@ -32,6 +33,8 @@ export function createApp(): express.Express {
   // verification, so it is mounted with express.raw BEFORE the global urlencoded/JSON
   // parsers below. Public (no auth), like the Twilio webhooks.
   app.use("/webhooks/resend", express.raw({ type: "*/*" }), resendWebhookRouter);
+  // Stripe payment webhook — same RAW-body requirement for signature verification.
+  app.use("/webhooks/stripe", express.raw({ type: "*/*" }), stripeWebhookRouter);
 
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json({ limit: "2mb" })); // imports can be largish
