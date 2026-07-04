@@ -1498,13 +1498,21 @@
     return b;
   }
 
+  function chargeStatusBadgeHTML(c) {
+    const map = { draft: "#6b7280", approved: "#2563eb", paid: "#16a34a", unpaid: "#dc2626", void: "#9ca3af" };
+    return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;color:#fff;background:${map[c.status] || "#6b7280"}">${esc(cap(c.status))}</span>`;
+  }
+
+  // Charges table column layout persists per-browser under ONE shared key so it applies to every
+  // tenant's charges table (mirrors the Tenants table's admincols pattern).
+  const CHARGES_COLS_KEY = "chargescols";
+  const loadChargesLayout = () => { try { return JSON.parse(localStorage.getItem(CHARGES_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
+  const saveChargesLayout = (l) => { try { localStorage.setItem(CHARGES_COLS_KEY, JSON.stringify(l || {})); } catch (e) {} };
+
   function chargesLedgerCard(tenantId, tenantName, ledger) {
     const card = el("div", "card"); card.style.cssText = "padding:18px";
     const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px";
     head.appendChild(el("h3", null, "Charges")).style.cssText = "margin:0;font-size:15px";
-    const addBtn = el("button", "btn btn-primary btn-sm", "+ Create charge");
-    addBtn.onclick = () => openChargeModal(tenantId, tenantName, null);
-    head.appendChild(addBtn);
     card.appendChild(head);
 
     const t = ledger.totals || { billed: 0, paid: 0, outstanding: 0 };
@@ -1513,30 +1521,52 @@
     card.appendChild(totals);
 
     const charges = ledger.charges || [];
-    if (!charges.length) { card.appendChild(el("div", "cell-muted", "No charges yet. Click “+ Create charge”.")); return card; }
+    const byId = {}; charges.forEach((c) => (byId[c.id] = c));
+    const period = (c) => `${fmtDateOnly(c.periodStart)} – ${fmtDateOnly(c.periodEnd)}`;
 
-    const tbl = el("table", "table"); tbl.style.width = "100%";
-    tbl.innerHTML = `<thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Paid</th><th>Outstanding</th><th>Due</th><th></th></tr></thead>`;
-    const tb = el("tbody");
-    charges.forEach((c) => {
-      const tr = el("tr");
-      const period = `${fmtDateOnly(c.periodStart)} – ${fmtDateOnly(c.periodEnd)}`;
-      tr.appendChild(el("td", null, esc(period)));
-      tr.appendChild(el("td", null, esc(fmtMoney(c.amount) + " " + (c.currency || ""))));
-      const st = el("td"); st.appendChild(chargeStatusBadge(c)); tr.appendChild(st);
-      tr.appendChild(el("td", null, c.isPaid ? "✅" : (c.status === "void" ? "—" : "❌")));
-      tr.appendChild(el("td", null, esc(fmtMoney(c.outstanding))));
-      tr.appendChild(el("td", null, c.dueDate ? esc(fmtDateOnly(c.dueDate)) : "—"));
-      const act = el("td"); act.style.cssText = "display:flex;gap:4px;flex-wrap:wrap";
-      const view = el("button", "btn btn-ghost btn-sm", "View"); view.onclick = () => openChargeDetail(tenantId, tenantName, c);
-      const pay = el("button", "btn btn-ghost btn-sm", "Payment"); pay.onclick = () => openPaymentModal(tenantId, tenantName, c);
-      act.appendChild(view); if (c.status !== "void") act.appendChild(pay);
-      tr.appendChild(act);
-      tb.appendChild(tr);
+    // Manageable columns (defaults marked below). Created/Approved/Paid date/Notes default OFF.
+    const manageable = [
+      { key: "period", label: "Period", type: "text", get: (c) => c.periodStart, text: (c) => period(c), render: (c) => esc(period(c)) },
+      { key: "amount", label: "Amount", type: "number", get: (c) => c.amount, text: (c) => fmtMoney(c.amount) + " " + (c.currency || ""), render: (c) => esc(fmtMoney(c.amount) + " " + (c.currency || "")) },
+      { key: "status", label: "Status", type: "text", get: (c) => c.status, text: (c) => cap(c.status), render: (c) => chargeStatusBadgeHTML(c) },
+      { key: "paid", label: "Paid", type: "text", get: (c) => (c.isPaid ? 1 : 0), text: (c) => (c.isPaid ? "Paid" : (c.status === "void" ? "—" : "Unpaid")), render: (c) => (c.isPaid ? "✅" : (c.status === "void" ? "—" : "❌")) },
+      { key: "outstanding", label: "Outstanding", type: "number", get: (c) => c.outstanding, text: (c) => fmtMoney(c.outstanding), render: (c) => esc(fmtMoney(c.outstanding)) },
+      { key: "due", label: "Due", type: "date", get: (c) => c.dueDate, text: (c) => (c.dueDate ? fmtDateOnly(c.dueDate) : "—"), render: (c) => (c.dueDate ? esc(fmtDateOnly(c.dueDate)) : "—") },
+      { key: "created", label: "Created", type: "date", get: (c) => c.createdAt, text: (c) => fmtDateOnly(c.createdAt), render: (c) => esc(fmtDateOnly(c.createdAt)) },
+      { key: "approved", label: "Approved", type: "date", get: (c) => c.approvedAt, text: (c) => (c.approvedAt ? fmtDateOnly(c.approvedAt) : "—"), render: (c) => (c.approvedAt ? esc(fmtDateOnly(c.approvedAt)) : "—") },
+      { key: "paidDate", label: "Paid date", type: "date", get: (c) => c.paidAt, text: (c) => (c.paidAt ? fmtDateOnly(c.paidAt) : "—"), render: (c) => (c.paidAt ? esc(fmtDateOnly(c.paidAt)) : "—") },
+      { key: "notes", label: "Notes", type: "text", get: (c) => c.notes || "", text: (c) => c.notes || "", render: (c) => (c.notes ? esc(c.notes) : `<span class="cell-muted">—</span>`) },
+    ];
+    const defaultKeys = ["period", "amount", "status", "paid", "outstanding", "due"];
+    const actionsCol = {
+      key: "__act", label: "", type: "text", filterable: false, get: () => "",
+      render: (c) => `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-act="view" data-id="${esc(c.id)}">View</button>${c.status !== "void" ? `<button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button>` : ""}</div>`,
+    };
+
+    let layout = loadChargesLayout();
+    const applied = () => App.table.applyColumnLayout(manageable, layout, defaultKeys).concat([actionsCol]);
+
+    const tableHost = el("div"); card.appendChild(tableHost);
+    const handle = App.table.mount({
+      container: tableHost, rows: charges, rowId: (c) => c.id, columns: applied(), scrollX: true,
+      defaultSort: "period", defaultSortDir: "desc",
+      onRowClick: (c) => openChargeDetail(tenantId, tenantName, c),
+      emptyHtml: `<div class="card cell-muted" style="padding:18px">No charges yet. Click “+ Create charge”.</div>`,
+      onRender: () => {
+        App.util.$$("button[data-act]", tableHost).forEach((btn) => {
+          btn.onclick = (e) => { e.stopPropagation(); const c = byId[btn.dataset.id]; if (!c) return; if (btn.dataset.act === "view") openChargeDetail(tenantId, tenantName, c); else openPaymentModal(tenantId, tenantName, c); };
+        });
+      },
     });
-    tbl.appendChild(tb);
-    const scroll = el("div"); scroll.style.cssText = "overflow-x:auto"; scroll.appendChild(tbl);
-    card.appendChild(scroll);
+
+    // Toolbar (right group): [Manage columns][+ Create charge][Search] — Manage directly left of Create.
+    const create = el("button", "btn btn-primary btn-sm", "+ Create charge");
+    create.onclick = () => openChargeModal(tenantId, tenantName, null);
+    if (handle.toolbarRight) handle.toolbarRight.insertBefore(create, handle.toolbarRight.firstChild);
+    const manageBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#9776;</span> Manage columns`);
+    manageBtn.onclick = () => App.table.openColumnManager(manageable, layout, defaultKeys, (nl) => { layout = { order: nl.order, hidden: nl.hidden }; saveChargesLayout(layout); handle.setColumns(applied()); });
+    if (handle.toolbarRight) handle.toolbarRight.insertBefore(manageBtn, handle.toolbarRight.firstChild);
+
     return card;
   }
 
@@ -1607,16 +1637,44 @@
   function openChargeDetail(tenantId, tenantName, charge) {
     const inner = el("div");
     const b = charge.breakdown || {}; const us = b.usageSnapshot || {};
-    const pays = (charge.payments || []).map((p) => `<tr><td>${esc(fmtDateOnly(p.paidAt))}</td><td>${esc(fmtMoney(p.amount))}</td><td>${esc(p.method || "—")}</td></tr>`).join("") || `<tr><td colspan="3" class="cell-muted">No payments</td></tr>`;
     const STATUSES = ["draft", "approved", "paid", "unpaid", "void"];
+
+    // Timeline: Created → Approved (if set) → each Payment, with running paid/outstanding.
+    const events = [];
+    events.push({ t: charge.createdAt, dot: "#6b7280", label: "Created", sub: `${fmtMoney(charge.amount)} ${esc(charge.currency || "")} charge created` });
+    if (charge.approvedAt) events.push({ t: charge.approvedAt, dot: "#2563eb", label: "Approved", sub: "Charge finalized — awaiting payment" });
+    const paysAsc = (charge.payments || []).slice().sort((a, b2) => new Date(a.paidAt).getTime() - new Date(b2.paidAt).getTime());
+    let running = 0;
+    paysAsc.forEach((p) => {
+      running = Math.round((running + p.amount) * 100) / 100;
+      const out = Math.max(0, Math.round((charge.amount - running) * 100) / 100);
+      const bits = [];
+      if (p.method) bits.push(esc(p.method));
+      bits.push(`paid ${esc(fmtMoney(running))}`);
+      bits.push(`outstanding ${esc(fmtMoney(out))}`);
+      if (p.notes) bits.push(esc(p.notes));
+      events.push({ t: p.paidAt, dot: out <= 0 ? "#16a34a" : "#0ea5e9", label: `Payment ${fmtMoney(p.amount)}`, sub: bits.join(" · ") });
+    });
+    const timelineHTML = events.map((e) => `
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0">
+        <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};margin-top:5px;flex:0 0 auto"></span>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${esc(e.label)} <span class="cell-muted" style="font-weight:400">· ${esc(e.t ? fmtDateOnly(e.t) : "—")}</span></div>
+          ${e.sub ? `<div class="cell-muted" style="font-size:12px">${e.sub}</div>` : ""}
+        </div>
+      </div>`).join("") || `<div class="cell-muted" style="font-size:12.5px">No activity yet.</div>`;
+
     inner.innerHTML = `<div class="modal-head"><h2>Charge detail</h2><button class="icon-btn" id="d-close">&times;</button></div>
       <div class="modal-body">
-        <div style="margin-bottom:8px"><b>${esc(fmtDateOnly(charge.periodStart))} – ${esc(fmtDateOnly(charge.periodEnd))}</b> · ${esc(fmtMoney(charge.amount))} ${esc(charge.currency || "")}</div>
-        <div class="cell-muted" style="font-size:12.5px;margin-bottom:10px">Breakdown — flat ${esc(fmtMoney(b.flatFee || 0))}, passthrough base ${esc(fmtMoney(b.passthroughBaseCost || 0))} × (1 + ${esc(String(b.markupPct || 0))}%) = ${esc(fmtMoney(b.passthroughAmount || 0))}.<br>Usage snapshot: ${us.calls || 0} calls · ${us.minutes || 0} min · ${us.tokens || 0} tokens · ${us.emails || 0} emails.</div>
+        <div style="margin-bottom:6px"><b>${esc(fmtDateOnly(charge.periodStart))} – ${esc(fmtDateOnly(charge.periodEnd))}</b> · ${esc(fmtMoney(charge.amount))} ${esc(charge.currency || "")} · ${chargeStatusBadgeHTML(charge)}</div>
+        <div class="cell-muted" style="font-size:12.5px;margin-bottom:4px">Breakdown — flat ${esc(fmtMoney(b.flatFee || 0))}, passthrough base ${esc(fmtMoney(b.passthroughBaseCost || 0))} × (1 + ${esc(String(b.markupPct || 0))}%) = ${esc(fmtMoney(b.passthroughAmount || 0))}.<br>Usage snapshot: ${us.calls || 0} calls · ${us.minutes || 0} min · ${us.tokens || 0} tokens · ${us.emails || 0} emails.</div>
+        ${charge.dueDate ? `<div class="cell-muted" style="font-size:12.5px">Due ${esc(fmtDateOnly(charge.dueDate))}</div>` : ""}
+        ${charge.notes ? `<div style="font-size:12.5px;margin-top:4px">Notes: ${esc(charge.notes)}</div>` : ""}
+        <label class="field-label" style="margin-top:12px">Timeline</label>
+        <div style="border-left:2px solid var(--border,#e5e7eb);padding-left:12px;margin:2px 0 6px">${timelineHTML}</div>
+        <div class="cell-muted" style="font-size:12px;margin-bottom:8px">${esc(fmtMoney(charge.paidTotal))} paid · ${esc(fmtMoney(charge.outstanding))} outstanding${charge.paidAt ? ` · fully paid ${esc(fmtDateOnly(charge.paidAt))}` : ""}</div>
         <label class="field-label">Status</label>
         <select id="d-status" class="input" style="width:auto">${STATUSES.map((s) => `<option value="${s}"${charge.status === s ? " selected" : ""}>${cap(s)}</option>`).join("")}</select>
-        <label class="field-label" style="margin-top:10px">Payments (${esc(fmtMoney(charge.paidTotal))} paid · ${esc(fmtMoney(charge.outstanding))} outstanding)</label>
-        <table class="table mini-table" style="width:100%"><thead><tr><th>Date</th><th>Amount</th><th>Method</th></tr></thead><tbody>${pays}</tbody></table>
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
           ${charge.status === "draft" ? `<button id="d-approve" class="btn btn-primary btn-sm">Approve</button>` : ""}
           <button id="d-edit" class="btn btn-ghost btn-sm">Edit</button>

@@ -23,10 +23,17 @@ export function serializeCharge(c: any) {
   const amount = n(c.amount);
   const paidTotal = payments.reduce((s: number, p: any) => s + p.amount, 0);
   const outstanding = Math.max(0, Math.round((amount - paidTotal) * 100) / 100);
-  // A charge counts as paid when explicitly marked paid OR fully covered by payments (and not a
-  // draft/void). Void charges are never "paid" or "outstanding".
   const isVoid = c.status === "void";
   const isPaid = !isVoid && (c.status === "paid" || (paidTotal >= amount && amount > 0));
+  // paidAt = when the charge became fully covered: the paidAt of the payment that cleared the
+  // balance (payments applied oldest-first). Fallback: latest payment's paidAt if marked paid.
+  let paidAt: string | null = null;
+  if (!isVoid) {
+    const asc = [...payments].sort((a: any, b: any) => new Date(a.paidAt).getTime() - new Date(b.paidAt).getTime());
+    let cum = 0;
+    for (const p of asc) { cum += p.amount; if (amount > 0 && cum >= amount) { paidAt = p.paidAt; break; } }
+    if (!paidAt && c.status === "paid" && asc.length) paidAt = asc[asc.length - 1].paidAt;
+  }
   return {
     id: c.id,
     tenantId: c.tenantId,
@@ -40,6 +47,7 @@ export function serializeCharge(c: any) {
     notes: c.notes ?? null,
     approvedAt: iso(c.approvedAt),
     createdAt: c.createdAt,
+    paidAt,
     updatedAt: c.updatedAt,
     paidTotal: Math.round(paidTotal * 100) / 100,
     outstanding: isVoid ? 0 : outstanding,
