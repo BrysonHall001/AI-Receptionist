@@ -1,6 +1,7 @@
 // Charges (ledger) + Payments. Manual management in this batch. A charge's paid/unpaid state
 // derives from its status + the sum of linked Payments (paid once payments >= amount).
 import { prisma } from "../db/client";
+import { writeAudit, writeAuditMany, money as fmtMoney, ymd, type Actor } from "./billingAuditService";
 
 const db = prisma as any;
 
@@ -80,7 +81,7 @@ export interface CreateChargeInput {
   dueDate?: string | Date | null; notes?: string | null; status?: string;
 }
 
-export async function createCharge(tenantId: string, input: CreateChargeInput) {
+export async function createCharge(tenantId: string, input: CreateChargeInput, actor?: Actor) {
   const amount = Number(input.amount);
   if (!Number.isFinite(amount) || amount < 0) throw new Error("amount must be a number >= 0");
   const status = input.status && isChargeStatus(input.status) ? input.status : "draft";
@@ -99,11 +100,15 @@ export async function createCharge(tenantId: string, input: CreateChargeInput) {
     },
     include: withPayments,
   });
+  const cur = (input.currency || "USD").toUpperCase();
+  await writeAudit({ tenantId, chargeId: row.id, actor, action: "charge_created", newValue: String(amount), note: `Charge created for ${ymd(input.periodStart)} – ${ymd(input.periodEnd)} — ${fmtMoney(amount, cur)}${status !== "draft" ? ` (${status})` : ""}` });
   return serializeCharge(row);
 }
 
 // Edit a draft/any charge's editable fields (amount, dates, notes, breakdown, currency).
-export async function updateCharge(id: string, input: Record<string, unknown>) {
+export async function updateCharge(id: string, input: Record<string, unknown>, actor?: Actor) {
+  const before = await db.charge.findUnique({ where: { id } });
+  if (!before) throw new Error("charge not found");
   const data: Record<string, unknown> = {};
   if ("amount" in input) { const a = Number(input.amount); if (!Number.isFinite(a) || a < 0) throw new Error("amount must be a number >= 0"); data.amount = a; }
   if ("periodStart" in input && input.periodStart) data.periodStart = new Date(input.periodStart as string);
@@ -113,34 +118,52 @@ export async function updateCharge(id: string, input: Record<string, unknown>) {
   if ("breakdown" in input) data.breakdown = input.breakdown ?? {};
   if ("currency" in input) data.currency = String(input.currency || "USD").toUpperCase();
   const row = await db.charge.update({ where: { id }, data, include: withPayments });
+
+  // One audit entry per field that actually changed (compare before -> after).
+  const cur = row.currency || "USD";
+  const entries: any[] = [];
+  const push = (field: string, oldV: string, newV: string, note: string) => { if (oldV !== newV) entries.push({ tenantId: row.tenantId, chargeId: id, actor, action: "charge_updated", field, oldValue: oldV, newValue: newV, note }); };
+  if ("amount" in data) push("amount", String(Number(before.amount)), String(Number(row.amount)), `Amount changed from ${fmtMoney(before.amount, cur)} to ${fmtMoney(row.amount, cur)}`);
+  if ("periodStart" in data) push("periodStart", ymd(before.periodStart), ymd(row.periodStart), `Period start changed from ${ymd(before.periodStart)} to ${ymd(row.periodStart)}`);
+  if ("periodEnd" in data) push("periodEnd", ymd(before.periodEnd), ymd(row.periodEnd), `Period end changed from ${ymd(before.periodEnd)} to ${ymd(row.periodEnd)}`);
+  if ("dueDate" in data) push("dueDate", before.dueDate ? ymd(before.dueDate) : "none", row.dueDate ? ymd(row.dueDate) : "none", `Due date changed from ${before.dueDate ? ymd(before.dueDate) : "none"} to ${row.dueDate ? ymd(row.dueDate) : "none"}`);
+  if ("notes" in data) push("notes", before.notes || "none", row.notes || "none", `Notes changed from "${before.notes || ""}" to "${row.notes || ""}"`);
+  if ("currency" in data) push("currency", before.currency, row.currency, `Currency changed from ${before.currency} to ${row.currency}`);
+  await writeAuditMany(entries);
   return serializeCharge(row);
 }
 
 // Set a charge's status. approved/paid stamp approvedAt; void just marks void.
-export async function setChargeStatus(id: string, status: string) {
+export async function setChargeStatus(id: string, status: string, actor?: Actor) {
   if (!isChargeStatus(status)) throw new Error("status must be one of: " + CHARGE_STATUSES.join(", "));
+  const before = await db.charge.findUnique({ where: { id }, select: { status: true, tenantId: true } });
+  if (!before) throw new Error("charge not found");
   const data: Record<string, unknown> = { status };
   if (status === "approved" || status === "paid") data.approvedAt = new Date();
   const row = await db.charge.update({ where: { id }, data, include: withPayments });
+  const action = status === "void" ? "charge_voided" : "status_changed";
+  const note = status === "void" ? `Charge voided (was ${before.status})` : `Status changed from ${before.status} to ${status}`;
+  await writeAudit({ tenantId: before.tenantId, chargeId: id, actor, action, field: "status", oldValue: before.status, newValue: status, note });
   return serializeCharge(row);
 }
 
-export async function voidCharge(id: string) { return setChargeStatus(id, "void"); }
+export async function voidCharge(id: string, actor?: Actor) { return setChargeStatus(id, "void", actor); }
 
 // Approve a DRAFT charge -> finalized "approved" (stamps approvedAt). The amount is editable
 // while draft; approving locks it in as owed (unpaid until a Payment covers it) and stops
 // approval reminders (the notify job only targets drafts). Stripe will later act on
 // approved+unpaid charges.
-export async function approveCharge(id: string) {
-  const charge = await db.charge.findUnique({ where: { id }, select: { status: true } });
+export async function approveCharge(id: string, actor?: Actor) {
+  const charge = await db.charge.findUnique({ where: { id }, select: { status: true, tenantId: true } });
   if (!charge) throw new Error("charge not found");
   if (charge.status !== "draft") throw new Error(`only a draft charge can be approved (this one is ${charge.status})`);
   const row = await db.charge.update({ where: { id }, data: { status: "approved", approvedAt: new Date() }, include: withPayments });
+  await writeAudit({ tenantId: charge.tenantId, chargeId: id, actor, action: "charge_approved", field: "status", oldValue: "draft", newValue: "approved", note: "Charge approved" });
   return serializeCharge(row);
 }
 
 // Record a manual payment against a charge. If the charge is now fully covered, flip it to paid.
-export async function recordPayment(chargeId: string, input: { amount: number; paidAt?: string | Date; method?: string | null; notes?: string | null }) {
+export async function recordPayment(chargeId: string, input: { amount: number; paidAt?: string | Date; method?: string | null; notes?: string | null }, actor?: Actor) {
   const charge = await db.charge.findUnique({ where: { id: chargeId }, include: withPayments });
   if (!charge) throw new Error("charge not found");
   const amount = Number(input.amount);
@@ -155,11 +178,14 @@ export async function recordPayment(chargeId: string, input: { amount: number; p
       notes: input.notes ?? null,
     },
   });
+  const cur = charge.currency || "USD";
+  await writeAudit({ tenantId: charge.tenantId, chargeId, actor, action: "payment_recorded", field: "payment", newValue: String(amount), note: `Payment of ${fmtMoney(amount, cur)} recorded${input.method ? ` (${input.method})` : ""}` });
   // Recompute coverage; auto-mark paid when fully covered (unless void).
   const fresh = await db.charge.findUnique({ where: { id: chargeId }, include: withPayments });
   const paidTotal = (fresh.payments || []).reduce((s: number, p: any) => s + Number(p.amount), 0);
-  if (fresh.status !== "void" && paidTotal >= Number(fresh.amount) && Number(fresh.amount) > 0) {
+  if (fresh.status !== "void" && fresh.status !== "paid" && paidTotal >= Number(fresh.amount) && Number(fresh.amount) > 0) {
     await db.charge.update({ where: { id: chargeId }, data: { status: "paid" } });
+    await writeAudit({ tenantId: charge.tenantId, chargeId, actor, action: "status_changed", field: "status", oldValue: fresh.status, newValue: "paid", note: "Automatically marked paid — fully covered by payments" });
   }
   return getCharge(chargeId);
 }

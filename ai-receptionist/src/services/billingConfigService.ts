@@ -44,7 +44,8 @@ export async function getBillingConfig(tenantId: string) {
 }
 
 // Patch a tenant's config. Only known fields are accepted; amounts are clamped to >= 0.
-export async function updateBillingConfig(tenantId: string, input: Record<string, unknown>) {
+export async function updateBillingConfig(tenantId: string, input: Record<string, unknown>, actor?: import("./billingAuditService").Actor) {
+  const before = await db.billingConfig.findUnique({ where: { tenantId } });
   const data: Record<string, unknown> = {};
   if ("hasFlatFee" in input) data.hasFlatFee = !!input.hasFlatFee;
   if ("hasPassthrough" in input) data.hasPassthrough = !!input.hasPassthrough;
@@ -61,5 +62,27 @@ export async function updateBillingConfig(tenantId: string, input: Record<string
     update: data,
     create: { tenantId, ...data },
   });
+
+  // Audit one entry per changed term (old -> new), chargeId null (tenant-level terms change).
+  try {
+    const { writeAuditMany, money } = await import("./billingAuditService");
+    const b: any = before || {};
+    const cur = row.currency || "USD";
+    const onoff = (v: any) => (v ? "on" : "off");
+    const dOnly = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : "none");
+    const entries: any[] = [];
+    const add = (field: string, oldV: string, newV: string, note: string) => { if (oldV !== newV) entries.push({ tenantId, chargeId: null, actor, action: "terms_updated", field, oldValue: oldV, newValue: newV, note }); };
+    if ("hasFlatFee" in data) add("hasFlatFee", onoff(b.hasFlatFee), onoff(row.hasFlatFee), `Flat fee turned ${onoff(row.hasFlatFee)}`);
+    if ("flatFeeAmount" in data) add("flatFeeAmount", money(b.flatFeeAmount, cur), money(row.flatFeeAmount, cur), `Flat fee amount changed from ${money(b.flatFeeAmount, cur)} to ${money(row.flatFeeAmount, cur)}`);
+    if ("hasPassthrough" in data) add("hasPassthrough", onoff(b.hasPassthrough), onoff(row.hasPassthrough), `Passthrough turned ${onoff(row.hasPassthrough)}`);
+    if ("passthroughMarkupPct" in data) add("passthroughMarkupPct", `${Number(b.passthroughMarkupPct) || 0}%`, `${Number(row.passthroughMarkupPct) || 0}%`, `Passthrough markup changed from ${Number(b.passthroughMarkupPct) || 0}% to ${Number(row.passthroughMarkupPct) || 0}%`);
+    if ("billingPeriod" in data) add("billingPeriod", String(b.billingPeriod ?? "none"), String(row.billingPeriod), `Billing period changed from ${b.billingPeriod ?? "none"} to ${row.billingPeriod}`);
+    if ("customPeriodDays" in data) add("customPeriodDays", String(b.customPeriodDays ?? "none"), String(row.customPeriodDays ?? "none"), `Custom period days changed from ${b.customPeriodDays ?? "none"} to ${row.customPeriodDays ?? "none"}`);
+    if ("contractStart" in data) add("contractStart", dOnly(b.contractStart), dOnly(row.contractStart), `Contract start changed from ${dOnly(b.contractStart)} to ${dOnly(row.contractStart)}`);
+    if ("contractEnd" in data) add("contractEnd", dOnly(b.contractEnd), dOnly(row.contractEnd), `Contract end changed from ${dOnly(b.contractEnd)} to ${dOnly(row.contractEnd)}`);
+    if ("currency" in data) add("currency", String(b.currency ?? "none"), String(row.currency), `Currency changed from ${b.currency ?? "none"} to ${row.currency}`);
+    await writeAuditMany(entries);
+  } catch (e) { /* audit must never break the mutation */ }
+
   return serializeConfig(row);
 }

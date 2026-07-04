@@ -15,6 +15,7 @@ import { listBillingDashboards, createBillingDashboard, renameBillingDashboard, 
 import { getBillingConfig, updateBillingConfig } from "../services/billingConfigService";
 import { computeSuggestedCharge } from "../services/chargeComputeService";
 import { listCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
+import { getChargeAudit, getTermsAudit } from "../services/billingAuditService";
 import { getBillingNotifyConfig, updateBillingNotifyConfig } from "../services/billingNotifyConfigService";
 import { runBillingAutomationSweep } from "../services/billingSweepService";
 import { logger } from "../utils/logger";
@@ -478,12 +479,18 @@ adminRouter.delete("/billing-dashboards/:id", requireRole("OWNER", "SUPER_ADMIN"
 // ---- Billing ledger (OWNER/SUPER_ADMIN): per-portal terms, charges, payments ----
 
 // Per-tenant billing terms (config). Seeded on first read.
+const billingActor = (req: Request) => ({ id: req.user?.id ?? null, name: req.user?.name || req.user?.email || "Unknown" });
+
 adminRouter.get("/billing-config/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
   try { res.json(await getBillingConfig(req.params.tenantId)); }
   catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
+adminRouter.get("/billing-config/:tenantId/audit", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await getTermsAudit(req.params.tenantId)); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
 adminRouter.patch("/billing-config/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  try { res.json(await updateBillingConfig(req.params.tenantId, req.body ?? {})); }
+  try { res.json(await updateBillingConfig(req.params.tenantId, req.body ?? {}, billingActor(req))); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -501,7 +508,7 @@ adminRouter.get("/charges/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN")
   catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/charges/tenant/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  try { res.status(201).json(await createCharge(req.params.tenantId, req.body ?? {})); }
+  try { res.status(201).json(await createCharge(req.params.tenantId, req.body ?? {}, billingActor(req))); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -510,24 +517,28 @@ adminRouter.get("/charges/:id", requireRole("OWNER", "SUPER_ADMIN"), async (req:
   try { const c = await getCharge(req.params.id); if (!c) { res.status(404).json({ error: "not found" }); return; } res.json(c); }
   catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
+adminRouter.get("/charges/:id/audit", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await getChargeAudit(req.params.id)); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
 adminRouter.patch("/charges/:id", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  try { res.json(await updateCharge(req.params.id, req.body ?? {})); }
+  try { res.json(await updateCharge(req.params.id, req.body ?? {}, billingActor(req))); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/charges/:id/status", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  try { res.json(await setChargeStatus(req.params.id, (req.body ?? {}).status)); }
+  try { res.json(await setChargeStatus(req.params.id, (req.body ?? {}).status, billingActor(req))); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/charges/:id/void", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  try { res.json(await voidCharge(req.params.id)); }
+  try { res.json(await voidCharge(req.params.id, billingActor(req))); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/charges/:id/approve", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  try { res.json(await approveCharge(req.params.id)); }
+  try { res.json(await approveCharge(req.params.id, billingActor(req))); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/charges/:id/payments", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
-  try { res.status(201).json(await recordPayment(req.params.id, req.body ?? {})); }
+  try { res.status(201).json(await recordPayment(req.params.id, req.body ?? {}, billingActor(req))); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

@@ -7,6 +7,7 @@ import { currentPeriod, withinContract } from "./billingPeriodService";
 import { getBillingNotifyConfig } from "./billingNotifyConfigService";
 import { computeSuggestedCharge } from "./chargeComputeService";
 import { createCharge } from "./chargeService";
+import { SYSTEM_ACTOR } from "./billingAuditService";
 
 const db = prisma as any;
 const DAY = 86400000;
@@ -47,7 +48,7 @@ export async function autoDraftCharges(now: Date = new Date()): Promise<AutoDraf
         amount: sug.amount, breakdown: sug.breakdown, currency: sug.currency,
         dueDate: periodEnd, status: "draft",
         notes: "Auto-drafted",
-      });
+      }, SYSTEM_ACTOR);
       report.drafted++;
     } catch (e) {
       logger.warn(`[billing-autodraft] failed for tenant ${cfg.tenantId}: ${(e as Error).message}`);

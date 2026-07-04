@@ -1440,9 +1440,30 @@
   function dateInput(v) { const i = el("input", "input"); i.type = "date"; i.style.cssText = "margin:0;width:auto"; if (v) i.value = String(v).slice(0, 10); return i; }
   function numInput(v, step) { const i = el("input", "input"); i.type = "number"; i.step = step || "0.01"; i.min = "0"; i.style.cssText = "margin:0;width:130px"; i.value = v == null ? "" : String(v); return i; }
 
+  function openTermsHistory(tenantId, tenantName) {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Terms history</h2><button class="icon-btn" id="th-close">&times;</button></div>
+      <div class="modal-body"><div class="cell-muted" style="font-size:12.5px">Loading…</div></div>`;
+    const overlay = modal(inner); const body = inner.querySelector(".modal-body");
+    inner.querySelector("#th-close").onclick = () => overlay.remove();
+    App.api(`/api/admin/billing-config/${encodeURIComponent(tenantId)}/audit`).then((rows) => {
+      if (!rows || !rows.length) { body.innerHTML = `<div class="cell-muted" style="font-size:12.5px">No terms changes recorded yet.</div>`; return; }
+      body.innerHTML = `<div style="border-left:2px solid var(--border,#e5e7eb);padding-left:12px">${rows.map((a) => `
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0">
+          <span style="width:9px;height:9px;border-radius:50%;background:#0ea5e9;margin-top:5px;flex:0 0 auto"></span>
+          <div style="flex:1"><div style="font-size:13px;font-weight:600">${esc(a.note)}</div>
+          <div class="cell-muted" style="font-size:12px">${esc(a.actorName || "Unknown")} · ${esc(fmtDate(a.createdAt))}</div></div>
+        </div>`).join("")}</div>`;
+    }).catch((e) => { body.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; });
+  }
+
   function billingTermsCard(tenantId, cfg) {
     const card = el("div", "card"); card.style.cssText = "padding:18px;margin-bottom:16px";
-    card.appendChild(el("h3", null, "Billing terms")).style.cssText = "margin:0 0 12px;font-size:15px";
+    const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin:0 0 12px";
+    head.appendChild(el("h3", null, "Billing terms")).style.cssText = "margin:0;font-size:15px";
+    const hist = el("button", "btn btn-ghost btn-sm", "History"); hist.onclick = () => openTermsHistory(tenantId, cfg.tenantName);
+    head.appendChild(hist);
+    card.appendChild(head);
 
     // billingStatus (updated via the portals endpoint).
     const statusSel = el("select", "input"); statusSel.style.cssText = "margin:0;width:auto";
@@ -1579,7 +1600,7 @@
 
   function money2(v) { const n = Number(v || 0); return Math.round(n * 100) / 100; }
 
-  function openChargeModal(tenantId, tenantName, existing) {
+  function openChargeModal(tenantId, tenantName, existing, onSaved) {
     const inner = el("div");
     const today = new Date(); const iso = (d) => d.toISOString().slice(0, 10);
     const d0 = existing ? String(existing.periodStart).slice(0, 10) : iso(new Date(today.getFullYear(), today.getMonth() - 1, 1));
@@ -1612,12 +1633,12 @@
       try {
         if (existing) await App.api(`/api/admin/charges/${encodeURIComponent(existing.id)}`, { method: "PATCH", body: JSON.stringify(body) });
         else await App.api(`/api/admin/charges/tenant/${encodeURIComponent(tenantId)}`, { method: "POST", body: JSON.stringify(body) });
-        overlay.remove(); toast(existing ? "Charge updated" : "Charge created"); refreshBilling(tenantId, tenantName);
+        overlay.remove(); toast(existing ? "Charge updated" : "Charge created"); if (onSaved) onSaved(); else refreshBilling(tenantId, tenantName);
       } catch (e) { toast(e.message, true); }
     };
   }
 
-  function openPaymentModal(tenantId, tenantName, charge) {
+  function openPaymentModal(tenantId, tenantName, charge, onSaved) {
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Record payment</h2><button class="icon-btn" id="p-close">&times;</button></div>
       <div class="modal-body">
@@ -1631,66 +1652,105 @@
     const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
     $("#p-close").onclick = () => overlay.remove();
     $("#p-save").onclick = async () => {
-      try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/payments`, { method: "POST", body: JSON.stringify({ amount: Number($("#p-amount").value || 0), paidAt: $("#p-date").value || undefined, method: $("#p-method").value || null, notes: $("#p-notes").value || null }) }); overlay.remove(); toast("Payment recorded"); refreshBilling(tenantId, tenantName); }
+      try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/payments`, { method: "POST", body: JSON.stringify({ amount: Number($("#p-amount").value || 0), paidAt: $("#p-date").value || undefined, method: $("#p-method").value || null, notes: $("#p-notes").value || null }) }); overlay.remove(); toast("Payment recorded"); if (onSaved) onSaved(); else refreshBilling(tenantId, tenantName); }
       catch (e) { toast(e.message, true); }
     };
   }
 
-  function openChargeDetail(tenantId, tenantName, charge) {
+  // Action icon/color + label for an audit action.
+  function auditDot(action) {
+    const map = { charge_created: "#6b7280", charge_updated: "#d97706", status_changed: "#7c3aed", charge_approved: "#2563eb", charge_voided: "#9ca3af", payment_recorded: "#16a34a", terms_updated: "#0ea5e9" };
+    return map[action] || "#6b7280";
+  }
+  function auditActionLabel(action) {
+    const map = { charge_created: "Created", charge_updated: "Edited", status_changed: "Status changed", charge_approved: "Approved", charge_voided: "Voided", payment_recorded: "Payment recorded", terms_updated: "Terms updated" };
+    return map[action] || action;
+  }
+
+  function openChargeDetail(tenantId, tenantName, chargeInit) {
     const inner = el("div");
-    const b = charge.breakdown || {}; const us = b.usageSnapshot || {};
-    const STATUSES = ["draft", "approved", "paid", "unpaid", "void"];
+    const overlay = modal(inner);
+    const chargeId = chargeInit.id;
 
-    // Timeline: Created → Approved (if set) → each Payment, with running paid/outstanding.
-    const events = [];
-    events.push({ t: charge.createdAt, dot: "#6b7280", label: "Created", sub: `${fmtMoney(charge.amount)} ${esc(charge.currency || "")} charge created` });
-    if (charge.approvedAt) events.push({ t: charge.approvedAt, dot: "#2563eb", label: "Approved", sub: "Charge finalized — awaiting payment" });
-    const paysAsc = (charge.payments || []).slice().sort((a, b2) => new Date(a.paidAt).getTime() - new Date(b2.paidAt).getTime());
-    let running = 0;
-    paysAsc.forEach((p) => {
-      running = Math.round((running + p.amount) * 100) / 100;
-      const out = Math.max(0, Math.round((charge.amount - running) * 100) / 100);
-      const bits = [];
-      if (p.method) bits.push(esc(p.method));
-      bits.push(`paid ${esc(fmtMoney(running))}`);
-      bits.push(`outstanding ${esc(fmtMoney(out))}`);
-      if (p.notes) bits.push(esc(p.notes));
-      events.push({ t: p.paidAt, dot: out <= 0 ? "#16a34a" : "#0ea5e9", label: `Payment ${fmtMoney(p.amount)}`, sub: bits.join(" · ") });
-    });
-    const timelineHTML = events.map((e) => `
-      <div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0">
-        <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};margin-top:5px;flex:0 0 auto"></span>
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:600">${esc(e.label)} <span class="cell-muted" style="font-weight:400">· ${esc(e.t ? fmtDateOnly(e.t) : "—")}</span></div>
-          ${e.sub ? `<div class="cell-muted" style="font-size:12px">${e.sub}</div>` : ""}
-        </div>
-      </div>`).join("") || `<div class="cell-muted" style="font-size:12.5px">No activity yet.</div>`;
+    // Build timeline events from the audit log; fall back to charge fields for pre-audit charges.
+    function buildEvents(charge, audit) {
+      if (audit && audit.length) {
+        return audit.map((a) => ({
+          t: a.createdAt, dot: auditDot(a.action),
+          label: auditActionLabel(a.action),
+          who: a.actorName || "Unknown",
+          sub: a.note || "",
+        }));
+      }
+      // Fallback: synthesize created/approved/payments from the charge object.
+      const events = [];
+      events.push({ t: charge.createdAt, dot: "#6b7280", label: "Created", who: "", sub: `${fmtMoney(charge.amount)} ${charge.currency || ""} charge created` });
+      if (charge.approvedAt) events.push({ t: charge.approvedAt, dot: "#2563eb", label: "Approved", who: "", sub: "Charge finalized — awaiting payment" });
+      const paysAsc = (charge.payments || []).slice().sort((a, b2) => new Date(a.paidAt).getTime() - new Date(b2.paidAt).getTime());
+      let running = 0;
+      paysAsc.forEach((p) => {
+        running = Math.round((running + p.amount) * 100) / 100;
+        const out = Math.max(0, Math.round((charge.amount - running) * 100) / 100);
+        const bits = []; if (p.method) bits.push(esc(p.method)); bits.push(`paid ${esc(fmtMoney(running))}`); bits.push(`outstanding ${esc(fmtMoney(out))}`); if (p.notes) bits.push(esc(p.notes));
+        events.push({ t: p.paidAt, dot: out <= 0 ? "#16a34a" : "#0ea5e9", label: `Payment ${fmtMoney(p.amount)}`, who: "", sub: bits.join(" · ") });
+      });
+      return events;
+    }
 
-    inner.innerHTML = `<div class="modal-head"><h2>Charge detail</h2><button class="icon-btn" id="d-close">&times;</button></div>
-      <div class="modal-body">
-        <div style="margin-bottom:6px"><b>${esc(fmtDateOnly(charge.periodStart))} – ${esc(fmtDateOnly(charge.periodEnd))}</b> · ${esc(fmtMoney(charge.amount))} ${esc(charge.currency || "")} · ${chargeStatusBadgeHTML(charge)}</div>
-        <div class="cell-muted" style="font-size:12.5px;margin-bottom:4px">Breakdown — flat ${esc(fmtMoney(b.flatFee || 0))}, passthrough base ${esc(fmtMoney(b.passthroughBaseCost || 0))} × (1 + ${esc(String(b.markupPct || 0))}%) = ${esc(fmtMoney(b.passthroughAmount || 0))}.<br>Usage snapshot: ${us.calls || 0} calls · ${us.minutes || 0} min · ${us.tokens || 0} tokens · ${us.emails || 0} emails.</div>
-        ${charge.dueDate ? `<div class="cell-muted" style="font-size:12.5px">Due ${esc(fmtDateOnly(charge.dueDate))}</div>` : ""}
-        ${charge.notes ? `<div style="font-size:12.5px;margin-top:4px">Notes: ${esc(charge.notes)}</div>` : ""}
-        <label class="field-label" style="margin-top:12px">Timeline</label>
-        <div style="border-left:2px solid var(--border,#e5e7eb);padding-left:12px;margin:2px 0 6px">${timelineHTML}</div>
-        <div class="cell-muted" style="font-size:12px;margin-bottom:8px">${esc(fmtMoney(charge.paidTotal))} paid · ${esc(fmtMoney(charge.outstanding))} outstanding${charge.paidAt ? ` · fully paid ${esc(fmtDateOnly(charge.paidAt))}` : ""}</div>
-        <label class="field-label">Status</label>
-        <select id="d-status" class="input" style="width:auto">${STATUSES.map((s) => `<option value="${s}"${charge.status === s ? " selected" : ""}>${cap(s)}</option>`).join("")}</select>
-        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-          ${charge.status === "draft" ? `<button id="d-approve" class="btn btn-primary btn-sm">Approve</button>` : ""}
-          <button id="d-edit" class="btn btn-ghost btn-sm">Edit</button>
-          <button id="d-pay" class="btn btn-ghost btn-sm">Record payment</button>
-          <button id="d-void" class="btn btn-ghost btn-sm" style="color:#dc2626">Void</button>
-        </div>
-      </div>`;
-    const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
-    $("#d-close").onclick = () => overlay.remove();
-    if (charge.status === "draft" && $("#d-approve")) $("#d-approve").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Approve charge", message: "Approve this charge? It becomes finalized and unpaid until a payment covers it. Reminder emails stop.", confirmText: "Approve" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/approve`, { method: "POST" }); toast("Charge approved"); overlay.remove(); refreshBilling(tenantId, tenantName); } catch (e) { toast(e.message, true); } };
-    $("#d-status").onchange = async () => { try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/status`, { method: "POST", body: JSON.stringify({ status: $("#d-status").value }) }); toast("Status updated"); overlay.remove(); refreshBilling(tenantId, tenantName); } catch (e) { toast(e.message, true); } };
-    $("#d-edit").onclick = () => { overlay.remove(); openChargeModal(tenantId, tenantName, charge); };
-    $("#d-pay").onclick = () => { overlay.remove(); openPaymentModal(tenantId, tenantName, charge); };
-    $("#d-void").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Void charge", message: "Void this charge? It will be excluded from billed/outstanding totals.", confirmText: "Void charge" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/void`, { method: "POST" }); toast("Charge voided"); overlay.remove(); refreshBilling(tenantId, tenantName); } catch (e) { toast(e.message, true); } };
+    function render(charge, audit) {
+      const b = charge.breakdown || {}; const us = b.usageSnapshot || {};
+      const STATUSES = ["draft", "approved", "paid", "unpaid", "void"];
+      const events = buildEvents(charge, audit);
+      const timelineHTML = events.map((e) => `
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0">
+          <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};margin-top:5px;flex:0 0 auto"></span>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">${esc(e.label)} <span class="cell-muted" style="font-weight:400">· ${esc(e.t ? fmtDate(e.t) : "—")}${e.who ? " · " + esc(e.who) : ""}</span></div>
+            ${e.sub ? `<div class="cell-muted" style="font-size:12px">${esc(e.sub)}</div>` : ""}
+          </div>
+        </div>`).join("") || `<div class="cell-muted" style="font-size:12.5px">No activity yet.</div>`;
+
+      inner.innerHTML = `<div class="modal-head"><h2>Charge detail</h2><button class="icon-btn" id="d-close">&times;</button></div>
+        <div class="modal-body">
+          <div style="margin-bottom:6px"><b>${esc(fmtDateOnly(charge.periodStart))} – ${esc(fmtDateOnly(charge.periodEnd))}</b> · ${esc(fmtMoney(charge.amount))} ${esc(charge.currency || "")} · ${chargeStatusBadgeHTML(charge)}</div>
+          <div class="cell-muted" style="font-size:12.5px;margin-bottom:4px">Breakdown — flat ${esc(fmtMoney(b.flatFee || 0))}, passthrough base ${esc(fmtMoney(b.passthroughBaseCost || 0))} × (1 + ${esc(String(b.markupPct || 0))}%) = ${esc(fmtMoney(b.passthroughAmount || 0))}.<br>Usage snapshot: ${us.calls || 0} calls · ${us.minutes || 0} min · ${us.tokens || 0} tokens · ${us.emails || 0} emails.</div>
+          ${charge.dueDate ? `<div class="cell-muted" style="font-size:12.5px">Due ${esc(fmtDateOnly(charge.dueDate))}</div>` : ""}
+          ${charge.notes ? `<div style="font-size:12.5px;margin-top:4px">Notes: ${esc(charge.notes)}</div>` : ""}
+          <label class="field-label" style="margin-top:12px">Timeline</label>
+          <div style="border-left:2px solid var(--border,#e5e7eb);padding-left:12px;margin:2px 0 6px">${timelineHTML}</div>
+          <div class="cell-muted" style="font-size:12px;margin-bottom:8px">${esc(fmtMoney(charge.paidTotal))} paid · ${esc(fmtMoney(charge.outstanding))} outstanding${charge.paidAt ? ` · fully paid ${esc(fmtDateOnly(charge.paidAt))}` : ""}</div>
+          <label class="field-label">Status</label>
+          <select id="d-status" class="input" style="width:auto">${STATUSES.map((s) => `<option value="${s}"${charge.status === s ? " selected" : ""}>${cap(s)}</option>`).join("")}</select>
+          <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+            ${charge.status === "draft" ? `<button id="d-approve" class="btn btn-primary btn-sm">Approve</button>` : ""}
+            <button id="d-edit" class="btn btn-ghost btn-sm">Edit</button>
+            <button id="d-pay" class="btn btn-ghost btn-sm">Record payment</button>
+            <button id="d-void" class="btn btn-ghost btn-sm" style="color:#dc2626">Void</button>
+          </div>
+        </div>`;
+      const $ = (s) => inner.querySelector(s);
+      $("#d-close").onclick = () => overlay.remove();
+      if (charge.status === "draft" && $("#d-approve")) $("#d-approve").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Approve charge", message: "Approve this charge? It becomes finalized and unpaid until a payment covers it. Reminder emails stop.", confirmText: "Approve" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/approve`, { method: "POST" }); toast("Charge approved"); await reload(); } catch (e) { toast(e.message, true); } };
+      $("#d-status").onchange = async () => { try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/status`, { method: "POST", body: JSON.stringify({ status: $("#d-status").value }) }); toast("Status updated"); await reload(); } catch (e) { toast(e.message, true); } };
+      $("#d-edit").onclick = () => openChargeModal(tenantId, tenantName, charge, reload); // stacked; detail reloads on save
+      $("#d-pay").onclick = () => openPaymentModal(tenantId, tenantName, charge, reload);
+      $("#d-void").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Void charge", message: "Void this charge? It will be excluded from billed/outstanding totals.", confirmText: "Void charge" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/void`, { method: "POST" }); toast("Charge voided"); await reload(); } catch (e) { toast(e.message, true); } };
+    }
+
+    // Re-fetch the charge + its audit and re-render in place, then refresh the ledger behind.
+    async function reload() {
+      try {
+        const [charge, audit] = await Promise.all([
+          App.api(`/api/admin/charges/${encodeURIComponent(chargeId)}`),
+          App.api(`/api/admin/charges/${encodeURIComponent(chargeId)}/audit`).catch(() => []),
+        ]);
+        render(charge, audit || []);
+      } catch (e) { toast((e && e.message) || "Failed to refresh", true); }
+      refreshBilling(tenantId, tenantName);
+    }
+
+    render(chargeInit, null); // instant paint from the row data
+    reload();                 // then load full audit + freshest charge
   }
 
   // ---- Macro Billing & Usage page: Overview (editable dashboards) / Billing Rates ----
