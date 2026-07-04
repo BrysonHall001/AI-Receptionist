@@ -16,6 +16,8 @@ import { getBillingConfig, updateBillingConfig } from "../services/billingConfig
 import { computeSuggestedCharge } from "../services/chargeComputeService";
 import { listCharges, listAllCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
 import { verifyPassword } from "../auth/passwords";
+import { ensureStripeCustomer } from "../services/stripeCustomerService";
+import { StripeNotConfiguredError } from "../services/stripeService";
 import { getChargeAudit, getTermsAudit } from "../services/billingAuditService";
 import { getBillingNotifyConfig, updateBillingNotifyConfig } from "../services/billingNotifyConfigService";
 import { runBillingAutomationSweep } from "../services/billingSweepService";
@@ -489,6 +491,17 @@ adminRouter.get("/billing-config/:tenantId", requireRole("OWNER", "SUPER_ADMIN")
 adminRouter.get("/billing-config/:tenantId/audit", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
   try { res.json(await getTermsAudit(req.params.tenantId)); }
   catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+// Link a tenant/portal to a Stripe customer (idempotent). OWNER/SUPER_ADMIN only.
+adminRouter.post("/tenants/:tenantId/stripe-customer", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try {
+    const result = await ensureStripeCustomer(req.params.tenantId);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof StripeNotConfiguredError) { res.status(400).json({ error: err.message, notConfigured: true }); return; }
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 adminRouter.patch("/billing-config/:tenantId", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
   try { res.json(await updateBillingConfig(req.params.tenantId, req.body ?? {}, billingActor(req))); }

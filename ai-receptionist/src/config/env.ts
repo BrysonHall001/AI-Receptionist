@@ -64,6 +64,10 @@ const envSchema = z.object({
   // them in production.
   INTERNAL_API_SECRET: z.string().default(""),
 
+  // Stripe (test mode). OPTIONAL — the app boots without it; Stripe endpoints return a clear
+  // "not configured" error until STRIPE_SECRET_KEY (use a sk_test_... key) is set.
+  STRIPE_SECRET_KEY: z.string().default(""),
+
   // ---- GOOGLE CALENDAR (read-only; connection plumbing) ----
   // All OPTIONAL so the app boots fine with Google unconfigured. The OAuth
   // client id/secret come from Google Cloud Console (set up in a later sub-batch).

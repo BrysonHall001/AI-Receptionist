@@ -1512,6 +1512,55 @@
       catch (e) { toast(e.message, true); }
     };
     card.appendChild(save);
+
+    // ---- Payments (Stripe) — connection status + billing email + connect button ----
+    const sep = el("div"); sep.style.cssText = "border-top:1px solid var(--border,#e5e7eb);margin:16px 0 12px"; card.appendChild(sep);
+    const sh = el("div"); sh.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
+    sh.appendChild(el("h4", null, "Payments (Stripe)")).style.cssText = "margin:0;font-size:13.5px";
+    if (cfg.stripeConfigured && cfg.stripeTestMode) { const t = el("span", null, "TEST"); t.style.cssText = "font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:6px;padding:1px 6px"; sh.appendChild(t); }
+    card.appendChild(sh);
+
+    const short = (id) => (id && id.length > 14 ? id.slice(0, 10) + "…" + id.slice(-4) : id);
+    const statusLine = el("div"); statusLine.style.cssText = "font-size:12.5px;margin-bottom:10px";
+    function paintStatus(customerId) {
+      if (!cfg.stripeConfigured) { statusLine.innerHTML = `<span style="color:#b45309">● Stripe not configured</span> <span class="cell-muted">— add STRIPE_SECRET_KEY to enable.</span>`; return; }
+      if (customerId) statusLine.innerHTML = `<span style="color:#16a34a">● Connected</span> <span class="cell-muted">${esc(short(customerId))}</span>`;
+      else statusLine.innerHTML = `<span style="color:#6b7280">○ Not connected</span>`;
+    }
+    paintStatus(cfg.stripeCustomerId);
+    card.appendChild(statusLine);
+
+    // Billing email (saved to BillingConfig.billingEmail).
+    const emailWrap = el("div"); emailWrap.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px";
+    const emailInp = el("input", "input"); emailInp.type = "email"; emailInp.placeholder = "billing@portal.com"; emailInp.style.cssText = "margin:0;max-width:260px"; emailInp.value = cfg.billingEmail || "";
+    const emailBtn = el("button", "btn btn-ghost btn-sm", "Save email");
+    emailBtn.onclick = async () => {
+      const v = (emailInp.value || "").trim();
+      emailBtn.disabled = true;
+      try { await App.api(`/api/admin/billing-config/${encodeURIComponent(tenantId)}`, { method: "PATCH", body: JSON.stringify({ billingEmail: v || null }) }); cfg.billingEmail = v || null; toast("Billing email saved"); }
+      catch (e) { toast(e.message, true); }
+      finally { emailBtn.disabled = false; }
+    };
+    emailWrap.appendChild(field("Billing email", emailInp));
+    emailWrap.appendChild(emailBtn);
+    card.appendChild(emailWrap);
+
+    // Connect button.
+    const connect = el("button", "btn btn-ghost btn-sm", "Connect Stripe customer");
+    if (!cfg.stripeConfigured) { connect.disabled = true; connect.title = "Stripe not configured"; }
+    if (cfg.stripeCustomerId) connect.textContent = "Re-check Stripe customer";
+    connect.onclick = async () => {
+      connect.disabled = true;
+      try {
+        const r = await App.api(`/api/admin/tenants/${encodeURIComponent(tenantId)}/stripe-customer`, { method: "POST" });
+        cfg.stripeCustomerId = r.customerId; paintStatus(r.customerId);
+        connect.textContent = "Re-check Stripe customer";
+        toast(r.created ? "Stripe customer created" : "Already connected");
+      } catch (e) { toast(e.message, true); }
+      finally { connect.disabled = !cfg.stripeConfigured ? true : false; }
+    };
+    card.appendChild(connect);
+
     return card;
   }
 

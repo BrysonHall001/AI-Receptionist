@@ -121,6 +121,7 @@ model Tenant {
   billingConfig    BillingConfig?
   charges          Charge[]
   payments         Payment[]
+  stripeCustomerId String?
 }
 
 model User {
@@ -981,6 +982,7 @@ model BillingConfig {
   currency             String    @default("USD")
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+  billingEmail String?
 }
 
 // A charge (ledger line) billed to a portal for a period. Manual in this batch; auto-drafting

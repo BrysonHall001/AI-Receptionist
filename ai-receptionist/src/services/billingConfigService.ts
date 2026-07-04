@@ -26,6 +26,7 @@ export function serializeConfig(c: any) {
     contractStart: c.contractStart ? new Date(c.contractStart).toISOString() : null,
     contractEnd: c.contractEnd ? new Date(c.contractEnd).toISOString() : null,
     currency: c.currency,
+    billingEmail: c.billingEmail ?? null,
     createdAt: c.createdAt, updatedAt: c.updatedAt,
   };
 }
@@ -39,8 +40,16 @@ export async function getBillingConfig(tenantId: string) {
     update: {},
     create: { tenantId },
   });
-  const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { billingStatus: true, name: true } });
-  return { ...serializeConfig(row), billingStatus: t?.billingStatus ?? null, tenantName: t?.name ?? null };
+  const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { billingStatus: true, name: true, stripeCustomerId: true } });
+  const { isStripeConfigured, isStripeTestMode } = await import("./stripeService");
+  return {
+    ...serializeConfig(row),
+    billingStatus: t?.billingStatus ?? null,
+    tenantName: t?.name ?? null,
+    stripeCustomerId: t?.stripeCustomerId ?? null,
+    stripeConfigured: isStripeConfigured(),
+    stripeTestMode: isStripeTestMode(),
+  };
 }
 
 // Patch a tenant's config. Only known fields are accepted; amounts are clamped to >= 0.
@@ -56,6 +65,7 @@ export async function updateBillingConfig(tenantId: string, input: Record<string
   if ("contractStart" in input) data.contractStart = input.contractStart ? new Date(input.contractStart as string) : null;
   if ("contractEnd" in input) data.contractEnd = input.contractEnd ? new Date(input.contractEnd as string) : null;
   if ("currency" in input) { const c = String(input.currency || "").trim().toUpperCase(); if (!/^[A-Z]{3}$/.test(c)) throw new Error("currency must be a 3-letter code"); data.currency = c; }
+  if ("billingEmail" in input) { const e = input.billingEmail == null ? "" : String(input.billingEmail).trim(); if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new Error("billingEmail must be a valid email"); data.billingEmail = e || null; }
 
   const row = await db.billingConfig.upsert({
     where: { tenantId },
@@ -81,6 +91,7 @@ export async function updateBillingConfig(tenantId: string, input: Record<string
     if ("contractStart" in data) add("contractStart", dOnly(b.contractStart), dOnly(row.contractStart), `Contract start changed from ${dOnly(b.contractStart)} to ${dOnly(row.contractStart)}`);
     if ("contractEnd" in data) add("contractEnd", dOnly(b.contractEnd), dOnly(row.contractEnd), `Contract end changed from ${dOnly(b.contractEnd)} to ${dOnly(row.contractEnd)}`);
     if ("currency" in data) add("currency", String(b.currency ?? "none"), String(row.currency), `Currency changed from ${b.currency ?? "none"} to ${row.currency}`);
+    if ("billingEmail" in data) add("billingEmail", String(b.billingEmail ?? "none"), String(row.billingEmail ?? "none"), `Billing email changed from ${b.billingEmail ?? "none"} to ${row.billingEmail ?? "none"}`);
     await writeAuditMany(entries);
   } catch (e) { /* audit must never break the mutation */ }
 
