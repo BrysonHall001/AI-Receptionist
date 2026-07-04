@@ -1002,6 +1002,10 @@ model Charge {
   approvedAt  DateTime?
   reminderSentAt DateTime?
   reminderCount  Int      @default(0)
+  stripeInvoiceId     String?
+  stripeInvoiceUrl    String?
+  stripeInvoiceStatus String?
+  stripeInvoicedAt    DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   payments    Payment[]

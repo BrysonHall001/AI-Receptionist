@@ -17,7 +17,8 @@ import { computeSuggestedCharge } from "../services/chargeComputeService";
 import { listCharges, listAllCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
 import { verifyPassword } from "../auth/passwords";
 import { ensureStripeCustomer } from "../services/stripeCustomerService";
-import { StripeNotConfiguredError } from "../services/stripeService";
+import { StripeNotConfiguredError, isStripeConfigured, isStripeTestMode } from "../services/stripeService";
+import { createInvoiceForCharge, sendInvoiceForCharge } from "../services/stripeInvoiceService";
 import { getChargeAudit, getTermsAudit } from "../services/billingAuditService";
 import { getBillingNotifyConfig, updateBillingNotifyConfig } from "../services/billingNotifyConfigService";
 import { runBillingAutomationSweep } from "../services/billingSweepService";
@@ -499,6 +500,29 @@ adminRouter.post("/tenants/:tenantId/stripe-customer", requireRole("OWNER", "SUP
     const result = await ensureStripeCustomer(req.params.tenantId);
     res.json(result);
   } catch (err) {
+    if (err instanceof StripeNotConfiguredError) { res.status(400).json({ error: err.message, notConfigured: true }); return; }
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Global Stripe connection status (for enabling/disabling invoice UI).
+adminRouter.get("/stripe/status", requireRole("OWNER", "SUPER_ADMIN"), (_req: Request, res: Response) => {
+  res.json({ configured: isStripeConfigured(), testMode: isStripeTestMode() });
+});
+
+// Create/retry the Stripe invoice for an approved charge.
+adminRouter.post("/charges/:id/invoice", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await createInvoiceForCharge(req.params.id, billingActor(req))); }
+  catch (err) {
+    if (err instanceof StripeNotConfiguredError) { res.status(400).json({ error: err.message, notConfigured: true }); return; }
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Email the finalized invoice to the customer (explicit action).
+adminRouter.post("/charges/:id/invoice/send", requireRole("OWNER", "SUPER_ADMIN"), async (req: Request, res: Response) => {
+  try { res.json(await sendInvoiceForCharge(req.params.id, billingActor(req))); }
+  catch (err) {
     if (err instanceof StripeNotConfiguredError) { res.status(400).json({ error: err.message, notConfigured: true }); return; }
     res.status(400).json({ error: (err as Error).message });
   }

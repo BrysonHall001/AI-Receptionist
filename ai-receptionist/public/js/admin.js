@@ -1575,6 +1575,16 @@
     return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;color:#fff;background:${map[c.status] || "#6b7280"}">${esc(cap(c.status))}</span>`;
   }
 
+  // Stripe invoice status pill (+ optional hosted-link). "Not invoiced" when none.
+  function invoiceStatusHTML(c) {
+    if (!c.stripeInvoiceId) return `<span class="cell-muted">Not invoiced</span>`;
+    const map = { draft: "#6b7280", open: "#2563eb", paid: "#16a34a", void: "#9ca3af", uncollectible: "#dc2626" };
+    const st = c.stripeInvoiceStatus || "open";
+    const badge = `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;color:#fff;background:${map[st] || "#6b7280"}">${esc(cap(st))}</span>`;
+    const link = c.stripeInvoiceUrl ? ` <a href="${esc(c.stripeInvoiceUrl)}" target="_blank" rel="noopener" class="link-btn" style="color:var(--accent,#2563eb);text-decoration:underline;font-size:12px">payment link</a>` : "";
+    return badge + link;
+  }
+
   // Charges table column layout persists per-browser under ONE shared key so it applies to every
   // tenant's charges table (mirrors the Tenants table's admincols pattern).
   const CHARGES_COLS_KEY = "chargescols";
@@ -1608,6 +1618,7 @@
       { key: "approved", label: "Approved", type: "date", get: (c) => c.approvedAt, text: (c) => (c.approvedAt ? fmtDateOnly(c.approvedAt) : "—"), render: (c) => (c.approvedAt ? esc(fmtDateOnly(c.approvedAt)) : "—") },
       { key: "paidDate", label: "Paid date", type: "date", get: (c) => c.paidAt, text: (c) => (c.paidAt ? fmtDateOnly(c.paidAt) : "—"), render: (c) => (c.paidAt ? esc(fmtDateOnly(c.paidAt)) : "—") },
       { key: "notes", label: "Notes", type: "text", get: (c) => c.notes || "", text: (c) => c.notes || "", render: (c) => (c.notes ? esc(c.notes) : `<span class="cell-muted">—</span>`) },
+      { key: "invoice", label: "Invoice", type: "text", get: (c) => c.stripeInvoiceStatus || "", text: (c) => (c.stripeInvoiceId ? (c.stripeInvoiceStatus || "open") : "Not invoiced"), render: (c) => invoiceStatusHTML(c) },
     ];
     const defaultKeys = ["period", "amount", "status", "paid", "outstanding", "due"];
     const actionsCol = {
@@ -1782,9 +1793,10 @@
       return events;
     }
 
-    function render(charge, audit) {
+    function render(charge, audit, sstatus) {
       const b = charge.breakdown || {}; const us = b.usageSnapshot || {};
       const STATUSES = ["draft", "approved", "paid", "unpaid", "void"];
+      const stripeOn = !!(sstatus && sstatus.configured);
       const events = buildEvents(charge, audit);
       const timelineHTML = events.map((e) => `
         <div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0">
@@ -1812,6 +1824,16 @@
             <button id="d-pay" class="btn btn-ghost btn-sm">Record payment</button>
             <button id="d-void" class="btn btn-ghost btn-sm" style="color:#dc2626">Void</button>
           </div>
+          <div style="border-top:1px solid var(--border,#e5e7eb);margin:14px 0 10px"></div>
+          <label class="field-label">Invoice (Stripe)</label>
+          ${!stripeOn ? `<div class="cell-muted" style="font-size:12.5px">Stripe not connected — configure Stripe to invoice this charge.</div>`
+            : (charge.status === "draft" ? `<div class="cell-muted" style="font-size:12.5px">Approve the charge to create its invoice.</div>`
+            : `<div style="font-size:12.5px;margin-bottom:8px">${invoiceStatusHTML(charge)}</div>
+               <div style="display:flex;gap:8px;flex-wrap:wrap">
+                 ${charge.stripeInvoiceUrl ? `<button id="d-copylink" class="btn btn-ghost btn-sm">Copy payment link</button><button id="d-openlink" class="btn btn-ghost btn-sm">Open</button>` : ""}
+                 ${(!charge.stripeInvoiceId || charge.stripeInvoiceStatus === "void") ? `<button id="d-invoice" class="btn btn-primary btn-sm">Create invoice</button>` : `<button id="d-invoice" class="btn btn-ghost btn-sm">Retry invoice</button>`}
+                 ${charge.stripeInvoiceId ? `<button id="d-send" class="btn btn-ghost btn-sm">Send to customer</button>` : ""}
+               </div>`)}
         </div>`;
       const $ = (s) => inner.querySelector(s);
       $("#d-close").onclick = () => overlay.remove();
@@ -1820,23 +1842,28 @@
       $("#d-edit").onclick = () => openChargeModal(tenantId, tenantName, charge, reload); // stacked; detail reloads on save
       $("#d-pay").onclick = () => openPaymentModal(tenantId, tenantName, charge, reload);
       $("#d-void").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Void charge", message: "Void this charge? It will be excluded from billed/outstanding totals.", confirmText: "Void charge" }))) return; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/void`, { method: "POST" }); toast("Charge voided"); await reload(); } catch (e) { toast(e.message, true); } };
+      if ($("#d-copylink")) $("#d-copylink").onclick = async () => { try { await navigator.clipboard.writeText(charge.stripeInvoiceUrl); toast("Payment link copied"); } catch (e) { window.prompt("Copy the payment link:", charge.stripeInvoiceUrl); } };
+      if ($("#d-openlink")) $("#d-openlink").onclick = () => window.open(charge.stripeInvoiceUrl, "_blank", "noopener");
+      if ($("#d-invoice")) $("#d-invoice").onclick = async () => { const btn = $("#d-invoice"); btn.disabled = true; try { const r = await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/invoice`, { method: "POST" }); toast(r && r.created === false ? "Invoice already exists" : "Invoice created"); await reload(); } catch (e) { toast(e.message, true); btn.disabled = false; } };
+      if ($("#d-send")) $("#d-send").onclick = async () => { if (!(await App.ui.confirmModal({ title: "Send invoice", message: "Email this invoice to the customer via Stripe?", confirmText: "Send invoice" }))) return; const btn = $("#d-send"); btn.disabled = true; try { await App.api(`/api/admin/charges/${encodeURIComponent(charge.id)}/invoice/send`, { method: "POST" }); toast("Invoice sent to customer"); await reload(); } catch (e) { toast(e.message, true); btn.disabled = false; } };
     }
 
     // Re-fetch the charge + its audit and re-render in place, then refresh the ledger behind.
     async function reload() {
       try {
-        const [charge, audit] = await Promise.all([
+        const [charge, audit, sstatus] = await Promise.all([
           App.api(`/api/admin/charges/${encodeURIComponent(chargeId)}`),
           App.api(`/api/admin/charges/${encodeURIComponent(chargeId)}/audit`).catch(() => []),
+          App.api(`/api/admin/stripe/status`).catch(() => ({ configured: false })),
         ]);
-        render(charge, audit || []);
+        render(charge, audit || [], sstatus || { configured: false });
       } catch (e) { toast((e && e.message) || "Failed to refresh", true); }
       refreshBilling(tenantId, tenantName);
       if (onChange) onChange();
     }
 
-    render(chargeInit, null); // instant paint from the row data
-    reload();                 // then load full audit + freshest charge
+    render(chargeInit, null, { configured: false }); // instant paint from the row data
+    reload();                 // then load full audit + freshest charge + stripe status
   }
 
   // ---- Central "Charges" tab: every charge across all portals in one App.table. Its column
@@ -1863,6 +1890,7 @@
       { key: "approved", label: "Approved", type: "date", get: (c) => c.approvedAt, text: (c) => (c.approvedAt ? fmtDateOnly(c.approvedAt) : "—"), render: (c) => (c.approvedAt ? esc(fmtDateOnly(c.approvedAt)) : "—") },
       { key: "paidDate", label: "Paid date", type: "date", get: (c) => c.paidAt, text: (c) => (c.paidAt ? fmtDateOnly(c.paidAt) : "—"), render: (c) => (c.paidAt ? esc(fmtDateOnly(c.paidAt)) : "—") },
       { key: "notes", label: "Notes", type: "text", get: (c) => c.notes || "", text: (c) => c.notes || "", render: (c) => (c.notes ? esc(c.notes) : `<span class="cell-muted">—</span>`) },
+      { key: "invoice", label: "Invoice", type: "text", get: (c) => c.stripeInvoiceStatus || "", text: (c) => (c.stripeInvoiceId ? (c.stripeInvoiceStatus || "open") : "Not invoiced"), render: (c) => invoiceStatusHTML(c) },
     ];
     const defaultKeys = ["tenant", "period", "amount", "status", "paid", "outstanding", "due", "created"];
     const actionsCol = {

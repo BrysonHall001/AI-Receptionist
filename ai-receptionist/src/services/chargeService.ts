@@ -1,6 +1,7 @@
 // Charges (ledger) + Payments. Manual management in this batch. A charge's paid/unpaid state
 // derives from its status + the sum of linked Payments (paid once payments >= amount).
 import { prisma } from "../db/client";
+import { logger } from "../utils/logger";
 import { writeAudit, writeAuditMany, money as fmtMoney, ymd, type Actor } from "./billingAuditService";
 
 const db = prisma as any;
@@ -49,6 +50,10 @@ export function serializeCharge(c: any) {
     approvedAt: iso(c.approvedAt),
     createdAt: c.createdAt,
     paidAt,
+    stripeInvoiceId: c.stripeInvoiceId ?? null,
+    stripeInvoiceUrl: c.stripeInvoiceUrl ?? null,
+    stripeInvoiceStatus: c.stripeInvoiceStatus ?? null,
+    stripeInvoicedAt: c.stripeInvoicedAt ?? null,
     updatedAt: c.updatedAt,
     paidTotal: Math.round(paidTotal * 100) / 100,
     outstanding: isVoid ? 0 : outstanding,
@@ -174,7 +179,20 @@ export async function approveCharge(id: string, actor?: Actor) {
   if (charge.status !== "draft") throw new Error(`only a draft charge can be approved (this one is ${charge.status})`);
   const row = await db.charge.update({ where: { id }, data: { status: "approved", approvedAt: new Date() }, include: withPayments });
   await writeAudit({ tenantId: charge.tenantId, chargeId: id, actor, action: "charge_approved", field: "status", oldValue: "draft", newValue: "approved", note: "Charge approved" });
-  return serializeCharge(row);
+  // Attempt to create the Stripe invoice — but NEVER let this fail the approval. If Stripe is
+  // unconfigured or errors, the charge stays approved+unpaid with null invoice fields and the
+  // user can retry via POST /charges/:id/invoice.
+  try {
+    const { isStripeConfigured } = await import("./stripeService");
+    if (isStripeConfigured()) {
+      const { createInvoiceForCharge } = await import("./stripeInvoiceService");
+      await createInvoiceForCharge(id, actor);
+    }
+  } catch (e) {
+    logger.warn(`[approve] invoice creation failed for charge ${id} (approval still succeeded): ${(e as Error).message}`);
+  }
+  const fresh = await getCharge(id);
+  return fresh!;
 }
 
 // Record a manual payment against a charge. If the charge is now fully covered, flip it to paid.
