@@ -247,6 +247,94 @@
   App.audiencePicker = { mount: mountAudiencePicker };
 
   // ======================================================================
+  // Shared Audience SELECT (multi-select saved audiences as a recipient source).
+  //   App.audienceSelect.mount(host, opts) -> api
+  //   opts: { emailableOnly (default true), onChange() }
+  //   api:
+  //     getSelectedIds()        -> audienceId[]       (what to send server-side; resolved fresh there)
+  //     getResolvedContactIds() -> string[]           (client PREVIEW union/de-dupe of current matches)
+  //     getCounts()             -> { audiences, recipients }
+  // Used by BOTH the email composer and the survey-send modal (and Drips later). Resolving here is
+  // only a live preview; the authoritative resolve happens server-side at send time (dynamic).
+  // REUSES App.portal.contactColumnDefs + App.table.pipeline — no new filter logic.
+  // ======================================================================
+  function mountAudienceSelect(host, opts) {
+    opts = opts || {};
+    const { el, esc } = App.util;
+    const emailableOnly = opts.emailableOnly !== false;
+    host.innerHTML = "";
+    host.classList.add("audience-select");
+    const nounLower = (n) => (App.label ? App.label("contact", n === 1 ? "one" : "many").toLowerCase() : (n === 1 ? "contact" : "contacts"));
+
+    const state = { audiences: [], contacts: [], columns: [], selected: new Set(), ready: false };
+    const summary = el("div", "cell-strong"); summary.style.cssText = "font-size:14px;margin:0 0 8px";
+    const listWrap = el("div"); listWrap.style.cssText = "display:flex;flex-direction:column;gap:6px";
+    host.appendChild(summary); host.appendChild(listWrap);
+
+    function rulesOf(a) { return (a && a.definition && Array.isArray(a.definition.rules)) ? a.definition.rules : []; }
+    function matchesOf(a) {
+      const rows = App.table.pipeline(state.contacts, state.columns, { rules: rulesOf(a) });
+      return emailableOnly ? rows.filter((c) => c.email && String(c.email).trim()) : rows;
+    }
+    function resolvedIds() {
+      const set = new Set();
+      state.audiences.forEach((a) => { if (state.selected.has(a.id)) matchesOf(a).forEach((c) => set.add(c.id)); });
+      return Array.from(set);
+    }
+    function counts() { return { audiences: state.selected.size, recipients: resolvedIds().length }; }
+
+    function renderSummary() {
+      const c = counts();
+      summary.textContent = state.selected.size
+        ? `${c.recipients} recipient${c.recipients === 1 ? "" : "s"} from ${c.audiences} audience${c.audiences === 1 ? "" : "s"}`
+        : "No audience selected yet";
+      if (opts.onChange) opts.onChange();
+    }
+
+    function renderList() {
+      listWrap.innerHTML = "";
+      if (!state.audiences.length) { listWrap.appendChild(el("div", "cell-muted", "No saved audiences yet. Create one in Communication → Audiences.")); return; }
+      state.audiences.forEach((a) => {
+        const n = matchesOf(a).length;
+        const row = el("label", "audience-select-row");
+        row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;cursor:pointer";
+        const ck = el("input"); ck.type = "checkbox"; ck.checked = state.selected.has(a.id);
+        ck.onchange = () => { if (ck.checked) state.selected.add(a.id); else state.selected.delete(a.id); renderSummary(); };
+        const mid = el("div"); mid.style.cssText = "flex:1;min-width:0";
+        mid.innerHTML = `<div style="font-weight:600">${esc(a.name)}</div>`;
+        const cnt = el("div"); cnt.style.cssText = "font-size:12.5px;" + (n === 0 ? "color:#b45309" : "color:var(--muted,#6b7280)");
+        cnt.textContent = n === 0 ? "0 — matches nobody right now" : `${n} ${nounLower(n)} match now`;
+        mid.appendChild(cnt);
+        row.appendChild(ck); row.appendChild(mid);
+        listWrap.appendChild(row);
+      });
+    }
+
+    async function build() {
+      const [audiences, contacts, fields] = await Promise.all([
+        App.portalApi("/api/audiences").catch(() => []),
+        App.portalApi("/api/contacts").catch(() => []),
+        App.portalApi("/api/fields").catch(() => []),
+      ]);
+      state.audiences = Array.isArray(audiences) ? audiences : [];
+      state.contacts = Array.isArray(contacts) ? contacts : [];
+      state.columns = App.portal.contactColumnDefs(fields || []);
+      state.ready = true;
+      renderList(); renderSummary();
+    }
+    build().catch((e) => { host.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; });
+
+    return {
+      getSelectedIds: () => Array.from(state.selected),
+      getResolvedContactIds: () => resolvedIds(),
+      getCounts: counts,
+      // Selected audiences that currently match nobody (for a pre-send warning).
+      getEmptySelected: () => state.audiences.filter((a) => state.selected.has(a.id) && matchesOf(a).length === 0).map((a) => a.name),
+    };
+  }
+  App.audienceSelect = { mount: mountAudienceSelect };
+
+  // ======================================================================
   // Communication page — tab strip (Email only for now; Texts/Surveys/Templates
   // are future tabs, intentionally not built). The Email tab is audience-first
   // manual send, reusing the composer + the same outbound path/role-gate as
@@ -345,13 +433,25 @@
       : "No one is emailed until you add them — type an address, check people below, or apply a filter to select matches. Only people with an email address are sent to.";
     audCard.appendChild(el("div", "cell-muted", audIntro)).style.margin = "2px 0 14px";
     const audienceHost = el("div");
+    // Primary path: pick one or more saved Audiences (resolved to their CURRENT matches at send
+    // time, server-side). Shown above the manual picker; typed on-the-fly entry stays below.
+    audCard.appendChild(el("div", "field-label", "Send to saved audiences"));
+    const audSelHost = el("div"); audCard.appendChild(audSelHost);
+    const audSelect = App.audienceSelect.mount(audSelHost, { emailableOnly: true, onChange: () => refreshCount() });
+    const orLabel = el("div", "field-label", "Or add people manually"); orLabel.style.marginTop = "16px"; audCard.appendChild(orLabel);
     audCard.appendChild(audienceHost);
     const audOpts = { tablePreview: true, allowTypedEmails: true };
     if (hasPreload) audOpts.preloadIds = preloadIds;
     function refreshCount() {
-      const c = audience.getCounts ? audience.getCounts() : { total: 0 };
-      sendCount.textContent = c.total ? `${c.total} recipient${c.total === 1 ? "" : "s"} selected` : "Add at least one recipient";
-      sendBtn.disabled = c.total === 0; // empty guard: nothing to send
+      const manual = (audience && audience.getRecipientIds) ? audience.getRecipientIds() : [];
+      const fromAud = audSelect ? audSelect.getResolvedContactIds() : [];
+      const typed = (audience && audience.getTypedEmails) ? audience.getTypedEmails().length : 0;
+      const audCount = audSelect ? audSelect.getCounts().audiences : 0;
+      const total = new Set([...manual, ...fromAud]).size + typed;
+      sendCount.textContent = audCount
+        ? `${total} recipient${total === 1 ? "" : "s"} from ${audCount} audience${audCount === 1 ? "" : "s"}${typed ? ` (+${typed} typed)` : ""}`
+        : (total ? `${total} recipient${total === 1 ? "" : "s"} selected` : "Add at least one recipient");
+      sendBtn.disabled = total === 0;
     }
     const audience = App.audiencePicker.mount(audienceHost, Object.assign(audOpts, { onChange: () => refreshCount() }));
     host.appendChild(audCard);
@@ -362,12 +462,19 @@
       if (!subject || !subject.trim()) { toast("Add a subject.", true); return; }
       const recipientIds = audience.getRecipientIds();
       const typedEmails = audience.getTypedEmails ? audience.getTypedEmails() : [];
-      const total = recipientIds.length + typedEmails.length;
-      if (!total) { toast("No recipients — add an email address, check people, or set criteria.", true); return; }
+      const audienceIds = audSelect.getSelectedIds();
+      const fromAud = audSelect.getResolvedContactIds();
+      const contactTotal = new Set([...recipientIds, ...fromAud]).size;
+      const total = contactTotal + typedEmails.length;
+      if (!total) { toast("No recipients — pick an audience, add an email address, or check people.", true); return; }
 
+      const empties = audSelect.getEmptySelected();
+      const emptyNote = empties.length ? ` Note: ${empties.map((n) => `“${n}”`).join(", ")} match${empties.length === 1 ? "es" : ""} nobody right now.` : "";
+      const audCount = audienceIds.length;
+      const fromLine = audCount ? `${contactTotal} contact${contactTotal === 1 ? "" : "s"} from ${audCount} audience${audCount === 1 ? "" : "s"}${typedEmails.length ? ` + ${typedEmails.length} typed` : ""}` : `${total} ${total === 1 ? "person" : "people"}${typedEmails.length ? ` (${recipientIds.length} contacts + ${typedEmails.length} typed)` : ""}`;
       const ok = await App.ui.confirmModal({
         title: "Send this email?",
-        message: `You're about to email ${total} ${total === 1 ? "person" : "people"}${typedEmails.length ? ` (${recipientIds.length} contact${recipientIds.length === 1 ? "" : "s"} + ${typedEmails.length} typed)` : ""}. Send?`,
+        message: `You're about to email ${fromLine}. Recipients are resolved now, so it reflects who currently matches.${emptyNote} Send?`,
         confirmText: "Send",
       });
       if (!ok) return;
@@ -376,7 +483,7 @@
       try {
         const res = await App.portalApi("/api/communication/email", {
           method: "POST",
-          body: JSON.stringify({ subject: subject.trim(), html: composer.getHTML(), contactIds: recipientIds, extraEmails: typedEmails }),
+          body: JSON.stringify({ subject: subject.trim(), html: composer.getHTML(), contactIds: recipientIds, audienceIds, extraEmails: typedEmails }),
         });
         if (res.failCount) toast(`Sent to ${res.sentCount} of ${res.recipientCount} — ${res.failCount} failed.`);
         else toast(`Sent to ${res.sentCount} ${res.sentCount === 1 ? "person" : "people"}.`);
@@ -1253,10 +1360,11 @@
 
       body.appendChild(el("div", "cell-muted", "Each recipient gets their own personal link, so their answers tie back to them and fill their fields. Pick who to send to, write the email, and include the survey link.")).style.marginBottom = "12px";
 
-      // audience (reuse the same picker the Email tab uses)
+      // audience — pick one or more saved Audiences (resolved to current contacts at send time,
+      // each gets their own personal link). Shared selector, same one the Email tab uses.
       body.appendChild(el("div", "field-label", "Audience"));
       const audienceHost = el("div"); body.appendChild(audienceHost);
-      const audience = App.audiencePicker.mount(audienceHost, {});
+      const audSelect = App.audienceSelect.mount(audienceHost, { emailableOnly: true });
 
       // email composer (reuse App.compose; its Templates menu = start-from / save-as)
       const composerHost = el("div"); composerHost.style.marginTop = "12px"; body.appendChild(composerHost);
@@ -1305,17 +1413,21 @@
 
       send.onclick = async () => {
         const c = checks(); if (!c) return;
-        const recipientIds = audience.getRecipientIds();
-        if (!recipientIds.length) { toast("No emailable recipients in this audience.", true); return; }
+        const audienceIds = audSelect.getSelectedIds();
+        const previewIds = audSelect.getResolvedContactIds();
+        if (!audienceIds.length) { toast("Pick at least one audience to send to.", true); return; }
+        if (!previewIds.length) { toast("The selected audience(s) match nobody with an email right now.", true); return; }
+        const empties = audSelect.getEmptySelected();
+        const emptyNote = empties.length ? ` Note: ${empties.map((n) => `“${n}”`).join(", ")} match${empties.length === 1 ? "es" : ""} nobody right now.` : "";
         const ok = await App.ui.confirmModal({
           title: "Send this survey?",
-          message: `You're about to send “${survey.name}” to ${recipientIds.length} ${recipientIds.length === 1 ? "person" : "people"}. Each gets their own link. Send?`,
+          message: `You're about to send “${survey.name}” to ${previewIds.length} ${previewIds.length === 1 ? "person" : "people"} from ${audienceIds.length} audience${audienceIds.length === 1 ? "" : "s"}. Recipients are resolved now, and each gets their own link.${emptyNote} Send?`,
           confirmText: "Send",
         });
         if (!ok) return;
         send.disabled = true; send.textContent = "Sending…";
         try {
-          const res = await App.portalApi("/api/surveys/" + encodeURIComponent(survey.id) + "/send", { method: "POST", body: JSON.stringify({ subject: c.subject, html: c.html, contactIds: recipientIds }) });
+          const res = await App.portalApi("/api/surveys/" + encodeURIComponent(survey.id) + "/send", { method: "POST", body: JSON.stringify({ subject: c.subject, html: c.html, audienceIds }) });
           if (res.failCount) toast(`Sent to ${res.sentCount} of ${res.recipientCount} — ${res.failCount} failed.`);
           else toast(`Sent to ${res.sentCount} ${res.sentCount === 1 ? "person" : "people"}.`);
           close();

@@ -29,7 +29,7 @@ import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from ".
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
-import { listAudiences, getAudience, createAudience, updateAudience, deleteAudience, resolveAudienceContacts } from "../services/audienceService";
+import { listAudiences, getAudience, createAudience, updateAudience, deleteAudience, resolveAudienceContacts, resolveAudiencesToContactIds } from "../services/audienceService";
 import { listExports, createExport, createImportRecord, createBackupRecord, getExportCsv, getExportArtifact } from "../services/exportService";
 import { listReports, getScheduledReport, upsertScheduledReport, setReportActive } from "../services/reportService";
 import { runAndDeliverReport } from "../services/reportExecutor";
@@ -456,11 +456,16 @@ apiRouter.post("/communication/email", async (req: Request, res: Response) => {
   const contactIds = Array.isArray(body.contactIds) ? body.contactIds.map((x) => String(x)) : [];
   const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds.map((x) => String(x)) : [];
   const extraEmails = Array.isArray(body.extraEmails) ? body.extraEmails.map((x) => String(x)) : [];
-  if (!contactIds.length && !extraEmails.length) { res.status(400).json({ error: "No recipients selected" }); return; }
+  // Audiences resolve to their CURRENT matching contacts at SEND time (dynamic), unioned + de-duped
+  // with any manually-picked contactIds. sendEmailBlast filters to emailable + de-dupes downstream.
+  const audienceIds = Array.isArray((body as any).audienceIds) ? (body as any).audienceIds.map((x: any) => String(x)) : [];
+  const fromAudiences = audienceIds.length ? (await resolveAudiencesToContactIds(tenantId, audienceIds)).contactIds : [];
+  const allContactIds = Array.from(new Set([...contactIds, ...fromAudiences]));
+  if (!allContactIds.length && !extraEmails.length) { res.status(400).json({ error: "No recipients selected" }); return; }
   try {
     const result = await sendEmailBlast({
       tenantId, subject, html: String(body.html || ""),
-      contactIds, excludeIds, extraEmails,
+      contactIds: allContactIds, excludeIds, extraEmails,
       fromEmail: req.user!.email, fromName: req.user!.name,
       createdById: req.user!.id,
     });
@@ -605,11 +610,15 @@ apiRouter.post("/surveys/:id/send", async (req: Request, res: Response) => {
   if (!subject) { res.status(400).json({ error: "A subject is required" }); return; }
   const contactIds = Array.isArray(body.contactIds) ? body.contactIds.map((x: any) => String(x)) : [];
   const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds.map((x: any) => String(x)) : [];
-  if (!contactIds.length) { res.status(400).json({ error: "No recipients selected" }); return; }
+  // Audiences resolve to current matching contacts at SEND time, unioned + de-duped with any manual ids.
+  const audienceIds = Array.isArray(body.audienceIds) ? body.audienceIds.map((x: any) => String(x)) : [];
+  const fromAudiences = audienceIds.length ? (await resolveAudiencesToContactIds(tenantId, audienceIds)).contactIds : [];
+  const allContactIds = Array.from(new Set([...contactIds, ...fromAudiences]));
+  if (!allContactIds.length) { res.status(400).json({ error: "No recipients selected" }); return; }
   try {
     const result = await sendSurveyBlast({
       tenantId, surveyId: req.params.id, subject, html: String(body.html || ""),
-      contactIds, excludeIds,
+      contactIds: allContactIds, excludeIds,
       fromEmail: req.user!.email, fromName: req.user!.name, createdById: req.user!.id,
       origin: `${req.protocol}://${req.get("host")}`,
     });

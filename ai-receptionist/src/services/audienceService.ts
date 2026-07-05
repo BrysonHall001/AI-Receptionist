@@ -66,3 +66,24 @@ export async function countAudienceContacts(tenantId: string, audienceId: string
   const rows = await resolveAudienceContacts(tenantId, audienceId);
   return rows ? rows.length : null;
 }
+
+// Resolve MANY audiences to a single de-duped list of contact ids, at CALL time (send time).
+// Unknown/foreign audience ids are skipped. Returns { contactIds, perAudience, missing } so callers
+// can report which audiences matched nobody. All matches are returned (not just emailable) — the
+// email/survey blast services apply their own emailable filter downstream.
+export async function resolveAudiencesToContactIds(
+  tenantId: string,
+  audienceIds: string[],
+): Promise<{ contactIds: string[]; perAudience: Record<string, number>; missing: string[] }> {
+  const ids = Array.from(new Set((audienceIds || []).filter(Boolean)));
+  const union = new Set<string>();
+  const perAudience: Record<string, number> = {};
+  const missing: string[] = [];
+  for (const aid of ids) {
+    const rows = await resolveAudienceContacts(tenantId, aid);
+    if (rows === null) { missing.push(aid); continue; }
+    perAudience[aid] = rows.length;
+    rows.forEach((r) => union.add(r.id));
+  }
+  return { contactIds: Array.from(union), perAudience, missing };
+}
