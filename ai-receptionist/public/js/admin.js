@@ -1695,15 +1695,20 @@
     const d0 = existing ? String(existing.periodStart).slice(0, 10) : iso(new Date(today.getFullYear(), today.getMonth() - 1, 1));
     const d1 = existing ? String(existing.periodEnd).slice(0, 10) : iso(new Date(today.getFullYear(), today.getMonth(), 0));
     const tenantPickerHTML = tenants ? `<label class="field-label">Tenant</label><select id="c-tenant" class="input"><option value="">— Select a portal —</option>${tenants.map((t) => `<option value="${esc(t.id)}">${esc(t.name || t.id)}</option>`).join("")}</select>` : "";
+    // M3: material fields (amount/period) are locked once a charge leaves draft — it may be tied
+    // to a finalized Stripe invoice. Void + re-create to bill a different amount.
+    const locked = !!existing && existing.status !== "draft";
+    const dis = locked ? "disabled" : "";
     inner.innerHTML = `<div class="modal-head"><h2>${existing ? "Edit charge" : "Create charge"}</h2><button class="icon-btn" id="c-close">&times;</button></div>
       <div class="modal-body">
         ${tenantPickerHTML}
+        ${locked ? `<div class="cell-muted" style="font-size:12px;margin:0 0 10px;padding:8px 10px;background:var(--surface-2,#f8fafc);border-left:3px solid #f59e0b;border-radius:4px">This charge is <b>${esc(existing.status)}</b>, so the amount and period are locked. To bill a different amount, void this charge and create a new one. You can still edit the note and due date.</div>` : ""}
         <div style="display:flex;gap:12px;flex-wrap:wrap">
-          <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period start</label><input id="c-start" class="input" type="date" value="${d0}"></div>
-          <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period end</label><input id="c-end" class="input" type="date" value="${d1}"></div>
+          <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period start</label><input id="c-start" class="input" type="date" value="${d0}" ${dis}></div>
+          <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period end</label><input id="c-end" class="input" type="date" value="${d1}" ${dis}></div>
         </div>
         ${hideSuggest ? "" : `<div style="margin:8px 0"><button id="c-suggest" class="btn btn-ghost btn-sm">✨ Suggest amount from terms</button> <span id="c-sugnote" class="cell-muted" style="font-size:11.5px"></span></div>`}
-        <label class="field-label">Amount</label><input id="c-amount" class="input" type="number" step="0.01" min="0" value="${existing ? money2(existing.amount) : ""}" placeholder="0.00">
+        <label class="field-label">Amount</label><input id="c-amount" class="input" type="number" step="0.01" min="0" value="${existing ? money2(existing.amount) : ""}" placeholder="0.00" ${dis}>
         <label class="field-label">Due date (optional)</label><input id="c-due" class="input" type="date" value="${existing && existing.dueDate ? String(existing.dueDate).slice(0, 10) : ""}">
         <label class="field-label">Notes</label><input id="c-notes" class="input" value="${existing ? esc(existing.notes || "") : ""}" placeholder="optional">
         <div id="c-breakdown" class="cell-muted" style="font-size:12px;margin:8px 0"></div>
@@ -1722,7 +1727,11 @@
     $("#c-save").onclick = async () => {
       const targetTenant = tenants ? ($("#c-tenant") && $("#c-tenant").value) : tenantId;
       if (tenants && !targetTenant) { toast("Please select a tenant", true); return; }
-      const body = { periodStart: $("#c-start").value, periodEnd: $("#c-end").value, amount: Number($("#c-amount").value || 0), breakdown: breakdown || {}, dueDate: $("#c-due").value || null, notes: $("#c-notes").value || null };
+      // On a locked (non-draft) charge only benign fields go up — the server rejects material
+      // fields on non-draft charges, so sending them (even unchanged) would 400.
+      const body = locked
+        ? { dueDate: $("#c-due").value || null, notes: $("#c-notes").value || null }
+        : { periodStart: $("#c-start").value, periodEnd: $("#c-end").value, amount: Number($("#c-amount").value || 0), breakdown: breakdown || {}, dueDate: $("#c-due").value || null, notes: $("#c-notes").value || null };
       try {
         if (existing) await App.api(`/api/admin/charges/${encodeURIComponent(existing.id)}`, { method: "PATCH", body: JSON.stringify(body) });
         else await App.api(`/api/admin/charges/tenant/${encodeURIComponent(targetTenant)}`, { method: "POST", body: JSON.stringify(body) });

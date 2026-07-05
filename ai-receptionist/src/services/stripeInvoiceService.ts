@@ -6,6 +6,7 @@ import { logger } from "../utils/logger";
 import { getStripe, isStripeConfigured, StripeNotConfiguredError } from "./stripeService";
 import { ensureStripeCustomer } from "./stripeCustomerService";
 import { getCharge } from "./chargeService";
+import { toMinorUnits } from "./stripeMoney";
 import { writeAudit, money as fmtMoney, type Actor } from "./billingAuditService";
 
 const db = prisma as any;
@@ -36,20 +37,24 @@ export async function createInvoiceForCharge(chargeId: string, actor?: Actor) {
 
   const { customerId } = await ensureStripeCustomer(charge.tenantId);
   const currency = String(charge.currency || "USD").toLowerCase();
-  const cents = Math.round(Number(charge.amount) * 100);
+  const minor = toMinorUnits(Number(charge.amount), currency);
   const description = `Clarity — ${periodLabel(charge.periodStart, charge.periodEnd)}`;
 
   try {
     const stripe = getStripe();
-    await stripe.invoiceItems.create({ customer: customerId, amount: cents, currency, description });
+    // H1 FIX: create the invoice FIRST, then attach the line item to THAT specific invoice
+    // (invoiceItems.create({ invoice })). This never leaves a customer-wide "pending" item
+    // dangling, so a retry after a mid-way failure can't sweep a stray item into a second
+    // invoice and double-bill. auto_advance:false keeps us in control of finalization.
     const invoice = await stripe.invoices.create({
       customer: customerId,
       collection_method: "send_invoice",
       days_until_due: 30,
-      pending_invoice_items_behavior: "include",
+      auto_advance: false,
       description,
       metadata: { chargeId, tenantId: charge.tenantId },
     });
+    await stripe.invoiceItems.create({ customer: customerId, invoice: invoice.id as string, amount: minor, currency, description });
     const finalized = await stripe.invoices.finalizeInvoice(invoice.id as string);
 
     await db.charge.update({

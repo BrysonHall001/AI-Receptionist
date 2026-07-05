@@ -62,14 +62,40 @@ export function serializeCharge(c: any) {
     paymentFailed,
     overdue,
     updatedAt: c.updatedAt,
-    paidTotal: Math.round(paidTotal * 100) / 100,
-    outstanding: isVoid ? 0 : outstanding,
+    paidTotal: isPaid ? Math.round(Math.max(paidTotal, amount) * 100) / 100 : Math.round(paidTotal * 100) / 100,
+    outstanding: (isVoid || isPaid) ? 0 : outstanding,
     isPaid,
     payments,
   };
 }
 
 const withPayments = { payments: { orderBy: { paidAt: "desc" as const } } };
+
+// M2: best-effort void of a charge's OPEN Stripe invoice, so a voided/settled charge can't still
+// be paid via its hosted link. NEVER throws — a Stripe outage must not block the ledger op; we
+// only mark our local stripeInvoiceStatus "void" when the void actually took (or Stripe isn't
+// configured, i.e. nothing live to pay). Call AFTER the ledger status change is written.
+async function voidOpenStripeInvoice(chargeId: string, tenantId: string, actor?: Actor): Promise<void> {
+  try {
+    const c = await db.charge.findUnique({ where: { id: chargeId }, select: { stripeInvoiceId: true, stripeInvoiceStatus: true } });
+    if (!c?.stripeInvoiceId) return;                                   // never invoiced
+    if (c.stripeInvoiceStatus === "void" || c.stripeInvoiceStatus === "paid") return; // nothing payable
+    let voidedOk = false;
+    try {
+      const { isStripeConfigured, getStripe } = await import("./stripeService");
+      if (isStripeConfigured()) { await getStripe().invoices.voidInvoice(c.stripeInvoiceId); voidedOk = true; }
+      else voidedOk = true; // nothing live to void; safe to reflect locally
+    } catch (e) {
+      logger.warn(`[charge] voidInvoice failed for ${chargeId} (ledger op continues): ${(e as Error).message}`);
+    }
+    if (voidedOk) {
+      await db.charge.update({ where: { id: chargeId }, data: { stripeInvoiceStatus: "void" } });
+      await writeAudit({ tenantId, chargeId, actor, action: "invoice_voided", field: "stripeInvoiceStatus", newValue: "void", note: "Open Stripe invoice voided so it can no longer be paid" });
+    }
+  } catch (e) {
+    logger.warn(`[charge] voidOpenStripeInvoice error for ${chargeId}: ${(e as Error).message}`);
+  }
+}
 
 // All charges across every tenant (joined to tenant name) for the master-hub central table.
 // Volume is low (dozens of tenants); a generous cap keeps it bounded. Newest first.
@@ -136,6 +162,18 @@ export async function createCharge(tenantId: string, input: CreateChargeInput, a
 export async function updateCharge(id: string, input: Record<string, unknown>, actor?: Actor) {
   const before = await db.charge.findUnique({ where: { id } });
   if (!before) throw new Error("charge not found");
+  // M3: once a charge leaves draft it may be tied to a finalized Stripe invoice. Editing the
+  // amount/period/currency would diverge the ledger from what the customer was actually billed
+  // (and would dodge the approval password gate). Lock those material fields on non-draft
+  // charges — void and re-create for a different amount. Benign fields (notes, dueDate,
+  // breakdown) stay editable so operators can still annotate/adjust the due date.
+  if (before.status !== "draft") {
+    const MATERIAL = ["amount", "periodStart", "periodEnd", "currency"];
+    const attempted = MATERIAL.filter((f) => f in input);
+    if (attempted.length) {
+      throw new Error(`Cannot change ${attempted.join(", ")} on a ${before.status} charge — void it and create a new charge for the new amount.`);
+    }
+  }
   const data: Record<string, unknown> = {};
   if ("amount" in input) { const a = Number(input.amount); if (!Number.isFinite(a) || a < 0) throw new Error("amount must be a number >= 0"); data.amount = a; }
   if ("periodStart" in input && input.periodStart) data.periodStart = new Date(input.periodStart as string);
@@ -171,6 +209,8 @@ export async function setChargeStatus(id: string, status: string, actor?: Actor)
   const action = status === "void" ? "charge_voided" : "status_changed";
   const note = status === "void" ? `Charge voided (was ${before.status})` : `Status changed from ${before.status} to ${status}`;
   await writeAudit({ tenantId: before.tenantId, chargeId: id, actor, action, field: "status", oldValue: before.status, newValue: status, note });
+  // M2: a voided charge must not remain payable in Stripe.
+  if (status === "void") await voidOpenStripeInvoice(id, before.tenantId, actor);
   return serializeCharge(row);
 }
 
@@ -256,5 +296,7 @@ export async function markChargePaidManually(id: string, actor?: Actor) {
   }
   await db.charge.update({ where: { id }, data: { paymentFailedAt: null } });
   await writeAudit({ tenantId: charge.tenantId, chargeId: id, actor, action: "marked_paid_manual", field: "status", newValue: "paid", note: "Marked paid manually (paid outside Stripe)" });
+  // M2: settled outside Stripe -> void the open Stripe invoice so it can't also be paid there.
+  await voidOpenStripeInvoice(id, charge.tenantId, actor);
   return (await getCharge(id))!;
 }

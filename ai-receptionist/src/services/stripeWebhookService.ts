@@ -6,17 +6,11 @@ import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { recordPayment } from "./chargeService";
 import { writeAudit, money as fmtMoney, type Actor } from "./billingAuditService";
+import { fromMinorUnits, toMinorUnits } from "./stripeMoney";
+export { fromMinorUnits }; // re-exported: the webhook is the historical import site for this helper
 
 const db = prisma as any;
 const STRIPE_ACTOR: Actor = { id: null, name: "Stripe" };
-
-// Zero-decimal currencies (Stripe amounts are already the whole-unit value, not minor units).
-const ZERO_DECIMAL = new Set(["bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf"]);
-export function fromMinorUnits(amount: number, currency: string): number {
-  const c = (currency || "usd").toLowerCase();
-  if (ZERO_DECIMAL.has(c)) return Math.round(Number(amount) || 0);
-  return Math.round((Number(amount) || 0)) / 100;
-}
 
 function evtTime(event: any): Date {
   const secs = Number(event?.created);
@@ -68,7 +62,7 @@ async function applyToCharge(charge: any, invoice: any, type: string, event: any
         return { status: "ok:already_paid", chargeId };
       }
       const currency = invoice?.currency || charge.currency || "usd";
-      const minor = invoice?.amount_paid != null ? invoice.amount_paid : (invoice?.amount_due != null ? invoice.amount_due : Math.round(Number(charge.amount) * 100));
+      const minor = invoice?.amount_paid != null ? invoice.amount_paid : (invoice?.amount_due != null ? invoice.amount_due : toMinorUnits(Number(charge.amount), currency));
       const amount = fromMinorUnits(minor, currency);
       if (amount > 0) {
         // recordPayment records the Payment, flips the charge to paid when covered, and logs
