@@ -9,7 +9,7 @@ const NAV_AREA_BY_HREF: Record<string, string | null> = {
   "#/dashboard": "dashboard", "#/calls": "calls", "#/contacts": "contacts",
   "#/jobs": "records", "#/bookings": "records", "#/reports": "reports",
   "#/automations": "automations", "#/communication": "communication",
-  "#/learn": "learn", "#/feedback": null,
+  "#/learn": "learn", "#/feedback": null, "#/billing": null,
 };
 
 // The set of permission AREAS locked for a tenant (derived from its locked hrefs).

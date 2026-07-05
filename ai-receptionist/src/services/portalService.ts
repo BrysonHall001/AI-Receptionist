@@ -8,6 +8,7 @@ import { DEFAULT_TIMEZONE } from "../config/timezones";
 export const LOCKABLE_HREFS = [
   "#/dashboard", "#/calls", "#/contacts", "#/jobs", "#/bookings",
   "#/reports", "#/automations", "#/communication", "#/learn", "#/feedback",
+  "#/billing",
 ];
 export function sanitizeLockedPages(input: any): string[] {
   if (!Array.isArray(input)) return [];

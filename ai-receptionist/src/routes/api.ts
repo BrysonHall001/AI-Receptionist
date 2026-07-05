@@ -55,6 +55,8 @@ import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 
 // Authenticated, tenant-scoped surface for the portal dashboard.
+import { listPortalCharges } from "../services/portalBillingService";
+
 export const apiRouter = Router();
 apiRouter.use(requireAuth);
 
@@ -213,6 +215,15 @@ apiRouter.get("/stats", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await getStats(tenantId));
+});
+
+// CLIENT-FACING billing: this portal user's OWN finalized bills only (tenant-scoped by
+// tenantOr400; drafts + voided excluded; no cost/markup/breakdown/audit fields). Hidden when
+// the operator locks the "#/billing" page (lockGate).
+apiRouter.get("/portal-billing", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listPortalCharges(tenantId));
 });
 
 apiRouter.get("/calls", async (req: Request, res: Response) => {

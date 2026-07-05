@@ -1,6 +1,6 @@
 (function (global) {
   const App = global.App || (global.App = {});
-  const { el, esc, fmtDate, statusBadge, roleLabel, toast } = App.util;
+  const { el, esc, fmtDate, fmtDateOnly, statusBadge, roleLabel, toast } = App.util;
 
   let current = "dashboard";
   let fieldDropHandled = false; // set true when a field is dropped on a section list
@@ -59,10 +59,97 @@
     if (v === "automations") return App.automations.render(view());
     if (v === "learn") return App.learn.render(view());
     if (v === "feedback") return App.feedback.renderPortal(view());
+    if (v === "billing") return renderBilling();
     if (v === "settings") return renderSettings(sub);
     return App.reports.mountHome(view());
   }
   function refresh() { return render(current); }
+
+  // ---------------- Billing (client-facing, read-only) ----------------
+  // A second window into the hub's Charge ledger — this tenant's OWN finalized bills only.
+  // No cost/markup internals; read-only except the Stripe "Pay now" link. Always reads live.
+  function billingMoney(n, cur) { return (cur && cur !== "USD" ? "" : "$") + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2) + (cur && cur !== "USD" ? " " + cur : ""); }
+  function billingStatePill(status) {
+    const color = { Paid: "#16a34a", Overdue: "#b45309", Due: "#2563eb" }[status] || "#6b7280";
+    return `<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:11.5px;color:#fff;background:${color}">${esc(status)}</span>`;
+  }
+  async function renderBilling() {
+    loading();
+    let data;
+    try { data = await App.portalApi("/api/portal-billing"); }
+    catch (e) { view().innerHTML = `<div class="card cell-muted" style="padding:18px">${esc((e && e.message) || "Unable to load billing.")}</div>`; return; }
+    const charges = (data && data.charges) || [];
+    const sum = (data && data.summary) || { outstanding: 0, paid: 0, currency: "USD" };
+    const cur = sum.currency || "USD";
+
+    const wrap = el("div", "fade-in");
+    wrap.appendChild(el("h1", "page-title", "Billing"));
+    const intro = el("p", "cell-muted"); intro.style.cssText = "font-size:12.5px;margin:0 0 16px";
+    intro.textContent = "Your bills. Pay any outstanding invoice online with the Pay now button.";
+    wrap.appendChild(intro);
+
+    // Summary cards.
+    const cards = el("div"); cards.style.cssText = "display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px";
+    const card = (label, value, color) => { const c = el("div", "card"); c.style.cssText = "padding:16px 20px;min-width:160px"; const l = el("div", "cell-muted"); l.style.cssText = "font-size:12px;margin-bottom:4px"; l.textContent = label; const v = el("div"); v.style.cssText = `font-size:22px;font-weight:700;color:${color || "inherit"}`; v.textContent = value; c.appendChild(l); c.appendChild(v); return c; };
+    cards.appendChild(card("Outstanding", billingMoney(sum.outstanding, cur), sum.outstanding > 0 ? "#b45309" : "#16a34a"));
+    cards.appendChild(card("Paid", billingMoney(sum.paid, cur), "#16a34a"));
+    wrap.appendChild(cards);
+
+    if (!charges.length) {
+      const empty = el("div", "card cell-muted"); empty.style.cssText = "padding:20px"; empty.textContent = "No bills yet.";
+      wrap.appendChild(empty);
+      view().innerHTML = ""; view().appendChild(wrap); return;
+    }
+
+    // Bills list.
+    const list = el("div"); list.style.cssText = "display:flex;flex-direction:column;gap:10px";
+    charges.forEach((c) => {
+      const row = el("div", "card"); row.style.cssText = "padding:16px 18px";
+      const top = el("div"); top.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap";
+      const left = el("div");
+      const period = el("div"); period.style.cssText = "font-weight:600;font-size:14px;margin-bottom:2px";
+      period.innerHTML = `${esc(c.periodStart ? fmtDateOnly(c.periodStart) : "")} – ${esc(c.periodEnd ? fmtDateOnly(c.periodEnd) : "")}`;
+      left.appendChild(period);
+      const meta = el("div", "cell-muted"); meta.style.cssText = "font-size:12.5px";
+      const bits = [];
+      if (c.status === "Paid" && c.paidAt) bits.push("Paid " + fmtDateOnly(c.paidAt));
+      else if (c.dueDate) bits.push("Due " + fmtDateOnly(c.dueDate));
+      meta.textContent = bits.join(" · ");
+      left.appendChild(meta);
+      top.appendChild(left);
+
+      const right = el("div"); right.style.cssText = "text-align:right";
+      const amt = el("div"); amt.style.cssText = "font-size:16px;font-weight:700;margin-bottom:4px"; amt.textContent = billingMoney(c.amount, c.currency);
+      right.appendChild(amt);
+      const pill = el("div"); pill.innerHTML = billingStatePill(c.status); right.appendChild(pill);
+      top.appendChild(right);
+      row.appendChild(top);
+
+      // Operator note (shown as a message).
+      if (c.note) {
+        const note = el("div"); note.style.cssText = "margin-top:10px;padding:8px 12px;background:var(--surface-2,#f8fafc);border-left:3px solid var(--accent,#c7d2fe);border-radius:4px;font-size:12.5px;color:#334155";
+        note.textContent = c.note;
+        row.appendChild(note);
+      }
+
+      // Pay now (unpaid only).
+      if (c.status !== "Paid") {
+        const actions = el("div"); actions.style.cssText = "margin-top:12px";
+        if (c.payUrl) {
+          const pay = el("a", "btn btn-primary btn-sm", "Pay now"); pay.href = c.payUrl; pay.target = "_blank"; pay.rel = "noopener";
+          actions.appendChild(pay);
+        } else {
+          const na = el("span", "cell-muted"); na.style.cssText = "font-size:12.5px"; na.textContent = "Payment link not available yet.";
+          actions.appendChild(na);
+        }
+        row.appendChild(actions);
+      }
+      list.appendChild(row);
+    });
+    wrap.appendChild(list);
+
+    view().innerHTML = ""; view().appendChild(wrap);
+  }
 
   function loading() { view().innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`; }
 

@@ -429,6 +429,7 @@
     { label: "Communication", hrefs: ["#/communication"] },
     { label: "Learning Center", hrefs: ["#/learn"] },
     { label: "Feedback", hrefs: ["#/feedback"] },
+    { label: "Billing", hrefs: ["#/billing"] },
   ];
   // Build a checklist of lockable pages into `host`, reflecting `lockedHrefs`. A box is
   // checked when ALL of its hrefs are locked; toggling adds/removes all of them (so the

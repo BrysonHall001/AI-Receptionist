@@ -169,6 +169,7 @@ const LOCK_RULES: LockRule[] = [
   { re: /^\/stats$/, hrefs: ["#/dashboard", "#/reports"] },
   { re: /^\/feedback(\/|$)/, hrefs: ["#/feedback"] },
   { re: /^\/automations\/jobs(\/|$)/, hrefs: ["#/automations"] },
+  { re: /^\/portal-billing(\/|$)/, hrefs: ["#/billing"] },
 ];
 
 export async function lockGate(req: Request, res: Response, next: NextFunction): Promise<void> {
