@@ -1616,6 +1616,50 @@
   const loadChargesLayout = () => { try { return JSON.parse(localStorage.getItem(CHARGES_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
   const saveChargesLayout = (l) => { try { localStorage.setItem(CHARGES_COLS_KEY, JSON.stringify(l || {})); } catch (e) {} };
 
+  // Operator charge-export columns (master all-tenants + per-tenant). Order + labels match the
+  // spec: Tenant, Period start/end, Amount, Currency, Status, Paid, Outstanding, Due, Created,
+  // Approved, Paid date, Notes. Reused by the shared export modal (client-safe fields only — no
+  // cost/markup/breakdown are ever on the charge objects the hub tables load).
+  function chargeExportColumns(withTenant) {
+    const cols = [];
+    if (withTenant) cols.push({ key: "tenant", label: "Tenant", type: "text", get: (c) => c.tenant || c.tenantName || c.tenantId || "" });
+    cols.push(
+      { key: "periodStart", label: "Period start", type: "date", get: (c) => c.periodStart, text: (c) => fmtDateOnly(c.periodStart) },
+      { key: "periodEnd", label: "Period end", type: "date", get: (c) => c.periodEnd, text: (c) => fmtDateOnly(c.periodEnd) },
+      { key: "amount", label: "Amount", type: "number", get: (c) => money2(c.amount) },
+      { key: "currency", label: "Currency", type: "text", get: (c) => c.currency || "USD" },
+      { key: "state", label: "Status", type: "text", get: (c) => chargeStateLabel(c) },
+      { key: "paid", label: "Paid", type: "text", get: (c) => (c.isPaid ? "Yes" : (c.status === "void" ? "—" : "No")) },
+      { key: "outstanding", label: "Outstanding", type: "number", get: (c) => money2(c.outstanding) },
+      { key: "dueDate", label: "Due date", type: "date", get: (c) => c.dueDate, text: (c) => (c.dueDate ? fmtDateOnly(c.dueDate) : "") },
+      { key: "createdAt", label: "Created", type: "date", get: (c) => c.createdAt, text: (c) => (c.createdAt ? fmtDateOnly(c.createdAt) : "") },
+      { key: "approvedAt", label: "Approved", type: "date", get: (c) => c.approvedAt, text: (c) => (c.approvedAt ? fmtDateOnly(c.approvedAt) : "") },
+      { key: "paidAt", label: "Paid date", type: "date", get: (c) => c.paidAt, text: (c) => (c.paidAt ? fmtDateOnly(c.paidAt) : "") },
+      { key: "notes", label: "Notes", type: "text", get: (c) => c.notes || "" },
+    );
+    return cols;
+  }
+  // Build export-modal opts for a charges set. `historyBase`/`scope` select master vs per-tenant
+  // history; App.api carries the master/admin auth.
+  function chargeExportOpts(rows, opts) {
+    opts = opts || {};
+    return {
+      title: "Export charges",
+      columns: chargeExportColumns(!!opts.withTenant),
+      rows: rows || [],
+      dataType: "charge",
+      namePlaceholder: opts.namePlaceholder || "e.g. Q2 charges",
+      filterLabel: "Which charges to export",
+      unitPlural: "Charges",
+      sheetName: "Charges",
+      countText: (n) => n + " charge" + (n === 1 ? "" : "s"),
+      saveHistory: true,
+      historyApi: App.api,
+      historyBase: opts.historyBase,
+      scope: opts.scope || null,
+    };
+  }
+
   function chargesLedgerCard(tenantId, tenantName, ledger) {
     const card = el("div", "card"); card.style.cssText = "padding:18px";
     const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px";
@@ -1675,6 +1719,15 @@
     const manageBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#9776;</span> Manage columns`);
     manageBtn.onclick = () => App.table.openColumnManager(manageable, layout, defaultKeys, (nl) => { layout = { order: nl.order, hidden: nl.hidden }; saveChargesLayout(layout); handle.setColumns(applied()); });
     if (handle.toolbarRight) handle.toolbarRight.insertBefore(manageBtn, handle.toolbarRight.firstChild);
+    // Export charges (this tenant) — left of Manage columns. Reuses the shared export modal +
+    // that tenant's export history (listExports(tenantId)).
+    const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export charges`);
+    exportBtn.onclick = () => App.exportModal(chargeExportOpts(handle.getFiltered(), {
+      withTenant: false,
+      namePlaceholder: `e.g. ${tenantName || "Tenant"} charges`,
+      historyBase: `/api/admin/exports/tenant/${encodeURIComponent(tenantId)}`,
+    }));
+    if (handle.toolbarRight) handle.toolbarRight.insertBefore(exportBtn, manageBtn);
 
     return card;
   }
@@ -1989,6 +2042,17 @@
         openChargeModal(null, null, null, load, { tenants: list, hideSuggest: true });
       };
       if (handle.toolbarRight) handle.toolbarRight.insertBefore(createBtn, manageBtn);
+      // Export charges (all tenants) — added to the toolbar; Create + Manage sit to its left.
+      // Exports the currently-filtered rows via the shared modal + master export history.
+      const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export charges`);
+      exportBtn.onclick = () => App.exportModal(chargeExportOpts(handle.getFiltered(), {
+        withTenant: true,
+        namePlaceholder: "e.g. All charges — Q2",
+        historyBase: "/api/admin/exports",
+        scope: "all",
+      }));
+      const searchInput = handle.toolbarRight.querySelector(".search-input");
+      if (handle.toolbarRight) handle.toolbarRight.insertBefore(exportBtn, searchInput);
       if (prev) handle.applyState(prev); // preserve active sort/filter/search across a live reload
     }
     await load();

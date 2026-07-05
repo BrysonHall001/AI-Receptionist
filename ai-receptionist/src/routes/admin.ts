@@ -5,7 +5,7 @@ import { createUser, listUsers, deleteUser, publicUser, updateUserName } from ".
 import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvite, sendInvite, sendCustomInvite, hasInviteLinkToken, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
 import { listFeedback, getFeedbackTicket, createFeedbackTicket, addFeedbackMessage, resolveFeedbackTicket, restoreFeedbackTicket, deleteFeedbackTicket, listFeedbackExportRows, listAllFeedbackExportRows, addFeedbackAttachments } from "../services/feedbackService";
-import { createExport, listMasterExports, getMasterExportCsv } from "../services/exportService";
+import { createExport, listMasterExports, getMasterExportCsv, listExports, getExportArtifact } from "../services/exportService";
 import { listChangeLog } from "../services/changelogService";
 import { listGroupedEmailSends, listEmailSendRecipients } from "../services/emailLogService";
 import { getBillingRates, updateBillingRates } from "../services/billingRateService";
@@ -307,20 +307,45 @@ adminRouter.get("/feedback/export-rows-all", async (req: Request, res: Response)
 
 // Master-hub export history (no single portal). Shared by the master-local and
 // all-portals export popups; gated to master roles by the admin router above.
-adminRouter.get("/exports", async (_req: Request, res: Response) => {
-  res.json(await listMasterExports());
+adminRouter.get("/exports", async (req: Request, res: Response) => {
+  const kind = typeof req.query.kind === "string" ? req.query.kind : undefined;
+  const dataType = typeof req.query.dataType === "string" ? req.query.dataType : undefined;
+  res.json(await listMasterExports({ kind, dataType }));
 });
 
 adminRouter.post("/exports", async (req: Request, res: Response) => {
-  const { name, rowCount, fields, csv, scope } = (req.body ?? {}) as { name?: string; rowCount?: number; fields?: unknown; csv?: string; scope?: string };
+  const { name, rowCount, fields, csv, scope, dataType } = (req.body ?? {}) as { name?: string; rowCount?: number; fields?: unknown; csv?: string; scope?: string; dataType?: string };
   if (!name || !name.trim()) { res.status(400).json({ error: "An export name is required" }); return; }
   if (typeof csv !== "string") { res.status(400).json({ error: "Nothing to export" }); return; }
-  const rec = await createExport({ tenantId: null, scope: scope === "all" ? "all" : "master", name, rowCount: rowCount || 0, fields, csv, createdById: req.user!.id });
+  const rec = await createExport({ tenantId: null, scope: scope === "all" ? "all" : "master", name, rowCount: rowCount || 0, fields, csv, dataType: dataType || null, createdById: req.user!.id });
   res.json(rec);
 });
 
 adminRouter.get("/exports/:id/download", async (req: Request, res: Response) => {
   const result = await getMasterExportCsv(req.params.id);
+  if (!result) { res.status(404).json({ error: "Export not found" }); return; }
+  res.json(result);
+});
+
+// Per-tenant export history/save/download for the master-hub per-tenant Charges section (Task 2).
+// Scoped to a specific tenant so exports land in — and download from — that tenant's history
+// (listExports(tenantId)). Master-role gated by the admin router.
+adminRouter.get("/exports/tenant/:tenantId", async (req: Request, res: Response) => {
+  const kind = typeof req.query.kind === "string" ? req.query.kind : undefined;
+  const dataType = typeof req.query.dataType === "string" ? req.query.dataType : undefined;
+  res.json(await listExports(req.params.tenantId, { kind, dataType }));
+});
+
+adminRouter.post("/exports/tenant/:tenantId", async (req: Request, res: Response) => {
+  const { name, rowCount, fields, csv, dataType } = (req.body ?? {}) as { name?: string; rowCount?: number; fields?: unknown; csv?: string; dataType?: string };
+  if (!name || !name.trim()) { res.status(400).json({ error: "An export name is required" }); return; }
+  if (typeof csv !== "string") { res.status(400).json({ error: "Nothing to export" }); return; }
+  const rec = await createExport({ tenantId: req.params.tenantId, name, rowCount: rowCount || 0, fields, csv, dataType: dataType || null, createdById: req.user!.id });
+  res.json(rec);
+});
+
+adminRouter.get("/exports/tenant/:tenantId/:id/download", async (req: Request, res: Response) => {
+  const result = await getExportArtifact(req.params.id, req.params.tenantId);
   if (!result) { res.status(404).json({ error: "Export not found" }); return; }
   res.json(result);
 });

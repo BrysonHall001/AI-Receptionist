@@ -832,6 +832,7 @@
     (types || []).filter((t) => t.key !== "contact" && !App.isRecordTypeLocked(t.key)).forEach((t) => options.push({ value: "rt:" + t.key, label: t.labelPlural || t.label }));
     if (!App.isPageLocked("#/calls")) options.push({ value: "call", label: "Calls" });
     options.push({ value: "event", label: "Events" });
+    if (App.canViewArea("billing")) options.push({ value: "charge", label: "Charges" }); // billing-gated
     if (isAdmin && !App.isPageLocked("#/feedback")) options.push({ value: "feedback", label: "Feedback" });
 
     // Button row mirroring the Import tab (same flex-wrap btn-ghost row with the ⇩
@@ -869,6 +870,11 @@
       if (value === "event") {
         const events = await App.portalApi("/api/automations/events").catch(() => []);
         return dataEventExportOpts(Array.isArray(events) ? events : []);
+      }
+      if (value === "charge") {
+        // Rows come from the billing-gated, select-only endpoint — a non-billing user 403s here.
+        const data = await App.portalApi("/api/portal-billing");
+        return portalChargeExportOpts((data && data.charges) || []);
       }
       if (value === "call") {
         const calls = await App.portalApi("/api/calls").catch(() => []);
@@ -945,6 +951,12 @@
     const events = await App.portalApi("/api/automations/events").catch(() => []);
     sections.push({ label: "Events", columns: dataEventExportOpts([]).columns, rows: events || [] });
 
+    // Charges — billing-gated + client-safe (same select-only source as the portal Billing view).
+    if (App.canViewArea("billing")) {
+      const bill = await App.portalApi("/api/portal-billing").catch(() => ({ charges: [] }));
+      sections.push({ label: "Charges", columns: portalChargeColumns(), rows: (bill && bill.charges) || [] });
+    }
+
     if (opts.isAdmin) {
       const fb = await App.portalApi("/api/feedback/export-rows").catch(() => []);
       sections.push({ label: "Feedback", columns: App.feedback.ticketExportColumns({ portal: false, rows: fb || [] }), rows: fb || [] });
@@ -1009,6 +1021,7 @@
     if (!App.isAreaLocked("records")) bkTypes.push("every record type");
     if (!App.isPageLocked("#/calls")) bkTypes.push("Calls");
     bkTypes.push("Events", "Resources");
+    if (App.canViewArea("billing")) bkTypes.push("Charges");
     if (isAdmin && !App.isPageLocked("#/feedback")) bkTypes.push("Feedback");
     wrap.innerHTML = `
       <p class="cell-muted" style="margin-top:4px">Download a complete backup of this portal's data — one tab (Excel) or file (CSV zip) per data type: ${bkTypes.join(", ")}, and optionally automations and team. Sign-in credentials and connected-account tokens are never included.</p>
@@ -2417,6 +2430,36 @@
         host.appendChild(row);
       });
     } catch (err) { host.innerHTML = `<div class="cell-muted">${esc(err.message)}</div>`; }
+  }
+
+  // CLIENT-SAFE charge export (portal Data Admin Export + Data Backup). Columns mirror the
+  // portal Billing view — Period, Amount, Currency, Status, Due date, Paid date, Note. Rows come
+  // from /api/portal-billing (listPortalCharges' select-only projection), so cost/markup/
+  // breakdown/audit internals are never present to leak.
+  function portalChargeColumns() {
+    return [
+      { key: "period", label: "Period", type: "text", get: (c) => c.periodStart, text: (c) => `${c.periodStart ? fmtDateOnly(c.periodStart) : ""} – ${c.periodEnd ? fmtDateOnly(c.periodEnd) : ""}` },
+      { key: "amount", label: "Amount", type: "number", get: (c) => c.amount },
+      { key: "currency", label: "Currency", type: "text", get: (c) => c.currency || "USD" },
+      { key: "status", label: "Status", type: "text", get: (c) => c.status },
+      { key: "dueDate", label: "Due date", type: "date", get: (c) => c.dueDate, text: (c) => (c.dueDate ? fmtDateOnly(c.dueDate) : "") },
+      { key: "paidAt", label: "Paid date", type: "date", get: (c) => c.paidAt, text: (c) => (c.paidAt ? fmtDateOnly(c.paidAt) : "") },
+      { key: "note", label: "Note", type: "text", get: (c) => c.note || "" },
+    ];
+  }
+  function portalChargeExportOpts(rows) {
+    return {
+      title: "Export charges",
+      columns: portalChargeColumns(),
+      rows: rows || [],
+      dataType: "charge",
+      namePlaceholder: "e.g. My invoices",
+      filterLabel: "Which charges to export",
+      unitPlural: "Charges",
+      sheetName: "Charges",
+      countText: (n) => n + " charge" + (n === 1 ? "" : "s"),
+      saveHistory: true,
+    };
   }
 
   // Contacts descriptor — reproduces the previous contacts-export behavior exactly.
