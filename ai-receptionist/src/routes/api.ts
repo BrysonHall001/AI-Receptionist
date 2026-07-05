@@ -30,6 +30,7 @@ import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listAudiences, getAudience, createAudience, updateAudience, deleteAudience, resolveAudienceContacts, resolveAudiencesToContactIds } from "../services/audienceService";
+import { listDrips, getDrip, createDrip, updateDrip, deleteDrip } from "../services/dripService";
 import { listExports, createExport, createImportRecord, createBackupRecord, getExportCsv, getExportArtifact } from "../services/exportService";
 import { listReports, getScheduledReport, upsertScheduledReport, setReportActive } from "../services/reportService";
 import { runAndDeliverReport } from "../services/reportExecutor";
@@ -1906,6 +1907,52 @@ apiRouter.get("/audiences/:id/contacts", async (req: Request, res: Response) => 
   const rows = await resolveAudienceContacts(tenantId, req.params.id);
   if (rows === null) { res.status(404).json({ error: "Audience not found" }); return; }
   res.json({ count: rows.length, contacts: rows });
+});
+
+// ---- Drips (visual builder, slice 1) — CRUD + graph save/restore. Gated to the communication
+// area (view/create/edit/delete) by PERM_RULES, consistent with Templates/Surveys/Audiences.
+apiRouter.get("/drips", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listDrips(tenantId));
+});
+
+apiRouter.post("/drips", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, graph } = (req.body ?? {}) as { name?: string; graph?: unknown };
+  if (!name || !name.trim()) { res.status(400).json({ error: "A drip name is required" }); return; }
+  res.json(await createDrip({ tenantId, name, graph, createdById: req.user!.id }));
+});
+
+apiRouter.get("/drips/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const d = await getDrip(req.params.id, tenantId);
+  if (!d) { res.status(404).json({ error: "Drip not found" }); return; }
+  res.json(d);
+});
+
+apiRouter.patch("/drips/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const body = (req.body ?? {}) as { name?: string; graph?: unknown; status?: string; enabled?: boolean };
+  const patch: { name?: string; graph?: unknown; status?: string; enabled?: boolean } = {};
+  if (typeof body.name === "string") patch.name = body.name;
+  if ("graph" in body) patch.graph = body.graph;
+  if (typeof body.status === "string") patch.status = body.status;
+  if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
+  const d = await updateDrip(req.params.id, tenantId, patch);
+  if (!d) { res.status(404).json({ error: "Drip not found" }); return; }
+  res.json(d);
+});
+
+apiRouter.delete("/drips/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ok = await deleteDrip(req.params.id, tenantId);
+  if (!ok) { res.status(404).json({ error: "Drip not found" }); return; }
+  res.json({ ok: true });
 });
 apiRouter.get("/exports", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);

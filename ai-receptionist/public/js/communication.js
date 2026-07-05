@@ -266,7 +266,7 @@
     host.classList.add("audience-select");
     const nounLower = (n) => (App.label ? App.label("contact", n === 1 ? "one" : "many").toLowerCase() : (n === 1 ? "contact" : "contacts"));
 
-    const state = { audiences: [], contacts: [], columns: [], selected: new Set(), ready: false };
+    const state = { audiences: [], contacts: [], columns: [], selected: new Set(Array.isArray(opts.selectedIds) ? opts.selectedIds : []), ready: false };
     const summary = el("div", "cell-strong"); summary.style.cssText = "font-size:14px;margin:0 0 8px";
     const listWrap = el("div"); listWrap.style.cssText = "display:flex;flex-direction:column;gap:6px";
     host.appendChild(summary); host.appendChild(listWrap);
@@ -348,7 +348,7 @@
     // Tab strip (same .tabs component Data Administration uses). One tab for now.
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const TABS = [["email", "Email"], ["templates", "Email Templates"], ["surveys", "Surveys"], ["audiences", "Audiences"]]; // future: reorder when Drips lands
+    const TABS = [["email", "Email"], ["templates", "Email Templates"], ["surveys", "Surveys"], ["drips", "Drips"], ["audiences", "Audiences"]];
     let active = "email";
     function setTab(key) {
       active = key;
@@ -356,6 +356,7 @@
       tabBody.innerHTML = "";
       if (key === "email") emailTab(tabBody);
       else if (key === "audiences") audiencesTab(tabBody);
+      else if (key === "drips") App.drips.renderLibrary(tabBody);
       else if (key === "templates") templatesTab(tabBody);
       else if (key === "surveys") surveysTab(tabBody);
     }

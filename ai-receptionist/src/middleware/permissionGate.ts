@@ -50,6 +50,11 @@ export const PERM_RULES: PermRule[] = [
   { m: "PATCH", re: /^\/templates\/[^/]+$/, area: "communication", right: "edit" },
   { m: "DELETE", re: /^\/templates\/[^/]+$/, area: "communication", right: "delete" },
   { m: "GET", re: /^\/templates(\/|$)/, area: "communication", right: "view" },
+  // Drips (visual builder) — same area/rights as Templates/Surveys/Audiences.
+  { m: "POST", re: /^\/drips$/, area: "communication", right: "edit" },
+  { m: "PATCH", re: /^\/drips\/[^/]+$/, area: "communication", right: "edit" },
+  { m: "DELETE", re: /^\/drips\/[^/]+$/, area: "communication", right: "delete" },
+  { m: "GET", re: /^\/drips(\/|$)/, area: "communication", right: "view" },
   // Surveys: re-pointed from contacts.edit to the communication area (create/edit/send =
   // edit, delete = delete, all reads = view). Send actions count as edit.
   { m: "POST", re: /^\/surveys\/[^/]+\/(recipients|send|send-test)$/, area: "communication", right: "edit" },

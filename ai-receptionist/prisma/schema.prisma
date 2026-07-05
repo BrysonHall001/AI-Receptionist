@@ -94,6 +94,7 @@ model Tenant {
   callSessions CallSession[]
   users        User[]
   savedFilters SavedFilter[]
+  drips        Drip[]
   exports      ExportRecord[]
   fieldDefs    FieldDef[]
   activity     ActivityLog[]
@@ -294,6 +295,25 @@ model SavedFilter {
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// A Drip is the VISUAL layer of a drag-and-drop campaign builder. `graph` holds the freely-
+// positioned nodes ({ id, type, x, y, config }); a later slice compiles it to an Automation and
+// stores that id in `automationId` (nullable until then). This slice only saves/restores the graph.
+model Drip {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  enabled      Boolean  @default(false)
+  status       String   @default("draft") // draft | active (visual-only for now)
+  graph        Json     @default("{}")     // { nodes: [{ id, type, x, y, config }] }
+  automationId String?                      // compiled Automation (populated in a later slice)
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([tenantId])
 }
