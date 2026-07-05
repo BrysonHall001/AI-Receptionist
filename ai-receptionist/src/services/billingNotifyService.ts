@@ -161,3 +161,36 @@ export async function sendCustomerReceipt(charge: any, amount: number): Promise<
     return true;
   } catch (e) { logger.warn(`[billing-notify] receipt email to ${to} for charge ${charge.id} failed: ${(e as Error).message}`); return false; }
 }
+
+// Email the portal's OWN notify address when a charge is approved (invoice/payment ready).
+// Stripe does not email on approve, so this fills the gap. Respects the billing-notify enabled
+// toggle. Includes amount, period, due date, note, and the Stripe hosted payment link if present.
+function approvedHtml(name: string, charge: any): string {
+  const payUrl = charge.stripeInvoiceUrl || null;
+  return `
+    <div style="font-family:system-ui,Segoe UI,Arial,sans-serif;color:#111">
+      <h2 style="margin:0 0 8px">Your invoice is ready</h2>
+      <p style="margin:0 0 12px">A new charge for <b>${escapeHtml(name)}</b> has been approved${payUrl ? " and is ready to pay" : ""}.</p>
+      <table style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
+        <tr><td style="padding:2px 12px 2px 0;color:#555">Period</td><td><b>${d(charge.periodStart)} – ${d(charge.periodEnd)}</b></td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#555">Amount</td><td><b>${money(charge.amount)} ${escapeHtml(charge.currency || "USD")}</b></td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#555">Due</td><td>${d(charge.dueDate)}</td></tr>
+      </table>
+      ${charge.notes ? `<div style="font-size:13px;color:#444;margin-bottom:12px;padding:8px 12px;background:#f8fafc;border-left:3px solid #c7d2fe;border-radius:4px">${escapeHtml(charge.notes)}</div>` : ""}
+      ${payUrl ? `<p style="margin:0 0 4px"><a href="${escapeHtml(payUrl)}" style="background:#2563eb;color:#fff;padding:9px 16px;border-radius:6px;text-decoration:none;display:inline-block">Pay now</a></p>` : `<p style="font-size:12px;color:#888">A payment link will follow shortly.</p>`}
+    </div>`;
+}
+
+export async function notifyChargeApproved(charge: any): Promise<boolean> {
+  if (!charge) return false;
+  const cfg = await getBillingNotifyConfig();
+  if (!cfg.enabled) return false;
+  const t = await db.tenant.findUnique({ where: { id: charge.tenantId }, select: { name: true, notifyEmail: true } });
+  const to = t?.notifyEmail;
+  if (!to) return false;
+  const name = t?.name || charge.tenantId;
+  try {
+    await sendRichEmail({ to, subject: `Invoice ready — ${name} (${money(charge.amount)})`, html: approvedHtml(name, charge), fromEmail: env.RESEND_FROM }, { tenantId: charge.tenantId, type: "billing_approved" });
+    return true;
+  } catch (e) { logger.warn(`[billing-notify] approved email to ${to} for charge ${charge.id} failed: ${(e as Error).message}`); return false; }
+}

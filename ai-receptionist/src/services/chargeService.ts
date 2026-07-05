@@ -199,10 +199,19 @@ export async function approveCharge(id: string, actor?: Actor) {
     logger.warn(`[approve] invoice creation failed for charge ${id} (approval still succeeded): ${(e as Error).message}`);
   }
   const fresh = await getCharge(id);
+  // Notify the portal's own notify address that a charge is ready (Stripe doesn't email on
+  // approve). This runs only on the draft->approved transition above, so re-approving an already
+  // approved charge throws before reaching here — inherently idempotent (one email per approve).
+  try {
+    const { notifyChargeApproved } = await import("./billingNotifyService");
+    if (await notifyChargeApproved(fresh)) {
+      await writeAudit({ tenantId: charge.tenantId, chargeId: id, actor, action: "approval_notified", note: "Portal notified by email that the charge was approved" });
+    }
+  } catch (e) {
+    logger.warn(`[approve] portal notify failed for charge ${id} (approval still succeeded): ${(e as Error).message}`);
+  }
   return fresh!;
 }
-
-// Record a manual payment against a charge. If the charge is now fully covered, flip it to paid.
 export async function recordPayment(chargeId: string, input: { amount: number; paidAt?: string | Date; method?: string | null; notes?: string | null }, actor?: Actor) {
   const charge = await db.charge.findUnique({ where: { id: chargeId }, include: withPayments });
   if (!charge) throw new Error("charge not found");

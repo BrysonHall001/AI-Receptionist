@@ -130,7 +130,7 @@
     const loadTenantsLayout = () => { try { return JSON.parse(localStorage.getItem(TENANTS_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
     const saveTenantsLayout = (layout) => { try { localStorage.setItem(TENANTS_COLS_KEY, JSON.stringify(layout || {})); } catch (e) {} };
     const tenantsDefaultKeys = columns.map((c) => c.key);
-    const tenantsLayout = loadTenantsLayout();
+    let tenantsLayout = loadTenantsLayout();
     // Apply the saved layout to the columns we mount with (like portal.js applies it
     // before mount) so there's no flash of the default layout before it settles.
     const initialColumns = App.table.applyColumnLayout(columns, tenantsLayout, tenantsDefaultKeys);
@@ -1686,18 +1686,23 @@
 
   function money2(v) { const n = Number(v || 0); return Math.round(n * 100) / 100; }
 
-  function openChargeModal(tenantId, tenantName, existing, onSaved) {
+  function openChargeModal(tenantId, tenantName, existing, onSaved, opts) {
+    opts = opts || {};
+    const tenants = opts.tenants || null; // when provided: required Tenant picker (central create)
+    const hideSuggest = !!opts.hideSuggest || !!tenants;
     const inner = el("div");
     const today = new Date(); const iso = (d) => d.toISOString().slice(0, 10);
     const d0 = existing ? String(existing.periodStart).slice(0, 10) : iso(new Date(today.getFullYear(), today.getMonth() - 1, 1));
     const d1 = existing ? String(existing.periodEnd).slice(0, 10) : iso(new Date(today.getFullYear(), today.getMonth(), 0));
+    const tenantPickerHTML = tenants ? `<label class="field-label">Tenant</label><select id="c-tenant" class="input"><option value="">— Select a portal —</option>${tenants.map((t) => `<option value="${esc(t.id)}">${esc(t.name || t.id)}</option>`).join("")}</select>` : "";
     inner.innerHTML = `<div class="modal-head"><h2>${existing ? "Edit charge" : "Create charge"}</h2><button class="icon-btn" id="c-close">&times;</button></div>
       <div class="modal-body">
+        ${tenantPickerHTML}
         <div style="display:flex;gap:12px;flex-wrap:wrap">
           <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period start</label><input id="c-start" class="input" type="date" value="${d0}"></div>
           <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period end</label><input id="c-end" class="input" type="date" value="${d1}"></div>
         </div>
-        <div style="margin:8px 0"><button id="c-suggest" class="btn btn-ghost btn-sm">✨ Suggest amount from terms</button> <span id="c-sugnote" class="cell-muted" style="font-size:11.5px"></span></div>
+        ${hideSuggest ? "" : `<div style="margin:8px 0"><button id="c-suggest" class="btn btn-ghost btn-sm">✨ Suggest amount from terms</button> <span id="c-sugnote" class="cell-muted" style="font-size:11.5px"></span></div>`}
         <label class="field-label">Amount</label><input id="c-amount" class="input" type="number" step="0.01" min="0" value="${existing ? money2(existing.amount) : ""}" placeholder="0.00">
         <label class="field-label">Due date (optional)</label><input id="c-due" class="input" type="date" value="${existing && existing.dueDate ? String(existing.dueDate).slice(0, 10) : ""}">
         <label class="field-label">Notes</label><input id="c-notes" class="input" value="${existing ? esc(existing.notes || "") : ""}" placeholder="optional">
@@ -1709,16 +1714,18 @@
     $("#c-close").onclick = () => overlay.remove();
     function showBreakdown(b) { if (!b) { $("#c-breakdown").innerHTML = ""; return; } const us = b.usageSnapshot || {}; $("#c-breakdown").innerHTML = `Flat ${esc(fmtMoney(b.flatFee))} + passthrough ${esc(fmtMoney(b.passthroughBaseCost))}×(1+${esc(String(b.markupPct))}%) = ${esc(fmtMoney(b.passthroughAmount))}. Usage: ${us.calls || 0} calls, ${us.minutes || 0} min, ${us.tokens || 0} tokens, ${us.emails || 0} emails.`; }
     showBreakdown(breakdown);
-    $("#c-suggest").onclick = async () => {
+    if ($("#c-suggest")) $("#c-suggest").onclick = async () => {
       $("#c-sugnote").textContent = "Computing…";
       try { const s = await App.api(`/api/admin/charges/suggest/${encodeURIComponent(tenantId)}`, { method: "POST", body: JSON.stringify({ periodStart: $("#c-start").value, periodEnd: $("#c-end").value }) }); $("#c-amount").value = money2(s.amount); breakdown = s.breakdown; showBreakdown(breakdown); $("#c-sugnote").textContent = "Suggested — adjust if needed."; }
       catch (e) { $("#c-sugnote").textContent = ""; toast(e.message, true); }
     };
     $("#c-save").onclick = async () => {
+      const targetTenant = tenants ? ($("#c-tenant") && $("#c-tenant").value) : tenantId;
+      if (tenants && !targetTenant) { toast("Please select a tenant", true); return; }
       const body = { periodStart: $("#c-start").value, periodEnd: $("#c-end").value, amount: Number($("#c-amount").value || 0), breakdown: breakdown || {}, dueDate: $("#c-due").value || null, notes: $("#c-notes").value || null };
       try {
         if (existing) await App.api(`/api/admin/charges/${encodeURIComponent(existing.id)}`, { method: "PATCH", body: JSON.stringify(body) });
-        else await App.api(`/api/admin/charges/tenant/${encodeURIComponent(tenantId)}`, { method: "POST", body: JSON.stringify(body) });
+        else await App.api(`/api/admin/charges/tenant/${encodeURIComponent(targetTenant)}`, { method: "POST", body: JSON.stringify(body) });
         overlay.remove(); toast(existing ? "Charge updated" : "Charge created"); if (onSaved) onSaved(); else refreshBilling(tenantId, tenantName);
       } catch (e) { toast(e.message, true); }
     };
@@ -1963,6 +1970,16 @@
       const manageBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#9776;</span> Manage columns`);
       manageBtn.onclick = () => App.table.openColumnManager(manageable, layout, defaultKeys, (nl) => { layout = { order: nl.order, hidden: nl.hidden }; saveCentralChargesLayout(layout); handle.setColumns(applied()); });
       if (handle.toolbarRight) handle.toolbarRight.insertBefore(manageBtn, handle.toolbarRight.firstChild);
+      // + Create charge — to the LEFT of Manage columns. Opens the shared modal with a required
+      // tenant picker and no "suggest from terms" (not applicable centrally).
+      const createBtn = el("button", "btn btn-primary btn-sm", "+ Create charge");
+      createBtn.onclick = async () => {
+        let tenants = [];
+        try { tenants = (await App.api("/api/admin/portals")) || []; } catch (e) { toast(e.message, true); return; }
+        const list = tenants.map((t) => ({ id: t.id, name: t.name })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        openChargeModal(null, null, null, load, { tenants: list, hideSuggest: true });
+      };
+      if (handle.toolbarRight) handle.toolbarRight.insertBefore(createBtn, manageBtn);
       if (prev) handle.applyState(prev); // preserve active sort/filter/search across a live reload
     }
     await load();
@@ -1982,7 +1999,7 @@
         const badge = el("span");
         const live = st.mode === "live";
         badge.textContent = live ? "Stripe: LIVE mode" : "Stripe: TEST mode";
-        badge.style.cssText = `display:inline-block;margin:0 0 12px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 12px;color:${live ? "#fff" : "#92400e"};background:${live ? "#dc2626" : "#fef3c7"};border:1px solid ${live ? "#dc2626" : "#fde68a"}`;
+        badge.style.cssText = `display:block;width:fit-content;margin:2px 0 18px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 12px;color:${live ? "#fff" : "#92400e"};background:${live ? "#dc2626" : "#fef3c7"};border:1px solid ${live ? "#dc2626" : "#fde68a"}`;
         badge.title = live ? "Live keys — real charges and payments." : "Test keys — no real money moves.";
         wrap.insertBefore(badge, wrap.children[1] || null);
       } catch (e) { /* ignore */ }

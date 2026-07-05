@@ -57,7 +57,7 @@
   // at render time via App.label(kind,"many") so renaming the contact/job record
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
-  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/billing", "Billing"], ["#/feedback", "Feedback"]];
+  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
   const ADMIN_NAV = [["#/admin/portals", "Tenants"], ["#/admin/users", "Users"], ["#/admin/email", "Email"], ["#/admin/usage", "Billing & Usage"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
   // Exposed so the Settings → Labels → "Pages & navigation" editor builds its rows
   // from the same canonical list the sidebar uses (no drift, no second definition).
@@ -92,7 +92,6 @@
     "#/automations": "automations",
     "#/learn": "learn",
     "#/feedback": null,
-    "#/billing": null,
   };
   App.canViewNav = function (href) {
     // Owner page-lock (beats everything, incl. null-area pages like Dashboard/Feedback):
@@ -109,7 +108,7 @@
   // spot when a requested page isn't viewable (locked or no permission). No "locked"
   // messaging: locked pages simply behave as if they don't exist for the user.
   App.firstAvailableNav = function () {
-    var order = ["#/dashboard", "#/calls", "#/contacts", "#/jobs", "#/bookings", "#/reports", "#/automations", "#/communication", "#/learn", "#/billing", "#/feedback"];
+    var order = ["#/dashboard", "#/calls", "#/contacts", "#/jobs", "#/bookings", "#/reports", "#/automations", "#/communication", "#/learn", "#/feedback"];
     for (var i = 0; i < order.length; i++) { if (App.canViewNav(order[i])) return order[i]; }
     // Nothing viewable (extreme case: every nav page locked). NEVER return a locked page:
     // fall back to Settings, which isn't a lockable page and always passes canViewNav, so
@@ -553,7 +552,7 @@
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
     } else {
-      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/billing": "Billing", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/usage": "Billing & Usage", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
+      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/usage": "Billing & Usage", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
       topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Home Dashboard"));
     }
     topbar.appendChild(topLeft);
@@ -668,7 +667,7 @@
     }
 
     // Portal section
-    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/bookings": "bookings", "/reports": "reports", "/communication": "communication", "/automations": "automations", "/learn": "learn", "/billing": "billing", "/feedback": "feedback", "/settings": "settings" };
+    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/bookings": "bookings", "/reports": "reports", "/communication": "communication", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
     if (portalViews[path]) {
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       // Batch 3: hide is now COSMETIC — a hidden page the user can View still loads by
