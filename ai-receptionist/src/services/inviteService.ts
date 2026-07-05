@@ -7,6 +7,7 @@ import { EVENT_TYPES } from "../events/types";
 import { sendRichEmail } from "./notificationService";
 import { resolveMergeTags } from "./mergeTags";
 import { env } from "../config/env";
+import { MASTER_HUB_NAME } from "../config/masterHub";
 
 // The Quick-Reference Guide is no longer emailed as an attachment. It is served
 // at a public, same-domain URL instead (GET /quick-reference-guide.pdf, wired up
@@ -54,7 +55,11 @@ export function inviteLink(origin: string, token: string): string {
  * the activation link so it can be copied manually. Going live with real delivery
  * to everyone is a config change only: set RESEND_FROM to a verified domain.
  */
-export async function sendInvite(invite: { email: string; role?: string }, link: string): Promise<boolean> {
+export async function sendInvite(
+  invite: { email: string; role?: string },
+  link: string,
+  meta?: { sentById?: string | null; tenantId?: string | null },
+): Promise<boolean> {
   const blurb = ROLE_BLURB[invite.role || ""] || "access to the CRM";
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1f2430">
@@ -72,10 +77,15 @@ export async function sendInvite(invite: { email: string; role?: string }, link:
       subject: "You're invited to Clarity CRM",
       html,
       fromEmail: env.RESEND_FROM, // send address is RESEND_FROM (no Reply-To set)
+      // Master-hub sends (no tenant) carry the master-hub label as their sender identity.
+      fromName: meta?.tenantId ? null : MASTER_HUB_NAME,
     }, {
-      // An invitee isn't a contact and the invite may be master-scope (no tenant),
-      // so contactId/tenantId stay null here.
+      // Stamp who sent it (and the tenant, if any) so the master-hub Email log shows
+      // "Sent by" and a Tenant instead of blanks. Both null for a master-scope invite
+      // sent by no specific user — the log falls back to the master-hub name.
       type: "invite",
+      sentById: meta?.sentById ?? null,
+      tenantId: meta?.tenantId ?? null,
     });
     return true;
   } catch (err) {
@@ -104,6 +114,7 @@ export async function sendCustomInvite(
   link: string,
   rawHtml: string,
   subject?: string | null,
+  meta?: { sentById?: string | null; tenantId?: string | null },
 ): Promise<boolean> {
   // Replace EVERY occurrence of the token with the real link (href, button URL, or
   // inline text — wherever the writer placed it).
@@ -118,8 +129,11 @@ export async function sendCustomInvite(
       subject: finalSubject,
       html,
       fromEmail: env.RESEND_FROM,
+      fromName: meta?.tenantId ? null : MASTER_HUB_NAME,
     }, {
       type: "invite",
+      sentById: meta?.sentById ?? null,
+      tenantId: meta?.tenantId ?? null,
     });
     return true;
   } catch (err) {

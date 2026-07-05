@@ -33,6 +33,47 @@
     return d.getTime();
   }
 
+  // ---------- calendar-day helpers (timezone/day-boundary correctness) ----------
+  // Relative date filters ("today", ranges) must compare on the SAME calendar day the
+  // table SHOWS, not on a raw UTC instant. Whole-day values are displayed in UTC (see
+  // util.fmtDateOnly, which renders the literal Y-M-D digits in UTC — e.g. the Change
+  // Log, whose rows are stored at UTC midnight); time-of-day values are displayed in
+  // local time (util.fmtDate). So a bare date or an exact UTC-midnight instant keys off
+  // its UTC Y-M-D digits, while anything with a real time-of-day keys off its LOCAL day.
+  // This fixes the bug where "today" returned nothing because a UTC-midnight row fell
+  // into the previous LOCAL day. Returns "YYYY-MM-DD" (or "" when the value is empty).
+  function localDayKey(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  function dayKeyOf(value) {
+    if (value == null || value === "") return "";
+    const s = String(value);
+    const bare = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (bare) return `${bare[1]}-${bare[2]}-${bare[3]}`;
+    const utcMidnight = /^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.000)?Z$/.exec(s);
+    if (utcMidnight) return `${utcMidnight[1]}-${utcMidnight[2]}-${utcMidnight[3]}`;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? "" : localDayKey(d);
+  }
+  function todayKey() { return localDayKey(new Date()); }
+  // A <input type="date"> value is already "YYYY-MM-DD"; use its digits directly.
+  function inputDayKey(v) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || "")); return m ? `${m[1]}-${m[2]}-${m[3]}` : ""; }
+  // today minus N units, as a day key (for "in the previous N days/weeks/…").
+  function shiftDayKey(baseKey, amount, unit) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(baseKey || "");
+    if (!m) return "";
+    const d = new Date(+m[1], +m[2] - 1, +m[3]); // local midnight of that calendar day
+    const n = Number(amount) || 0;
+    if (unit === "weeks") d.setDate(d.getDate() - n * 7);
+    else if (unit === "months") d.setMonth(d.getMonth() - n);
+    else if (unit === "years") d.setFullYear(d.getFullYear() - n);
+    else d.setDate(d.getDate() - n);
+    return localDayKey(d);
+  }
+
   function evalRule(row, rule, cols) {
     const col = cols.find((c) => c.key === rule.field);
     if (!col) return true;
@@ -59,20 +100,22 @@
       case "gt": return Number(raw) > Number(rule.value);
       case "lt": return Number(raw) < Number(rule.value);
       case "today": {
-        if (!raw) return false;
-        const s = startOfToday();
-        return t >= s && t < s + 86400000;
+        const dk = dayKeyOf(raw);
+        return !!dk && dk === todayKey();
       }
       case "between": {
-        if (!raw) return false;
-        const a = new Date(rule.value).getTime();
-        const end = new Date(rule.value2); end.setHours(23, 59, 59, 999);
-        return t >= a && t <= end.getTime();
+        const dk = dayKeyOf(raw);
+        if (!dk) return false;
+        const a = inputDayKey(rule.value);
+        const b = inputDayKey(rule.value2);
+        return (!a || dk >= a) && (!b || dk <= b);
       }
       case "previous": {
-        if (!raw) return false;
-        const now = Date.now();
-        return t >= subtractTime(now, rule.value, rule.unit || "days") && t <= now;
+        const dk = dayKeyOf(raw);
+        if (!dk) return false;
+        const tk = todayKey();
+        const from = shiftDayKey(tk, rule.value, rule.unit || "days");
+        return !!from && dk >= from && dk <= tk;
       }
       default: return true;
     }
@@ -147,7 +190,21 @@
     const rowId = opts.rowId || ((r) => r.id);
     const selectable = !!opts.selectable;
     const selected = new Set();
-    const state = { search: "", colFilters: {}, rules: [], sortKey: opts.defaultSort || null, sortDir: opts.defaultSortDir || "desc", railOpen: false, page: 0 };
+
+    // ---- Persist sort view-state (sortKey + sortDir) per table, so it survives
+    // navigating away / reloading. Same try/catch localStorage pattern used for the
+    // column layouts in admin.js/portal.js. Keyed by a STABLE per-table id: callers
+    // may pass opts.tableId; otherwise we derive one from the (order-independent)
+    // set of column keys, which is stable for a given logical table. Only view state.
+    const sortStoreId = opts.tableId
+      ? String(opts.tableId)
+      : "sig:" + (opts.columns || []).map((c) => c && c.key).filter(Boolean).slice().sort().join(",");
+    const SORT_STORE_KEY = "tblsort:" + sortStoreId;
+    function loadSort() { try { return JSON.parse(localStorage.getItem(SORT_STORE_KEY) || "null"); } catch (e) { return null; } }
+    function saveSort() { try { localStorage.setItem(SORT_STORE_KEY, JSON.stringify({ sortKey: state.sortKey, sortDir: state.sortDir })); } catch (e) {} }
+    const savedSort = loadSort();
+
+    const state = { search: "", colFilters: {}, rules: [], sortKey: (savedSort && savedSort.sortKey) || opts.defaultSort || null, sortDir: (savedSort && savedSort.sortDir) || opts.defaultSortDir || "desc", railOpen: false, page: 0 };
     const { el, esc, debounce } = App.util;
     function fireSel() { if (opts.onSelectionChange) opts.onSelectionChange(Array.from(selected)); }
 
@@ -256,6 +313,7 @@
         label.onclick = () => {
           if (state.sortKey === c.key) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
           else { state.sortKey = c.key; state.sortDir = "asc"; }
+          saveSort();
           render();
         };
         wrap.appendChild(label);
@@ -369,8 +427,8 @@
       pop.addEventListener("click", (e) => e.stopPropagation());
       const sortAsc = el("button", "pop-item", "↑ Sort ascending");
       const sortDesc = el("button", "pop-item", "↓ Sort descending");
-      sortAsc.onclick = () => { state.sortKey = col.key; state.sortDir = "asc"; closePopover(); render(); };
-      sortDesc.onclick = () => { state.sortKey = col.key; state.sortDir = "desc"; closePopover(); render(); };
+      sortAsc.onclick = () => { state.sortKey = col.key; state.sortDir = "asc"; saveSort(); closePopover(); render(); };
+      sortDesc.onclick = () => { state.sortKey = col.key; state.sortDir = "desc"; saveSort(); closePopover(); render(); };
       pop.appendChild(sortAsc);
       pop.appendChild(sortDesc);
       pop.appendChild(el("div", "pop-sep"));
@@ -416,6 +474,7 @@
       state.rules = (def.rules || []).map((r) => ({ ...r }));
       state.sortKey = def.sortKey || null;
       state.sortDir = def.sortDir || "desc";
+      saveSort();
       search.value = state.search;
       if ((state.rules.length || Object.keys(state.colFilters).length) && !state.railOpen) state.railOpen = true;
       renderRail();

@@ -222,6 +222,7 @@
       rows: portals,
       columns: initialColumns,
       rowId: (p) => p.id,
+      tableId: "admin-tenants",
       scrollX: true,
       defaultSort: "created",
       defaultSortDir: "desc",
@@ -935,6 +936,7 @@
     const empty = `<div class="card cell-muted" style="padding:18px">No changes logged yet.</div>`;
     App.table.mount({
       container: host, columns, rows,
+      tableId: "admin-changelog",
       defaultSort: "date", defaultSortDir: "desc",
       emptyHtml: empty, pageSize: 25,
     });
@@ -994,6 +996,7 @@
     App.table.mount({
       container: host, columns, rows,
       rowId: (r) => r.groupKey,
+      tableId: "admin-email-sends",
       scrollX: true,
       defaultSort: "date", defaultSortDir: "desc",
       onRowClick: (r) => renderEmailRecipients(r),
@@ -1040,6 +1043,7 @@
     App.table.mount({
       container: host, columns, rows,
       rowId: (r) => r.id,
+      tableId: "admin-email-recipients",
       scrollX: true,
       defaultSort: "to", defaultSortDir: "asc",
       onRowClick: (r) => renderEmailDetail(r, () => renderEmailRecipients(group)),
@@ -1702,6 +1706,7 @@
     const tableHost = el("div"); tableHost.className = "table-flush"; card.appendChild(tableHost);
     const handle = App.table.mount({
       container: tableHost, rows: charges, rowId: (c) => c.id, columns: applied(), scrollX: true,
+      tableId: "admin-tenant-charges",
       defaultSort: "period", defaultSortDir: "desc",
       onRowClick: (c) => openChargeDetail(tenantId, tenantName, c),
       emptyHtml: `<div class="card cell-muted" style="padding:18px">No charges yet. Click “+ Create charge”.</div>`,
@@ -2008,6 +2013,7 @@
       host.innerHTML = "";
       handle = App.table.mount({
         container: host, rows: charges, rowId: (c) => c.id, columns: applied(), scrollX: true,
+        tableId: "admin-central-charges",
         defaultSort: "created", defaultSortDir: "desc",
         onRowClick: (c) => openChargeDetail(c.tenantId, c.tenant, c, load),
         emptyHtml: `<div class="card cell-muted" style="padding:18px">No charges yet.</div>`,

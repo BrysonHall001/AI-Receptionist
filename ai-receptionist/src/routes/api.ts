@@ -1734,8 +1734,8 @@ apiRouter.post("/users", async (req: Request, res: Response) => {
     const host = String(req.headers["x-forwarded-host"] || req.get("host") || "").trim();
     const link = inviteLink(proto + "://" + host, invite.token);
     const emailed = isCustom
-      ? await sendCustomInvite({ email: invite.email, role: invite.role }, link, customHtml, customSubject)
-      : await sendInvite({ email: invite.email, role: invite.role }, link);
+      ? await sendCustomInvite({ email: invite.email, role: invite.role }, link, customHtml, customSubject, { sentById: req.user?.id ?? null, tenantId })
+      : await sendInvite({ email: invite.email, role: invite.role }, link, { sentById: req.user?.id ?? null, tenantId });
     res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link, emailed });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

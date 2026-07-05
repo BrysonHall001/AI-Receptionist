@@ -220,7 +220,7 @@
     function addRow(value) {
       const row = el("div", "fb-link-row");
       row.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:6px";
-      const inp = el("input", "input"); inp.type = "text"; inp.placeholder = "google.com or https://…"; inp.value = value || ""; inp.style.marginBottom = "0";
+      const inp = el("input", "input"); inp.type = "text"; inp.placeholder = "https://…"; inp.value = value || ""; inp.style.marginBottom = "0";
       const rm = el("button", "link-danger", "Remove"); rm.type = "button";
       rm.onclick = () => row.remove();
       row.appendChild(inp); row.appendChild(rm);
@@ -294,6 +294,7 @@
     const empty = `<div class="card cell-muted" style="padding:18px">${kind === "RESOLVED" ? "No resolved tickets." : "No tickets yet."}</div>`;
     App.table.mount({
       container: host, columns, rows,
+      tableId: "feedback-" + mode + "-" + kind,
       onRowClick: (r) => openThread(r.id, mode),
       defaultSort: "createdAt", defaultSortDir: "desc",
       emptyHtml: empty, pageSize: PAGE_SIZE,

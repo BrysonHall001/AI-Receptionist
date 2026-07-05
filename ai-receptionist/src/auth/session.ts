@@ -15,6 +15,14 @@ export async function createSession(userId: string): Promise<string> {
   await prisma.session.create({
     data: { token, userId, expiresAt: new Date(Date.now() + ttlMs()) },
   });
+  // Stamp last-login on EVERY session creation — not just the /login handler — so any
+  // path that authenticates a user (password login, invite-accept auto-login, …) keeps
+  // "Last login" accurate. Wrapped so an update hiccup can never block issuing the session.
+  try {
+    await prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
+  } catch {
+    /* session already exists; a failed last-login stamp must not fail the login */
+  }
   return token;
 }
 

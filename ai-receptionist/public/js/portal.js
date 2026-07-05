@@ -226,6 +226,7 @@
     const columns = callColumnDefs();
     const handle = App.table.mount({
       container, columns, rows: calls, onRowClick: (r) => openCall(r.id),
+      tableId: "portal-calls",
       defaultSort: "createdAt", defaultSortDir: "desc", highlightId: App._highlightCallId,
       emptyHtml: emptyCalls().outerHTML, pageSize: 6,
     });
@@ -1936,6 +1937,7 @@
     let handle;
     handle = App.table.mount({
       container: tableHost, columns, rows: contacts, selectable: true, rowId: (r) => r.id,
+      tableId: "portal-contacts",
       scrollX: true, pageSize: 50,
       onRowClick: (r) => App.go("#/contact/" + r.id),
       onSelectionChange: (ids) => updateBulkBar(ids),
@@ -5498,6 +5500,7 @@
     let handle;
     handle = App.table.mount({
       container: tableHost, columns, rows: records, selectable: true, rowId: (r) => r.id,
+      tableId: "portal-records-" + typeKey,
       onRowClick: (r) => App.go("#/record/" + r.id),
       onSelectionChange: (ids) => { selCount.textContent = ids.length ? `${ids.length} selected` : ""; },
       defaultSort: "createdAt", defaultSortDir: "desc",

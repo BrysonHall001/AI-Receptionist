@@ -46,7 +46,6 @@ authRouter.post("/login", loginIpLimiter, loginLimiter, async (req: Request, res
   }
   const token = await createSession(user.id);
   setSessionCookie(res, token);
-  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   res.json({ user: publicUser(user) });
 });
 

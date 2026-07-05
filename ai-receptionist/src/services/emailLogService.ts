@@ -8,6 +8,7 @@
 //    tenant name + sender name.
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
+import { MASTER_HUB_NAME } from "../config/masterHub";
 
 const db = prisma as any;
 
@@ -130,7 +131,10 @@ async function mapEmailRows(rows: any[]) {
     id: r.id,
     createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
     tenantId: r.tenantId ?? null,
-    tenantName: r.tenantId ? (tenantName[r.tenantId] ?? null) : null,
+    // No tenant + an identified sender = a master-hub send (e.g. an owner's invite);
+    // label its Tenant column with the master-hub name instead of leaving it blank.
+    // Automated tenant-less sends (password resets, etc.) have no sentById and stay blank.
+    tenantName: r.tenantId ? (tenantName[r.tenantId] ?? null) : (r.sentById ? MASTER_HUB_NAME : null),
     sentById: r.sentById ?? null,
     sentByName: r.sentById ? (userName[r.sentById] ?? null) : null,
     toEmail: r.toEmail,

@@ -165,8 +165,8 @@ adminRouter.post("/users", async (req: Request, res: Response) => {
     const invite = await createInvite({ email, role: role as any, tenantId: null, name: name || null, createdById: req.user?.id ?? null });
     const link = inviteLink(requestOrigin(req), invite.token);
     const emailed = isCustom
-      ? await sendCustomInvite({ email: invite.email, role: invite.role }, link, customHtml, customSubject)
-      : await sendInvite({ email: invite.email, role: invite.role }, link);
+      ? await sendCustomInvite({ email: invite.email, role: invite.role }, link, customHtml, customSubject, { sentById: req.user?.id ?? null, tenantId: null })
+      : await sendInvite({ email: invite.email, role: invite.role }, link, { sentById: req.user?.id ?? null, tenantId: null });
     // `link` is always returned so it can be copied while email delivery is limited.
     res.json({ invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt }, link, emailed });
   } catch (err) {
@@ -250,7 +250,7 @@ adminRouter.post("/portals/:id/invites", async (req: Request, res: Response) => 
       createdById: req.user?.id ?? null,
     });
     const link = inviteLink(requestOrigin(req), invite.token);
-    const emailed = await sendInvite({ email: invite.email, role: invite.role }, link);
+    const emailed = await sendInvite({ email: invite.email, role: invite.role }, link, { sentById: req.user?.id ?? null, tenantId });
     logger.info(`Invite created for ${invite.email} -> portal ${tenantId} (emailed: ${emailed})`);
     // `link` is returned ONLY because email is mocked, so the super-admin can copy
     // it to test. With real email this field would simply stop being returned.
