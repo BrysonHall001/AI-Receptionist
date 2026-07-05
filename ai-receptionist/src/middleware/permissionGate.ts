@@ -87,6 +87,9 @@ export const PERM_RULES: PermRule[] = [
   { m: "GET", re: /^\/stats$/, area: "dashboard", right: "view" },
   { m: "GET", re: /^\/dashboards(\/home)?$/, area: "dashboard", right: "view" },
 
+  // ---- Client Billing (gated_view): Portal Admins yes, Client Users no unless granted ----
+  { m: "GET", re: /^\/portal-billing(\/|$)/, area: "billing", right: "view" },
+
   // ---- Settings sub-areas: WRITES -> manage (reads stay open) ----
   { m: "PATCH", re: /^\/settings$/, area: "settings_general", right: "manage" },
   { m: "PATCH", re: /^\/theme$/, area: "settings_appearance", right: "manage" },

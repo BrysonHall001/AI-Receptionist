@@ -1655,7 +1655,7 @@
     let layout = loadChargesLayout();
     const applied = () => App.table.applyColumnLayout(manageable, layout, defaultKeys).concat([actionsCol]);
 
-    const tableHost = el("div"); card.appendChild(tableHost);
+    const tableHost = el("div"); tableHost.className = "table-flush"; card.appendChild(tableHost);
     const handle = App.table.mount({
       container: tableHost, rows: charges, rowId: (c) => c.id, columns: applied(), scrollX: true,
       defaultSort: "period", defaultSortDir: "desc",
@@ -1990,7 +1990,13 @@
     view().innerHTML = "";
     const wrap = el("div", "fade-in");
     view().appendChild(wrap);
-    wrap.appendChild(el("h1", "page-title", "Billing & Usage"));
+    // Header block: heading + Stripe mode pill share ONE container so their left edges are the
+    // same origin (no reliance on default h1 margins). h1 gets a fixed bottom margin for the
+    // gap; the pill sits flush-left directly beneath it.
+    const head = el("div"); head.style.cssText = "margin-bottom:18px";
+    const h1 = el("h1", "page-title", "Billing & Usage"); h1.style.cssText = "margin:0 0 10px";
+    head.appendChild(h1);
+    wrap.appendChild(head);
     // Stripe mode badge (TEST/LIVE) so the operator always knows if real money is in play.
     (async () => {
       try {
@@ -1999,9 +2005,11 @@
         const badge = el("span");
         const live = st.mode === "live";
         badge.textContent = live ? "Stripe: LIVE mode" : "Stripe: TEST mode";
-        badge.style.cssText = `display:block;width:fit-content;margin:2px 0 18px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 12px;color:${live ? "#fff" : "#92400e"};background:${live ? "#dc2626" : "#fef3c7"};border:1px solid ${live ? "#dc2626" : "#fde68a"}`;
+        // Block + fit-content + zero left margin => the pill's left edge sits exactly under the
+        // heading text's left edge (same container content-left).
+        badge.style.cssText = `display:block;width:fit-content;margin:0;font-size:12px;font-weight:700;border-radius:999px;padding:3px 12px;color:${live ? "#fff" : "#92400e"};background:${live ? "#dc2626" : "#fef3c7"};border:1px solid ${live ? "#dc2626" : "#fde68a"}`;
         badge.title = live ? "Live keys — real charges and payments." : "Test keys — no real money moves.";
-        wrap.insertBefore(badge, wrap.children[1] || null);
+        head.appendChild(badge);
       } catch (e) { /* ignore */ }
     })();
 

@@ -73,6 +73,9 @@ authRouter.get("/me", async (req: Request, res: Response) => {
   // automatically. Cosmetic nav-hide is applied separately on the client.
   const permView: Record<string, boolean> = {};
   for (const area of NAV_VIEW_AREAS) permView[area] = await can(req.user as any, area, "view");
+  // Billing isn't a nav area, but the client needs its view flag to show/hide the Settings
+  // Billing tab (server still enforces the endpoint independently).
+  permView["billing"] = await can(req.user as any, "billing", "view");
   const lockedPages = (req.user as any)?.tenantId ? await getLockedPages((req.user as any).tenantId) : [];
   res.json({ user: { ...req.user, permView, lockedPages }, features: { smsEnabled: smsEnabled() } });
 });

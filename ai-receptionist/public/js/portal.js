@@ -116,7 +116,7 @@
     let layout = loadLayout();
     const applied = () => App.table.applyColumnLayout(manageable, layout, defaultKeys).concat([payCol]);
 
-    const tableHost = el("div"); body.appendChild(tableHost);
+    const tableHost = el("div"); tableHost.className = "table-flush"; body.appendChild(tableHost);
     const handle = App.table.mount({
       container: tableHost, rows: charges, rowId: (c) => c.id, columns: applied(), scrollX: true,
       defaultSort: "period", defaultSortDir: "desc",
@@ -3528,7 +3528,7 @@
       .filter((s) => {
         if (s.key === "scheduling") return !App.isPageLocked("#/bookings");
         if (s.key === "fields") return !(App.isPageLocked("#/contacts") && App.isAreaLocked("records"));
-        if (s.key === "billing") return !App.isPageLocked("#/billing"); // per-portal hide toggle
+        if (s.key === "billing") return !App.isPageLocked("#/billing") && App.canViewArea("billing"); // page-lock AND billing permission
         return true;
       });
 
@@ -3790,7 +3790,7 @@
           ? `<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" id="perm-save">${role.isNew ? "Create role" : "Save changes"}</button>${role.id ? `<button class="btn btn-sm" id="perm-delete">Delete</button>` : ""}</div>`
           : `<span class="cell-muted" style="font-size:12px">Shown for reference — system roles aren't edited here.</span>`;
         host.innerHTML = `<h2 class="settings-h">Permissions</h2>
-          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Each section shows only the rights its areas support: data areas (Contacts, Records, Automations, Communication, Home Dashboard, Analytics) have View / Edit / Delete; Calls and the Learning Center have a single Access switch; Settings is one combined "Manage Settings" toggle; and User management has View / Edit / Delete. Integrations and Lead capture stay admin-managed. For your own custom roles, tick what you want to grant — you can grant up to your own level.</p>
+          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Each section shows only the rights its areas support: data areas (Contacts, Records, Automations, Communication, Home Dashboard, Analytics) have View / Edit / Delete; Calls, the Learning Center, and Billing have a single Access switch; Settings is one combined "Manage Settings" toggle; and User management has View / Edit / Delete. Billing is off for Client Users by default (Portal Admins have it) — grant it here to give a role the client Billing tab. Integrations and Lead capture stay admin-managed. For your own custom roles, tick what you want to grant — you can grant up to your own level.</p>
           <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
             <div style="width:210px;flex:0 0 auto">${roleListHtml()}</div>
             <div style="flex:1;min-width:320px">

@@ -33,7 +33,7 @@ export type Right = "view" | "edit" | "delete" | "manage";
 
 // Each area declares a KIND, which fixes the rights it supports — so we never
 // pretend a read-only page has "delete", or that a settings pane is view/edit/delete.
-type AreaKind = "data" | "readonly" | "settings" | "users";
+type AreaKind = "data" | "readonly" | "settings" | "users" | "gated_view";
 
 // `section` groups areas into the collapsible blocks the Permissions UI renders.
 // Presentation-only hints (do NOT affect enforcement / can() / the ceiling):
@@ -47,6 +47,10 @@ function rightsForKind(kind: AreaKind): Right[] {
   switch (kind) {
     case "data": return ["view", "edit", "delete"];
     case "readonly": return ["view"];
+    // Like "readonly" (single view/access right) but NOT auto-granted to CLIENT_USER by
+    // systemCan — so it's PORTAL_ADMIN-yes / CLIENT_USER-no by default, still grantable to
+    // custom roles up to the granter's ceiling. Used for the client Billing area.
+    case "gated_view": return ["view"];
     case "settings": return ["manage"];
     case "users": return ["view", "edit", "delete"];
   }
@@ -71,6 +75,10 @@ export const AREAS: AreaDef[] = [
   // ---- Read-only (view only) ----
   { key: "calls", label: "Calls", kind: "readonly", section: "Operations" },
   { key: "learn", label: "Learning Center", kind: "readonly", section: "Operations" },
+  // Client billing view. gated_view => Portal Admins (and top tiers) get it by default,
+  // Client Users do NOT, and it's grantable per custom role. Renders in the Operations
+  // section as a single Access (view) toggle, alongside Calls / Learning Center.
+  { key: "billing", label: "Billing", kind: "gated_view", section: "Operations" },
   // ---- Settings sub-areas (single Manage right each) ----
   { key: "settings_general", label: "Business Profile", kind: "settings", section: "Settings" },
   { key: "settings_appearance", label: "Appearance", kind: "settings", section: "Settings" },
@@ -152,6 +160,8 @@ function systemCan(role: string, area: string, right: Right): boolean {
   if (isTopTier(role)) return true;          // OWNER / SUPER_ADMIN / AUDITOR: full
   if (role === "PORTAL_ADMIN") return true;  // full portal control (matches today)
   if (role === "CLIENT_USER") {
+    // Default view only on data/readonly areas. gated_view areas (Billing) are deliberately
+    // NOT auto-granted here — a Client User sees Billing only if a custom role grants it.
     return right === "view" && (def.kind === "data" || def.kind === "readonly");
   }
   return false;

@@ -93,6 +93,15 @@
     "#/learn": "learn",
     "#/feedback": null,
   };
+  // View-permission check for a NON-nav permission area (e.g. "billing", which is a Settings
+  // tab, not a sidebar page). Mirrors canViewNav's default: if permView hasn't loaded yet,
+  // don't hide (the server still enforces the endpoint, so nothing leaks).
+  App.canViewArea = function (areaKey) {
+    var me = App.state.me;
+    var pv = me && me.permView;
+    if (!pv) return true;
+    return pv[areaKey] === true;
+  };
   App.canViewNav = function (href) {
     // Owner page-lock (beats everything, incl. null-area pages like Dashboard/Feedback):
     // a locked page is simply not viewable for anyone in the tenant.

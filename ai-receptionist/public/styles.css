@@ -371,6 +371,14 @@ textarea.input { resize: vertical; }
 
 .table-layout { display: flex; gap: 16px; align-items: flex-start; }
 .table-area { flex: 1; min-width: 0; }
+/* Flush-left variant: used where a table sits directly under a heading/caption/card whose left
+   edge it must match (client Billing settings, master-hub per-tenant Charges). The default layout
+   pushes the table area 16px right (flex gap past the zero-width filter rail) and indents the
+   Filters group 18px; both are removed here. The 16px rail spacing is restored only when the rail
+   is actually open, so an open filter panel still doesn't touch the table. */
+.table-flush .table-layout { gap: 0; }
+.table-flush .filter-rail.open { margin-right: 16px; }
+.table-flush .toolbar-left { padding-left: 0; }
 .filter-rail { width: 0; overflow: hidden; flex-shrink: 0; transition: width 0.18s ease; }
 .filter-rail.open { width: 264px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow); }
 .rail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
