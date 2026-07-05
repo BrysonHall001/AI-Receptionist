@@ -13,6 +13,8 @@ import { resolveMergeTags } from "../services/mergeTags";
 import { loadRecordFieldDefs, buildRecordColumns, attachResourceNames } from "./recordRow";
 import { evalRules } from "./conditions";
 import { validateWebhookUrl, sendWebhook, buildContactPayload } from "./webhook";
+import { sendSurveyBlast, bodyHasLinkToken, SURVEY_LINK_TOKEN } from "../services/surveyBlastService";
+import { env } from "../config/env";
 
 const db = prisma as any;
 
@@ -67,6 +69,8 @@ export interface ActionContext {
 // here; the engine never changes.
 export const ACTION_TYPES: { type: string; label: string; description: string }[] = [
   { type: "send_email", label: "Send email", description: "Send an email." },
+  { type: "send_survey", label: "Send survey", description: "Send a chosen survey — each recipient gets their own personal link." },
+  { type: "unenroll", label: "Unenroll from a flow", description: "Stop this contact's in-progress run — cancels their remaining scheduled steps (this flow, a chosen flow, or all)." },
   { type: "send_sms", label: "Send SMS", description: "Send a text message." },
   { type: "notify_business", label: "Notify the business (you/your team)", description: "Email and/or text YOUR business about the lead (not the lead). Email defaults to your Notify email; add a phone number for SMS." },
   { type: "update_field", label: "Update contact field", description: "Set a field to a value." },
@@ -174,6 +178,52 @@ const EXECUTORS: Record<string, Executor> = {
     await logActivity({ tenantId: ctx.tenantId, contactId: contact.id, type: "email_sent", summary: `Email sent: ${subject}`, detail: { subject, to: contact.email, via: "automation" }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
     await emitEvent({ tenantId: ctx.tenantId, type: EVENT_TYPES.EmailSent, actor: ctx.actor, subject: { type: "contact", id: contact.id }, payload: { subject, to: contact.email } });
     return { type: "send_email", status: "success", detail: `to ${contact.email}` };
+  },
+
+  // Send a chosen survey to THIS run's contact via the same surveyBlastService path a manual
+  // survey send uses — each recipient gets their own personal {{survey_link}}. Config: surveyId,
+  // subject, html (the {{survey_link}} token is auto-appended if the body omits it so a drip step
+  // "just works"). Runs correctly within ordered actions and when resumed from a queued job.
+  async send_survey(cfg, ctx) {
+    const contact = await freshContact(ctx);
+    if (!contact.email) return { type: "send_survey", status: "skipped", detail: "Contact has no email" };
+    const surveyId = String(cfg.surveyId || cfg.survey || "").trim();
+    if (!surveyId) return { type: "send_survey", status: "failed", error: "No survey selected" };
+    const subject = String(cfg.subject || "").trim();
+    if (!subject) return { type: "send_survey", status: "failed", error: "No subject" };
+    let html = String(cfg.html || cfg.body || "");
+    if (!bodyHasLinkToken(html)) html = (html ? html + "\n" : "") + `<p>${SURVEY_LINK_TOKEN}</p>`; // ensure the personal link is present
+    try {
+      const result = await sendSurveyBlast({
+        tenantId: ctx.tenantId,
+        surveyId,
+        subject,
+        html,
+        contactIds: [contact.id],
+        fromEmail: ctx.portal.notifyEmail || "",
+        fromName: ctx.portal.name,
+        createdById: ctx.actor.id ?? null,
+        origin: env.APP_BASE_URL,
+      });
+      if (!result.sentCount) return { type: "send_survey", status: "skipped", detail: "No emailable/eligible recipient" };
+      return { type: "send_survey", status: "success", detail: `survey sent to ${contact.email}` };
+    } catch (e) {
+      return { type: "send_survey", status: "failed", error: (e as Error).message };
+    }
+  },
+
+  // Unenroll this contact: cancel their PENDING scheduled steps so a stopped flow's later actions
+  // never fire. This is how the engine represents an in-progress run — a multi-step (waited) run is
+  // a set of pending ScheduledJob rows per contact — so "unenroll" = mark those canceled. Scope:
+  //   cfg.automationId -> that specific flow;  cfg.scope === "all" -> every flow;
+  //   default -> THIS flow (ctx.actor.id is the running automation's id).
+  async unenroll(cfg, ctx) {
+    const where: Record<string, any> = { tenantId: ctx.tenantId, contactId: ctx.contactId, status: "pending" };
+    const targetId = cfg.automationId ? String(cfg.automationId) : (cfg.scope === "all" ? null : (ctx.actor.id ?? null));
+    if (targetId) where.automationId = targetId;
+    const res = await db.scheduledJob.updateMany({ where, data: { status: "canceled", error: "Unenrolled by automation" } });
+    const scopeLabel = cfg.automationId ? "the chosen flow" : (cfg.scope === "all" ? "all flows" : "this flow");
+    return { type: "unenroll", status: "success", detail: `unenrolled from ${scopeLabel} — canceled ${res.count} pending step(s)` };
   },
 
   async send_sms(cfg, ctx) {

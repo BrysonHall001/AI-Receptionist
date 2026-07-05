@@ -7,6 +7,7 @@ import { buildColumns, loadFieldDefs } from "./contactRow";
 import { loadRecordFieldDefs, buildRecordColumns, attachResourceNames } from "./recordRow";
 import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
 import { enqueueJob, fmtApptWall } from "./scheduler";
+import { resolveAudienceContacts } from "../services/audienceService";
 
 const db = prisma as any;
 
@@ -285,27 +286,42 @@ async function runOne(
       results.push(await runAction(action, ctx));
     }
   } else {
-    // Run actions before the Wait now; queue the actions after it for later.
+    // Run actions before the FIRST Wait now; queue everything after it. A LINEAR drip can have
+    // MULTIPLE waits (wait → email → wait → survey): we walk the tail accumulating each wait's
+    // delay into a running dueAt, and enqueue each non-wait action at ITS cumulative due time. So
+    // later waits are honored (previously any wait after the first was dropped, collapsing the
+    // whole tail onto the first wait's time). Each queued job is a single action the scheduler
+    // runs at its dueAt; waits are consumed here, never queued.
     for (let i = 0; i < waitIdx; i++) {
       results.push(await runAction(actionList[i], ctx));
     }
-    const dueAt = delayDueAt(actionList[waitIdx].config || {});
-    const remaining = actionList.slice(waitIdx + 1).filter((a) => a.type !== "wait");
     const contactName = contact.name || contact.phone || contact.email || contact.id;
-    for (const action of remaining) {
+    let running: Date | null = null;
+    let queued = 0;
+    let lastDue: Date | null = null;
+    for (let i = waitIdx; i < actionList.length; i++) {
+      const a = actionList[i];
+      if (a.type === "wait") {
+        running = running ? addDelay(running, a.config || {}) : delayDueAt(a.config || {});
+        continue;
+      }
+      // A non-wait after at least one wait -> queue at the current cumulative due time.
+      const dueAt = running || new Date();
+      lastDue = dueAt;
       await enqueueJob({
         tenantId: auto.tenantId,
         automationId: auto.id,
         automationName: auto.name,
         contactId: contact.id,
         contactName,
-        action,
+        action: a,
         dueAt,
         kind: "delay",
       });
-      results.push({ type: action.type, status: "skipped", detail: `scheduled for ${dueAt.toISOString()}` });
+      queued++;
+      results.push({ type: a.type, status: "skipped", detail: `scheduled for ${dueAt.toISOString()}` });
     }
-    results.push({ type: "wait", status: "success", detail: `deferred ${remaining.length} action(s) until ${dueAt.toISOString()}` });
+    results.push({ type: "wait", status: "success", detail: `deferred ${queued} action(s)${lastDue ? ` (last at ${lastDue.toISOString()})` : ""}` });
   }
 
   const status = results.some((r) => r.status === "failed") ? "failed" : "success";
@@ -318,6 +334,15 @@ function delayDueAt(cfg: Record<string, any>): Date {
   const unit = cfg.unit;
   const ms = unit === "hours" ? 3_600_000 : unit === "days" ? 86_400_000 : 60_000;
   return new Date(Date.now() + amount * ms);
+}
+
+// base + amount * unit — used to accumulate a SECOND (or later) wait onto the running due time so
+// a linear drip's steps land at the right absolute moments.
+function addDelay(base: Date, cfg: Record<string, any>): Date {
+  const amount = Number(cfg.amount) || 0;
+  const unit = cfg.unit;
+  const ms = unit === "hours" ? 3_600_000 : unit === "days" ? 86_400_000 : 60_000;
+  return new Date(base.getTime() + amount * ms);
 }
 
 // Visibly refuse a too-deep cascade: log a clear line AND write a FAILED run for
@@ -419,6 +444,57 @@ export async function runManualAutomation(automationId: string, contactId: strin
   await runOne(auto, syntheticEvent, contact, fieldDefs, columns, portal, null);
   const last = await db.automationRun.findFirst({ where: { automationId, tenantId }, orderBy: { createdAt: "desc" } });
   return last;
+}
+
+/**
+ * Enroll the CURRENT contacts of an Audience into an automation (Task 3 — the Drips targeting
+ * hook). The audience is resolved to its live matchers AT ENROLL TIME (dynamic — reuses
+ * resolveAudienceContacts), then the automation runs once per matcher via the same run path as a
+ * manual run. Each matcher's run starts immediately; any `wait` in the flow queues their later
+ * steps (see runOne). Conditions still apply per contact, so a pure audience-targeted drip should
+ * leave conditions empty and let the audience be the filter. Tenant-scoped throughout.
+ *
+ * DRIP-AS-AUTOMATION (Task 4): a LINEAR drip is representable purely as one Automation record —
+ *   triggerType: "Manual" (enrolled via enrollAudienceInAutomation), conditions: [] (audience is
+ *   the target), actions (ordered):
+ *     [ wait, send_email, wait, send_survey ]
+ *   plus a companion Automation triggered by the "exit" event (e.g. a reply/unsubscribe) whose
+ *   action is `unenroll` targeting the drip. Multiple waits are honored (runOne accumulates due
+ *   times), send_survey + unenroll are new actions, and enrollment is this function — so no gap
+ *   remains for a linear (non-branching) drip.
+ */
+export async function enrollAudienceInAutomation(
+  automationId: string,
+  audienceId: string,
+  tenantId: string,
+): Promise<{ enrolled: number; contactIds: string[]; skipped: number }> {
+  const auto: AutomationRow | null = await db.automation.findUnique({ where: { id: automationId } });
+  if (!auto || auto.tenantId !== tenantId) throw new Error("Automation not found");
+  if (!auto.enabled) throw new Error("This automation is turned off");
+  const matchers = await resolveAudienceContacts(tenantId, audienceId);
+  if (matchers === null) throw new Error("Audience not found");
+
+  const fieldDefs = await loadFieldDefs(tenantId);
+  const columns = buildColumns(fieldDefs);
+  const portal = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  const enrolledIds: string[] = [];
+  let skipped = 0;
+  for (const m of matchers) {
+    const contact = await prisma.contact.findUnique({ where: { id: m.id } });
+    if (!contact || contact.tenantId !== tenantId) { skipped++; continue; }
+    const syntheticEvent: DomainEvent = {
+      id: "enroll-" + Date.now() + "-" + m.id,
+      tenantId,
+      type: "AudienceEnroll",
+      actor: { type: "user" },
+      subject: { type: "contact", id: m.id },
+      payload: { audienceId, enroll: true },
+      occurredAt: new Date().toISOString(),
+    };
+    await runOne(auto, syntheticEvent, contact, fieldDefs, columns, portal, null);
+    enrolledIds.push(m.id);
+  }
+  return { enrolled: enrolledIds.length, contactIds: enrolledIds, skipped };
 }
 
 let registered = false;
