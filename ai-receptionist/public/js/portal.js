@@ -275,18 +275,61 @@
     }
   }
 
-  // Per-portal AI Instructions box. Visibility/permission is decided by the server
-  // (GET returns `editable`); we only render the box when editing is allowed.
+  // Per-portal AI Instructions box. The server (GET) returns `editable`; editable users get the
+  // full sectioned editor, read-only users can view + navigate sections but not edit/save/upload.
+  // ---------------- AI Instructions (sectioned editor) ----------------
+  // Instructions remain ONE stored field (aiInstructions). Sections are delimited by "## <Name>"
+  // heading lines; the left tabs are a navigation/structure layer over that single document, and
+  // rename/add/remove/reorder all operate by parse -> mutate -> recompile so text + tabs never
+  // drift. Hours/availability are NOT here (managed in Settings -> Scheduling).
+  var AI_DEFAULT_SECTIONS = ["Overview", "Services", "Pricing", "What we don't do", "FAQs", "Tone & personality"];
+  var AI_HEADING_RE = /^##\s+(.+?)\s*$/;
+
+  // Parse stored text -> [{name, body}]. Content before the first heading (or text with NO
+  // headings) is preserved under "Overview" so nothing is ever lost. Empty text -> default seed.
+  function aiParseSections(text) {
+    var raw = String(text == null ? "" : text).replace(/\r\n/g, "\n");
+    var lines = raw.split("\n");
+    var sections = [];
+    var cur = null;
+    var preamble = [];
+    for (var i = 0; i < lines.length; i++) {
+      var m = lines[i].match(AI_HEADING_RE);
+      if (m) { if (cur) sections.push(cur); cur = { name: m[1].trim(), body: [] }; }
+      else if (cur) { cur.body.push(lines[i]); }
+      else { preamble.push(lines[i]); }
+    }
+    if (cur) sections.push(cur);
+    var out = sections.map(function (s) { return { name: s.name, body: s.body.join("\n").replace(/^\n+|\n+$/g, "") }; });
+    var preText = preamble.join("\n").trim();
+    if (preText) {
+      var ov = out.find(function (s) { return s.name.toLowerCase() === "overview"; });
+      if (ov) ov.body = (preText + (ov.body ? "\n\n" + ov.body : "")).trim();
+      else out.unshift({ name: "Overview", body: preText });
+    }
+    if (!out.length) out = AI_DEFAULT_SECTIONS.map(function (n) { return { name: n, body: "" }; });
+    return out;
+  }
+
+  // Compile sections -> one string: "## Name" + blank line + body, sections separated by a blank
+  // line. Trailing newline for a clean file. parse(compile(x)) round-trips x.
+  function aiCompileSections(sections) {
+    return sections.map(function (s) {
+      var body = String(s.body || "").replace(/^\n+|\n+$/g, "");
+      return "## " + String(s.name || "").trim() + (body ? "\n\n" + body : "");
+    }).join("\n\n").trim() + "\n";
+  }
+  App.aiInstructionsSections = { parse: aiParseSections, compile: aiCompileSections };
+
   async function mountAiInstructions(host) {
     let data;
     try { data = await App.portalApi("/api/account/ai-instructions"); }
     catch { return; }
-    if (!data || !data.editable) return;
+    if (!data) return;
+    const editable = !!data.editable;
 
     const sec = el("div", "card ai-instructions-card");
     sec.style.cssText = "margin-top:18px;padding:18px;";
-    // Header row splits into two halves: caption on the LEFT, the Receptionist
-    // voice picker top-right. The textarea below stays FULL WIDTH (unchanged).
     const head = el("div");
     head.style.cssText = "display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;margin:0 0 12px;";
 
@@ -294,10 +337,8 @@
     headLeft.style.cssText = "flex:1 1 340px;min-width:260px;";
     headLeft.innerHTML =
       `<h3 style="margin:0 0 6px;">AI Instructions</h3>` +
-      `<p class="cell-muted" style="margin:0;">Tell your AI receptionist about your business — services, hours, pricing, anything callers might ask. This is added on top of its built-in ability to stay helpful and capture caller details automatically.</p>`;
+      `<p class="cell-muted" style="margin:0;">Tell your AI receptionist about your business — organized into sections. Use the tabs on the left to jump to a part. This is added on top of its built-in ability to stay helpful and capture caller details automatically.</p>`;
 
-    // The 5 allowed voices (kept in sync with src/config/voices.ts); the server
-    // also sends this list, but we keep a fallback so the picker always renders.
     const VOICE_FALLBACK = [
       { id: "uIZsnBL0YK1S5j69bAih", label: "Warm & Friendly" },
       { id: "Gfpl8Yo74Is0W6cPUWWT", label: "Clear & Professional" },
@@ -316,11 +357,11 @@
     voiceSel.style.cssText = "width:100%;";
     voiceOptions.forEach((o) => {
       const opt = el("option");
-      opt.value = o.id;
-      opt.textContent = o.label;
+      opt.value = o.id; opt.textContent = o.label;
       if (o.id === (data.voiceId || "")) opt.selected = true;
       voiceSel.appendChild(opt);
     });
+    if (!editable) voiceSel.disabled = true;
     const voiceNote = el("p", "cell-muted");
     voiceNote.style.cssText = "margin:0;font-size:12px;";
     voiceNote.textContent = "Applies on Premium voice.";
@@ -329,19 +370,13 @@
     voiceStatus.style.cssText = "font-size:12px;min-height:14px;";
 
     voiceSel.onchange = async () => {
-      voiceSel.disabled = true;
-      voiceStatus.textContent = "Saving…";
+      voiceSel.disabled = true; voiceStatus.textContent = "Saving…";
       try {
         await App.portalApi("/api/account/voice", { method: "PATCH", body: JSON.stringify({ voiceId: voiceSel.value }) });
-        voiceStatus.textContent = "Saved.";
-        App.util.toast("Receptionist voice saved");
+        voiceStatus.textContent = "Saved."; App.util.toast("Receptionist voice saved");
         setTimeout(() => { if (voiceStatus.textContent === "Saved.") voiceStatus.textContent = ""; }, 2500);
-      } catch (e) {
-        voiceStatus.textContent = "";
-        App.util.toast((e && e.message) || "Save failed", true);
-      } finally {
-        voiceSel.disabled = false;
-      }
+      } catch (e) { voiceStatus.textContent = ""; App.util.toast((e && e.message) || "Save failed", true); }
+      finally { voiceSel.disabled = false; }
     };
 
     headRight.appendChild(voiceLabel);
@@ -349,41 +384,176 @@
     headRight.appendChild(voiceNote);
     headRight.appendChild(voiceStatus);
 
+    // Upload-a-document affordance (editable users only). This batch: warning dialog + a picker
+    // that is NOT wired to parsing yet (parsing lands in a later batch).
+    if (editable) {
+      const upWrap = el("div");
+      upWrap.style.cssText = "margin-top:4px;";
+      const upBtn = el("button", "btn btn-ghost btn-sm", "\u2191 Upload a document");
+      upBtn.onclick = async () => {
+        const ok = await confirmModal({
+          title: "Upload a document to pre-fill",
+          message: "We'll read your document (menu, price list, FAQ, etc.) and PRE-FILL these sections for you to REVIEW and edit. Parsing is imperfect — nothing becomes live instructions until you review and Save. Never trust the extracted text blindly.",
+          confirmText: "I understand — choose file",
+        });
+        if (!ok) return;
+        // File picker exists so the flow is complete, but parsing is a later batch.
+        const fi = el("input"); fi.type = "file"; fi.accept = ".pdf,.doc,.docx,.txt,.md,.rtf"; fi.style.display = "none";
+        fi.onchange = () => { App.util.toast("Document parsing is coming soon — for now, add your details in the sections below."); fi.value = ""; };
+        document.body.appendChild(fi); fi.click(); setTimeout(() => fi.remove(), 60000);
+      };
+      upWrap.appendChild(upBtn);
+      headRight.appendChild(upWrap);
+    }
+
     head.appendChild(headLeft);
     head.appendChild(headRight);
     sec.appendChild(head);
 
+    // Read-only note: hours are managed in Settings -> Scheduling (NOT here).
+    const hoursNote = el("div", "cell-muted");
+    hoursNote.style.cssText = "font-size:12.5px;margin:0 0 12px;padding:8px 12px;background:var(--surface-2,#f8fafc);border-left:3px solid var(--accent,#c7d2fe);border-radius:4px;";
+    hoursNote.innerHTML = `Business hours &amp; availability aren't set here — the receptionist reads them from <a href="#/settings/scheduling" style="color:#2563eb;text-decoration:underline;">Settings &rarr; Scheduling</a>, so they always match your calendar.`;
+    sec.appendChild(hoursNote);
+
+    // ----- Sectioned editor: left tabs + one document textarea -----
+    const editor = el("div");
+    editor.style.cssText = "display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;";
+    const tabsCol = el("div", "ai-tabs");
+    tabsCol.style.cssText = "flex:0 0 210px;min-width:180px;display:flex;flex-direction:column;gap:6px;";
+    const rightCol = el("div");
+    rightCol.style.cssText = "flex:1 1 360px;min-width:280px;display:flex;flex-direction:column;gap:8px;";
+
     const ta = el("textarea", "input");
-    ta.rows = 8;
-    ta.style.cssText = "width:100%;resize:vertical;min-height:160px;";
-    ta.value = data.aiInstructions || "";
-    ta.placeholder = "e.g. We're a plumbing company open Mon–Sat, 8am–6pm. We service Rheem and Bradford White water heaters. For emergencies, let the caller know we offer same-day visits and ask for the best callback number.";
-    sec.appendChild(ta);
+    ta.style.cssText = "width:100%;resize:vertical;min-height:300px;font-family:inherit;line-height:1.5;";
+    ta.spellcheck = true;
+    ta.placeholder = "## Overview\n\nWe're a plumbing company serving the metro area…";
+    // Seed: existing content is preserved (parse handles no-marker + preamble); empty -> defaults.
+    ta.value = aiCompileSections(aiParseSections(data.aiInstructions || ""));
+    if (!editable) ta.readOnly = true;
 
-    const bar = el("div");
-    bar.style.cssText = "margin-top:10px;display:flex;gap:10px;align-items:center;";
-    const save = el("button", "btn btn-primary", "Save");
-    const status = el("span", "cell-muted");
-    status.style.fontSize = "13px";
-    save.onclick = async () => {
-      save.disabled = true;
-      status.textContent = "Saving…";
-      try {
-        await App.portalApi("/api/account/ai-instructions", { method: "PATCH", body: JSON.stringify({ aiInstructions: ta.value }) });
-        status.textContent = "Saved.";
-        App.util.toast("AI Instructions saved");
-        setTimeout(() => { if (status.textContent === "Saved.") status.textContent = ""; }, 2500);
-      } catch (e) {
-        status.textContent = "";
-        App.util.toast((e && e.message) || "Save failed", true);
-      } finally {
-        save.disabled = false;
+    let activeIdx = 0;
+
+    function headingOffsets() {
+      const offs = []; const lines = ta.value.split("\n"); let pos = 0;
+      for (let i = 0; i < lines.length; i++) { if (AI_HEADING_RE.test(lines[i])) offs.push(pos); pos += lines[i].length + 1; }
+      return offs;
+    }
+    function jumpTo(i) {
+      const offs = headingOffsets();
+      if (i < 0 || i >= offs.length) return;
+      const off = offs[i];
+      ta.focus();
+      try { ta.setSelectionRange(off, off); } catch (e) {}
+      const before = ta.value.slice(0, off).split("\n").length - 1;
+      ta.scrollTop = Math.max(0, before * 21 - 20);
+      activeIdx = i; paintTabs();
+    }
+    function currentSections() { return aiParseSections(ta.value); }
+    function setSections(list, focusIdx) {
+      ta.value = aiCompileSections(list);
+      if (typeof focusIdx === "number") activeIdx = Math.max(0, Math.min(focusIdx, list.length - 1));
+      paintTabs();
+      if (typeof focusIdx === "number") jumpTo(activeIdx);
+    }
+
+    let dragIdx = null;
+    function paintTabs() {
+      const sections = currentSections();
+      if (activeIdx >= sections.length) activeIdx = Math.max(0, sections.length - 1);
+      tabsCol.innerHTML = "";
+      const label = el("div", "cell-muted"); label.style.cssText = "font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:0 0 2px;"; label.textContent = "Sections";
+      tabsCol.appendChild(label);
+      sections.forEach((s, i) => {
+        const tab = el("div", "ai-tab" + (i === activeIdx ? " active" : ""));
+        tab.style.cssText = "display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid " + (i === activeIdx ? "#c7d2fe" : "transparent") + ";background:" + (i === activeIdx ? "var(--surface-2,#eef2ff)" : "transparent") + ";";
+        if (editable) {
+          const grip = el("span", "cell-muted"); grip.textContent = "\u2630"; grip.style.cssText = "cursor:grab;font-size:11px;opacity:.6;";
+          tab.appendChild(grip);
+          tab.draggable = true;
+          tab.ondragstart = (e) => { dragIdx = i; try { e.dataTransfer.effectAllowed = "move"; } catch (er) {} };
+          tab.ondragover = (e) => { e.preventDefault(); };
+          tab.ondrop = (e) => {
+            e.preventDefault();
+            if (dragIdx == null || dragIdx === i) return;
+            const list = currentSections();
+            const [moved] = list.splice(dragIdx, 1);
+            list.splice(i, 0, moved);
+            dragIdx = null;
+            setSections(list, i);
+          };
+        }
+        const name = el("span"); name.textContent = s.name || "(untitled)"; name.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        tab.appendChild(name);
+        tab.onclick = (e) => { if (e.target.tagName === "BUTTON") return; jumpTo(i); };
+        if (editable) {
+          const ren = el("button", "icon-btn"); ren.title = "Rename"; ren.textContent = "\u270e"; ren.style.cssText = "font-size:12px;padding:0 3px;line-height:1;background:none;border:none;cursor:pointer;color:inherit;";
+          ren.onclick = async (e) => {
+            e.stopPropagation();
+            const nm = await promptModal({ title: "Rename section", label: "Section name", value: s.name, okText: "Rename" });
+            if (!nm || !nm.trim()) return;
+            const list = currentSections(); list[i].name = nm.trim(); setSections(list, i);
+          };
+          const del = el("button", "icon-btn"); del.title = "Remove"; del.textContent = "\u00d7"; del.style.cssText = "font-size:15px;padding:0 3px;line-height:1;background:none;border:none;cursor:pointer;color:#dc2626;";
+          del.onclick = async (e) => {
+            e.stopPropagation();
+            if (!(await confirmModal({ title: "Remove section", message: `Remove the "${s.name}" section? Its heading and everything written under it will be deleted from your instructions.`, confirmText: "Remove section" }))) return;
+            const list = currentSections(); list.splice(i, 1);
+            if (!list.length) list.push({ name: "Overview", body: "" });
+            setSections(list, Math.max(0, i - 1));
+          };
+          tab.appendChild(ren); tab.appendChild(del);
+        }
+        tabsCol.appendChild(tab);
+      });
+      if (editable) {
+        const add = el("button", "btn btn-ghost btn-sm", "+ Add section");
+        add.style.cssText = "margin-top:4px;justify-content:flex-start;";
+        add.onclick = async () => {
+          const nm = await promptModal({ title: "Add a section", label: "Section name", placeholder: "e.g. Booking policy, Insurance", okText: "Add" });
+          if (!nm || !nm.trim()) return;
+          const list = currentSections(); list.push({ name: nm.trim(), body: "" });
+          setSections(list, list.length - 1);
+        };
+        tabsCol.appendChild(add);
       }
-    };
-    bar.appendChild(save);
-    bar.appendChild(status);
-    sec.appendChild(bar);
+    }
 
+    // Manual edits to the document keep the tab list in sync (debounced).
+    let syncT = null;
+    ta.oninput = () => { if (syncT) clearTimeout(syncT); syncT = setTimeout(paintTabs, 300); };
+
+    rightCol.appendChild(ta);
+
+    if (editable) {
+      const bar = el("div");
+      bar.style.cssText = "display:flex;gap:10px;align-items:center;";
+      const save = el("button", "btn btn-primary", "Save");
+      const status = el("span", "cell-muted"); status.style.fontSize = "13px";
+      save.onclick = async () => {
+        // Compile from the current document (normalizes headings/spacing) then PATCH the SAME field.
+        const compiled = aiCompileSections(currentSections());
+        save.disabled = true; status.textContent = "Saving…";
+        try {
+          await App.portalApi("/api/account/ai-instructions", { method: "PATCH", body: JSON.stringify({ aiInstructions: compiled }) });
+          ta.value = compiled; paintTabs();
+          status.textContent = "Saved."; App.util.toast("AI Instructions saved");
+          setTimeout(() => { if (status.textContent === "Saved.") status.textContent = ""; }, 2500);
+        } catch (e) { status.textContent = ""; App.util.toast((e && e.message) || "Save failed", true); }
+        finally { save.disabled = false; }
+      };
+      bar.appendChild(save); bar.appendChild(status);
+      rightCol.appendChild(bar);
+    } else {
+      const ro = el("p", "cell-muted"); ro.style.cssText = "font-size:12px;margin:0;"; ro.textContent = "You have view-only access to these instructions.";
+      rightCol.appendChild(ro);
+    }
+
+    editor.appendChild(tabsCol);
+    editor.appendChild(rightCol);
+    sec.appendChild(editor);
+
+    paintTabs();
     host.appendChild(sec);
   }
 
