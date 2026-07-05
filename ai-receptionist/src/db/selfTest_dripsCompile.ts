@@ -5,6 +5,7 @@ import { prisma, disconnectDb } from "./client";
 import { compileDrip } from "../services/dripCompiler";
 import { createDrip, getDrip, updateDrip, deleteDrip, setDripEnabled, validateDrip } from "../services/dripService";
 import { getAutomation } from "../services/automationService";
+import { applyFlowDefinition } from "../services/flowProvisioningService";
 import { runManualAutomation } from "../automation/engine";
 
 const db = prisma as any;
@@ -131,6 +132,97 @@ async function main() {
     console.log("\ndelete cleans up:");
     await deleteDrip(drip.id, t);
     check((await getAutomation(runAutoId, t)) === null, "deleting a drip deletes its linked automation");
+
+    // ---------- BRANCHING: compile to a pairId-linked pair via applyFlowDefinition ----------
+    console.log("\nbranching -> paired automations (via applyFlowDefinition):");
+    const matchRule = { field: "name", op: "contains", value: "Match", conj: "AND" };
+    const brGraph = {
+      nodes: [
+        N("t", "enroll_audience", { audienceIds: ["a1"] }, 40, 40),
+        N("b", "branch", { rules: [matchRule] }, 40, 160),
+        N("ei", "send_email", { mode: "scratch", subject: "You matched", html: "<p>yes</p>" }, 240, 260),
+        N("eo", "send_email", { mode: "scratch", subject: "You did not", html: "<p>no</p>" }, 240, 60),
+      ],
+      edges: [
+        { source: "t", target: "b" },
+        { source: "b", target: "ei", branch: "if" },
+        { source: "b", target: "eo", branch: "otherwise" },
+      ],
+    };
+    const brDrip = await createDrip({ tenantId: t, name: "Branchy", graph: brGraph, createdById: null });
+    const brAct = await setDripEnabled(brDrip.id, t, true, null);
+    check(!!brAct && brAct.ok && brAct.drip.enabled, "branched drip activates");
+    check(!!brAct!.drip.pairId, "activated branched drip stores a pairId");
+    const pair = await db.automation.findMany({ where: { tenantId: t, pairId: brAct!.drip.pairId }, orderBy: { name: "asc" } });
+    check(pair.length === 2, "exactly two automations landed, sharing the pairId");
+    check(pair.every((a: any) => a.dripId === brDrip.id), "both halves carry dripId back to the drip");
+    check(pair.every((a: any) => a.enabled), "both halves enabled on activate");
+    const ifAuto = pair.find((a: any) => / \(if\)$/.test(a.name));
+    const elseAuto = pair.find((a: any) => / \(otherwise\)$/.test(a.name));
+    check(!!ifAuto && !!elseAuto, "halves are named 'Branchy (if)' and 'Branchy (otherwise)'");
+    check(brAct!.drip.automationId === ifAuto!.id, "drip.automationId points at the 'if' half");
+    // conditions: if = [match], else = [negated match]
+    check((ifAuto!.conditions as any[]).length === 1 && (ifAuto!.conditions as any[])[0].op === "contains", "'if' half condition is the branch condition");
+    check((elseAuto!.conditions as any[]).length === 1 && (elseAuto!.conditions as any[])[0].op === "not_contains", "'otherwise' half condition is the NEGATED branch condition");
+    check((ifAuto!.actions as any[])[0].config.subject === "You matched", "'if' half runs the If-path email");
+    check((elseAuto!.actions as any[])[0].config.subject === "You did not", "'otherwise' half runs the Otherwise-path email");
+
+    // shape parity with a wizard-authored pair (build the same defs straight through applyFlowDefinition)
+    const compiledBr = compileDrip(brGraph);
+    const wpid = "pair_selftest_wizard";
+    const wIf = await applyFlowDefinition(t, { name: "Wizardy (if)", triggerType: compiledBr.ifDef!.triggerType, conditions: compiledBr.ifDef!.conditions, actions: compiledBr.ifDef!.actions }, null, { pairId: wpid });
+    const wElse = await applyFlowDefinition(t, { name: "Wizardy (otherwise)", triggerType: compiledBr.elseDef!.triggerType, conditions: compiledBr.elseDef!.conditions, actions: compiledBr.elseDef!.actions }, null, { pairId: wpid });
+    const shape = (a: any) => JSON.stringify({ triggerType: a.triggerType, conditions: a.conditions, actions: (a.actions as any[]).map((x: any) => ({ type: x.type, config: x.config })) });
+    const wIfFull = await getAutomation(wIf.automation.id, t), wElseFull = await getAutomation(wElse.automation.id, t);
+    check(shape(ifAuto) === shape(wIfFull), "'if' half shape == wizard-authored 'if' pair member");
+    check(shape(elseAuto) === shape(wElseFull), "'otherwise' half shape == wizard-authored 'otherwise' pair member");
+    const wPair = await db.automation.findMany({ where: { tenantId: t, pairId: wpid } });
+    check(wPair.length === 2 && wPair.every((a: any) => a.pairId === wpid), "wizard pair is itself a pairId-linked 2-member group (same mechanism)");
+
+    // engine: matcher -> If fires, Otherwise skipped; non-matcher -> Otherwise fires, If skipped
+    console.log("\nbranching runs through the engine (mocked email):");
+    const cMatch = await db.contact.create({ data: { tenantId: t, name: "Match Alice", email: "alice@x.test", phone: "+15550000211", source: "test" } });
+    const cNon = await db.contact.create({ data: { tenantId: t, name: "Bob Plain", email: "bob@x.test", phone: "+15550000212", source: "test" } });
+    for (const c of [cMatch, cNon]) { await runManualAutomation(ifAuto!.id, c.id, t); await runManualAutomation(elseAuto!.id, c.id, t); }
+    const succeededFor = async (autoId: string, contactId: string) => {
+      const runs = await db.automationRun.findMany({ where: { tenantId: t, contactId, automationId: autoId } });
+      return runs.some((r: any) => r.status === "success" && Array.isArray(r.results) && r.results.some((x: any) => x.type === "send_email" && x.status === "success"));
+    };
+    const gatedFor = async (autoId: string, contactId: string) => {
+      const runs = await db.automationRun.findMany({ where: { tenantId: t, contactId, automationId: autoId } });
+      return runs.length === 0 || runs.every((r: any) => r.matched === false || r.status === "skipped");
+    };
+    check(await succeededFor(ifAuto!.id, cMatch.id), "matcher: the 'If' automation fires (send_email success)");
+    check(await gatedFor(elseAuto!.id, cMatch.id), "matcher: the 'Otherwise' automation is gated out");
+    check(await succeededFor(elseAuto!.id, cNon.id), "non-matcher: the 'Otherwise' automation fires");
+    check(await gatedFor(ifAuto!.id, cNon.id), "non-matcher: the 'If' automation is gated out");
+
+    // edit a branched drip -> recompiles the pair (still 2, still paired, still linked), no orphans
+    console.log("\nbranched recompile + transitions:");
+    const brGraph2 = JSON.parse(JSON.stringify(brGraph)); brGraph2.nodes[2].config.subject = "Matched v2";
+    await updateDrip(brDrip.id, t, { graph: brGraph2 }, null);
+    const brNow = await getDrip(brDrip.id, t);
+    const pair2 = await db.automation.findMany({ where: { tenantId: t, pairId: brNow!.pairId } });
+    check(pair2.length === 2 && brNow!.pairId != null, "editing a branched drip keeps exactly one pair (no duplicates)");
+    check(pair2.every((a: any) => a.dripId === brDrip.id), "recompiled pair still linked to the drip");
+    const ifAuto2 = pair2.find((a: any) => / \(if\)$/.test(a.name));
+    check((ifAuto2!.actions as any[])[0].config.subject === "Matched v2", "recompiled 'if' half reflects the edit");
+    const allBranchAutos = await db.automation.findMany({ where: { tenantId: t, dripId: brDrip.id } });
+    check(allBranchAutos.length === 2, "no orphaned automations after recompile");
+
+    // transition branched -> linear (remove the branch) -> collapses to ONE automation, pairId cleared
+    const linGraph = linear([N("t", "enroll_audience", { audienceIds: ["a1"] }), N("e", "send_email", { mode: "scratch", subject: "Now linear", html: "<p>x</p>" })]);
+    await updateDrip(brDrip.id, t, { graph: linGraph }, null);
+    const brLin = await getDrip(brDrip.id, t);
+    const afterLin = await db.automation.findMany({ where: { tenantId: t, dripId: brDrip.id } });
+    check(afterLin.length === 1 && brLin!.pairId == null, "branched -> linear collapses to a single automation, pairId cleared");
+
+    // transition linear -> branched again, then delete removes BOTH halves
+    await updateDrip(brDrip.id, t, { graph: brGraph }, null);
+    const brAgain = await getDrip(brDrip.id, t);
+    check((await db.automation.findMany({ where: { tenantId: t, pairId: brAgain!.pairId } })).length === 2, "linear -> branched re-expands to a pair");
+    await deleteDrip(brDrip.id, t);
+    check((await db.automation.findMany({ where: { tenantId: t, dripId: brDrip.id } })).length === 0, "deleting a branched drip removes BOTH halves");
   } catch (e) {
     console.log("   (error: " + (e as Error).stack + ")"); fails++;
   } finally {

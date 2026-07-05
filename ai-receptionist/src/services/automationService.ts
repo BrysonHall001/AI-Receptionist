@@ -11,6 +11,7 @@ function serialize(a: any) {
     conditions: a.conditions ?? [],
     actions: a.actions ?? [],
     pairId: a.pairId ?? null,
+    dripId: a.dripId ?? null,
     createdAt: a.createdAt?.toISOString?.() ?? a.createdAt,
     updatedAt: a.updatedAt?.toISOString?.() ?? a.updatedAt,
   };
@@ -44,6 +45,7 @@ export interface AutomationInput {
   actions?: unknown;
   enabled?: boolean;
   pairId?: string | null;
+  dripId?: string | null;
 }
 
 export async function createAutomation(tenantId: string, input: AutomationInput, createdById?: string | null) {
@@ -59,6 +61,7 @@ export async function createAutomation(tenantId: string, input: AutomationInput,
       // Only set when a caller (the branching wizard) supplies a pair token.
       // Normal/single automations omit it entirely, leaving the column null.
       ...(input.pairId ? { pairId: input.pairId } : {}),
+      ...(input.dripId !== undefined ? { dripId: input.dripId } : {}),
     },
   });
   return serialize(a);
@@ -73,6 +76,7 @@ export async function updateAutomation(id: string, tenantId: string, input: Auto
   if (input.conditions != null) patch.conditions = input.conditions as any;
   if (input.actions != null) patch.actions = input.actions as any;
   if (input.enabled != null) patch.enabled = !!input.enabled;
+  if (input.dripId !== undefined) patch.dripId = input.dripId;
   const updated = await db.automation.update({ where: { id }, data: patch });
   return serialize(updated);
 }

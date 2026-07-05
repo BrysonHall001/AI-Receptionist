@@ -1195,9 +1195,12 @@
     let pairTag = "";
     if (pairInfo && pairInfo.kind === "id") pairTag = ` <span class="pair-pill">Branch pair</span>`;
     else if (pairInfo && pairInfo.kind === "name") pairTag = ` <span class="pair-pill soft">Possible pair</span>`;
+    // "From drip" badge for drip-generated automations (the drip is the source of truth).
+    let dripTag = "";
+    if (a.dripId) dripTag = ` <span class="pair-pill" style="background:#e0e7ff;color:#3730a3">⚡ From drip${a.dripName ? ": " + esc(a.dripName) : ""}</span>`;
 
     const left = el("div", "auto-card-main");
-    left.innerHTML = `<div class="auto-name">${esc(a.name)}${pairTag}</div>
+    left.innerHTML = `<div class="auto-name">${esc(a.name)}${pairTag}${dripTag}</div>
       <div class="auto-meta">When <strong>${esc(triggerLabel(a.triggerType))}</strong>
       · ${(a.conditions || []).filter(rc).length} condition(s)
       · ${(a.actions || []).length} action(s)</div>
@@ -1220,7 +1223,15 @@
     };
     toggle.appendChild(cb);
     toggle.appendChild(el("span", "switch-track"));
-    top.appendChild(toggle);
+    // A drip-generated automation's on/off state is owned by the drip; don't offer a toggle here
+    // that a recompile would overwrite. Show a static state chip instead.
+    if (a.dripId) {
+      const chip = el("span", "pair-pill", a.enabled ? "On (via drip)" : "Off (via drip)");
+      chip.style.cssText = "background:" + (a.enabled ? "#dcfce7;color:#166534" : "#f1f5f9;color:#6b7280");
+      top.appendChild(chip);
+    } else {
+      top.appendChild(toggle);
+    }
     card.appendChild(top);
 
     // Half-enabled warning: durable pair only. Gentle, plain-English, and driven
@@ -1235,12 +1246,22 @@
     }
 
     const actions = el("div", "auto-card-foot");
-    const edit = el("button", "btn btn-ghost btn-sm", "Edit");
-    edit.onclick = () => openEditor(a);
     const test = el("button", "btn btn-ghost btn-sm", "Test");
     test.onclick = () => openTest(a);
     const logs = el("button", "btn btn-ghost btn-sm", "Logs");
     logs.onclick = () => { tab = "runs"; render(host).then(() => filterRuns(a.id)); };
+    if (a.dripId) {
+      // Drip is the source of truth: send the user there to edit or delete. We don't offer a direct
+      // Edit/Delete here so a recompile can't silently overwrite their changes.
+      const openDrip = el("button", "btn btn-ghost btn-sm", "Open drip →");
+      openDrip.onclick = () => { if (App.communication && App.communication.openDrip) App.communication.openDrip(a.dripId); else App.go("#/communication"); };
+      [openDrip, test, logs].forEach((b) => actions.appendChild(b));
+      card.appendChild(actions);
+      card.appendChild(el("div", "pair-orphan-note", "Managed by a drip — edit or remove it from the Drips tab."));
+      return card;
+    }
+    const edit = el("button", "btn btn-ghost btn-sm", "Edit");
+    edit.onclick = () => openEditor(a);
     const del = el("button", "link-danger", "Delete");
     del.onclick = async () => {
       if (!(await App.ui.confirmModal({ title: "Delete automation", message: `Delete automation “${a.name}”?`, confirmText: "Delete" }))) return;

@@ -356,7 +356,7 @@
       tabBody.innerHTML = "";
       if (key === "email") emailTab(tabBody);
       else if (key === "audiences") audiencesTab(tabBody);
-      else if (key === "drips") App.drips.renderLibrary(tabBody);
+      else if (key === "drips") { const pend = App._pendingDripId; App._pendingDripId = null; if (pend && App.drips.openDripById) App.drips.openDripById(tabBody, pend); else App.drips.renderLibrary(tabBody); }
       else if (key === "templates") templatesTab(tabBody);
       else if (key === "surveys") surveysTab(tabBody);
     }
@@ -369,7 +369,7 @@
     wrap.appendChild(tabsBar);
     wrap.appendChild(tabBody);
     host.appendChild(wrap);
-    setTab("email");
+    setTab(App._pendingCommTab || "email"); App._pendingCommTab = null;
   }
 
   // The Email tab: a Compose / Sent sub-switch. Compose is the audience-first send
@@ -1500,5 +1500,6 @@
     load();
   }
 
-  App.communication = { render: renderCommunication, composeTo };
+  function openDrip(dripId) { App._pendingCommTab = "drips"; App._pendingDripId = dripId; App.go("#/communication"); }
+  App.communication = { render: renderCommunication, composeTo, openDrip };
 })(typeof window !== "undefined" ? window : globalThis);
