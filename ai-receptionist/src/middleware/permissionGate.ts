@@ -51,6 +51,8 @@ export const PERM_RULES: PermRule[] = [
   { m: "DELETE", re: /^\/templates\/[^/]+$/, area: "communication", right: "delete" },
   { m: "GET", re: /^\/templates(\/|$)/, area: "communication", right: "view" },
   // Drips (visual builder) — same area/rights as Templates/Surveys/Audiences.
+  { m: "POST", re: /^\/drips\/[^/]+\/(activate|deactivate)$/, area: "communication", right: "edit" },
+  { m: "POST", re: /^\/drips\/[^/]+\/validate$/, area: "communication", right: "view" },
   { m: "POST", re: /^\/drips$/, area: "communication", right: "edit" },
   { m: "PATCH", re: /^\/drips\/[^/]+$/, area: "communication", right: "edit" },
   { m: "DELETE", re: /^\/drips\/[^/]+$/, area: "communication", right: "delete" },

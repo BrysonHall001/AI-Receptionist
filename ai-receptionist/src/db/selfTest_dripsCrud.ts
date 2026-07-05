@@ -45,7 +45,7 @@ async function main() {
     check(nan && nan.x === 0 && typeof nan.config === "object", "unparseable x -> 0; null config -> {}");
 
     console.log("\nupdate (rename + regraph):");
-    const upd = await updateDrip(d.id, tA, { name: "Nurture v2", graph: { nodes: [{ id: "z", type: "wait", x: 10, y: 10, config: { amount: 1, unit: "hours" } }] } });
+    const upd = (await updateDrip(d.id, tA, { name: "Nurture v2", graph: { nodes: [{ id: "z", type: "wait", x: 10, y: 10, config: { amount: 1, unit: "hours" } }] } }))?.drip;
     check(!!upd && upd.name === "Nurture v2" && upd.graph.nodes.length === 1, "rename + graph replace persisted");
     check((await getDrip(d.id, tA))!.graph.nodes[0].config.unit === "hours", "reopened drip reflects the new graph");
 

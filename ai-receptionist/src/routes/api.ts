@@ -30,7 +30,7 @@ import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
 import { listAudiences, getAudience, createAudience, updateAudience, deleteAudience, resolveAudienceContacts, resolveAudiencesToContactIds } from "../services/audienceService";
-import { listDrips, getDrip, createDrip, updateDrip, deleteDrip } from "../services/dripService";
+import { listDrips, getDrip, createDrip, updateDrip, deleteDrip, validateDrip, setDripEnabled } from "../services/dripService";
 import { listExports, createExport, createImportRecord, createBackupRecord, getExportCsv, getExportArtifact } from "../services/exportService";
 import { listReports, getScheduledReport, upsertScheduledReport, setReportActive } from "../services/reportService";
 import { runAndDeliverReport } from "../services/reportExecutor";
@@ -1936,15 +1936,41 @@ apiRouter.get("/drips/:id", async (req: Request, res: Response) => {
 apiRouter.patch("/drips/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  const body = (req.body ?? {}) as { name?: string; graph?: unknown; status?: string; enabled?: boolean };
-  const patch: { name?: string; graph?: unknown; status?: string; enabled?: boolean } = {};
+  const body = (req.body ?? {}) as { name?: string; graph?: unknown; status?: string };
+  const patch: { name?: string; graph?: unknown; status?: string } = {};
   if (typeof body.name === "string") patch.name = body.name;
   if ("graph" in body) patch.graph = body.graph;
   if (typeof body.status === "string") patch.status = body.status;
-  if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
-  const d = await updateDrip(req.params.id, tenantId, patch);
-  if (!d) { res.status(404).json({ error: "Drip not found" }); return; }
-  res.json(d);
+  const result = await updateDrip(req.params.id, tenantId, patch, req.user!.id);
+  if (!result) { res.status(404).json({ error: "Drip not found" }); return; }
+  res.json({ ...result.drip, warning: result.warning });
+});
+
+// Validate (compile check) without changing state — used to gate the Enable button + show errors.
+apiRouter.post("/drips/:id/validate", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const result = await validateDrip(req.params.id, tenantId);
+  if (result === null) { res.status(404).json({ error: "Drip not found" }); return; }
+  res.json({ ok: result.ok, errors: result.errors });
+});
+
+// Activate: compile (must be valid) + enable the linked automation so it runs via the engine.
+apiRouter.post("/drips/:id/activate", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const r = await setDripEnabled(req.params.id, tenantId, true, req.user!.id);
+  if (r === null) { res.status(404).json({ error: "Drip not found" }); return; }
+  if (!r.ok) { res.status(400).json({ error: "This drip has errors and can't be turned on.", errors: r.errors }); return; }
+  res.json(r.drip);
+});
+
+apiRouter.post("/drips/:id/deactivate", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const r = await setDripEnabled(req.params.id, tenantId, false, req.user!.id);
+  if (r === null) { res.status(404).json({ error: "Drip not found" }); return; }
+  res.json(r.drip);
 });
 
 apiRouter.delete("/drips/:id", async (req: Request, res: Response) => {
