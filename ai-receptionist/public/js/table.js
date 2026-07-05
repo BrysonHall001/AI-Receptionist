@@ -36,6 +36,13 @@
   function evalRule(row, rule, cols) {
     const col = cols.find((c) => c.key === rule.field);
     if (!col) return true;
+    // Audience membership: server-authoritative. In the client preview we only know membership if the
+    // row carries __audienceIds (it usually doesn't), so treat unknown as non-match to avoid false hits.
+    if (rule.op === "in_audience" || rule.op === "not_in_audience") {
+      const ids = col.get ? col.get(row) : [];
+      const inIt = Array.isArray(ids) && ids.includes(rule.value);
+      return rule.op === "in_audience" ? inIt : !inIt;
+    }
     const text = colText(col, row).toLowerCase();
     const raw = colSort(col, row);
     const val = (rule.value == null ? "" : String(rule.value)).toLowerCase();
@@ -129,6 +136,7 @@
     status: [["is", "is"], ["is_not", "is not"], ...COMMON_EMPTY],
     date: [["today", "today"], ["between", "between"], ["previous", "in the previous"], ["after", "after"], ["before", "before"], ...COMMON_EMPTY],
     number: [["is", "is"], ["gt", "greater than"], ["lt", "less than"], ...COMMON_EMPTY],
+    audience: [["in_audience", "is in"], ["not_in_audience", "is not in"]],
   };
 
   // ---------- rendering ----------
@@ -451,7 +459,13 @@
         return [n, u];
       }
       let input;
-      if (col.type === "status") {
+      if (col.type === "audience") {
+        // Value is an audience id, chosen from the audiences passed on the column (col.options).
+        input = el("select", "rule-val");
+        const blank = el("option", null, "\u2014"); blank.value = ""; input.appendChild(blank);
+        (col.options || []).forEach((a) => { const o = el("option", null, esc(a.name || a.label || a.id)); o.value = a.id || a.value; if ((a.id || a.value) === rule.value) o.selected = true; input.appendChild(o); });
+        input.onchange = () => { rule.value = input.value; onChange(); };
+      } else if (col.type === "status") {
         input = el("select", "rule-val");
         const blank = el("option", null, "\u2014"); blank.value = ""; input.appendChild(blank);
         distinct(col).forEach((v) => { const o = el("option", null, esc(v)); o.value = v; if (v === rule.value) o.selected = true; input.appendChild(o); });

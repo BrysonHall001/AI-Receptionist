@@ -44,7 +44,7 @@ import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, PER_P
 import { permissionGate, lockGate } from "../middleware/permissionGate";
 import { createInvite, inviteLink, sendInvite, sendCustomInvite, hasInviteLinkToken, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
-import { testRunAutomation, runManualAutomation } from "../automation/engine";
+import { testRunAutomation, runManualAutomation, enrollAudienceInAutomation } from "../automation/engine";
 import { listScheduledJobs, cancelScheduledJob, processDueJobs } from "../automation/scheduler";
 import { loadFieldDefs, conditionFields } from "../automation/contactRow";
 import { resolveMergeTags, contactMergeValues } from "../services/mergeTags";
@@ -2220,6 +2220,10 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
     recordTypes: recordTypeOptions,
     templates: templates.map((t: any) => ({ id: t.id, name: t.name, kind: t.kind })),
     users: users.map((u: any) => ({ id: u.id, name: u.name || u.email })),
+    // Audiences (for the "Enroll an audience" trigger + the "contact is in Audience X" condition)
+    // and surveys (for the Send survey action) — so the wizard can offer these without extra calls.
+    audiences: (await listAudiences(tenantId)).map((a: any) => ({ id: a.id, name: a.name })),
+    surveys: (await listSurveys(tenantId)).map((s: any) => ({ id: s.id, name: s.name })),
   });
 });
 
@@ -2474,6 +2478,23 @@ apiRouter.delete("/automations/:id", async (req: Request, res: Response) => {
   const ok = await deleteAutomation(req.params.id, tenantId);
   if (!ok) { res.status(404).json({ error: "Automation not found" }); return; }
   res.json({ ok: true });
+});
+
+apiRouter.post("/automations/:id/enroll", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const auto = await prisma.automation.findFirst({ where: { id: req.params.id, tenantId } });
+  if (!auto) { res.status(404).json({ error: "Automation not found" }); return; }
+  // Audience id: prefer the request body, else parse it from an "EnrollAudience:<id>" triggerType.
+  let audienceId = typeof (req.body ?? {}).audienceId === "string" ? (req.body as any).audienceId : "";
+  if (!audienceId && auto.triggerType.startsWith("EnrollAudience:")) audienceId = auto.triggerType.slice("EnrollAudience:".length);
+  if (!audienceId) { res.status(400).json({ error: "Pick an audience to enroll." }); return; }
+  try {
+    const result = await enrollAudienceInAutomation(req.params.id, audienceId, tenantId);
+    res.json(result); // { enrolled, contactIds, skipped }
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 apiRouter.post("/automations/:id/test", async (req: Request, res: Response) => {

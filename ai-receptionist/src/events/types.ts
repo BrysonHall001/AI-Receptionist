@@ -194,4 +194,9 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: stri
   // appointment. Stored as "AppointmentReminder:<amount>:<unit>:before". Evaluated
   // by the scheduler sweep (not an instant event). Hour-precise.
   { type: "AppointmentReminder", label: "Before an appointment (reminder)", group: "Bookings", description: "Runs a set time before a booking's appointment (e.g. 2 hours before) — for sending reminders. Texts/emails the booking's linked contact." },
+  // Audience enrollment: on-demand, like Manual but bulk. Not an emitted event — the engine never
+  // fires it automatically. Encoded as "EnrollAudience:<audienceId>". You enroll from the automation
+  // ("Enroll audience"), and the audience's CURRENT members are resolved fresh at that moment and run
+  // through this same automation (conditions still apply). No new engine — uses enrollAudienceInAutomation.
+  { type: "EnrollAudience", label: "Enroll an audience", group: "Audiences", description: "Enroll the current members of a chosen audience. Resolved fresh each time you enroll — new members are picked up, removed ones are not." },
 ];

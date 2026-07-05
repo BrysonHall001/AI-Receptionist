@@ -35,12 +35,18 @@ export async function loadFieldDefs(tenantId: string): Promise<FieldMeta[]> {
   return defs.map((d: any) => ({ key: d.key, label: d.label, type: d.type }));
 }
 
-/** The full set of fields usable in conditions: system + createdAt + custom. */
+/** The synthetic condition field for audience membership ("contact is in Audience X"). Its value on
+ *  a row is the list of audience ids the contact currently belongs to (attached at eval time by the
+ *  engine — see attachAudienceMembership). Server-authoritative; evaluated by the same evalRules. */
+export const AUDIENCE_FIELD_KEY = "__audience";
+
+/** The full set of fields usable in conditions: system + createdAt + custom + audience membership. */
 export function conditionFields(custom: FieldMeta[]): FieldMeta[] {
   return [
     ...SYSTEM_FIELDS,
     { key: "createdAt", label: "Time created", type: "date" },
     ...custom.filter((f) => !SYSTEM_KEYS.has(f.key)),
+    { key: AUDIENCE_FIELD_KEY, label: "Audience membership", type: "audience" },
   ];
 }
 
@@ -56,7 +62,8 @@ export function buildColumns(custom: FieldMeta[]): Column[] {
   return conditionFields(custom).map((f) => ({
     key: f.key,
     type: f.type === "percent" ? "number" : f.type,
-    get: (row: any) => valueOf(row, f.key),
+    // Audience membership reads the ids attached to the row at eval time (see attachAudienceMembership).
+    get: f.key === AUDIENCE_FIELD_KEY ? (row: any) => (Array.isArray(row.__audienceIds) ? row.__audienceIds : []) : (row: any) => valueOf(row, f.key),
     text: (row: any) => scalar(valueOf(row, f.key)),
   }));
 }

@@ -46,6 +46,13 @@ function subtractTime(fromMs: number, amount: any, unit: string): number {
 function evalRule(row: any, rule: Rule, cols: Column[]): boolean {
   const col = cols.find((c) => c.key === rule.field);
   if (!col) return true;
+  // Audience membership: the column value is the array of audience ids the contact is in (attached
+  // at eval time). "in_audience" / "not_in_audience" test whether the rule's audience id is present.
+  if (rule.op === "in_audience" || rule.op === "not_in_audience") {
+    const ids = col.get ? col.get(row) : [];
+    const inIt = Array.isArray(ids) && ids.includes(rule.value);
+    return rule.op === "in_audience" ? inIt : !inIt;
+  }
   const text = colText(col, row).toLowerCase();
   const raw = colSort(col, row);
   const val = (rule.value == null ? "" : String(rule.value)).toLowerCase();
@@ -85,6 +92,7 @@ function evalRule(row: any, rule: Rule, cols: Column[]): boolean {
 export function ruleComplete(rule: Rule): boolean {
   if (!rule || !rule.field || !rule.op) return false;
   if (rule.op === "empty" || rule.op === "not_empty" || rule.op === "today") return true;
+  if (rule.op === "in_audience" || rule.op === "not_in_audience") return rule.value != null && rule.value !== "";
   if (rule.op === "between") return rule.value != null && rule.value !== "" && rule.value2 != null && rule.value2 !== "";
   if (rule.op === "previous") return rule.value != null && rule.value !== "" && !!rule.unit;
   return rule.value != null && rule.value !== "";

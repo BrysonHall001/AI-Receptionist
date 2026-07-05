@@ -91,7 +91,7 @@ export const PERM_RULES: PermRule[] = [
   { m: "DELETE", re: /^\/automations\/[^/]+$/, area: "automations", right: "delete" },
   { m: "POST", re: /^\/automations(\/(presets\/apply|apply-flow|webhook-test))?$/, area: "automations", right: "edit" },
   { m: "PATCH", re: /^\/automations\/[^/]+$/, area: "automations", right: "edit" },
-  { m: "POST", re: /^\/automations\/[^/]+\/(test|run)$/, area: "automations", right: "edit" },
+  { m: "POST", re: /^\/automations\/[^/]+\/(test|run|enroll)$/, area: "automations", right: "edit" },
   { m: "GET", re: /^\/automations(\/(meta|presets|manual|runs|events))?$/, area: "automations", right: "view" },
 
   // ---- Read-only areas (today a no-op: every role has view) ----

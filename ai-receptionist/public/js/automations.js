@@ -3,12 +3,24 @@
 //
 // This screen was rebuilt into a vertical "workflow-builder" layout: a single
 // trigger at the top, optional conditions, then one or more actions, shown as a
-// connected flow with plain-English labels. It is wired ONLY to the triggers and
-// actions that already exist in the system (see /api/automations/meta) — no new
-// trigger types or action types were added, and no database changes were made.
+// connected flow with plain-English labels. It is wired to the triggers and
+// actions that exist in the system (see /api/automations/meta); this batch adds
+// one trigger (enroll an audience) and surfaces the Send-survey / Unenroll actions,
+// all backed by the existing engine (no separate execution path).
 //
 // Conditions reuse App.table.ruleEditor so they behave exactly like the filters
 // users already know from Contacts/Reports.
+//
+// DRIPS <-> AUTOMATIONS BOUNDARY (one system, one engine): the wizard here builds
+// LINEAR automations and is now audience-aware — you can enroll an audience as a
+// trigger ("EnrollAudience:<id>") and condition on audience membership ("contact
+// is in Audience X"). Drips are the VISUAL superset: the same triggers, conditions,
+// and actions on a canvas that can also BRANCH; a branched drip compiles to a
+// pairId-linked automation pair. Both produce ordinary Automation rows and run
+// through the SAME engine (handleEvent / runManualAutomation / enrollAudience-
+// InAutomation) — there is no second engine. Drip-generated automations are
+// labeled "From drip" here with a link back to the drip editor (the drip is their
+// source of truth); a wizard-authored automation is just a plain automation.
 (function (global) {
   const App = global.App || (global.App = {});
   const { el, esc, toast } = App.util;
@@ -245,6 +257,11 @@
       const s = (meta.stages || []).find((x) => x.key === key);
       return "Stage changed → to " + (s ? s.label : key);
     }
+    if (type && type.indexOf("EnrollAudience:") === 0) {
+      const id = type.slice("EnrollAudience:".length);
+      const a = (meta.audiences || []).find((x) => x.id === id);
+      return "Enroll audience: " + (a ? a.name : id);
+    }
     // "RecordUpdated:<field>" or "RecordUpdated:<field>=<value>" — record/status scope.
     if (type && type.indexOf("RecordUpdated:") === 0) {
       const rest = type.slice("RecordUpdated:".length);
@@ -321,6 +338,7 @@
     if (tt.indexOf("Scheduled:") === 0) return "Scheduled";
     if (tt.indexOf("AppointmentReminder:") === 0) return "AppointmentReminder";
     if (tt.indexOf("Stalled:") === 0) return "Stalled";
+    if (tt.indexOf("EnrollAudience:") === 0) return "EnrollAudience";
     return tt;
   }
   function triggerBaseLabel(base) {
@@ -332,7 +350,7 @@
   // (display-only). The registry array is NOT reordered (its order still drives
   // the list-page filter chips); we just bucket by each entry's `group` at
   // render time. Within a group, options keep their registry order.
-  const TRIGGER_GROUP_ORDER = ["When something changes", "Messaging & tags", "Time-based", "Manual"];
+  const TRIGGER_GROUP_ORDER = ["When something changes", "Messaging & tags", "Time-based", "Audiences", "Manual"];
   function fillTriggerSelect(sel, selectedType) {
     sel.innerHTML = "";
     const trigs = meta.triggers || [];
@@ -809,6 +827,7 @@
     if (w.baseTrigger === "Scheduled") return `Scheduled:${w.sched.field}:${w.sched.amount || 0}:${w.sched.unit}:${w.sched.dir}`;
     if (w.baseTrigger === "AppointmentReminder") return `AppointmentReminder:${w.remind.amount || 2}:${w.remind.unit}:before`;
     if (w.baseTrigger === "Stalled") return "Stalled:" + (w.stall.days || 7) + (w.stall.stageKey ? ":" + w.stall.stageKey : "");
+    if (w.baseTrigger === "EnrollAudience") return w.enrollAudienceId ? "EnrollAudience:" + w.enrollAudienceId : "EnrollAudience";
     return w.baseTrigger;
   }
   function suggestName(w) {
@@ -867,6 +886,7 @@
       sched: { field: "", amount: "", unit: "days", dir: "before" },
       remind: { amount: "2", unit: "hours" },
       stall: { days: "", stageKey: "" },
+      enrollAudienceId: "",
       filters: [],
       branch: false,
       branchCond: { field: "", op: "is", value: "" },
@@ -935,6 +955,7 @@
 
   function validateStep(w) {
     if (w.step === 1 && w.baseTrigger === "Scheduled" && !w.sched.field) { toast("Pick a date field for the schedule", true); return false; }
+    if (w.step === 1 && w.baseTrigger === "EnrollAudience" && !w.enrollAudienceId) { toast("Pick an audience to enroll", true); return false; }
     if (w.step === 1 && w.baseTrigger === "AppointmentReminder" && !(Number(w.remind.amount) > 0)) { toast("Enter how long before the appointment to remind", true); return false; }
     if (w.step === 3 && w.branch && !condComplete(w.branchCond)) { toast("Finish the branch condition first", true); return false; }
     if (w.step === 4) {
@@ -1000,6 +1021,15 @@
         extra.appendChild(small("Acts on the record. Only “Create internal note” works for records in this stage; email/SMS to a record is blocked."));
       } else if (w.baseTrigger === "Manual") {
         extra.appendChild(small("Runs only when someone clicks “Run automation” on a contact."));
+      } else if (w.baseTrigger === "EnrollAudience") {
+        extra.appendChild(small("Which audience? Its current members are enrolled when you click “Enroll audience” on the automation."));
+        const as = el("select", "input");
+        const any = el("option", null, "— pick an audience —"); any.value = ""; as.appendChild(any);
+        (meta.audiences || []).forEach((a) => { const o = el("option", null, esc(a.name)); o.value = a.id; if (a.id === w.enrollAudienceId) o.selected = true; as.appendChild(o); });
+        as.onchange = () => { w.enrollAudienceId = as.value; };
+        extra.appendChild(as);
+        if (!(meta.audiences || []).length) extra.appendChild(small("No audiences yet — create one under Communication → Audiences first."));
+        extra.appendChild(small("Conditions you add still apply, so you can enroll an audience and narrow it further."));
       } else if (w.baseTrigger === "Scheduled") {
         const dateFields = (meta.fields || []).filter((f) => f.type === "date");
         if (!dateFields.length) extra.appendChild(small("No Date fields exist yet. Create one under Fields first (e.g. a renewal date)."));
@@ -1138,6 +1168,8 @@
   function actionSummaryRaw(a) {
     const c = a.config || {};
     if (a.type === "send_email") return "Send an email" + (c.subject ? ` (“${c.subject}”)` : "");
+    if (a.type === "send_survey") { const s = (meta.surveys || []).find((x) => x.id === c.surveyId); return "Send survey" + (s ? ` (“${s.name}”)` : ""); }
+    if (a.type === "unenroll") return c.scope === "all" ? "Unenroll from all flows" : "Unenroll from this flow";
     if (a.type === "send_sms") return "Send an SMS";
     if (a.type === "notify_business") { const ch = c.channel || "email"; const chl = ch === "both" ? "email + SMS" : ch === "sms" ? "SMS" : "email"; return `Notify the business (${chl})`; }
     if (a.type === "update_field") return `Set ${fieldLabel(c.field) || "a field"}` + (c.value ? ` to “${c.value}”` : "");
@@ -1268,6 +1300,21 @@
       try { await App.portalApi(`/api/automations/${a.id}`, { method: "DELETE" }); toast("Deleted"); render(host); }
       catch (e) { toast(e.message, true); }
     };
+    // Audience-enrollment automations get an "Enroll audience" button that resolves the audience's
+    // current members and runs them through this automation (via the engine).
+    if (triggerBase(a.triggerType) === "EnrollAudience") {
+      const enroll = el("button", "btn btn-ghost btn-sm", "Enroll audience");
+      enroll.onclick = async () => {
+        if (!a.enabled) { toast("Turn the automation on first, then enroll.", true); return; }
+        enroll.disabled = true; enroll.textContent = "Enrolling…";
+        try { const r = await App.portalApi(`/api/automations/${a.id}/enroll`, { method: "POST", body: JSON.stringify({}) }); toast(`Enrolled ${r.enrolled} contact${r.enrolled === 1 ? "" : "s"}${r.skipped ? ` (${r.skipped} skipped)` : ""}.`); }
+        catch (e) { toast(e.message, true); }
+        finally { enroll.disabled = false; enroll.textContent = "Enroll audience"; }
+      };
+      [enroll, edit, test, logs, del].forEach((b) => actions.appendChild(b));
+      card.appendChild(actions);
+      return card;
+    }
     [edit, test, logs, del].forEach((b) => actions.appendChild(b));
     card.appendChild(actions);
     return card;
@@ -1294,7 +1341,13 @@
       type: f.type === "percent" ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
       get: (row) => valueOf(row, f.key),
       text: (row) => scalar(valueOf(row, f.key)),
-    }));
+    })).concat([{
+      // Audience membership condition: "contact is in Audience X". Value picker uses meta.audiences;
+      // the server resolves the audience's current members at run time (same evalRules mechanism).
+      key: "__audience", label: "Audience membership", type: "audience", options: meta.audiences || [],
+      get: (row) => (Array.isArray(row.__audienceIds) ? row.__audienceIds : []),
+      text: () => "",
+    }]);
   }
   function valueOf(row, key) {
     if (key === "createdAt") return row.createdAt;
@@ -1920,6 +1973,26 @@
     } else if (act.type === "assign_owner") {
       const users = (meta.users || []).map((u) => ({ value: u.id, label: u.name }));
       cfg.appendChild(small("Owner")); cfg.appendChild(selectOf("userId", users));
+    } else if (act.type === "send_survey") {
+      cfg.appendChild(small("Which survey to send? Each recipient gets their own personal link."));
+      const ss = el("select", "input"); ss.style.marginBottom = "8px";
+      const blank = el("option", null, "— pick a survey —"); blank.value = ""; ss.appendChild(blank);
+      (meta.surveys || []).forEach((s) => { const o = el("option", null, esc(s.name)); o.value = s.id; if (s.id === c.surveyId) o.selected = true; ss.appendChild(o); });
+      ss.onchange = () => { c.surveyId = ss.value; };
+      cfg.appendChild(ss);
+      if (!(meta.surveys || []).length) cfg.appendChild(small("No surveys yet — create one under Communication → Surveys first."));
+      cfg.appendChild(small("Email subject:"));
+      const subj = el("input", "input"); subj.placeholder = "We'd love your feedback"; subj.value = c.subject || ""; subj.oninput = () => { c.subject = subj.value; }; cfg.appendChild(subj);
+      cfg.appendChild(small("Invite message (optional — the personal survey link is added automatically):"));
+      const body = el("textarea", "input"); body.rows = 4; body.placeholder = "Hi {{name}}, please take a moment to…"; body.value = c.html || ""; body.oninput = () => { c.html = body.value; }; cfg.appendChild(body);
+    } else if (act.type === "unenroll") {
+      cfg.appendChild(small("Stop this contact's in-progress run(s) — cancels their remaining scheduled (waited) steps:"));
+      if (!c.scope) c.scope = "this";
+      const sel = el("select", "input");
+      [["this", "This flow only"], ["all", "All flows"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (c.scope === v) o.selected = true; sel.appendChild(o); });
+      sel.onchange = () => { c.scope = sel.value; };
+      cfg.appendChild(sel);
+      cfg.appendChild(small("Use this to end a nurture early (e.g. once someone replies or converts)."));
     } else if (act.type === "wait") {
       cfg.appendChild(small("Wait this long, then run the actions listed below this step:"));
       if (!c.unit) c.unit = "minutes";

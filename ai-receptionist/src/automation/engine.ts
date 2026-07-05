@@ -4,6 +4,7 @@ import { subscribe } from "../events/bus";
 import { DomainEvent, EventActor } from "../events/types";
 import { evalRules, ruleComplete, Rule } from "./conditions";
 import { buildColumns, loadFieldDefs } from "./contactRow";
+import { attachAudienceMembership } from "./audienceMembership";
 import { loadRecordFieldDefs, buildRecordColumns, attachResourceNames } from "./recordRow";
 import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
 import { enqueueJob, fmtApptWall } from "./scheduler";
@@ -244,6 +245,9 @@ async function runOne(
   portal: any,
   eventId: string | null,
 ): Promise<void> {
+  // Resolve any "contact is in Audience X" conditions against the audience's current membership,
+  // then evaluate with the same rule engine as every other condition.
+  await attachAudienceMembership(auto.tenantId, contact, (auto.conditions as Rule[]) || []);
   const matched = evalRules(contact, (auto.conditions as Rule[]) || [], columns);
 
   if (!matched) {
