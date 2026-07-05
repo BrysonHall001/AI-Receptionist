@@ -1,4 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
+import multer from "multer";
+import { extractDocuments, combineBlocks, MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "../services/docExtractService";
+import { organizeIntoSections, InstructionsParseError } from "../services/instructionsDocParseService";
 import { requireAuth, resolveTenantScope, isAdminTier, requireRole } from "../middleware/auth";
 import { setImpersonation, clearImpersonation, SESSION_COOKIE } from "../auth/session";
 import { getStats, listCalls, getCall, listContacts, getContact, listDeletedContacts } from "../services/readModels";
@@ -810,7 +813,64 @@ apiRouter.patch("/account/ai-instructions", async (req: Request, res: Response) 
   }
 });
 
-// ---- Receptionist voice (Premium / ConversationRelay) ----
+// Upload one or many documents (PDF/.docx/.xlsx/.csv/.txt/.zip), extract text, and use an AI pass
+// to organize it into the portal's CURRENT instruction sections — returned as REVIEW suggestions.
+// Nothing is saved here (the client applies into the editor, then the normal Save PATCH commits).
+// Same gate as editing: aiInstructionsEditable (blocks CLIENT_USER). Files are parsed in memory
+// and discarded — never written to disk or the DB.
+const aiDocUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES, fields: 40 },
+}).array("files", MAX_FILES);
+
+apiRouter.post("/account/ai-instructions/parse-docs", (req: Request, res: Response) => {
+  if (!aiInstructionsEditable(req)) { res.status(403).json({ error: "You don't have permission to edit AI Instructions." }); return; }
+  aiDocUpload(req, res, async (uploadErr: any) => {
+    if (uploadErr) {
+      const msg = uploadErr?.code === "LIMIT_FILE_SIZE" ? `Each file must be under ${Math.round(MAX_FILE_BYTES / (1024 * 1024))} MB.`
+        : uploadErr?.code === "LIMIT_FILE_COUNT" ? `Please upload at most ${MAX_FILES} files at once.`
+        : (uploadErr.message || "Upload failed.");
+      res.status(400).json({ error: msg });
+      return;
+    }
+    const tenantId = resolveTenantScope(req);
+    if (!tenantId) { res.status(400).json({ error: "No tenant in scope" }); return; }
+    const files = ((req as any).files || []) as { originalname: string; buffer: Buffer }[];
+    if (!files.length) { res.status(400).json({ error: "No files were uploaded." }); return; }
+    const totalBytes = files.reduce((n, f) => n + (f.buffer?.length || 0), 0);
+    if (totalBytes > MAX_TOTAL_BYTES) { res.status(400).json({ error: `Total upload must be under ${Math.round(MAX_TOTAL_BYTES / (1024 * 1024))} MB.` }); return; }
+
+    // Section names to fill = the portal's CURRENT sections (parsed from the stored field), so the
+    // model fills exactly what the editor shows. Fall back to defaults for an empty field.
+    const portal = await getPortal(tenantId);
+    const stored = String((portal as any)?.aiInstructions ?? "");
+    const sectionNames = parseSectionNames(stored);
+
+    try {
+      const { blocks, skipped } = await extractDocuments(files);
+      if (!blocks.length) {
+        res.status(400).json({ error: "Couldn't read any text from those files.", filesRead: [], filesSkipped: skipped });
+        return;
+      }
+      const combined = combineBlocks(blocks);
+      const suggestions = await organizeIntoSections(combined, sectionNames);
+      res.json({ suggestions, filesRead: blocks.map((b) => b.filename), filesSkipped: skipped });
+    } catch (err) {
+      if (err instanceof InstructionsParseError) { res.status(502).json({ error: err.message }); return; }
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+});
+
+// Section names (from "## Name" headings) in a stored aiInstructions blob; defaults if none.
+function parseSectionNames(text: string): string[] {
+  const names: string[] = [];
+  for (const line of String(text || "").replace(/\r\n/g, "\n").split("\n")) {
+    const m = line.match(/^##\s+(.+?)\s*$/);
+    if (m) names.push(m[1].trim());
+  }
+  return names.length ? names : ["Overview", "Services", "Pricing", "What we don't do", "FAQs", "Tone & personality"];
+}
 // Same editors as AI Instructions. Saves immediately. The value MUST be one of
 // the five allowed voice IDs — anything else is rejected.
 apiRouter.patch("/account/voice", async (req: Request, res: Response) => {

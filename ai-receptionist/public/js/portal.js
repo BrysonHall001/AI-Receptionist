@@ -384,25 +384,15 @@
     headRight.appendChild(voiceNote);
     headRight.appendChild(voiceStatus);
 
-    // Upload-a-document affordance (editable users only). This batch: warning dialog + a picker
-    // that is NOT wired to parsing yet (parsing lands in a later batch).
+    // Upload-a-document affordance (editable users only). Warning dialog -> multi-file picker ->
+    // AI organize -> REVIEW view -> apply into the editor. The click handler is attached after the
+    // sectioned editor is built (it needs currentSections/setSections). Nothing saves until Save.
+    let uploadBtn = null;
     if (editable) {
       const upWrap = el("div");
       upWrap.style.cssText = "margin-top:4px;";
-      const upBtn = el("button", "btn btn-ghost btn-sm", "\u2191 Upload a document");
-      upBtn.onclick = async () => {
-        const ok = await confirmModal({
-          title: "Upload a document to pre-fill",
-          message: "We'll read your document (menu, price list, FAQ, etc.) and PRE-FILL these sections for you to REVIEW and edit. Parsing is imperfect — nothing becomes live instructions until you review and Save. Never trust the extracted text blindly.",
-          confirmText: "I understand — choose file",
-        });
-        if (!ok) return;
-        // File picker exists so the flow is complete, but parsing is a later batch.
-        const fi = el("input"); fi.type = "file"; fi.accept = ".pdf,.doc,.docx,.txt,.md,.rtf"; fi.style.display = "none";
-        fi.onchange = () => { App.util.toast("Document parsing is coming soon — for now, add your details in the sections below."); fi.value = ""; };
-        document.body.appendChild(fi); fi.click(); setTimeout(() => fi.remove(), 60000);
-      };
-      upWrap.appendChild(upBtn);
+      uploadBtn = el("button", "btn btn-ghost btn-sm", "\u2191 Upload a document");
+      upWrap.appendChild(uploadBtn);
       headRight.appendChild(upWrap);
     }
 
@@ -554,6 +544,102 @@
     sec.appendChild(editor);
 
     paintTabs();
+
+    // ----- Upload -> AI organize -> REVIEW -> apply (editable only) -----
+    if (editable && uploadBtn) {
+      const applyOne = (secName, content, mode) => {
+        const list = currentSections();
+        let idx = list.findIndex((s) => s.name.trim().toLowerCase() === String(secName).trim().toLowerCase());
+        if (idx === -1) { list.push({ name: secName, body: "" }); idx = list.length - 1; }
+        const existing = list[idx].body || "";
+        list[idx].body = mode === "append" && existing ? (existing.replace(/\n+$/, "") + "\n\n" + content) : content;
+        setSections(list, idx);
+      };
+
+      function openReview(result) {
+        const suggestions = (result.suggestions || []).filter((s) => (s.content || "").trim());
+        const inner = el("div");
+        inner.innerHTML = `<div class="modal-head"><h2>Review suggestions</h2><button class="icon-btn" id="rv-close">&times;</button></div>`;
+        const body = el("div", "modal-body");
+
+        // Files read / skipped + caveat.
+        const meta = el("div", "cell-muted"); meta.style.cssText = "font-size:12.5px;margin:0 0 12px;";
+        const read = (result.filesRead || []);
+        const skipped = (result.filesSkipped || []);
+        meta.innerHTML =
+          `<div><b>Read:</b> ${read.length ? read.map((f) => esc(f)).join(", ") : "none"}</div>` +
+          (skipped.length ? `<div style="margin-top:3px"><b>Skipped:</b> ${skipped.map((s) => esc(s.filename) + " (" + esc(s.reason) + ")").join(", ")}</div>` : "") +
+          `<div style="margin-top:8px;color:#b45309">These are AI suggestions from your documents — parsing is imperfect. Review and edit each one; nothing is saved until you press <b>Save</b>.</div>`;
+        body.appendChild(meta);
+
+        if (!suggestions.length) {
+          body.appendChild(el("div", "cell-muted", "The AI didn't find content to organize into your sections. Try a clearer document, or add details manually."));
+        } else {
+          const cur = currentSections();
+          const curBody = (name) => { const f = cur.find((s) => s.name.trim().toLowerCase() === name.trim().toLowerCase()); return f ? f.body : ""; };
+          suggestions.forEach((s) => {
+            const card = el("div"); card.style.cssText = "border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:12px;margin-bottom:10px;";
+            const h = el("div"); h.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;";
+            h.innerHTML = `<b style="font-size:13.5px">${esc(s.section)}</b>`;
+            const btns = el("div"); btns.style.cssText = "display:flex;gap:6px;";
+            const rep = el("button", "btn btn-primary btn-sm", "Replace");
+            const app = el("button", "btn btn-ghost btn-sm", "Append");
+            const applied = el("span", "cell-muted"); applied.style.cssText = "font-size:12px;align-self:center;display:none;"; applied.textContent = "Applied";
+            rep.onclick = () => { applyOne(s.section, s.content, "replace"); rep.disabled = true; app.disabled = true; applied.style.display = ""; };
+            app.onclick = () => { applyOne(s.section, s.content, "append"); rep.disabled = true; app.disabled = true; applied.style.display = ""; };
+            btns.appendChild(rep); btns.appendChild(app); btns.appendChild(applied);
+            h.appendChild(btns);
+            card.appendChild(h);
+            const existing = (curBody(s.section) || "").trim();
+            if (existing) { const ex = el("div", "cell-muted"); ex.style.cssText = "font-size:11.5px;margin:0 0 6px;"; ex.innerHTML = `<i>Current:</i> ${esc(existing.slice(0, 160))}${existing.length > 160 ? "…" : ""}`; card.appendChild(ex); }
+            const pre = el("div"); pre.style.cssText = "white-space:pre-wrap;font-size:12.5px;background:var(--surface-2,#f8fafc);border-radius:6px;padding:8px 10px;max-height:160px;overflow:auto;"; pre.textContent = s.content;
+            card.appendChild(pre);
+            body.appendChild(card);
+          });
+        }
+        inner.appendChild(body);
+        const foot = el("div", "modal-foot");
+        const applyAll = el("button", "btn btn-primary btn-sm", "Apply all (replace)");
+        applyAll.disabled = !suggestions.length;
+        const done = el("button", "btn btn-ghost btn-sm", "Done");
+        applyAll.onclick = () => { suggestions.forEach((s) => applyOne(s.section, s.content, "replace")); App.util.toast("Applied to the editor — review, then Save to make it live."); overlay.remove(); };
+        done.onclick = () => overlay.remove();
+        foot.appendChild(done); foot.appendChild(applyAll);
+        inner.appendChild(foot);
+        const overlay = modal(inner);
+        inner.querySelector("#rv-close").onclick = () => overlay.remove();
+      }
+
+      uploadBtn.onclick = async () => {
+        const ok = await confirmModal({
+          title: "Upload documents to pre-fill",
+          message: "We'll read your documents (menu, price list, FAQ, brochure — PDF, Word, Excel/CSV, text, or a .zip of them) and use AI to PRE-FILL these sections for you to REVIEW and edit. Parsing is imperfect and the AI only organizes what's in your files — nothing becomes live instructions until you review and Save. Never trust the extracted text blindly.",
+          confirmText: "I understand — choose files",
+        });
+        if (!ok) return;
+        const fi = el("input"); fi.type = "file"; fi.multiple = true;
+        fi.accept = ".pdf,.docx,.xlsx,.xls,.csv,.txt,.md,.zip"; fi.style.display = "none";
+        fi.onchange = async () => {
+          const files = Array.from(fi.files || []); fi.remove();
+          if (!files.length) return;
+          const fd = new FormData();
+          files.forEach((f) => fd.append("files", f, f.name));
+          const prevLabel = uploadBtn.textContent;
+          uploadBtn.disabled = true; uploadBtn.textContent = "Reading " + files.length + " file" + (files.length === 1 ? "" : "s") + "…";
+          try {
+            const result = await App.portalApi("/api/account/ai-instructions/parse-docs", { method: "POST", body: fd, headers: {} });
+            openReview(result);
+          } catch (e) {
+            App.util.toast((e && e.message) || "Couldn't read those files", true);
+            if (e && e.data && Array.isArray(e.data.filesSkipped) && e.data.filesSkipped.length) {
+              App.util.toast("Skipped: " + e.data.filesSkipped.map((s) => s.filename).join(", "), true);
+            }
+          } finally { uploadBtn.disabled = false; uploadBtn.textContent = prevLabel; }
+        };
+        document.body.appendChild(fi); fi.click(); setTimeout(() => { if (fi.parentNode) fi.remove(); }, 120000);
+      };
+    }
+
     host.appendChild(sec);
   }
 
