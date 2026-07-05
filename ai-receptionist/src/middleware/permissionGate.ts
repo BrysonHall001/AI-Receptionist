@@ -61,6 +61,11 @@ export const PERM_RULES: PermRule[] = [
   // Email blast + sent log.
   { m: "POST", re: /^\/communication\/email$/, area: "communication", right: "edit" },
   { m: "GET", re: /^\/communication\/sends$/, area: "communication", right: "view" },
+  // Audiences (named contact filters) — same area/rights as Templates/Surveys.
+  { m: "POST", re: /^\/audiences$/, area: "communication", right: "edit" },
+  { m: "PATCH", re: /^\/audiences\/[^/]+$/, area: "communication", right: "edit" },
+  { m: "DELETE", re: /^\/audiences\/[^/]+$/, area: "communication", right: "delete" },
+  { m: "GET", re: /^\/audiences(\/|$)/, area: "communication", right: "view" },
 
 
   // ---- Records: Jobs / Bookings / custom share one "records" area (Batch-1 catalog) ----

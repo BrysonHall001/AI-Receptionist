@@ -185,10 +185,11 @@
     }
 
     async function build() {
-      const [contacts, fields, saved] = await Promise.all([
+      const [contacts, fields, saved, audiences] = await Promise.all([
         App.portalApi("/api/contacts").catch(() => []),
         App.portalApi("/api/fields").catch(() => []),
         App.portalApi("/api/saved-filters?view=contacts").catch(() => []),
+        App.portalApi("/api/audiences").catch(() => []),
       ]);
       state.contacts = Array.isArray(contacts) ? contacts : [];
       state.columns = App.portal.contactColumnDefs(fields || []);
@@ -205,14 +206,19 @@
         renderChips();
       }
 
-      if ((saved || []).length) {
+      if ((saved || []).length || (audiences || []).length) {
         const sfWrap = el("label", "field"); sfWrap.style.marginTop = "4px";
-        sfWrap.innerHTML = `<span class="field-label">Start from a saved filter (optional)</span>`;
+        sfWrap.innerHTML = `<span class="field-label">Start from an audience or saved filter (optional)</span>`;
         const sel = el("select", "input");
-        sel.innerHTML = `<option value="">— none —</option>` + (saved || []).map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("");
+        const audOpts = (audiences || []).map((f) => `<option value="aud:${esc(f.id)}">${esc(f.name)}</option>`).join("");
+        const savedOpts = (saved || []).map((f) => `<option value="sf:${esc(f.id)}">${esc(f.name)}</option>`).join("");
+        sel.innerHTML = `<option value="">— none —</option>` +
+          (audOpts ? `<optgroup label="Audiences">${audOpts}</optgroup>` : "") +
+          (savedOpts ? `<optgroup label="Saved filters">${savedOpts}</optgroup>` : "");
         sel.onchange = () => {
-          const f = (saved || []).find((x) => x.id === sel.value);
-          const def = (f && f.definition) || {};
+          let def = {};
+          if (sel.value.indexOf("aud:") === 0) { const f = (audiences || []).find((x) => x.id === sel.value.slice(4)); def = (f && f.definition) || {}; }
+          else if (sel.value.indexOf("sf:") === 0) { const f = (saved || []).find((x) => x.id === sel.value.slice(3)); def = (f && f.definition) || {}; }
           state.rules.length = 0;
           (Array.isArray(def.rules) ? def.rules : []).forEach((r) => state.rules.push(r));
           mountRules(); updateAddBtn();
@@ -254,13 +260,14 @@
     // Tab strip (same .tabs component Data Administration uses). One tab for now.
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
-    const TABS = [["email", "Email"], ["templates", "Email Templates"], ["surveys", "Surveys"]]; // future: ["texts","Texts"]
+    const TABS = [["email", "Email"], ["templates", "Email Templates"], ["surveys", "Surveys"], ["audiences", "Audiences"]]; // future: reorder when Drips lands
     let active = "email";
     function setTab(key) {
       active = key;
       App.util.$$(".tab", tabsBar).forEach((t) => t.classList.toggle("active", t.dataset.tab === key));
       tabBody.innerHTML = "";
       if (key === "email") emailTab(tabBody);
+      else if (key === "audiences") audiencesTab(tabBody);
       else if (key === "templates") templatesTab(tabBody);
       else if (key === "surveys") surveysTab(tabBody);
     }
@@ -483,6 +490,98 @@
 
   // Deep-link entry point used by the Contacts "Email selected" bulk action: preload
   // the chosen contact ids as the audience and open Communication → Email → Compose.
+  // ======================================================================
+  // Audiences tab: a library of NAMED, DYNAMIC contact filters. Reuses the SAME
+  // primitives as Contacts + the recipient picker — App.portal.contactColumnDefs
+  // (columns), App.table.ruleEditor (criteria rows / AND-OR), App.table.pipeline
+  // (live match count). No second filter UI is forked. CRUD hits /api/audiences.
+  // ======================================================================
+  async function audiencesTab(host) {
+    const { el, esc, toast } = App.util;
+    const nounLower = (n) => (App.label ? App.label("contact", n === 1 ? "one" : "many").toLowerCase() : (n === 1 ? "contact" : "contacts"));
+    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    let contacts = [], fields = [], audiences = [], columns = [];
+    try {
+      [contacts, fields, audiences] = await Promise.all([
+        App.portalApi("/api/contacts").catch(() => []),
+        App.portalApi("/api/fields").catch(() => []),
+        App.portalApi("/api/audiences").catch(() => []),
+      ]);
+    } catch (e) { host.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+    contacts = Array.isArray(contacts) ? contacts : [];
+    audiences = Array.isArray(audiences) ? audiences : [];
+    columns = App.portal.contactColumnDefs(fields || []);
+    const rulesOf = (a) => (a && a.definition && Array.isArray(a.definition.rules)) ? a.definition.rules : [];
+    const countFor = (a) => App.table.pipeline(contacts, columns, { rules: rulesOf(a) }).length;
+
+    async function reload() { audiences = (await App.portalApi("/api/audiences").catch(() => audiences)) || audiences; renderList(); }
+
+    function renderList() {
+      host.innerHTML = "";
+      const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px";
+      const hl = el("div");
+      hl.appendChild(el("h3", "settings-sub", "Audiences"));
+      hl.appendChild(el("div", "cell-muted", "Named, saved contact filters — each one always reflects the contacts that match right now.")).style.cssText = "font-size:12.5px;margin-top:2px";
+      const newBtn = el("button", "btn btn-primary btn-sm", "+ New audience");
+      newBtn.onclick = () => renderEditor(null);
+      head.appendChild(hl); head.appendChild(newBtn);
+      host.appendChild(head);
+
+      if (!audiences.length) { host.appendChild(el("div", "card cell-muted", "No audiences yet. Create one to reuse a contact filter across emails.")); return; }
+      const list = el("div"); list.style.cssText = "display:flex;flex-direction:column;gap:8px";
+      audiences.forEach((a) => {
+        const n = countFor(a);
+        const row = el("div", "card"); row.style.cssText = "padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap";
+        const left = el("div");
+        left.innerHTML = `<div style="font-weight:600">${esc(a.name)}</div><div class="cell-muted" style="font-size:12.5px">${n} ${esc(nounLower(n))} match now</div>`;
+        const btns = el("div"); btns.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+        const use = el("button", "btn btn-primary btn-sm", "Use in email");
+        use.onclick = () => { const ids = App.table.pipeline(contacts, columns, { rules: rulesOf(a) }).filter((c) => c.email).map((c) => c.id); App.communication.composeTo(ids); };
+        const edit = el("button", "btn btn-ghost btn-sm", "Edit"); edit.onclick = () => renderEditor(a);
+        const ren = el("button", "btn btn-ghost btn-sm", "Rename");
+        ren.onclick = async () => { const name = await App.ui.promptModal({ title: "Rename audience", label: "Audience name", value: a.name, okText: "Rename" }); if (!name || !name.trim()) return; try { await App.portalApi("/api/audiences/" + a.id, { method: "PATCH", body: JSON.stringify({ name: name.trim() }) }); toast("Renamed"); reload(); } catch (e) { toast(e.message, true); } };
+        const del = el("button", "btn btn-ghost btn-sm", "Delete"); del.style.color = "#dc2626";
+        del.onclick = async () => { if (!(await App.ui.confirmModal({ title: "Delete audience", message: `Delete the audience \u201c${a.name}\u201d? This only deletes the saved filter — no contacts are affected.`, confirmText: "Delete" }))) return; try { await App.portalApi("/api/audiences/" + a.id, { method: "DELETE" }); toast("Audience deleted"); reload(); } catch (e) { toast(e.message, true); } };
+        btns.appendChild(use); btns.appendChild(edit); btns.appendChild(ren); btns.appendChild(del);
+        row.appendChild(left); row.appendChild(btns);
+        list.appendChild(row);
+      });
+      host.appendChild(list);
+    }
+
+    function renderEditor(aud) {
+      host.innerHTML = "";
+      const card = el("div", "card"); card.style.cssText = "padding:18px";
+      card.appendChild(el("h3", "settings-sub", aud ? "Edit audience" : "New audience"));
+      const nameWrap = el("label", "field"); nameWrap.style.display = "block"; nameWrap.innerHTML = `<span class="field-label">Audience name *</span>`;
+      const nameInp = el("input", "input"); nameInp.value = aud ? aud.name : ""; nameInp.placeholder = "e.g. HVAC leads, VIP customers";
+      nameWrap.appendChild(nameInp); card.appendChild(nameWrap);
+      card.appendChild(el("div", "field-label", "Who's in this audience"));
+      const rules = rulesOf(aud).map((r) => ({ ...r }));
+      const countLine = el("div", "cell-muted"); countLine.style.cssText = "font-size:12.5px;margin:6px 0 0";
+      const updateCount = () => { const n = App.table.pipeline(contacts, columns, { rules }).length; countLine.textContent = `${n} ${nounLower(n)} match right now.`; };
+      const rulesHost = el("div"); rulesHost.appendChild(App.table.ruleEditor(columns, contacts, rules, updateCount)); card.appendChild(rulesHost);
+      card.appendChild(countLine); updateCount();
+      const bar = el("div"); bar.style.cssText = "display:flex;gap:10px;margin-top:14px";
+      const save = el("button", "btn btn-primary", "Save audience");
+      const cancel = el("button", "btn btn-ghost", "Cancel"); cancel.onclick = () => renderList();
+      save.onclick = async () => {
+        const name = nameInp.value.trim(); if (!name) { toast("Please name this audience", true); nameInp.focus(); return; }
+        const definition = { rules };
+        save.disabled = true;
+        try {
+          if (aud) await App.portalApi("/api/audiences/" + aud.id, { method: "PATCH", body: JSON.stringify({ name, definition }) });
+          else await App.portalApi("/api/audiences", { method: "POST", body: JSON.stringify({ name, definition }) });
+          toast("Audience saved"); reload();
+        } catch (e) { toast(e.message, true); save.disabled = false; }
+      };
+      bar.appendChild(save); bar.appendChild(cancel); card.appendChild(bar);
+      host.appendChild(card);
+    }
+
+    renderList();
+  }
+
   let pendingPreload = null;
   function composeTo(ids) {
     pendingPreload = Array.isArray(ids) ? ids.slice() : [];

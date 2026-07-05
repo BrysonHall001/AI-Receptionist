@@ -38,3 +38,17 @@ export async function deleteSavedFilter(id: string, tenantId: string): Promise<b
   await prisma.savedFilter.delete({ where: { id } });
   return true;
 }
+
+export async function updateSavedFilter(
+  id: string,
+  tenantId: string,
+  patch: { name?: string; definition?: unknown },
+): Promise<boolean> {
+  const existing = await prisma.savedFilter.findUnique({ where: { id } });
+  if (!existing || existing.tenantId !== tenantId) return false;
+  const data: Record<string, unknown> = {};
+  if (typeof patch.name === "string" && patch.name.trim()) data.name = patch.name.trim();
+  if ("definition" in patch) data.definition = (patch.definition ?? {}) as any;
+  await prisma.savedFilter.update({ where: { id }, data });
+  return true;
+}

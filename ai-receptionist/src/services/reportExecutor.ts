@@ -69,7 +69,7 @@ function buildCSV(cols: ColSpec[], rows: any[]): string {
 
 // Contacts: system+custom fields (in Fields order), then Source / Caller ID /
 // Calls / Time Created — identical to contactColumnDefs(fields).
-async function contactColSpecs(tenantId: string): Promise<ColSpec[]> {
+export async function contactColSpecs(tenantId: string): Promise<ColSpec[]> {
   const fields = await listFields(tenantId, "contact");
   const SYS = new Set(["name", "phone", "email", "intent"]);
   const specs: ColSpec[] = fields.map((f: any) => {
@@ -118,7 +118,7 @@ function recordStageLabel(type: any, key: any): string {
 
 // evalRules wants Column[] (key/type/get/text). Derive from the same ColSpecs the
 // output uses, so a filter can reference ANY column the user saw in the editor.
-function colsForEval(specs: ColSpec[]): Column[] {
+export function colsForEval(specs: ColSpec[]): Column[] {
   return specs.map((s) => ({ key: s.key, type: s.type, get: s.raw, text: s.value }));
 }
 

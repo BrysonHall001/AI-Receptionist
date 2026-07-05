@@ -29,6 +29,7 @@ import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from ".
 import { sendSms } from "../services/smsService";
 import { listDashboards, createDashboard, updateDashboard, deleteDashboard, getOrCreateHomeDashboard } from "../services/dashboardService";
 import { listSavedFilters, createSavedFilter, deleteSavedFilter } from "../services/savedFilterService";
+import { listAudiences, getAudience, createAudience, updateAudience, deleteAudience, resolveAudienceContacts } from "../services/audienceService";
 import { listExports, createExport, createImportRecord, createBackupRecord, getExportCsv, getExportArtifact } from "../services/exportService";
 import { listReports, getScheduledReport, upsertScheduledReport, setReportActive } from "../services/reportService";
 import { runAndDeliverReport } from "../services/reportExecutor";
@@ -1849,11 +1850,54 @@ apiRouter.delete("/saved-filters/:id", async (req: Request, res: Response) => {
   if (!ok) {
     res.status(404).json({ error: "Filter not found" });
     return;
-  }
+  }  res.json({ ok: true });
+});
+
+// ---- Audiences (named, DYNAMIC contact filters; reuse SavedFilter view="audience") ----
+// Gated to the communication area (view/create/edit/delete) by PERM_RULES, consistent with
+// Templates/Surveys. Definitions store the same {rules, search} contacts-filter shape.
+apiRouter.get("/audiences", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  res.json(await listAudiences(tenantId));
+});
+
+apiRouter.post("/audiences", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, definition } = (req.body ?? {}) as { name?: string; definition?: unknown };
+  if (!name || !name.trim()) { res.status(400).json({ error: "An audience name is required" }); return; }
+  res.json(await createAudience({ tenantId, name, definition: definition ?? {}, createdById: req.user!.id }));
+});
+
+apiRouter.patch("/audiences/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const { name, definition } = (req.body ?? {}) as { name?: string; definition?: unknown };
+  const patch: { name?: string; definition?: unknown } = {};
+  if (typeof name === "string") patch.name = name;
+  if ("definition" in (req.body ?? {})) patch.definition = definition ?? {};
+  const ok = await updateAudience(req.params.id, tenantId, patch);
+  if (!ok) { res.status(404).json({ error: "Audience not found" }); return; }
+  res.json(await getAudience(req.params.id, tenantId));
+});
+
+apiRouter.delete("/audiences/:id", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const ok = await deleteAudience(req.params.id, tenantId);
+  if (!ok) { res.status(404).json({ error: "Audience not found" }); return; }
   res.json({ ok: true });
 });
 
-// ---- Export history (snapshots) ----
+// Current matching contacts for an audience (dynamic). Used by A2/Drips + the library count.
+apiRouter.get("/audiences/:id/contacts", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const rows = await resolveAudienceContacts(tenantId, req.params.id);
+  if (rows === null) { res.status(404).json({ error: "Audience not found" }); return; }
+  res.json({ count: rows.length, contacts: rows });
+});
 apiRouter.get("/exports", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
