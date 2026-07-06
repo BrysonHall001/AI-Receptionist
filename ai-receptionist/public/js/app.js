@@ -435,7 +435,18 @@
       };
       menu.appendChild(item);
     });
-    // View-as a specific user — only users of the OPEN portal (backend-scoped).
+    // Custom (per-portal) roles as assumable types — sent by customRoleId so the
+    // session resolves to EXACTLY that role's permissions.
+    (data.customRoles || []).forEach((cr) => {
+      const item = el("button", "imp-menu-item", esc(cr.name) + " (custom role)");
+      if (!portalId) { item.disabled = true; item.title = "Open a portal first"; }
+      else item.onclick = async () => {
+        closeImpMenu();
+        const ok = await App.ui.confirmModal({ title: "Act as " + cr.name + "?", message: "You’ll act as the “" + cr.name + "” role in " + (portalName || "this portal") + " with exactly that role’s permissions — anything the role can’t do is blocked. Your actions stay recorded as you.", confirmText: "Start" });
+        if (ok) startImpersonation({ mode: "act-as-type", customRoleId: cr.id, scopeTenantId: portalId });
+      };
+      menu.appendChild(item);
+    });
     menu.appendChild(el("div", "imp-menu-sec", "View as a specific user" + (portalId ? " in " + esc(portalName || "this portal") : "")));
     const users = data.users || [];
     if (!portalId) menu.appendChild(el("div", "imp-menu-empty", "Open a portal first"));

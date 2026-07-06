@@ -55,6 +55,7 @@ export interface ImpersonationOverlay {
   targetUserId: string | null;
   assumedRole: string | null;
   scopeTenantId: string | null;
+  customRoleId: string | null;
   startedAt: Date | null;
 }
 
@@ -78,6 +79,7 @@ export async function getImpersonationForToken(token: string | undefined): Promi
       targetUserId: s.impTargetUserId ?? null,
       assumedRole: s.impAssumedRole ?? null,
       scopeTenantId: s.impScopeTenantId ?? null,
+      customRoleId: s.impCustomRoleId ?? null,
       startedAt: s.impStartedAt ?? null,
     };
   } catch {
@@ -88,7 +90,7 @@ export async function getImpersonationForToken(token: string | undefined): Promi
 /** Write an impersonation overlay onto the real session row. */
 export async function setImpersonation(
   token: string | undefined,
-  overlay: { mode: "view-as-user" | "act-as-type"; targetUserId?: string | null; assumedRole?: string | null; scopeTenantId?: string | null },
+  overlay: { mode: "view-as-user" | "act-as-type"; targetUserId?: string | null; assumedRole?: string | null; scopeTenantId?: string | null; customRoleId?: string | null },
 ): Promise<void> {
   if (!token) throw new Error("No session");
   await prisma.session.update({
@@ -98,6 +100,7 @@ export async function setImpersonation(
       impTargetUserId: overlay.targetUserId ?? null,
       impAssumedRole: overlay.assumedRole ?? null,
       impScopeTenantId: overlay.scopeTenantId ?? null,
+      impCustomRoleId: overlay.customRoleId ?? null,
       impStartedAt: new Date(),
     } as any,
   });
@@ -113,7 +116,7 @@ export async function clearImpersonation(token: string | undefined): Promise<voi
   await prisma.session
     .update({
       where: { token },
-      data: { impMode: null, impTargetUserId: null, impAssumedRole: null, impScopeTenantId: null, impStartedAt: null } as any,
+      data: { impMode: null, impTargetUserId: null, impAssumedRole: null, impScopeTenantId: null, impCustomRoleId: null, impStartedAt: null } as any,
     })
     .catch(() => undefined);
 }

@@ -57,7 +57,9 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
     // session must act with EXACTLY the assumed role's permissions — no more. We keep
     // the real id/email/name (actions stamp honestly as the real admin, and personal
     // data stays theirs), but swap role -> assumedRole, tenant -> the pinned portal,
-    // and clear customRoleId (impersonation always assumes a system role). This is what
+    // and set customRoleId from the overlay: for a CUSTOM-role impersonation the base
+    // role is CLIENT_USER + this customRoleId, so can() resolves EXACTLY that role's
+    // permissions; for a system-role impersonation it's null. This is what
     // lets the permission gate enforce the assumed role on data routes; without it an
     // impersonating admin would keep admin rights and pass every gate. (view-as-user
     // additionally stays read-only via the view-only guard, which keys on the mode.)
@@ -72,7 +74,7 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
         name: req.realUser.name,
         role: (req.impersonation.assumedRole as Role) || req.realUser.role, // effective role
         tenantId: req.impersonation.scopeTenantId || null, // pinned tenant (cross-tenant safe)
-        customRoleId: null, // impersonation always assumes a system role
+        customRoleId: req.impersonation.customRoleId ?? null, // custom-role impersonation resolves to EXACTLY that role's perms; null = system role
       };
     }
   } catch {

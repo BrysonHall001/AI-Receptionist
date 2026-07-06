@@ -169,15 +169,18 @@ apiRouter.get("/impersonation", async (req: Request, res: Response) => {
 });
 
 // Targets for the dropdown. Scoped to the CURRENTLY-OPEN portal (passed as
-// ?tenantId=…): returns only that portal's non-admin users. No portal open -> no
-// users (the UI prompts the admin to open a portal first). Still excludes
-// owner/super-admin/auditor accounts, and always returns the role types.
+// ?tenantId=…): returns only that portal's non-admin users, the system role types,
+// and the portal's CUSTOM roles (id + name) as assumable types. No portal open ->
+// no users and no custom roles. Still excludes owner/super-admin/auditor accounts.
 apiRouter.get("/impersonation/targets", async (req: Request, res: Response) => {
   if (!req.realUser || !isAdminTier(req.realUser.role)) { res.status(403).json({ error: "Super-admin only" }); return; }
   const tenantId = String((req.query.tenantId ?? "") || "").trim();
   const scoped = tenantId ? ((await listUsers(tenantId)) as any[]) : [];
   const users = scoped.filter((u) => !isAdminTier(u.role));
-  res.json({ users, roles: ["PORTAL_ADMIN", "CLIENT_USER"] });
+  const customRoles = tenantId
+    ? ((await listPortalRoles(tenantId)) as any[]).map((r) => ({ id: r.id, name: r.name }))
+    : [];
+  res.json({ users, roles: ["PORTAL_ADMIN", "CLIENT_USER"], customRoles });
 });
 
 // Start impersonation. Writes the overlay onto the REAL session. Gated to the real
@@ -199,15 +202,28 @@ apiRouter.post("/impersonation/start", async (req: Request, res: Response) => {
       if (!target) { res.status(404).json({ error: "User not found" }); return; }
       if (isAdminTier((target as any).role)) { res.status(400).json({ error: "Cannot impersonate a super-admin or owner" }); return; }
       if (((target as any).tenantId ?? null) !== scopeTenantId) { res.status(400).json({ error: "That user isn’t in the open portal." }); return; }
-      await setImpersonation(token, { mode: "view-as-user", targetUserId: target.id, assumedRole: (target as any).role, scopeTenantId: (target as any).tenantId ?? null });
+      // If the target holds a CUSTOM role, carry it so the session resolves to EXACTLY
+      // that role's permissions (base role stays the user's own; customRoleId drives can()).
+      await setImpersonation(token, { mode: "view-as-user", targetUserId: target.id, assumedRole: (target as any).role, scopeTenantId: (target as any).tenantId ?? null, customRoleId: (target as any).customRoleId ?? null });
     } else if (mode === "act-as-type") {
-      const assumedRole = String(body.assumedRole || "");
-      if (assumedRole !== "PORTAL_ADMIN" && assumedRole !== "CLIENT_USER") { res.status(400).json({ error: "assumedRole must be PORTAL_ADMIN or CLIENT_USER" }); return; }
       const scopeTenantId = String(body.scopeTenantId || "");
       if (!scopeTenantId) { res.status(400).json({ error: "Open a portal first" }); return; }
       const tenant = await prisma.tenant.findUnique({ where: { id: scopeTenantId } });
       if (!tenant) { res.status(404).json({ error: "Portal not found" }); return; }
-      await setImpersonation(token, { mode: "act-as-type", assumedRole, scopeTenantId, targetUserId: null });
+      const customRoleId = String(body.customRoleId || "");
+      if (customRoleId) {
+        // Acting as a CUSTOM role: it must exist AND belong to the open portal.
+        // getPortalRole is tenant-scoped, so a role from another portal returns null.
+        const role = await getPortalRole(customRoleId, scopeTenantId);
+        if (!role) { res.status(400).json({ error: "That role isn’t in the open portal." }); return; }
+        // Custom roles ride on the CLIENT_USER base (mirrors how assigned users store them);
+        // customRoleId is what makes can() resolve EXACTLY the role's permissions.
+        await setImpersonation(token, { mode: "act-as-type", assumedRole: "CLIENT_USER", scopeTenantId, customRoleId: role.id, targetUserId: null });
+      } else {
+        const assumedRole = String(body.assumedRole || "");
+        if (assumedRole !== "PORTAL_ADMIN" && assumedRole !== "CLIENT_USER") { res.status(400).json({ error: "assumedRole must be PORTAL_ADMIN or CLIENT_USER" }); return; }
+        await setImpersonation(token, { mode: "act-as-type", assumedRole, scopeTenantId, customRoleId: null, targetUserId: null });
+      }
     } else {
       res.status(400).json({ error: "mode must be view-as-user or act-as-type" }); return;
     }

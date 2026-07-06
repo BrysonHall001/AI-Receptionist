@@ -186,6 +186,11 @@ model Session {
   impAssumedRole   String?
   impScopeTenantId String?
   impStartedAt     DateTime?
+  // Custom (PortalRole) impersonation: when acting as / viewing a CUSTOM role, the
+  // assumed base role stays CLIENT_USER and this carries the PortalRole id so the
+  // effective permissions resolve to EXACTLY that role's set. Null for system-role
+  // impersonation. Additive + nullable.
+  impCustomRoleId  String?
 
   @@index([userId])
 }
