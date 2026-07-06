@@ -39,6 +39,7 @@
     if (t.mode === "custom" && t.custom) {
       const c = t.custom;
       document.body.dataset.theme = "custom";
+      if (App.scene) App.scene.mount("custom");
       clearCustom();
       const s = document.body.style;
       if (isHex(c.fontColor)) s.setProperty("--ink", c.fontColor.trim());
@@ -60,6 +61,7 @@
     clearCustom();
     const id = typeof t.preset === "string" && /^[a-z0-9_-]+$/.test(t.preset) ? t.preset : "light";
     document.body.dataset.theme = id;
+    if (App.scene) App.scene.mount(id);
   }
 
   // Resolve a UserTheme {active, customs, funLevel} and apply it.
@@ -74,7 +76,7 @@
     applyResolved({ mode: "preset", preset: a.preset || "light" });
   }
 
-  function resetToDefault() { clearCustom(); document.body.dataset.theme = "light"; applyFun(0); }
+  function resetToDefault() { clearCustom(); document.body.dataset.theme = "light"; if (App.scene) App.scene.mount("light"); applyFun(0); }
 
   // Fun-theme decoration intensity. Validates to a finite 0..1 before touching the
   // CSSOM. Only fun-preset CSS reads --fun, so this is a no-op for basic/custom themes.

@@ -835,29 +835,30 @@ body[data-theme="neutral"] {
 /* ---- Frutiger Aero (fun, flagship) ---- */
 body[data-theme="aero"] {
   --bg: #cfeeff;
-  --panel: rgba(255,255,255,0.66); --panel-2: rgba(255,255,255,0.52);
+  /* SOLID surfaces (was frosted translucent) so scenery never shows through text. */
+  --panel: #f4fbff; --panel-2: #e8f5fd;
   --ink: #0c3a52; --ink-soft: #2b6480; --ink-faint: #285b74;
-  --line: rgba(255,255,255,0.85); --line-strong: rgba(90,170,205,0.6);
-  --accent: #0aa6e6; --accent-soft: rgba(255,255,255,0.6); --accent-strong: #0b86c4;
+  --line: #d3ebf7; --line-strong: #a9d4e6;
+  --accent: #0aa6e6; --accent-soft: #dcf0fb; --accent-strong: #0b86c4;
   --green: #10b97e; --green-soft: rgba(205,255,232,0.7); --amber: #e0900f; --amber-soft: rgba(255,244,210,0.8); --red: #ec5648; --red-soft: rgba(255,220,216,0.8);
-  --row-hover: rgba(255,255,255,0.55); --on-accent: #fff;
-  --topbar-bg: rgba(222,246,255,0.55);
+  --row-hover: #eaf6fe; --on-accent: #fff;
+  --sidebar-bg: #eef8fe; --topbar-bg: #eaf6fe;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
   --font-display: "Nunito", "Segoe UI", system-ui, sans-serif;
   --radius: 18px; --radius-sm: 13px;
   --shadow: 0 6px 22px rgba(20,110,160,0.16), inset 0 1px 0 rgba(255,255,255,0.85);
   background: url("/themes/bubbles.svg") repeat, radial-gradient(120% 90% at 50% -10%, #b6f3ff 0%, rgba(182,243,255,0) 55%), linear-gradient(165deg, #36b6f5 0%, #6fd6ff 28%, #a7efe2 62%, #c8ffdd 100%) fixed;
 }
-/* glassy frosted surfaces */
+/* solid surfaces (legibility): opaque panels with a soft aero shadow, no blur */
 body[data-theme="aero"] .card,
 body[data-theme="aero"] .sidebar,
 body[data-theme="aero"] .modal,
 body[data-theme="aero"] .settings-card {
-  backdrop-filter: blur(16px) saturate(1.7);
-  -webkit-backdrop-filter: blur(16px) saturate(1.7);
-  border: 1px solid rgba(255,255,255,0.85);
-  box-shadow: 0 8px 30px rgba(20,100,150,0.18), inset 0 1px 0 rgba(255,255,255,0.95);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 8px 26px rgba(20,100,150,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
 }
+body[data-theme="aero"] .sidebar { background: var(--sidebar-bg); }
 /* glossy candy buttons with a glassy top highlight */
 body[data-theme="aero"] .btn-primary {
   background: linear-gradient(180deg, #5cd0ff 0%, #11a6e6 50%, #0b86c4 100%);
@@ -1155,8 +1156,6 @@ body[data-theme="terminal"] .card, body[data-theme="terminal"] .settings-card { 
    grass, foliage, petals) FADE IN across a sub-range via clamp().
    Only fun presets define these; basic/custom themes ignore --fun.
    ============================================================ */
-body[data-theme="aero"]::before,   body[data-theme="aero"]::after,
-body[data-theme="dusk"]::before,   body[data-theme="dusk"]::after,
 body[data-theme="forest"]::before, body[data-theme="forest"]::after,
 body[data-theme="ocean"]::before,  body[data-theme="ocean"]::after,
 body[data-theme="sunset"]::before, body[data-theme="sunset"]::after,
@@ -1178,26 +1177,8 @@ body[data-theme="sunset"]::after {
   opacity: calc(var(--fun) * 0.55);
 }
 
-/* Frutiger Aero — extra bubbles + a grassy horizon that fades in past ~0.4 */
-body[data-theme="aero"]::before {
-  background: url("/themes/bubbles.svg") repeat; background-size: 340px 340px;
-  opacity: calc(var(--fun) * 0.8); animation: fun-rise 26s linear infinite;
-}
-body[data-theme="aero"]::after {
-  background: radial-gradient(120% 60% at 50% 118%, rgba(120,205,90,0.9) 0%, rgba(120,205,90,0.45) 30%, rgba(120,205,90,0) 62%);
-  opacity: clamp(0, calc((var(--fun) - 0.4) * 2), 0.7);
-}
-
-/* Neon Dusk — stronger neon bloom + a city skyline that fades in past ~0.35 */
-body[data-theme="dusk"]::before {
-  background: radial-gradient(60% 40% at 50% 116%, rgba(255,61,240,0.5) 0%, rgba(255,61,240,0) 60%),
-              radial-gradient(60% 40% at 50% -12%, rgba(34,224,255,0.4) 0%, rgba(34,224,255,0) 60%);
-  opacity: calc(var(--fun) * 0.9);
-}
-body[data-theme="dusk"]::after {
-  background: url("/themes/dusk-skyline.svg") no-repeat bottom center; background-size: 100% auto;
-  opacity: clamp(0, calc((var(--fun) - 0.35) * 2), 0.92);
-}
+/* Frutiger Aero and Neon Dusk decoration is now a full animated SCENE — see the
+   "#theme-scene" section below and public/js/themeScene.js. */
 
 /* Deep Woods — extra foliage texture + a dense foliage silhouette past ~0.4 */
 body[data-theme="forest"]::before {
@@ -1254,6 +1235,110 @@ body[data-theme="cottage"]::before {
 /* Respect reduced-motion: keep the decoration, drop the animation. */
 @media (prefers-reduced-motion: reduce) {
   body[data-theme]::before, body[data-theme]::after { animation: none !important; }
+}
+
+/* ============================================================
+   ANIMATED THEME SCENES (dusk, aero) — built by public/js/themeScene.js.
+   Fixed, full-viewport, BEHIND all content (z-index:-1). Content surfaces are
+   solid, so the scene only shows in margins/gutters — never behind text. Every
+   layer's opacity is driven by var(--fun): 0 => invisible (theme looks exactly as
+   before); layers fade in across sub-ranges as the slider rises. Animations are
+   transform/opacity only (GPU-cheap) and are disabled under prefers-reduced-motion.
+   ============================================================ */
+#theme-scene { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; contain: strict; }
+#theme-scene .sc { position: absolute; inset: 0; will-change: opacity, transform; }
+#theme-scene .sc-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* ---------------- NEON DUSK ---------------- */
+.sc-dusk-sky {
+  opacity: var(--fun);
+  background:
+    linear-gradient(180deg, #0d0a26 0%, #1a1145 30%, #3a1e6b 56%, #6d2a86 74%, #ff3df0 90%, #3a1440 100%);
+}
+.sc-dusk-stars { opacity: clamp(0, calc((var(--fun) - 0.12) * 1.6), 1); }
+.sc-dusk-stars .sc-svg { height: 62%; top: 0; }
+.sc-dusk-moon { opacity: clamp(0, calc((var(--fun) - 0.2) * 1.5), 1); }
+.sc-dusk-far  { opacity: clamp(0, calc((var(--fun) - 0.1) * 1.5), 0.9); animation: sway-far 46s ease-in-out infinite; }
+.sc-dusk-mid  { opacity: clamp(0, calc((var(--fun) - 0.15) * 1.5), 1); animation: sway-mid 38s ease-in-out infinite; }
+.sc-dusk-near { opacity: clamp(0, calc((var(--fun) - 0.25) * 1.7), 1); animation: sway-near 30s ease-in-out infinite; }
+.sc-dusk-haze {
+  opacity: calc(var(--fun) * 0.9); animation: haze 24s ease-in-out infinite;
+  background:
+    radial-gradient(60% 40% at 50% 100%, rgba(255,61,240,0.5) 0%, rgba(255,61,240,0) 62%),
+    radial-gradient(50% 34% at 22% 96%, rgba(34,224,255,0.34) 0%, rgba(34,224,255,0) 60%),
+    radial-gradient(50% 34% at 80% 98%, rgba(120,60,255,0.34) 0%, rgba(120,60,255,0) 60%);
+}
+.sc-dusk-rain {
+  opacity: clamp(0, calc((var(--fun) - 0.2) * 1.1), 0.5);
+  background-image: repeating-linear-gradient(104deg, rgba(190,205,255,0.22) 0, rgba(190,205,255,0.22) 1px, rgba(190,205,255,0) 1px, rgba(190,205,255,0) 9px);
+  background-size: 140px 140px; animation: rain 0.5s linear infinite;
+}
+.sc-dusk-drones .drone {
+  position: absolute; top: var(--y); left: -3%; width: 3px; height: 3px; border-radius: 50%;
+  background: #ff5d7a; box-shadow: 0 0 5px 1px rgba(255,93,122,0.9);
+  animation: drone-fly var(--dur) linear var(--d) infinite, blink 1.1s steps(2) infinite;
+}
+
+/* ---------------- FRUTIGER AERO ---------------- */
+.sc-aero-sky { opacity: var(--fun); background: linear-gradient(180deg, #7fd2ff 0%, #a6e2ff 52%, #d3f3ff 82%, #eafcff 100%); }
+.sc-aero-sun { opacity: calc(var(--fun) * 0.95); }
+.sc-aero-sun .sun-rays { animation: spin 90s linear infinite; }
+.sc-aero-clouds-far  { opacity: clamp(0, calc((var(--fun) - 0.1) * 1.4), 0.9);  animation: drift-far 90s ease-in-out infinite; }
+.sc-aero-clouds-near { opacity: clamp(0, calc((var(--fun) - 0.2) * 1.4), 0.95); animation: drift-near 60s ease-in-out infinite; }
+.sc-aero-city  { opacity: clamp(0, calc((var(--fun) - 0.3) * 1.6), 1); }
+.sc-aero-city .sc-svg  { height: 64%; top: auto; bottom: 30%; }
+.sc-aero-field { opacity: clamp(0, calc((var(--fun) - 0.05) * 1.6), 1); }
+.sc-aero-field .sc-svg { height: 46%; top: auto; bottom: 0; }
+.sc-aero-orb   { opacity: clamp(0, calc((var(--fun) - 0.35) * 1.5), 0.9); animation: float 16s ease-in-out infinite; }
+.sc-aero-sparkles { opacity: clamp(0, calc((var(--fun) - 0.3) * 1.6), 1); }
+.sc-aero-sparkles .sc-svg { height: 46%; top: auto; bottom: 0; }
+.sc-aero-bubbles { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.3), 0.92); }
+.sc-aero-bubbles .bubble {
+  position: absolute; bottom: -8%; left: var(--l); width: var(--sz); height: var(--sz); border-radius: 50%;
+  background: radial-gradient(38% 34% at 36% 32%, rgba(255,255,255,0.7) 0%, rgba(217,244,255,0.14) 44%, rgba(167,224,255,0.26) 78%, rgba(255,209,240,0.2) 100%);
+  box-shadow: inset 0 0 7px rgba(255,255,255,0.55), 0 0 4px rgba(120,200,240,0.4);
+  animation: bubble-rise var(--dur) linear var(--d) infinite;
+}
+.sc-aero-bfly { opacity: clamp(0, calc((var(--fun) - 0.45) * 2), 1); }
+.sc-aero-bfly .bfly-path { position: absolute; width: 46px; height: 40px; left: 55%; top: 60%; animation: bfly-drift 30s ease-in-out infinite; }
+.sc-aero-bfly .sc-bfly-svg { width: 100%; height: 100%; animation: bfly-flap 0.32s ease-in-out infinite; }
+
+/* twinkles + flickers (shared; used by inline SVG stars / windows / sparkles) */
+#theme-scene .tw { animation: twinkle 3s ease-in-out infinite; animation-delay: var(--d, 0s); }
+#theme-scene .flick { animation: flick 4.5s steps(1) infinite; animation-delay: var(--d, 0s); }
+
+@keyframes twinkle { 0%,100% { opacity: 0.25; } 50% { opacity: 1; } }
+@keyframes flick { 0%,42%,58%,100% { opacity: 0.9; } 48% { opacity: 0.12; } 52% { opacity: 0.7; } }
+@keyframes rain { to { background-position: -160px 140px; } }
+@keyframes sway-far  { 0%,100% { transform: translateX(-8px); } 50% { transform: translateX(8px); } }
+@keyframes sway-mid  { 0%,100% { transform: translateX(5px); } 50% { transform: translateX(-5px); } }
+@keyframes sway-near { 0%,100% { transform: translateX(12px); } 50% { transform: translateX(-12px); } }
+@keyframes haze { 0%,100% { opacity: calc(var(--fun) * 0.7); } 50% { opacity: calc(var(--fun) * 1); } }
+@keyframes drone-fly { from { transform: translateX(0); } to { transform: translateX(110vw); } }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.15; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes drift-far  { 0%,100% { transform: translateX(-2%); } 50% { transform: translateX(2%); } }
+@keyframes drift-near { 0%,100% { transform: translateX(3%); } 50% { transform: translateX(-3%); } }
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+@keyframes bubble-rise {
+  0% { transform: translate(0, 0) scale(0.9); opacity: 0; }
+  12% { opacity: 1; }
+  50% { transform: translate(var(--sway), -55vh) scale(1); }
+  88% { opacity: 1; }
+  100% { transform: translate(0, -112vh) scale(1.05); opacity: 0; }
+}
+@keyframes bfly-flap { 0%,100% { transform: scaleX(1); } 50% { transform: scaleX(0.45); } }
+@keyframes bfly-drift {
+  0%   { transform: translate(0, 0) rotate(4deg); }
+  25%  { transform: translate(-160px, -60px) rotate(-6deg); }
+  50%  { transform: translate(-320px, 20px) rotate(5deg); }
+  75%  { transform: translate(-180px, 80px) rotate(-4deg); }
+  100% { transform: translate(0, 0) rotate(4deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #theme-scene .sc, #theme-scene .tw, #theme-scene .flick,
+  #theme-scene .drone, #theme-scene .bubble, #theme-scene .bfly-path,
+  #theme-scene .sc-bfly-svg, #theme-scene .sun-rays { animation: none !important; }
 }
 
 /* ---------- Row selection ---------- */
