@@ -334,7 +334,7 @@
   function cotPath() {
     let stones = "";
     for (let t = 0; t <= 1; t += 0.03) {
-      const y = 620 - t * 360, cx = 800 + Math.sin(t * 4) * 120 * (1 - t) * 0.6 - t * 30, w = (1 - t) * 120 + 20;
+      const y = 620 - t * 168, cx = 800 + Math.sin(t * 3.4) * 96 * (1 - t) - t * 24, w = (1 - t) * 120 + 24;
       for (let k = -1; k <= 1; k++) { const sx = cx + k * (w / 3); stones += `<ellipse cx="${sx.toFixed(0)}" cy="${y.toFixed(0)}" rx="${(9 * (1 - t) + 3).toFixed(1)}" ry="${(5 * (1 - t) + 2).toFixed(1)}" fill="${pick(["#d9cdb6", "#cfc2a8", "#e2d8c4"])}" stroke="#b9a988" stroke-width="0.6"/>`; }
     }
     return svg("1600 620", stones, ' preserveAspectRatio="xMidYMax slice"');
@@ -357,8 +357,8 @@
       layer("sc-cot-hills", cotHills()) +
       layer("sc-cot-village", cotVillage()) +
       layer("sc-cot-trees", cotTrees()) +
-      layer("sc-cot-cottages", cotCottages()) +
       layer("sc-cot-path", cotPath()) +
+      layer("sc-cot-cottages", cotCottages()) +
       layer("sc-cot-fg", cotForeground()) +
       layer("sc-cot-fireflies", cotFireflies());
   }
@@ -412,6 +412,116 @@
       layer("sc-vap-shoot", `<span class="shoot"></span>`);
   }
 
+  /* =====================================================================
+     DEEP WOODS — misty old-growth forest at dusk
+     ===================================================================== */
+  function forTrunks(opts) {
+    const { w, h, count, minW, maxW, color, canopy, lean } = opts;
+    let o = "", x = R(0, w / count);
+    for (let i = 0; i < count; i++) {
+      const tw = R(minW, maxW), th = R(h * 0.6, h * 0.98), lx = R(-lean, lean);
+      o += `<path d="M${x.toFixed(0)} ${h} L${(x + tw).toFixed(0)} ${h} L${(x + tw + lx).toFixed(0)} ${(h - th).toFixed(0)} L${(x + lx).toFixed(0)} ${(h - th).toFixed(0)} Z" fill="${color}"/>`;
+      if (canopy) { const cx = x + tw / 2 + lx, cy = h - th; o += `<circle cx="${cx.toFixed(0)}" cy="${cy.toFixed(0)}" r="${R(30, 54).toFixed(0)}" fill="${canopy}"/><circle cx="${(cx - 24).toFixed(0)}" cy="${(cy + 14).toFixed(0)}" r="${R(20, 34).toFixed(0)}" fill="${canopy}"/><circle cx="${(cx + 24).toFixed(0)}" cy="${(cy + 14).toFixed(0)}" r="${R(20, 34).toFixed(0)}" fill="${canopy}"/>`; }
+      x += w / count + R(-18, 18);
+    }
+    return svg(`${w} ${h}`, o, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function forNear() {
+    const trunk = (x, wd, dir) => {
+      let o = `<path d="M${x} 620 L${x + wd} 620 L${x + wd - 6} 30 L${x + 6} 30 Z" fill="#0e1a12"/>`;
+      o += `<path d="M${x + (dir > 0 ? wd : 0)} 620 q ${dir * 34} -34 ${dir * 78} -20 q ${dir * -22} 22 ${dir * -78} 20 Z" fill="#0e1a12"/>`;
+      o += `<path d="M${(x + wd / 2).toFixed(0)} 60 L${(x + wd / 2).toFixed(0)} 600" stroke="#1c2e22" stroke-width="3" opacity="0.6"/>`;
+      const bx = x + (dir > 0 ? 0 : wd);
+      o += `<path d="M${bx} 210 q ${dir * 130} -34 ${dir * 240} 22" fill="none" stroke="#0e1a12" stroke-width="11" stroke-linecap="round"/>`;
+      for (let i = 0; i < 6; i++) o += `<circle cx="${(bx + dir * (60 + i * 34)).toFixed(0)}" cy="${(198 + R(-10, 10)).toFixed(0)}" r="13" fill="#1e3324"/>`;
+      return o;
+    };
+    return svg("1600 620", trunk(-12, 116, 1) + trunk(1496, 116, -1), ' preserveAspectRatio="none"');
+  }
+  function forFloor() {
+    let bushes = "";
+    for (let i = 0; i < 26; i++) { const x = R(0, 1600), y = R(556, 610), s = R(0.5, 1.3); bushes += `<g transform="translate(${x.toFixed(0)} ${y.toFixed(0)}) scale(${s.toFixed(2)})"><path d="M0 0 q -18 -30 -34 -6 M0 0 q -8 -36 -2 -2 M0 0 q 18 -30 34 -6 M0 0 q 8 -34 2 -2" stroke="#1f3a28" stroke-width="3" fill="none" stroke-linecap="round"/></g>`; }
+    let flowers = "";
+    for (let i = 0; i < 20; i++) { const x = R(0, 1600), y = R(558, 612); flowers += `<circle class="glow-fl" style="--d:${R(0, 3).toFixed(2)}s" cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="3" fill="#eaff8a"/>`; }
+    return svg("1600 620", `<rect x="0" y="582" width="1600" height="38" fill="#132018" opacity="0.6"/>${bushes}${flowers}`, ' preserveAspectRatio="none"');
+  }
+  function forMotes() {
+    let o = "";
+    for (let i = 0; i < 14; i++) { const l = R(4, 96), t = R(30, 88), dur = R(7, 14), d = R(-12, 0); o += `<span class="mote" style="--l:${l.toFixed(1)}%;--t:${t.toFixed(1)}%;--dur:${dur.toFixed(1)}s;--d:${d.toFixed(1)}s"></span>`; }
+    return o;
+  }
+  function buildForest(sc) {
+    sc.innerHTML =
+      layer("sc-for-fog") +
+      layer("sc-for-far", forTrunks({ w: 1600, h: 620, count: 16, minW: 8, maxW: 16, color: "#39514a", canopy: null, lean: 14 })) +
+      layer("sc-for-rays") +
+      layer("sc-for-mid", forTrunks({ w: 1600, h: 620, count: 9, minW: 26, maxW: 48, color: "#152318", canopy: "#1e3324", lean: 22 })) +
+      layer("sc-for-haze") +
+      layer("sc-for-near", forNear()) +
+      layer("sc-for-floor", forFloor()) +
+      layer("sc-for-motes", forMotes());
+  }
+
+  /* =====================================================================
+     GOLDEN HOUR — dramatic sunset cloudscape (sky is the hero)
+     ===================================================================== */
+  function sunGlow() {
+    let rays = "";
+    for (let i = 0; i < 14; i++) { const ang = (-90 + (i - 7) * 13) * Math.PI / 180, x2 = 800 + Math.cos(ang) * 900, y2 = 770 + Math.sin(ang) * 900; rays += `<line class="ray" x1="800" y1="770" x2="${x2.toFixed(0)}" y2="${y2.toFixed(0)}" stroke="#fff2c8" stroke-width="${R(6, 16).toFixed(0)}" opacity="0.14" stroke-linecap="round"/>`; }
+    return svg("1600 900",
+      `<defs><radialGradient id="sglow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#fffdf2"/><stop offset="24%" stop-color="#ffe8b0" stop-opacity="0.8"/><stop offset="60%" stop-color="#ff9e5c" stop-opacity="0.25"/><stop offset="100%" stop-color="#ff9e5c" stop-opacity="0"/></radialGradient></defs>
+      <g class="sun-rays" style="transform-origin:800px 770px">${rays}</g>
+      <circle cx="800" cy="778" r="360" fill="url(#sglow)"/>
+      <circle cx="800" cy="784" r="66" fill="#fffef6"/>`, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function cloudMass(cx, cy, s, lit, shadow) {
+    return `<g transform="translate(${cx} ${cy}) scale(${s})">
+      <circle cx="-80" cy="-2" r="38" fill="${shadow}"/><circle cx="-30" cy="-22" r="54" fill="${shadow}"/><circle cx="40" cy="-16" r="48" fill="${shadow}"/><circle cx="98" cy="0" r="34" fill="${shadow}"/>
+      <ellipse cx="0" cy="16" rx="156" ry="26" fill="${lit}"/>
+      <circle cx="-30" cy="6" r="40" fill="${lit}" opacity="0.55"/><circle cx="46" cy="10" r="30" fill="${lit}" opacity="0.5"/>
+    </g>`;
+  }
+  function sunFar() {
+    let o = "";
+    for (let i = 0; i < 7; i++) { const x = R(100, 1500), y = R(150, 340), w = R(120, 300); o += `<ellipse cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" rx="${w.toFixed(0)}" ry="${R(6, 12).toFixed(0)}" fill="#ffd9a0" opacity="0.5"/>`; }
+    return svg("1600 620", o, ' preserveAspectRatio="none"');
+  }
+  function sunMid() {
+    const lits = ["#ffcf86", "#ffb867", "#ffd89a"], shadows = ["#c76a3c", "#b8562f", "#a94e33"];
+    let o = "";
+    for (const [x, y, s] of [[360, 300, 1.15], [820, 250, 1.35], [1240, 320, 1.1], [600, 400, 0.9], [1050, 420, 0.85]]) o += cloudMass(x, y, s, pick(lits), pick(shadows));
+    return svg("1600 620", o, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function sunNear() {
+    let o = "";
+    for (let i = 0; i < 4; i++) { const x = R(0, 1400), y = R(430, 540), w = R(200, 380); o += `<ellipse cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" rx="${w.toFixed(0)}" ry="${R(14, 24).toFixed(0)}" fill="#7a3a3f" opacity="0.5"/>`; }
+    return svg("1600 620", o, ' preserveAspectRatio="none"');
+  }
+  function sunBirds() {
+    let o = "";
+    for (let i = 0; i < 7; i++) { const x = R(300, 1300), y = R(160, 360), s = R(0.7, 1.3); o += `<g class="bird" style="--x:${x.toFixed(0)}px;--y:${y.toFixed(0)}px;--d:${R(0, 0.6).toFixed(2)}s"><path d="M${(-10 * s).toFixed(0)} 0 Q ${(-5 * s).toFixed(0)} ${(-6 * s).toFixed(0)} 0 0 Q ${(5 * s).toFixed(0)} ${(-6 * s).toFixed(0)} ${(10 * s).toFixed(0)} 0" fill="none" stroke="#3a2530" stroke-width="2.4" stroke-linecap="round"/></g>`; }
+    return svg("1600 620", o, ' preserveAspectRatio="none"');
+  }
+  function sunStars() {
+    let o = "";
+    for (let i = 0; i < 26; i++) { const x = R(0, 1600), y = R(0, 150); o += `<circle class="tw" style="--d:${R(0, 4).toFixed(2)}s" cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${R(0.6, 1.4).toFixed(1)}" fill="#ffe9c2" opacity="0.8"/>`; }
+    return svg("1600 340", o, ' preserveAspectRatio="none"');
+  }
+  function sunHorizon() {
+    return svg("1600 620", `<path d="M0 560 q 300 -26 640 -10 q 400 20 960 -8 V620 H0 Z" fill="#5a3838" opacity="0.7"/>`, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function buildSunset(sc) {
+    sc.innerHTML =
+      layer("sc-sun-sky") +
+      layer("sc-sun-glow", sunGlow()) +
+      layer("sc-sun-stars", sunStars()) +
+      layer("sc-sun-far", sunFar()) +
+      layer("sc-sun-horizon", sunHorizon()) +
+      layer("sc-sun-mid", sunMid()) +
+      layer("sc-sun-near", sunNear()) +
+      layer("sc-sun-birds", sunBirds());
+  }
+
   let current = null;
   function mount(themeId) {
     const sc = ensure();
@@ -421,6 +531,8 @@
     else if (themeId === "aero") buildAero(sc);
     else if (themeId === "cottage") buildCottage(sc);
     else if (themeId === "vaporwave") buildVaporwave(sc);
+    else if (themeId === "forest") buildForest(sc);
+    else if (themeId === "sunset") buildSunset(sc);
     else { sc.innerHTML = ""; } // no scene for other themes
   }
 

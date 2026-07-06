@@ -40,7 +40,7 @@ let fails = 0;
 function check(cond: boolean, label: string) { console.log(`  ${cond ? "\u2713" : "\u2717"} ${label}`); if (!cond) fails++; }
 
 console.log("Scene themes legibility (parsed from styles.css)\n================================================");
-for (const theme of ["dusk", "aero", "cottage", "vaporwave"]) {
+for (const theme of ["dusk", "aero", "cottage", "vaporwave", "forest", "sunset"]) {
   const blk = block(theme);
   const panel = readVar(blk, "panel");
   const ink = readVar(blk, "ink");

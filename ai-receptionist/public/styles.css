@@ -1065,12 +1065,15 @@ body[data-theme="forest"] .page-title, body[data-theme="forest"] .settings-h { f
 
 /* ---- Fun: Golden Hour / Sunset (warm gradient, no image) ---- */
 body[data-theme="sunset"] {
-  --bg: #fbe3cf; --panel: rgba(255,250,245,0.9); --panel-2: rgba(255,244,234,0.85);
+  --bg: #fbe3cf;
+  /* SOLID surfaces (was translucent) so scenery never shows through text. */
+  --panel: #fff6ec; --panel-2: #fdeede;
   --ink: #3a2a33; --ink-soft: #6e5560; --ink-faint: #66525c;
   --line: #f0d9c8; --line-strong: #e6c3ab;
   --accent: #e8743c; --accent-soft: #fbe6d6; --accent-strong: #cf5f2c;
   --amber: #d98a1f; --amber-soft: #fbe6cf; --green: #5aa17a; --green-soft: #e2f0e8; --red: #d8504a; --red-soft: #fbe0de;
-  --gray-soft: #f7e6d8; --row-hover: rgba(255,240,228,0.8); --on-accent: #fff;
+  --gray-soft: #f7e6d8; --row-hover: #fdeedd; --on-accent: #fff;
+  --sidebar-bg: #fff2e4; --topbar-bg: #fff2e4;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
   --radius: 14px; --radius-sm: 10px;
   background: linear-gradient(160deg, #ffd9a8 0%, #ffb98f 35%, #f5907a 65%, #b98fd0 100%) fixed;
@@ -1156,37 +1159,15 @@ body[data-theme="terminal"] .card, body[data-theme="terminal"] .settings-card { 
    grass, foliage, petals) FADE IN across a sub-range via clamp().
    Only fun presets define these; basic/custom themes ignore --fun.
    ============================================================ */
-body[data-theme="forest"]::before, body[data-theme="forest"]::after,
 body[data-theme="ocean"]::before,  body[data-theme="ocean"]::after,
-body[data-theme="sunset"]::before, body[data-theme="sunset"]::after,
 body[data-theme="terminal"]::before, body[data-theme="terminal"]::after,
 body[data-theme="sakura"]::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background-repeat: no-repeat; background-position: center; will-change: opacity;
 }
 
-/* Golden Hour — soft sun glow + a warmer sky wash */
-body[data-theme="sunset"]::before {
-  background: radial-gradient(46% 42% at 72% 8%, rgba(255,214,150,0.85) 0%, rgba(255,190,120,0.35) 38%, rgba(255,190,120,0) 70%);
-  opacity: calc(var(--fun) * 0.95);
-}
-body[data-theme="sunset"]::after {
-  background: linear-gradient(160deg, rgba(255,150,90,0.35) 0%, rgba(255,120,110,0.12) 45%, rgba(180,120,190,0) 80%);
-  opacity: calc(var(--fun) * 0.55);
-}
-
-/* Frutiger Aero and Neon Dusk decoration is now a full animated SCENE — see the
-   "#theme-scene" section below and public/js/themeScene.js. */
-
-/* Deep Woods — extra foliage texture + a dense foliage silhouette past ~0.4 */
-body[data-theme="forest"]::before {
-  background: url("/themes/leaves.svg") repeat; background-size: 300px 300px;
-  opacity: calc(var(--fun) * 0.7);
-}
-body[data-theme="forest"]::after {
-  background: url("/themes/forest-foliage.svg") no-repeat bottom center; background-size: 100% auto;
-  opacity: clamp(0, calc((var(--fun) - 0.4) * 2), 0.85);
-}
+/* Golden Hour and Deep Woods decoration is now a full animated SCENE — see the
+   "#theme-scene" section and public/js/themeScene.js. */
 
 /* Deep Sea — drifting light rays + rising bubbles */
 body[data-theme="ocean"]::before {
@@ -1333,6 +1314,35 @@ body[data-theme="sakura"]::before {
 .sc-vap-shoot { opacity: clamp(0, calc((var(--fun) - 0.55) * 2), 1); }
 .sc-vap-shoot .shoot { position: absolute; top: 16%; left: 0; width: 130px; height: 2px; background: linear-gradient(90deg, rgba(255,255,255,0), #ffffff); box-shadow: 0 0 8px #fff; animation: shoot 8s ease-in infinite; }
 
+/* ---------------- DEEP WOODS (forest) ---------------- */
+.sc-for-fog { opacity: var(--fun); background: linear-gradient(180deg, #22302a 0%, #3c4c47 30%, #566661 48%, #2c3c34 66%, #1a271f 100%); }
+.sc-for-far { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.4), 0.7); animation: sway-far 60s ease-in-out infinite; }
+.sc-for-far .sc-svg { filter: blur(1.2px); }
+.sc-for-rays { opacity: calc(var(--fun) * 0.5); animation: rays 15s ease-in-out infinite; background: linear-gradient(112deg, transparent 30%, rgba(220,240,220,0.10) 40%, transparent 47%, transparent 60%, rgba(220,240,220,0.08) 68%, transparent 75%); }
+.sc-for-mid { opacity: clamp(0, calc((var(--fun) - 0.15) * 1.5), 1); animation: sway-mid 46s ease-in-out infinite; }
+.sc-for-haze { opacity: calc(var(--fun) * 0.55); animation: haze 26s ease-in-out infinite; background: linear-gradient(180deg, transparent 40%, rgba(150,175,168,0.18) 58%, rgba(150,175,168,0.05) 70%, transparent 82%); }
+.sc-for-near { opacity: clamp(0, calc((var(--fun) - 0.25) * 1.7), 1); animation: sway-near 34s ease-in-out infinite; }
+.sc-for-floor { opacity: clamp(0, calc((var(--fun) - 0.05) * 1.4), 1); }
+.sc-for-floor .sc-svg { height: 26%; top: auto; bottom: 0; }
+.sc-for-motes { opacity: clamp(0, calc((var(--fun) - 0.4) * 1.6), 1); }
+.sc-for-motes .mote { position: absolute; left: var(--l); top: var(--t); width: 4px; height: 4px; border-radius: 50%; background: #d6ff9e; box-shadow: 0 0 7px 2px rgba(190,255,140,0.8); animation: firefly var(--dur) ease-in-out var(--d) infinite; }
+#theme-scene .glow-fl { animation: glow-fl 3s ease-in-out infinite; animation-delay: var(--d, 0s); filter: drop-shadow(0 0 3px #cfff7a); }
+
+/* ---------------- GOLDEN HOUR (sunset) ---------------- */
+.sc-sun-sky { opacity: var(--fun); background: linear-gradient(180deg, #3a2a33 0%, #7a3a2e 26%, #d85f2c 48%, #e8743c 62%, #f8c69a 82%, #ffe9c8 100%); }
+.sc-sun-glow { opacity: clamp(0, calc((var(--fun) - 0.1) * 1.5), 1); }
+.sc-sun-glow .sun-rays { animation: spin 120s linear infinite; }
+.sc-sun-stars { opacity: clamp(0, calc((var(--fun) - 0.6) * 2), 1); }
+.sc-sun-stars .sc-svg { height: 40%; top: 0; }
+.sc-sun-far { opacity: clamp(0, calc((var(--fun) - 0.1) * 1.4), 0.9); animation: drift-far 90s ease-in-out infinite; }
+.sc-sun-horizon { opacity: clamp(0, calc((var(--fun) - 0.2) * 1.4), 1); }
+.sc-sun-horizon .sc-svg { height: 34%; top: auto; bottom: 26%; }
+.sc-sun-mid { opacity: clamp(0, calc((var(--fun) - 0.15) * 1.5), 1); animation: drift-near 70s ease-in-out infinite; }
+.sc-sun-mid .sc-svg { height: 60%; top: auto; bottom: 22%; }
+.sc-sun-near { opacity: clamp(0, calc((var(--fun) - 0.25) * 1.4), 0.85); animation: drift-far 52s ease-in-out infinite; }
+.sc-sun-birds { opacity: clamp(0, calc((var(--fun) - 0.4) * 1.8), 1); animation: drift-far 80s ease-in-out infinite; }
+#theme-scene .bird { animation: bird-flap 0.7s ease-in-out infinite; animation-delay: var(--d, 0s); transform: translate(var(--x), var(--y)); }
+
 /* twinkles + flickers (shared; used by inline SVG stars / windows / sparkles) */
 #theme-scene .tw { animation: twinkle 3s ease-in-out infinite; animation-delay: var(--d, 0s); }
 #theme-scene .flick { animation: flick 4.5s steps(1) infinite; animation-delay: var(--d, 0s); }
@@ -1363,6 +1373,9 @@ body[data-theme="sakura"]::before {
 @keyframes sun-pulse { 0%,100% { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.5), 0.88); } 50% { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.5), 1); } }
 @keyframes grid-scroll { from { background-position: 0 0, 0 0; } to { background-position: 0 40px, 0 0; } }
 @keyframes shoot { 0%,72% { transform: translate(0,0) rotate(13deg); opacity: 0; } 74% { opacity: 1; } 84% { transform: translate(128vw,26vh) rotate(13deg); opacity: 0; } 100% { opacity: 0; } }
+@keyframes rays { 0%,100% { transform: translateX(-3%); opacity: 0.8; } 50% { transform: translateX(3%); opacity: 1; } }
+@keyframes glow-fl { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+@keyframes bird-flap { 0%,100% { transform: translate(var(--x),var(--y)) scaleY(1); } 50% { transform: translate(var(--x),var(--y)) scaleY(0.5); } }
 @keyframes bfly-drift {
   0%   { transform: translate(0, 0) rotate(4deg); }
   25%  { transform: translate(-160px, -60px) rotate(-6deg); }
@@ -1374,7 +1387,8 @@ body[data-theme="sakura"]::before {
   #theme-scene .sc, #theme-scene .tw, #theme-scene .flick,
   #theme-scene .drone, #theme-scene .bubble, #theme-scene .bfly-path,
   #theme-scene .sc-bfly-svg, #theme-scene .sun-rays,
-  #theme-scene .smoke, #theme-scene .firefly, #theme-scene .vap-plane, #theme-scene .shoot { animation: none !important; }
+  #theme-scene .smoke, #theme-scene .firefly, #theme-scene .vap-plane, #theme-scene .shoot,
+  #theme-scene .glow-fl, #theme-scene .mote, #theme-scene .bird { animation: none !important; }
 }
 
 /* ---------- Row selection ---------- */
