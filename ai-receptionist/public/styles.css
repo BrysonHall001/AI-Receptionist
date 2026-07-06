@@ -1160,9 +1160,7 @@ body[data-theme="forest"]::before, body[data-theme="forest"]::after,
 body[data-theme="ocean"]::before,  body[data-theme="ocean"]::after,
 body[data-theme="sunset"]::before, body[data-theme="sunset"]::after,
 body[data-theme="terminal"]::before, body[data-theme="terminal"]::after,
-body[data-theme="vaporwave"]::before,
-body[data-theme="sakura"]::before,
-body[data-theme="cottage"]::before {
+body[data-theme="sakura"]::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background-repeat: no-repeat; background-position: center; will-change: opacity;
 }
@@ -1210,23 +1208,13 @@ body[data-theme="terminal"]::after {
   opacity: calc(var(--fun) * 0.5);
 }
 
-/* Vaporwave — stronger sun/grid bloom */
-body[data-theme="vaporwave"]::before {
-  background: radial-gradient(60% 44% at 50% 8%, rgba(255,106,213,0.5) 0%, rgba(255,106,213,0) 60%),
-              radial-gradient(70% 50% at 50% 100%, rgba(107,225,255,0.4) 0%, rgba(107,225,255,0) 60%);
-  opacity: calc(var(--fun) * 0.75);
-}
+/* Vaporwave and Cottage Warm decoration is now a full animated SCENE — see the
+   "#theme-scene" section and public/js/themeScene.js. */
 
 /* Cherry Blossom — drifting petals that fade in past ~0.15 */
 body[data-theme="sakura"]::before {
   background: url("/themes/sakura-petals.svg") repeat; background-size: 260px 260px;
   opacity: clamp(0, calc((var(--fun) - 0.15) * 1.4), 0.85); animation: fun-fall 24s linear infinite;
-}
-
-/* Cottage Warm — soft hearth glow */
-body[data-theme="cottage"]::before {
-  background: radial-gradient(60% 50% at 50% 0%, rgba(200,132,60,0.28) 0%, rgba(200,132,60,0) 60%);
-  opacity: calc(var(--fun) * 0.6);
 }
 
 @keyframes fun-rise { from { background-position: 0 0; } to { background-position: 0 -340px; } }
@@ -1303,6 +1291,48 @@ body[data-theme="cottage"]::before {
 .sc-aero-bfly .bfly-path { position: absolute; width: 46px; height: 40px; left: 55%; top: 60%; animation: bfly-drift 30s ease-in-out infinite; }
 .sc-aero-bfly .sc-bfly-svg { width: 100%; height: 100%; animation: bfly-flap 0.32s ease-in-out infinite; }
 
+/* ---------------- COTTAGE WARM ---------------- */
+.sc-cot-sky { opacity: var(--fun); background: linear-gradient(180deg, #cfe0e6 0%, #e3e2d4 46%, #f7e7cf 78%, #f9ead4 100%); }
+.sc-cot-sun { opacity: clamp(0, calc((var(--fun) - 0.15) * 1.5), 1); animation: float 20s ease-in-out infinite; }
+.sc-cot-hills { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.5), 1); animation: sway-far 52s ease-in-out infinite; }
+.sc-cot-hills .sc-svg { height: 62%; top: auto; bottom: 0; }
+.sc-cot-village { opacity: clamp(0, calc((var(--fun) - 0.3) * 1.5), 1); }
+.sc-cot-village .sc-svg { height: 62%; top: auto; bottom: 0; }
+.sc-cot-trees { opacity: clamp(0, calc((var(--fun) - 0.15) * 1.4), 1); animation: sway-mid 40s ease-in-out infinite; }
+.sc-cot-trees .sc-svg { height: 52%; top: auto; bottom: 0; }
+.sc-cot-cottages { opacity: clamp(0, calc((var(--fun) - 0.15) * 1.5), 1); }
+.sc-cot-cottages .sc-svg { height: 52%; top: auto; bottom: 0; }
+.sc-cot-path { opacity: clamp(0, calc((var(--fun) - 0.2) * 1.4), 1); }
+.sc-cot-path .sc-svg { height: 52%; top: auto; bottom: 0; }
+.sc-cot-fg { opacity: clamp(0, calc((var(--fun) - 0.05) * 1.4), 1); }
+.sc-cot-fg .sc-svg { height: 40%; top: auto; bottom: 0; }
+.sc-cot-fireflies { opacity: clamp(0, calc((var(--fun) - 0.6) * 2), 1); }
+.sc-cot-fireflies .firefly { position: absolute; left: var(--l); top: var(--t); width: 5px; height: 5px; border-radius: 50%; background: #fff6b0; box-shadow: 0 0 8px 2px rgba(255,235,130,0.85); animation: firefly var(--dur) ease-in-out var(--d) infinite; }
+#theme-scene .smoke { animation: smoke 4.2s ease-in-out infinite; animation-delay: var(--d, 0s); }
+
+/* ---------------- VAPORWAVE ---------------- */
+.sc-vap-sky { opacity: var(--fun); background: linear-gradient(180deg, #1a1130 0%, #3a1a63 32%, #a12a8e 58%, #ff2d95 80%, #ff7b3d 95%, #ffb06a 100%); }
+.sc-vap-scan { opacity: calc(var(--fun) * 0.16); background: repeating-linear-gradient(0deg, rgba(0,0,0,0.5) 0, rgba(0,0,0,0.5) 1px, transparent 1px, transparent 3px); }
+.sc-vap-stars { opacity: clamp(0, calc((var(--fun) - 0.12) * 1.6), 1); }
+.sc-vap-stars .sc-svg { height: 56%; top: 0; }
+.sc-vap-sun { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.5), 1); animation: sun-pulse 6s ease-in-out infinite; }
+.sc-vap-mtn { opacity: clamp(0, calc((var(--fun) - 0.15) * 1.5), 1); }
+.sc-vap-mtn .sc-svg { height: 42%; top: auto; bottom: 34%; }
+.sc-vap-palms { opacity: clamp(0, calc((var(--fun) - 0.2) * 1.5), 1); animation: sway-near 34s ease-in-out infinite; }
+.sc-vap-palms .sc-svg { height: 64%; top: auto; bottom: 30%; }
+.sc-vap-glow { opacity: calc(var(--fun) * 0.8); background: radial-gradient(70% 30% at 50% 66%, rgba(255,60,180,0.5) 0%, rgba(255,60,180,0) 60%), radial-gradient(60% 24% at 50% 66%, rgba(0,240,255,0.3) 0%, rgba(0,240,255,0) 60%); }
+.sc-vap-grid { opacity: clamp(0, calc((var(--fun) - 0.1) * 1.4), 1); perspective: 300px; perspective-origin: 50% 0%; }
+.sc-vap-grid .vap-plane {
+  position: absolute; left: -50%; width: 200%; bottom: 0; height: 42%;
+  transform: rotateX(80deg); transform-origin: 50% 100%;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,240,255,0) 0, rgba(0,240,255,0) 38px, rgba(0,240,255,0.85) 38px, rgba(0,240,255,0.85) 40px),
+    repeating-linear-gradient(90deg, rgba(255,45,149,0) 0, rgba(255,45,149,0) 38px, rgba(255,45,149,0.75) 38px, rgba(255,45,149,0.75) 40px);
+  animation: grid-scroll 1.1s linear infinite;
+}
+.sc-vap-shoot { opacity: clamp(0, calc((var(--fun) - 0.55) * 2), 1); }
+.sc-vap-shoot .shoot { position: absolute; top: 16%; left: 0; width: 130px; height: 2px; background: linear-gradient(90deg, rgba(255,255,255,0), #ffffff); box-shadow: 0 0 8px #fff; animation: shoot 8s ease-in infinite; }
+
 /* twinkles + flickers (shared; used by inline SVG stars / windows / sparkles) */
 #theme-scene .tw { animation: twinkle 3s ease-in-out infinite; animation-delay: var(--d, 0s); }
 #theme-scene .flick { animation: flick 4.5s steps(1) infinite; animation-delay: var(--d, 0s); }
@@ -1328,6 +1358,11 @@ body[data-theme="cottage"]::before {
   100% { transform: translate(0, -112vh) scale(1.05); opacity: 0; }
 }
 @keyframes bfly-flap { 0%,100% { transform: scaleX(1); } 50% { transform: scaleX(0.45); } }
+@keyframes firefly { 0%,100% { transform: translate(0,0); opacity: 0.15; } 25% { opacity: 1; } 50% { transform: translate(20px,-16px); opacity: 0.6; } 75% { opacity: 1; } }
+@keyframes smoke { 0% { transform: translate(0,0); opacity: 0; } 16% { opacity: 0.6; } 100% { transform: translate(11px,-52px); opacity: 0; } }
+@keyframes sun-pulse { 0%,100% { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.5), 0.88); } 50% { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.5), 1); } }
+@keyframes grid-scroll { from { background-position: 0 0, 0 0; } to { background-position: 0 40px, 0 0; } }
+@keyframes shoot { 0%,72% { transform: translate(0,0) rotate(13deg); opacity: 0; } 74% { opacity: 1; } 84% { transform: translate(128vw,26vh) rotate(13deg); opacity: 0; } 100% { opacity: 0; } }
 @keyframes bfly-drift {
   0%   { transform: translate(0, 0) rotate(4deg); }
   25%  { transform: translate(-160px, -60px) rotate(-6deg); }
@@ -1338,7 +1373,8 @@ body[data-theme="cottage"]::before {
 @media (prefers-reduced-motion: reduce) {
   #theme-scene .sc, #theme-scene .tw, #theme-scene .flick,
   #theme-scene .drone, #theme-scene .bubble, #theme-scene .bfly-path,
-  #theme-scene .sc-bfly-svg, #theme-scene .sun-rays { animation: none !important; }
+  #theme-scene .sc-bfly-svg, #theme-scene .sun-rays,
+  #theme-scene .smoke, #theme-scene .firefly, #theme-scene .vap-plane, #theme-scene .shoot { animation: none !important; }
 }
 
 /* ---------- Row selection ---------- */

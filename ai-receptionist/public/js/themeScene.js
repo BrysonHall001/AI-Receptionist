@@ -269,6 +269,149 @@
       layer("sc-aero-bfly", `<div class="bfly-path">${aeroButterfly()}</div>`);
   }
 
+  /* =====================================================================
+     COTTAGE WARM — storybook village in rolling hills at golden hour
+     ===================================================================== */
+  function cotSun() {
+    return svg("1600 900",
+      `<defs><radialGradient id="cotsun" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff7e0"/><stop offset="30%" stop-color="#ffe6ad" stop-opacity="0.9"/>
+        <stop offset="62%" stop-color="#ffd08a" stop-opacity="0.35"/><stop offset="100%" stop-color="#ffd08a" stop-opacity="0"/>
+      </radialGradient></defs>
+      <circle cx="540" cy="430" r="300" fill="url(#cotsun)"/>
+      <circle cx="540" cy="446" r="94" fill="#fff3d6"/>`, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function cotHills() {
+    const hill = (d, f, hl) => `<path d="${d}" fill="${f}"/><path d="${d}" fill="none" stroke="${hl}" stroke-width="3" opacity="0.5"/>`;
+    let trees = "";
+    for (let i = 0; i < 10; i++) { const x = R(120, 1500), y = R(250, 344), s = R(0.4, 0.8); trees += `<g transform="translate(${x.toFixed(0)} ${y.toFixed(0)}) scale(${s.toFixed(2)})"><rect x="-2" y="0" width="4" height="14" fill="#6b5a3e"/><circle cx="0" cy="-6" r="14" fill="#6f9a5e"/><circle cx="-9" cy="2" r="10" fill="#7ba869"/><circle cx="9" cy="2" r="10" fill="#7ba869"/></g>`; }
+    return svg("1600 560",
+      `<defs>
+        <linearGradient id="ch1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#a7c98d"/><stop offset="100%" stop-color="#8bb673"/></linearGradient>
+        <linearGradient id="ch2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8fbf76"/><stop offset="100%" stop-color="#6fa257"/></linearGradient>
+        <linearGradient id="ch3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#79ad61"/><stop offset="100%" stop-color="#578a45"/></linearGradient>
+      </defs>
+      ${hill("M0 300 q 260 -60 520 -30 q 300 34 560 -20 q 300 -40 520 10 V560 H0 Z", "url(#ch1)", "#c9e6b0")}
+      ${trees}
+      ${hill("M0 380 q 300 -50 620 -14 q 320 40 980 -24 V560 H0 Z", "url(#ch2)", "#acd992")}
+      ${hill("M0 460 q 340 -46 700 -8 q 360 40 900 -18 V560 H0 Z", "url(#ch3)", "#8fce76")}`);
+  }
+  function cotVillage() {
+    let o = "";
+    for (let i = 0; i < 6; i++) { const x = 890 + i * 44 + R(-6, 6), y = 305 + R(-6, 6), w = R(16, 24), h = R(12, 18); o += `<g transform="translate(${x.toFixed(0)} ${y.toFixed(0)})"><rect x="${(-w / 2).toFixed(0)}" y="0" width="${w.toFixed(0)}" height="${h.toFixed(0)}" rx="2" fill="#e9dcc2"/><path d="M${(-w / 2 - 2).toFixed(0)} 0 L0 ${(-h * 0.7).toFixed(0)} L${(w / 2 + 2).toFixed(0)} 0 Z" fill="#b07a5c"/></g>`; }
+    o += `<path d="M960 380 q -30 -40 10 -76" fill="none" stroke="#e0d3b8" stroke-width="6" opacity="0.7"/>`;
+    return svg("1600 560", o, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function cotTrees() {
+    const tree = (x, g, s) => `<g transform="translate(${x.toFixed(0)} ${g.toFixed(0)}) scale(${s.toFixed(2)})"><rect x="-7" y="-40" width="14" height="52" rx="5" fill="#6e5636"/><circle cx="0" cy="-56" r="40" fill="#5f9a4e"/><circle cx="-30" cy="-40" r="28" fill="#6fab5c"/><circle cx="30" cy="-40" r="28" fill="#6fab5c"/><circle cx="0" cy="-40" r="34" fill="#79b866"/><circle cx="-14" cy="-64" r="22" fill="#8ac877" opacity="0.85"/></g>`;
+    let o = "";
+    for (const [x, g, s] of [[120, 522, 1.35], [300, 542, 0.9], [1360, 516, 1.4], [1180, 546, 0.85], [720, 545, 0.66]]) o += tree(x, g, s);
+    return svg("1600 620", o, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function cottage(x, g, s, wall, roof, roofDark) {
+    const lit = Math.random() < 0.6;
+    return `<g transform="translate(${x.toFixed(0)} ${g.toFixed(0)}) scale(${s.toFixed(2)}) rotate(${R(-2, 2).toFixed(1)})">
+      <ellipse cx="0" cy="4" rx="52" ry="9" fill="#00000018"/>
+      <path d="M-46 4 q-6 -54 46 -58 q52 4 46 58 Z" fill="${wall}"/>
+      <path d="M-58 -44 Q0 -104 58 -44 Q30 -58 0 -58 Q-30 -58 -58 -44 Z" fill="${roof}"/>
+      <path d="M-58 -44 Q0 -104 58 -44" fill="none" stroke="${roofDark}" stroke-width="3" opacity="0.6"/>
+      <rect x="26" y="-72" width="12" height="26" rx="2" fill="${roofDark}"/>
+      <rect x="-12" y="-30" width="24" height="34" rx="11" fill="#5a4632"/>
+      <circle cx="0" cy="-14" r="3.6" fill="#e9d6a8"/>
+      <circle cx="-30" cy="-24" r="7" fill="${lit ? "#ffdf9e" : "#cdbfa0"}"/><circle cx="30" cy="-24" r="7" fill="${lit ? "#ffdf9e" : "#cdbfa0"}"/>
+      <g class="smoke" style="--d:0s"><circle cx="32" cy="-74" r="5" fill="#efe7dd"/></g>
+      <g class="smoke" style="--d:1.3s"><circle cx="32" cy="-74" r="6" fill="#efe7dd"/></g>
+      <g class="smoke" style="--d:2.6s"><circle cx="32" cy="-74" r="7" fill="#efe7dd"/></g>
+    </g>`;
+  }
+  function cotCottages() {
+    const walls = ["#f3e4c8", "#efdcc0", "#f6ead2"];
+    const roofs = [["#c98a6a", "#a86a4c"], ["#8fa9b0", "#6f8990"], ["#c9a34a", "#a5822f"], ["#b96f8a", "#985068"]];
+    let o = "";
+    for (const [x, y, s] of [[430, 470, 1.15], [655, 500, 1.0], [860, 486, 1.25], [1080, 505, 0.95], [1255, 478, 1.1]]) { const r = pick(roofs); o += cottage(x, y, s, pick(walls), r[0], r[1]); }
+    return svg("1600 620", o, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function cotPath() {
+    let stones = "";
+    for (let t = 0; t <= 1; t += 0.03) {
+      const y = 620 - t * 360, cx = 800 + Math.sin(t * 4) * 120 * (1 - t) * 0.6 - t * 30, w = (1 - t) * 120 + 20;
+      for (let k = -1; k <= 1; k++) { const sx = cx + k * (w / 3); stones += `<ellipse cx="${sx.toFixed(0)}" cy="${y.toFixed(0)}" rx="${(9 * (1 - t) + 3).toFixed(1)}" ry="${(5 * (1 - t) + 2).toFixed(1)}" fill="${pick(["#d9cdb6", "#cfc2a8", "#e2d8c4"])}" stroke="#b9a988" stroke-width="0.6"/>`; }
+    }
+    return svg("1600 620", stones, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function cotForeground() {
+    let o = "";
+    for (let i = 0; i < 66; i++) { const x = R(0, 1600), y = R(430, 600); o += `<path d="M${x.toFixed(0)} ${y.toFixed(0)} l-3 -9 M${x.toFixed(0)} ${y.toFixed(0)} l0 -12 M${x.toFixed(0)} ${y.toFixed(0)} l3 -9" stroke="#4f8f43" stroke-width="1.5" opacity="0.6"/>`; }
+    for (let i = 0; i < 22; i++) { const x = R(0, 1600), y = R(470, 600); o += `<g transform="translate(${x.toFixed(0)} ${y.toFixed(0)})"><circle r="3.4" fill="${pick(["#e6a3d0", "#f2d06a", "#c79be0", "#ffffff"])}"/><circle r="1.3" fill="#fff4c0"/></g>`; }
+    return svg("1600 620", o, ' preserveAspectRatio="none"');
+  }
+  function cotFireflies() {
+    let o = "";
+    for (let i = 0; i < 12; i++) { const l = R(6, 94), t = R(42, 86), dur = R(6, 12), d = R(-10, 0); o += `<span class="firefly" style="--l:${l.toFixed(1)}%;--t:${t.toFixed(1)}%;--dur:${dur.toFixed(1)}s;--d:${d.toFixed(1)}s"></span>`; }
+    return o;
+  }
+  function buildCottage(sc) {
+    sc.innerHTML =
+      layer("sc-cot-sky") +
+      layer("sc-cot-sun", cotSun()) +
+      layer("sc-cot-hills", cotHills()) +
+      layer("sc-cot-village", cotVillage()) +
+      layer("sc-cot-trees", cotTrees()) +
+      layer("sc-cot-cottages", cotCottages()) +
+      layer("sc-cot-path", cotPath()) +
+      layer("sc-cot-fg", cotForeground()) +
+      layer("sc-cot-fireflies", cotFireflies());
+  }
+
+  /* =====================================================================
+     VAPORWAVE — 80s synthwave sunset with a glowing perspective grid
+     ===================================================================== */
+  function vapStars() {
+    let s = "";
+    for (let i = 0; i < 48; i++) { const x = R(0, 1600), y = R(0, 300), r = R(0.6, 1.8); const tw = i % 3 === 0; s += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${r.toFixed(1)}" fill="#ffffff" opacity="${R(0.4, 0.95).toFixed(2)}"${tw ? ` class="tw" style="--d:${R(0, 4).toFixed(2)}s"` : ""}/>`; }
+    return svg("1600 340", s, ' preserveAspectRatio="none"');
+  }
+  function vapSun() {
+    let slits = "", y = 604, th = 2;
+    while (y < 842) { slits += `<rect x="590" y="${y.toFixed(0)}" width="420" height="${th.toFixed(1)}" fill="#1a1130"/>`; y += th + Math.max(3, 15 - (y - 604) / 22); th += 1.05; }
+    return svg("1600 900",
+      `<defs>
+        <linearGradient id="vsun" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff2b0"/><stop offset="42%" stop-color="#ff8a3d"/><stop offset="100%" stop-color="#ff2d95"/></linearGradient>
+        <radialGradient id="vbloom" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ff8ad0" stop-opacity="0.7"/><stop offset="55%" stop-color="#ff5cc0" stop-opacity="0.14"/><stop offset="100%" stop-color="#ff5cc0" stop-opacity="0"/></radialGradient>
+        <clipPath id="vclip"><circle cx="800" cy="648" r="196"/></clipPath>
+      </defs>
+      <circle cx="800" cy="648" r="330" fill="url(#vbloom)"/>
+      <g clip-path="url(#vclip)"><rect x="590" y="452" width="420" height="392" fill="url(#vsun)"/>${slits}</g>`, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function vapMountains() {
+    let p = "M0 560 ", x = 0;
+    while (x < 1600) { const nx = x + R(90, 210); p += `L${((x + nx) / 2).toFixed(0)} ${R(360, 470).toFixed(0)} L${nx.toFixed(0)} ${R(500, 558).toFixed(0)} `; x = nx; }
+    const ridge = p;
+    p += "L1600 620 L0 620 Z";
+    return svg("1600 620",
+      `<path d="${p}" fill="#2a1a52"/><path d="${ridge}" fill="none" stroke="#ff5cc0" stroke-width="2" opacity="0.5"/>`, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function palm(x, g, s, flip) {
+    let fr = "";
+    for (let i = 0; i < 7; i++) { const a = (-90 + (i - 3) * 27) * Math.PI / 180, len = R(58, 92), ex = Math.cos(a) * len, ey = Math.sin(a) * len; fr += `<path d="M0 0 Q ${(ex * 0.5 - 8).toFixed(0)} ${(ey * 0.5 - 8).toFixed(0)} ${ex.toFixed(0)} ${ey.toFixed(0)}" fill="none" stroke="#0d0820" stroke-width="6" stroke-linecap="round"/>`; }
+    return `<g transform="translate(${x.toFixed(0)} ${g.toFixed(0)}) scale(${(flip ? -s : s).toFixed(2)} ${s.toFixed(2)})"><path d="M0 0 Q -14 -120 6 -230" fill="none" stroke="#0d0820" stroke-width="12" stroke-linecap="round"/><g transform="translate(6 -230)">${fr}</g></g>`;
+  }
+  function vapPalms() {
+    return svg("1600 620", palm(120, 620, 1.0, false) + palm(1500, 620, 1.1, true) + palm(400, 620, 0.66, false) + palm(1180, 620, 0.74, true), ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function buildVaporwave(sc) {
+    sc.innerHTML =
+      layer("sc-vap-sky") +
+      layer("sc-vap-scan") +
+      layer("sc-vap-stars", vapStars()) +
+      layer("sc-vap-sun", vapSun()) +
+      layer("sc-vap-mtn", vapMountains()) +
+      layer("sc-vap-palms", vapPalms()) +
+      layer("sc-vap-glow") +
+      `<div class="sc sc-vap-grid"><div class="vap-plane"></div></div>` +
+      layer("sc-vap-shoot", `<span class="shoot"></span>`);
+  }
+
   let current = null;
   function mount(themeId) {
     const sc = ensure();
@@ -276,6 +419,8 @@
     current = themeId;
     if (themeId === "dusk") buildDusk(sc);
     else if (themeId === "aero") buildAero(sc);
+    else if (themeId === "cottage") buildCottage(sc);
+    else if (themeId === "vaporwave") buildVaporwave(sc);
     else { sc.innerHTML = ""; } // no scene for other themes
   }
 
