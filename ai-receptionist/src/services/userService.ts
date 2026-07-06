@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { prisma } from "../db/client";
 import { emitEvent } from "../events/bus";
 import { EVENT_TYPES } from "../events/types";
-import { hashPassword } from "../auth/passwords";
+import { hashPassword, assertPasswordAllowed } from "../auth/passwords";
 import { Role } from "../middleware/auth";
 import { getPortalRole } from "./permissionService";
 
@@ -146,6 +146,10 @@ export async function assignUserRole(
 }
 
 export async function setPassword(userId: string, password: string) {
+  // Backstop: every setPassword caller (reset, self-change) already validates via
+  // checkPassword and returns a friendly 400, but enforce here too so no future
+  // path can quietly persist a weak password.
+  assertPasswordAllowed(password);
   const passwordHash = await hashPassword(password);
   return prisma.user.update({ where: { id: userId }, data: { passwordHash, resetToken: null, resetTokenExpiry: null } });
 }

@@ -84,13 +84,14 @@
       <h1 class="auth-title">Choose a new password</h1>
       <p class="auth-sub">Enter a new password for your account.</p>
       <label class="field-label">New password</label>
-      <input id="reset-pass" class="input" type="password" placeholder="At least 8 characters" />
+      <input id="reset-pass" class="input" type="password" placeholder="At least 10 characters" />
+      <p class="auth-sub" style="margin-top:6px">Use at least 10 characters, mixing at least two of: lowercase, uppercase, numbers, or symbols.</p>
       <button id="reset-btn" class="btn btn-primary btn-block">Update password</button>
       <a class="auth-link" href="#/login">Back to sign in</a>`;
     shell(form);
     App.util.$("#reset-btn").onclick = async () => {
       const password = App.util.$("#reset-pass").value;
-      if (!password || password.length < 8) { toast("Password must be at least 8 characters", true); return; }
+      if (!password || password.length < 10) { toast("Password must be at least 10 characters and mix at least two of: lowercase, uppercase, numbers, or symbols.", true); return; }
       const btn = App.util.$("#reset-btn");
       btn.disabled = true; btn.textContent = "Updating…";
       try {

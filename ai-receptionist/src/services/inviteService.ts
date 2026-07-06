@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { createUser } from "./userService";
+import { checkPassword } from "../auth/passwords";
 import { emitEvent } from "../events/bus";
 import { EVENT_TYPES } from "../events/types";
 import { sendRichEmail } from "./notificationService";
@@ -243,7 +244,7 @@ export async function getValidInvite(token: string) {
 
 export type AcceptResult =
   | { ok: true; user: { id: string } }
-  | { ok: false; reason?: "weak" | "exists" };
+  | { ok: false; reason?: "weak" | "exists"; message?: string };
 
 /**
  * Activate an account from an invite. SERVER-AUTHORITATIVE: role + tenant + email
@@ -254,7 +255,10 @@ export type AcceptResult =
 export async function acceptInvite(token: string, password: string): Promise<AcceptResult> {
   const inv = await getValidInvite(token);
   if (!inv) return { ok: false };
-  if (!password || String(password).length < 8) return { ok: false, reason: "weak" };
+  // Enforce the shared password policy BEFORE consuming the invite, so a weak
+  // password never burns the single-use token — the invitee can just try again.
+  const pw = checkPassword(String(password ?? ""), { email: inv.email });
+  if (!pw.ok) return { ok: false, reason: "weak", message: pw.message };
 
   // Refuse if the email somehow already has an account (don't consume the invite).
   const existing = await prisma.user.findUnique({ where: { email: inv.email } });

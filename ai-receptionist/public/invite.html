@@ -61,7 +61,8 @@
           '<label>Email</label>' +
           '<input id="email" type="email" value="' + esc(data.email) + '" readonly />' +
           '<label>Password</label>' +
-          '<input id="pw" type="password" autocomplete="new-password" placeholder="At least 8 characters" />' +
+          '<input id="pw" type="password" autocomplete="new-password" placeholder="At least 10 characters" />' +
+          '<div class="hint">Use at least 10 characters, mixing at least two of: lowercase, uppercase, numbers, or symbols.</div>' +
           '<label>Confirm password</label>' +
           '<input id="pw2" type="password" autocomplete="new-password" placeholder="Re-enter your password" />' +
           '<div class="hint">Your role and workspace were set by your invite.</div>' +
@@ -75,7 +76,7 @@
         go.onclick = function () {
           var pw = document.getElementById("pw").value;
           var pw2 = document.getElementById("pw2").value;
-          if (pw.length < 8) { show("Please choose a password with at least 8 characters.", true); return; }
+          if (pw.length < 10) { show("Password must be at least 10 characters and mix at least two of: lowercase, uppercase, numbers, or symbols.", true); return; }
           if (pw !== pw2) { show("Those passwords don\u2019t match.", true); return; }
           go.disabled = true; show("Creating your account\u2026", false);
           // Step 2: accept. We send ONLY the password — role/tenant/email come from

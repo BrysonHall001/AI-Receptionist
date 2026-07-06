@@ -46,7 +46,7 @@ inviteRouter.post("/:token/accept", inviteLimiter, async (req: Request, res: Res
   const result = await acceptInvite(req.params.token, password);
   if (!result.ok) {
     if (result.reason === "weak") {
-      res.status(400).json({ error: "Please choose a password with at least 8 characters." });
+      res.status(400).json({ error: result.message || "Please choose a stronger password." });
       return;
     }
     if (result.reason === "exists") {

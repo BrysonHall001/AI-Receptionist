@@ -40,6 +40,7 @@ import { VOICE_OPTIONS, DEFAULT_VOICE_ID, isValidVoiceId } from "../config/voice
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/timezones";
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns, assignUserRole } from "../services/userService";
+import { checkPassword } from "../auth/passwords";
 import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, PER_PORTAL_SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign, effectiveMatrix } from "../services/permissionService";
 import { permissionGate, lockGate } from "../middleware/permissionGate";
 import { createInvite, inviteLink, sendInvite, sendCustomInvite, hasInviteLinkToken, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
@@ -167,12 +168,15 @@ apiRouter.get("/impersonation", async (req: Request, res: Response) => {
   });
 });
 
-// Targets for the dropdown. Excludes other SUPER_ADMINs from the view-as list —
-// per the audit, we never impersonate another super-admin.
+// Targets for the dropdown. Scoped to the CURRENTLY-OPEN portal (passed as
+// ?tenantId=…): returns only that portal's non-admin users. No portal open -> no
+// users (the UI prompts the admin to open a portal first). Still excludes
+// owner/super-admin/auditor accounts, and always returns the role types.
 apiRouter.get("/impersonation/targets", async (req: Request, res: Response) => {
   if (!req.realUser || !isAdminTier(req.realUser.role)) { res.status(403).json({ error: "Super-admin only" }); return; }
-  const all = (await listUsers()) as any[]; // all portals (super-admin scope)
-  const users = all.filter((u) => !isAdminTier(u.role));
+  const tenantId = String((req.query.tenantId ?? "") || "").trim();
+  const scoped = tenantId ? ((await listUsers(tenantId)) as any[]) : [];
+  const users = scoped.filter((u) => !isAdminTier(u.role));
   res.json({ users, roles: ["PORTAL_ADMIN", "CLIENT_USER"] });
 });
 
@@ -187,9 +191,14 @@ apiRouter.post("/impersonation/start", async (req: Request, res: Response) => {
     if (mode === "view-as-user") {
       const targetUserId = String(body.targetUserId || "");
       if (!targetUserId) { res.status(400).json({ error: "targetUserId required" }); return; }
+      // The open portal must be supplied, and the target must belong to it — this
+      // closes the cross-portal case at the enforcement layer, not just the UI.
+      const scopeTenantId = String(body.scopeTenantId || "");
+      if (!scopeTenantId) { res.status(400).json({ error: "Open a portal first" }); return; }
       const target = await prisma.user.findUnique({ where: { id: targetUserId } });
       if (!target) { res.status(404).json({ error: "User not found" }); return; }
       if (isAdminTier((target as any).role)) { res.status(400).json({ error: "Cannot impersonate a super-admin or owner" }); return; }
+      if (((target as any).tenantId ?? null) !== scopeTenantId) { res.status(400).json({ error: "That user isn’t in the open portal." }); return; }
       await setImpersonation(token, { mode: "view-as-user", targetUserId: target.id, assumedRole: (target as any).role, scopeTenantId: (target as any).tenantId ?? null });
     } else if (mode === "act-as-type") {
       const assumedRole = String(body.assumedRole || "");
@@ -2529,11 +2538,12 @@ apiRouter.post("/automations/:id/run", async (req: Request, res: Response) => {
 // ---- Change own password ----
 apiRouter.post("/account/password", async (req: Request, res: Response) => {
   const { password } = (req.body ?? {}) as { password?: string };
-  if (!password || password.length < 8) {
-    res.status(400).json({ error: "Password must be at least 8 characters" });
+  const pw = checkPassword(String(password ?? ""), { email: req.user?.email });
+  if (!pw.ok) {
+    res.status(400).json({ error: pw.message });
     return;
   }
-  await setPassword(req.user!.id, password);
+  await setPassword(req.user!.id, password!);
   res.json({ ok: true });
 });
 

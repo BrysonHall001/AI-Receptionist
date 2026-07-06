@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../db/client";
 import { verifyPassword } from "../auth/passwords";
+import { checkPassword } from "../auth/passwords";
 import { createSession, destroySession, setSessionCookie, clearSessionCookie, SESSION_COOKIE } from "../auth/session";
 import { createResetToken, consumeResetToken, publicUser, accountInactive } from "../services/userService";
 import { sendPlainEmail } from "../services/notificationService";
@@ -99,11 +100,16 @@ authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => 
 
 authRouter.post("/reset", resetLimiter, async (req: Request, res: Response) => {
   const { token, password } = (req.body ?? {}) as { token?: string; password?: string };
-  if (!token || !password || password.length < 8) {
-    res.status(400).json({ error: "A valid token and a password (8+ chars) are required" });
+  if (!token) {
+    res.status(400).json({ error: "A valid reset token is required" });
     return;
   }
-  const ok = await consumeResetToken(token, password);
+  const pw = checkPassword(String(password ?? ""));
+  if (!pw.ok) {
+    res.status(400).json({ error: pw.message });
+    return;
+  }
+  const ok = await consumeResetToken(token, password!);
   if (!ok) {
     res.status(400).json({ error: "This reset link is invalid or has expired" });
     return;

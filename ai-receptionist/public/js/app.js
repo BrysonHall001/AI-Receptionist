@@ -415,12 +415,13 @@
 
   async function openImpersonateMenu(anchor) {
     closeImpMenu();
-    let data;
-    try { data = await App.api("/api/impersonation/targets"); }
-    catch (e) { App.util.toast(e.message, true); return; }
-    const menu = el("div", "imp-menu");
     const portalId = App.state.currentPortalId;
     const portalName = App.state.currentPortalName;
+    let data;
+    // Scope targets to the open portal (empty tenantId -> backend returns no users).
+    try { data = await App.api("/api/impersonation/targets?tenantId=" + encodeURIComponent(portalId || "")); }
+    catch (e) { App.util.toast(e.message, true); return; }
+    const menu = el("div", "imp-menu");
     // Act-as-type (needs a portal in context for the pinned scope)
     menu.appendChild(el("div", "imp-menu-sec", "Act as a user type" + (portalId ? " in " + esc(portalName || "this portal") : "")));
     (data.roles || []).forEach((role) => {
@@ -434,17 +435,18 @@
       };
       menu.appendChild(item);
     });
-    // View-as a specific user
-    menu.appendChild(el("div", "imp-menu-sec", "View as a specific user"));
+    // View-as a specific user — only users of the OPEN portal (backend-scoped).
+    menu.appendChild(el("div", "imp-menu-sec", "View as a specific user" + (portalId ? " in " + esc(portalName || "this portal") : "")));
     const users = data.users || [];
-    if (!users.length) menu.appendChild(el("div", "imp-menu-empty", "No users available"));
+    if (!portalId) menu.appendChild(el("div", "imp-menu-empty", "Open a portal first"));
+    else if (!users.length) menu.appendChild(el("div", "imp-menu-empty", "No users available"));
     users.forEach((u) => {
-      const label = (u.name || u.email) + " — " + (roleLabel ? roleLabel(u.role) : u.role) + (u.tenantName ? " · " + u.tenantName : "");
+      const label = (u.name || u.email) + " — " + (roleLabel ? roleLabel(u.role) : u.role);
       const item = el("button", "imp-menu-item", esc(label));
       item.onclick = async () => {
         closeImpMenu();
         const ok = await App.ui.confirmModal({ title: "View as " + (u.name || u.email) + "?", message: "You’ll see what this user sees. (View-only is enforced in a later build; for now nothing is restricted.) You can exit at any time.", confirmText: "View as user" });
-        if (ok) startImpersonation({ mode: "view-as-user", targetUserId: u.id });
+        if (ok) startImpersonation({ mode: "view-as-user", targetUserId: u.id, scopeTenantId: portalId });
       };
       menu.appendChild(item);
     });
