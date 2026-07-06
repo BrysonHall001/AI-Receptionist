@@ -31,6 +31,9 @@ export interface NamedCustom extends CustomTheme {
 export interface UserTheme {
   active: { mode: "preset"; preset: string } | { mode: "custom"; customId: string };
   customs: NamedCustom[];
+  // Fun-theme decoration intensity, integer 0..100 (0 = today's look). Applied
+  // client-side via a --fun CSS variable; only fun presets react to it.
+  funLevel?: number;
   // Optional per-portal white-label logo, stored as a PNG/JPEG data URL (same
   // base64-in-DB approach the custom-field image type uses). Absent = default branding.
   logo?: string | null;
@@ -96,6 +99,15 @@ export function isValidHex(v: unknown): v is string {
   return typeof v === "string" && HEX_RE.test(v.trim());
 }
 
+// Clamp a proposed fun-intensity value to an integer 0..100. Non-numeric /
+// non-finite input (incl. NaN, Infinity, objects, "abc") coerces safely to 0,
+// so a bad value can never disable the "0 = unchanged" default.
+export function clampFunLevel(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
 function genId(): string {
   return "c" + randomBytes(6).toString("hex");
 }
@@ -141,7 +153,9 @@ export function sanitizeUserTheme(input: unknown): UserTheme {
     active = { mode: "preset", preset: PRESET_IDS.includes(a.preset) ? String(a.preset) : "light" };
   }
   const logo = sanitizeLogo(obj.logo);
-  return logo ? { active, customs, logo } : { active, customs };
+  const funLevel = clampFunLevel(obj.funLevel);
+  const outBase = { active, customs, funLevel };
+  return logo ? { ...outBase, logo } : outBase;
 }
 
 // White-label logo guardrail (server-enforced): only a PNG or JPEG data URL,

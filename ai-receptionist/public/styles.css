@@ -1,6 +1,10 @@
 :root {
   --bg: #fbfbfa;
   --panel: #ffffff;
+  /* Fun-theme decoration intensity, 0..1. Default 0 => every fun theme renders
+     EXACTLY as before; theme.js raises it live from the "Fun intensity" slider.
+     Only fun-theme CSS reads it; basic/custom themes ignore it entirely. */
+  --fun: 0;
   --ink: #1a1a1e;
   --ink-soft: #5b5b66;
   --ink-faint: #9a9aa6;
@@ -809,7 +813,7 @@ textarea.input { resize: vertical; }
 /* ---- Dark (basic) ---- */
 body[data-theme="dark"] {
   --bg: #15151a; --panel: #1e1e26; --panel-2: #22222b;
-  --ink: #e9e9f0; --ink-soft: #a9a9b8; --ink-faint: #71717f;
+  --ink: #e9e9f0; --ink-soft: #a9a9b8; --ink-faint: #878793;
   --line: #2a2a34; --line-strong: #3a3a46;
   --accent: #8482f5; --accent-soft: #26263a; --accent-strong: #9a98ff;
   --green: #34c98a; --green-soft: #16281f; --amber: #d8a23c; --amber-soft: #2a2113; --red: #e0685a; --red-soft: #2c1715;
@@ -822,7 +826,7 @@ body[data-theme="dark"] .brand-mark { background: var(--accent); color: #fff; }
 /* ---- Neutral / professional (basic) ---- */
 body[data-theme="neutral"] {
   --bg: #f5f6f7; --panel: #ffffff; --panel-2: #f9fafb;
-  --ink: #22282e; --ink-soft: #586069; --ink-faint: #949ba3;
+  --ink: #22282e; --ink-soft: #586069; --ink-faint: #696f77;
   --line: #e6e8ea; --line-strong: #d6d9dd;
   --accent: #2f6f8f; --accent-soft: #e9f1f5; --accent-strong: #255a73;
   --row-hover: #f1f5f7;
@@ -832,7 +836,7 @@ body[data-theme="neutral"] {
 body[data-theme="aero"] {
   --bg: #cfeeff;
   --panel: rgba(255,255,255,0.66); --panel-2: rgba(255,255,255,0.52);
-  --ink: #0c3a52; --ink-soft: #2b6480; --ink-faint: #62a0bb;
+  --ink: #0c3a52; --ink-soft: #2b6480; --ink-faint: #285b74;
   --line: rgba(255,255,255,0.85); --line-strong: rgba(90,170,205,0.6);
   --accent: #0aa6e6; --accent-soft: rgba(255,255,255,0.6); --accent-strong: #0b86c4;
   --green: #10b97e; --green-soft: rgba(205,255,232,0.7); --amber: #e0900f; --amber-soft: rgba(255,244,210,0.8); --red: #ec5648; --red-soft: rgba(255,220,216,0.8);
@@ -873,7 +877,7 @@ body[data-theme="aero"] .brand-mark {
 /* ---- Neon Dusk (fun, synthwave) ---- */
 body[data-theme="dusk"] {
   --bg: #0d0a26; --panel: #171336; --panel-2: #1d1842;
-  --ink: #f3ecff; --ink-soft: #bcb1ee; --ink-faint: #8579c2;
+  --ink: #f3ecff; --ink-soft: #bcb1ee; --ink-faint: #a99edb;
   --line: #2f2566; --line-strong: #443a86;
   --accent: #ff3df0; --accent-soft: #281a5c; --accent-strong: #ff5cf3;
   --green: #22e0ff; --green-soft: #10283a; --amber: #ffcf4d; --amber-soft: #2a2410; --red: #ff5d7a; --red-soft: #2c1320;
@@ -903,7 +907,7 @@ body[data-theme="dusk"] .settings-card { border: 1px solid var(--line-strong); }
 /* ---- Cottage Warm (fun, cottagecore) ---- */
 body[data-theme="cottage"] {
   --bg: #f4ecdd; --panel: #fbf6ec; --panel-2: #f1e8d6;
-  --ink: #4a3f33; --ink-soft: #7a6c59; --ink-faint: #a89a84;
+  --ink: #4a3f33; --ink-soft: #7a6c59; --ink-faint: #736757;
   --line: #e4d8c3; --line-strong: #d6c6ab;
   --accent: #7c9473; --accent-soft: #eaf0e4; --accent-strong: #697f61;
   --green: #6f9a5e; --green-soft: #e9f0e2; --amber: #c8843c; --amber-soft: #f6ead7; --red: #bb6a5a; --red-soft: #f3e3de;
@@ -936,6 +940,14 @@ body[data-theme="cottage"] .brand-mark { background: var(--accent); color: #fff;
 .theme-custom input[type="color"] { width: 48px; height: 30px; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; padding: 0; }
 .theme-custom select.input { max-width: 220px; }
 
+/* Fun intensity slider (Appearance settings, beneath the Fun dropdown) */
+.fun-slider-row { max-width: 420px; margin: 2px 0 6px; }
+.fun-slider-label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-soft); margin-bottom: 8px; }
+.fun-slider-controls { display: flex; align-items: center; gap: 10px; }
+.fun-range-end { font-size: 11.5px; color: var(--ink-faint); flex: 0 0 auto; }
+.fun-range { flex: 1 1 auto; accent-color: var(--accent); cursor: pointer; height: 22px; }
+.fun-range-val { flex: 0 0 auto; min-width: 30px; text-align: right; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+
 /* ============================================================
    ADDITIONAL PRESETS (round 2). Each is a palette block; a few
    fun ones add a bundled background texture. Panels stay opaque
@@ -945,7 +957,7 @@ body[data-theme="cottage"] .brand-mark { background: var(--accent); color: #fff;
 /* ---- Basic: Warm Light ---- */
 body[data-theme="warm"] {
   --bg: #fbf8f3; --panel: #fffdf9; --panel-2: #f6f1e8;
-  --ink: #2b2722; --ink-soft: #5f584e; --ink-faint: #9c9387;
+  --ink: #2b2722; --ink-soft: #5f584e; --ink-faint: #766e65;
   --line: #efe9df; --line-strong: #e3dccf;
   --accent: #5b59d6; --accent-soft: #efeffc; --accent-strong: #4a48c4;
   --gray-soft: #f4efe7; --row-hover: #f8f4ec;
@@ -954,7 +966,7 @@ body[data-theme="warm"] {
 /* ---- Basic: Slate ---- */
 body[data-theme="slate"] {
   --bg: #eef1f4; --panel: #ffffff; --panel-2: #f6f8fa;
-  --ink: #2b3440; --ink-soft: #5a6675; --ink-faint: #97a1ad;
+  --ink: #2b3440; --ink-soft: #5a6675; --ink-faint: #636d79;
   --line: #e1e6eb; --line-strong: #cfd6de;
   --accent: #4a6076; --accent-soft: #e7edf2; --accent-strong: #3c4f62;
   --gray-soft: #eef1f4; --row-hover: #f1f4f7;
@@ -963,7 +975,7 @@ body[data-theme="slate"] {
 /* ---- Basic: Steel Blue ---- */
 body[data-theme="steel"] {
   --bg: #f4f6f9; --panel: #ffffff; --panel-2: #f5f8fb;
-  --ink: #1f2733; --ink-soft: #51607a; --ink-faint: #93a0b2;
+  --ink: #1f2733; --ink-soft: #51607a; --ink-faint: #65707f;
   --line: #e2e7ee; --line-strong: #ccd5e0;
   --accent: #2a4d7a; --accent-soft: #e6edf6; --accent-strong: #1f3c61;
   --gray-soft: #eef2f7; --row-hover: #eef3f9;
@@ -972,7 +984,7 @@ body[data-theme="steel"] {
 /* ---- Basic: Sand ---- */
 body[data-theme="sand"] {
   --bg: #f3ecdf; --panel: #fbf6ec; --panel-2: #f0e7d6;
-  --ink: #43392b; --ink-soft: #6f6453; --ink-faint: #a3957f;
+  --ink: #43392b; --ink-soft: #6f6453; --ink-faint: #736755;
   --line: #e6dcc8; --line-strong: #d8cbb0;
   --accent: #a9763e; --accent-soft: #f1e6d5; --accent-strong: #8c5f2e;
   --amber: #b07a25; --amber-soft: #f5e8d2; --gray-soft: #efe6d6; --row-hover: #f3ead9;
@@ -995,7 +1007,7 @@ body[data-theme="contrast"] .btn-primary:disabled { opacity: 0.55; }
 /* ---- Basic: Graphite (dim) ---- */
 body[data-theme="graphite"] {
   --bg: #2b2d31; --panel: #34373c; --panel-2: #3a3d43;
-  --ink: #e7e8ea; --ink-soft: #b3b6bc; --ink-faint: #82868d;
+  --ink: #e7e8ea; --ink-soft: #b3b6bc; --ink-faint: #9ea1a7;
   --line: #3f4248; --line-strong: #4b4f56;
   --accent: #8a88f0; --accent-soft: #2f3140; --accent-strong: #9d9bf5;
   --green: #46c98f; --green-soft: #1c2e26; --amber: #d6a23a; --amber-soft: #2a2414; --red: #df6f61; --red-soft: #2a1614;
@@ -1006,7 +1018,7 @@ body[data-theme="graphite"] {
 /* ---- Basic: Midnight (deep true-dark) ---- */
 body[data-theme="midnight"] {
   --bg: #07070b; --panel: #101018; --panel-2: #14141e;
-  --ink: #e6e7ee; --ink-soft: #9fa1b0; --ink-faint: #63667a;
+  --ink: #e6e7ee; --ink-soft: #9fa1b0; --ink-faint: #7b7d8f;
   --line: #1e1f2b; --line-strong: #2c2e3d;
   --accent: #6f6df0; --accent-soft: #181830; --accent-strong: #8482f5;
   --green: #2fbf86; --green-soft: #0f241b; --amber: #cf9a3a; --amber-soft: #241d10; --red: #df6557; --red-soft: #281312;
@@ -1039,7 +1051,7 @@ body[data-theme="vaporwave"] .btn-primary { box-shadow: 0 0 14px rgba(255,106,21
 /* ---- Fun: Deep Woods / Forest (bg: leaves) ---- */
 body[data-theme="forest"] {
   --bg: #1c2a22; --panel: #243a2e; --panel-2: #2a4435;
-  --ink: #eef0e6; --ink-soft: #bcc7b4; --ink-faint: #889a82;
+  --ink: #eef0e6; --ink-soft: #bcc7b4; --ink-faint: #94a48e;
   --line: #2f4a3a; --line-strong: #3c5c49;
   --accent: #7fae6a; --accent-soft: #1f3327; --accent-strong: #94c47e;
   --green: #8fc47a; --green-soft: #1f3327; --amber: #d2a24a; --amber-soft: #2a2414; --red: #d98a6a; --red-soft: #2c1c16;
@@ -1053,7 +1065,7 @@ body[data-theme="forest"] .page-title, body[data-theme="forest"] .settings-h { f
 /* ---- Fun: Golden Hour / Sunset (warm gradient, no image) ---- */
 body[data-theme="sunset"] {
   --bg: #fbe3cf; --panel: rgba(255,250,245,0.9); --panel-2: rgba(255,244,234,0.85);
-  --ink: #3a2a33; --ink-soft: #6e5560; --ink-faint: #a98f99;
+  --ink: #3a2a33; --ink-soft: #6e5560; --ink-faint: #66525c;
   --line: #f0d9c8; --line-strong: #e6c3ab;
   --accent: #e8743c; --accent-soft: #fbe6d6; --accent-strong: #cf5f2c;
   --amber: #d98a1f; --amber-soft: #fbe6cf; --green: #5aa17a; --green-soft: #e2f0e8; --red: #d8504a; --red-soft: #fbe0de;
@@ -1106,7 +1118,7 @@ body[data-theme="ocean"] .brand-mark { box-shadow: 0 0 12px rgba(47,224,216,0.55
 /* ---- Fun: Cherry Blossom / Sakura (soft, elegant, no image) ---- */
 body[data-theme="sakura"] {
   --bg: #fdf4f7; --panel: #fffafc; --panel-2: #fbeef3;
-  --ink: #4a3a42; --ink-soft: #7c6a72; --ink-faint: #b39da7;
+  --ink: #4a3a42; --ink-soft: #7c6a72; --ink-faint: #7c6a72;
   --line: #f3dde6; --line-strong: #ead0db;
   --accent: #d96a93; --accent-soft: #fbe6ee; --accent-strong: #c2557e;
   --green: #7aab86; --green-soft: #e6f0e8; --amber: #d39a4a; --amber-soft: #f7ead2; --red: #d8607a; --red-soft: #fbe2e8;
@@ -1120,7 +1132,7 @@ body[data-theme="sakura"] .page-title, body[data-theme="sakura"] .settings-h { f
 /* ---- Fun: Terminal / Hacker (bg: scanlines, mono) ---- */
 body[data-theme="terminal"] {
   --bg: #050805; --panel: #0a0f0a; --panel-2: #0d140d;
-  --ink: #5fff9f; --ink-soft: #43c47a; --ink-faint: #2f8a56;
+  --ink: #5fff9f; --ink-soft: #43c47a; --ink-faint: #308c57;
   --line: #143a1f; --line-strong: #1f5a30;
   --accent: #39ff14; --accent-soft: #0d240d; --accent-strong: #7dff5c;
   --green: #39ff14; --green-soft: #0d240d; --amber: #ffb000; --amber-soft: #241a05; --red: #ff5f5f; --red-soft: #2a0f0f;
@@ -1131,6 +1143,118 @@ body[data-theme="terminal"] {
 }
 body[data-theme="terminal"] .btn-primary { background: #0a0f0a; color: #39ff14; border: 1px solid #39ff14; box-shadow: 0 0 8px rgba(57,255,20,0.4); }
 body[data-theme="terminal"] .card, body[data-theme="terminal"] .settings-card { border: 1px solid var(--line-strong); box-shadow: 0 0 0 1px rgba(57,255,20,0.08); }
+
+/* ============================================================
+   FUN-THEME DECORATION — intensity driven by var(--fun) (0..1).
+   At --fun:0 every layer is opacity:0, so fun themes render EXACTLY
+   as before; theme.js raises --fun live from the "Fun intensity"
+   slider. Every layer sits BEHIND content (fixed, z-index:-1,
+   pointer-events:none), and panels are opaque/frosted, so on-panel
+   text contrast is never reduced at any slider value. Continuous
+   glows scale with calc(var(--fun)*k); discrete elements (skyline,
+   grass, foliage, petals) FADE IN across a sub-range via clamp().
+   Only fun presets define these; basic/custom themes ignore --fun.
+   ============================================================ */
+body[data-theme="aero"]::before,   body[data-theme="aero"]::after,
+body[data-theme="dusk"]::before,   body[data-theme="dusk"]::after,
+body[data-theme="forest"]::before, body[data-theme="forest"]::after,
+body[data-theme="ocean"]::before,  body[data-theme="ocean"]::after,
+body[data-theme="sunset"]::before, body[data-theme="sunset"]::after,
+body[data-theme="terminal"]::before, body[data-theme="terminal"]::after,
+body[data-theme="vaporwave"]::before,
+body[data-theme="sakura"]::before,
+body[data-theme="cottage"]::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-repeat: no-repeat; background-position: center; will-change: opacity;
+}
+
+/* Golden Hour — soft sun glow + a warmer sky wash */
+body[data-theme="sunset"]::before {
+  background: radial-gradient(46% 42% at 72% 8%, rgba(255,214,150,0.85) 0%, rgba(255,190,120,0.35) 38%, rgba(255,190,120,0) 70%);
+  opacity: calc(var(--fun) * 0.95);
+}
+body[data-theme="sunset"]::after {
+  background: linear-gradient(160deg, rgba(255,150,90,0.35) 0%, rgba(255,120,110,0.12) 45%, rgba(180,120,190,0) 80%);
+  opacity: calc(var(--fun) * 0.55);
+}
+
+/* Frutiger Aero — extra bubbles + a grassy horizon that fades in past ~0.4 */
+body[data-theme="aero"]::before {
+  background: url("/themes/bubbles.svg") repeat; background-size: 340px 340px;
+  opacity: calc(var(--fun) * 0.8); animation: fun-rise 26s linear infinite;
+}
+body[data-theme="aero"]::after {
+  background: radial-gradient(120% 60% at 50% 118%, rgba(120,205,90,0.9) 0%, rgba(120,205,90,0.45) 30%, rgba(120,205,90,0) 62%);
+  opacity: clamp(0, calc((var(--fun) - 0.4) * 2), 0.7);
+}
+
+/* Neon Dusk — stronger neon bloom + a city skyline that fades in past ~0.35 */
+body[data-theme="dusk"]::before {
+  background: radial-gradient(60% 40% at 50% 116%, rgba(255,61,240,0.5) 0%, rgba(255,61,240,0) 60%),
+              radial-gradient(60% 40% at 50% -12%, rgba(34,224,255,0.4) 0%, rgba(34,224,255,0) 60%);
+  opacity: calc(var(--fun) * 0.9);
+}
+body[data-theme="dusk"]::after {
+  background: url("/themes/dusk-skyline.svg") no-repeat bottom center; background-size: 100% auto;
+  opacity: clamp(0, calc((var(--fun) - 0.35) * 2), 0.92);
+}
+
+/* Deep Woods — extra foliage texture + a dense foliage silhouette past ~0.4 */
+body[data-theme="forest"]::before {
+  background: url("/themes/leaves.svg") repeat; background-size: 300px 300px;
+  opacity: calc(var(--fun) * 0.7);
+}
+body[data-theme="forest"]::after {
+  background: url("/themes/forest-foliage.svg") no-repeat bottom center; background-size: 100% auto;
+  opacity: clamp(0, calc((var(--fun) - 0.4) * 2), 0.85);
+}
+
+/* Deep Sea — drifting light rays + rising bubbles */
+body[data-theme="ocean"]::before {
+  background: repeating-linear-gradient(105deg, rgba(180,240,255,0.12) 0, rgba(180,240,255,0.12) 2px, rgba(180,240,255,0) 3px, rgba(180,240,255,0) 46px);
+  opacity: calc(var(--fun) * 0.6);
+}
+body[data-theme="ocean"]::after {
+  background: url("/themes/bubbles.svg") repeat; background-size: 300px 300px;
+  opacity: calc(var(--fun) * 0.7); animation: fun-rise 30s linear infinite;
+}
+
+/* Terminal — stronger scanlines (subtle phosphor flicker) + green bloom */
+body[data-theme="terminal"]::before {
+  background: url("/themes/scanlines.svg") repeat; background-size: auto 4px;
+  opacity: calc(var(--fun) * 0.6); animation: fun-flicker 3.4s steps(7) infinite;
+}
+body[data-theme="terminal"]::after {
+  background: radial-gradient(100% 60% at 50% 0%, rgba(57,255,20,0.16) 0%, rgba(57,255,20,0) 60%);
+  opacity: calc(var(--fun) * 0.5);
+}
+
+/* Vaporwave — stronger sun/grid bloom */
+body[data-theme="vaporwave"]::before {
+  background: radial-gradient(60% 44% at 50% 8%, rgba(255,106,213,0.5) 0%, rgba(255,106,213,0) 60%),
+              radial-gradient(70% 50% at 50% 100%, rgba(107,225,255,0.4) 0%, rgba(107,225,255,0) 60%);
+  opacity: calc(var(--fun) * 0.75);
+}
+
+/* Cherry Blossom — drifting petals that fade in past ~0.15 */
+body[data-theme="sakura"]::before {
+  background: url("/themes/sakura-petals.svg") repeat; background-size: 260px 260px;
+  opacity: clamp(0, calc((var(--fun) - 0.15) * 1.4), 0.85); animation: fun-fall 24s linear infinite;
+}
+
+/* Cottage Warm — soft hearth glow */
+body[data-theme="cottage"]::before {
+  background: radial-gradient(60% 50% at 50% 0%, rgba(200,132,60,0.28) 0%, rgba(200,132,60,0) 60%);
+  opacity: calc(var(--fun) * 0.6);
+}
+
+@keyframes fun-rise { from { background-position: 0 0; } to { background-position: 0 -340px; } }
+@keyframes fun-fall { from { background-position: 0 0; } to { background-position: 60px 260px; } }
+@keyframes fun-flicker { 0%, 100% { filter: none; } 46% { filter: brightness(1.22); } 56% { filter: brightness(0.86); } }
+/* Respect reduced-motion: keep the decoration, drop the animation. */
+@media (prefers-reduced-motion: reduce) {
+  body[data-theme]::before, body[data-theme]::after { animation: none !important; }
+}
 
 /* ---------- Row selection ---------- */
 th.sel-col, td.sel-col { width: 36px; text-align: center; padding-left: 10px; padding-right: 6px; }

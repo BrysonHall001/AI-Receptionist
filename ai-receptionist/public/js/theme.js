@@ -62,9 +62,10 @@
     document.body.dataset.theme = id;
   }
 
-  // Resolve a UserTheme {active, customs} and apply it.
+  // Resolve a UserTheme {active, customs, funLevel} and apply it.
   function applyUserTheme(ut) {
     ut = ut || {};
+    applyFun(ut.funLevel);
     const a = ut.active || {};
     if (a.mode === "custom") {
       const c = (ut.customs || []).find((x) => x.id === a.customId);
@@ -73,7 +74,16 @@
     applyResolved({ mode: "preset", preset: a.preset || "light" });
   }
 
-  function resetToDefault() { clearCustom(); document.body.dataset.theme = "light"; }
+  function resetToDefault() { clearCustom(); document.body.dataset.theme = "light"; applyFun(0); }
+
+  // Fun-theme decoration intensity. Validates to a finite 0..1 before touching the
+  // CSSOM. Only fun-preset CSS reads --fun, so this is a no-op for basic/custom themes.
+  function applyFun(level) {
+    let n = typeof level === "number" ? level : Number(level);
+    if (!isFinite(n)) n = 0;
+    n = Math.max(0, Math.min(100, n));
+    document.body.style.setProperty("--fun", String(n / 100));
+  }
 
   async function loadAndApply() {
     try {
@@ -125,6 +135,46 @@
       const res = await App.portalApi("/api/theme", { method: "PATCH", body: JSON.stringify({ theme: prefs }) });
       prefs = res.theme;
       return prefs;
+    }
+
+    const clampFun = (v) => { let n = Number(v); if (!isFinite(n)) n = 0; return Math.max(0, Math.min(100, Math.round(n))); };
+    let funSaveTimer = null;
+    // Debounce the server PATCH: we update --fun live on every drag, but only save
+    // after the user pauses/releases (~300ms idle), not on every pixel.
+    function scheduleFunSave(delay) {
+      if (funSaveTimer) clearTimeout(funSaveTimer);
+      funSaveTimer = setTimeout(async () => {
+        funSaveTimer = null;
+        try { await persist(); } catch (e) { toast(e.message, true); }
+      }, delay == null ? 300 : delay);
+    }
+
+    // Continuous "Fun intensity" slider. Lives beneath the Fun dropdown; drives the
+    // --fun CSS variable live (0..1) so fun-theme decoration animates smoothly, and
+    // only affects fun presets. Persisted (clamped 0..100) via the debounced save.
+    function funSlider() {
+      const lvl = clampFun(prefs.funLevel);
+      const row = el("div", "fun-slider-row");
+      row.innerHTML =
+        `<label class="fun-slider-label" for="fun-range">Fun intensity ` +
+        `<span class="cell-muted" style="font-weight:400">— only affects Fun themes</span></label>` +
+        `<div class="fun-slider-controls">` +
+        `<span class="fun-range-end">Calm</span>` +
+        `<input type="range" id="fun-range" class="fun-range" min="0" max="100" step="1" value="${lvl}" aria-label="Fun intensity">` +
+        `<span class="fun-range-end">Extra</span>` +
+        `<span class="fun-range-val" id="fun-val">${lvl}</span>` +
+        `</div>`;
+      const range = row.querySelector("#fun-range");
+      const valEl = row.querySelector("#fun-val");
+      range.oninput = () => {
+        const v = clampFun(range.value);
+        valEl.textContent = String(v);
+        prefs.funLevel = v;
+        App.theme.applyFun(v);   // live, cheap (just sets --fun)
+        scheduleFunSave();       // debounced server save
+      };
+      range.onchange = () => { prefs.funLevel = clampFun(range.value); scheduleFunSave(0); }; // save promptly on release
+      return row;
     }
 
     function swatchHTML(sw) { return (sw || []).map((s) => `<span class="theme-swatch" style="background:${isHex(s) ? s : "transparent"}"></span>`).join(""); }
@@ -209,6 +259,7 @@
       wrap.appendChild(presetSelect("basic"));
       wrap.appendChild(el("div", "theme-group-label", "Fun"));
       wrap.appendChild(presetSelect("fun"));
+      wrap.appendChild(funSlider());
 
       wrap.appendChild(el("div", "theme-group-label", "Design your own"));
       const designer = el("div", "theme-card theme-custom-card");
@@ -312,5 +363,5 @@
     render();
   }
 
-  App.theme = { applyResolved, applyUserTheme, resetToDefault, loadAndApply, mountSettings, getLogo: function () { return App.portalLogo || null; } };
+  App.theme = { applyResolved, applyUserTheme, applyFun, resetToDefault, loadAndApply, mountSettings, getLogo: function () { return App.portalLogo || null; } };
 })(typeof window !== "undefined" ? window : globalThis);

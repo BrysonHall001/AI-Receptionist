@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 160" preserveAspectRatio="xMidYMax slice">
+  <g fill="#0f1a13">
+    <path d="M0 160 V90 q20-38 44-20 q6-34 34-30 q18-24 40-6 q22-16 40 8 q26-6 30 26 q24 4 20 32 V160 Z"/>
+    <path d="M300 160 V96 q22-40 46-18 q10-30 36-26 q16-22 40-4 q24-14 40 10 q24-4 28 28 q22 6 20 30 V160 Z"/>
+  </g>
+  <g fill="#1c3325" opacity="0.9">
+    <path d="M120 160 V104 q26-34 52-12 q14-26 40-18 q22-14 40 12 q26 0 24 34 V160 Z"/>
+    <path d="M430 160 V108 q24-30 50-12 q16-22 40-14 q22-10 38 14 V160 Z"/>
+  </g>
+</svg>
