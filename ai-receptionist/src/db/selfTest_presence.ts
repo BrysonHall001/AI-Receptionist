@@ -15,7 +15,7 @@
 //      fallback color is deterministic.
 import { prisma, disconnectDb } from "./client";
 import { apiRouter } from "../routes/api";
-import { listPresentMembers, presenceFallbackColor, PRESENCE_WINDOW_MS } from "../services/presenceService";
+import { listPresentMembers, presenceFallbackColor, stampHeartbeat, PRESENCE_WINDOW_MS } from "../services/presenceService";
 
 const stamp = Date.now();
 const failures: string[] = [];
@@ -77,6 +77,17 @@ async function main() {
   check(!idsA.has(owner.id) && !idsA.has(adminInA.id), "OWNER/SUPER_ADMIN excluded from A even with fresh lastSeenAt (incl. tenant-scoped)");
   // no PII leaked
   check(listA.every((p) => !("email" in p)), "presence entries expose no email/PII");
+
+  // (BUG-1 FIX) self-view: a brand-new member (lastSeenAt = null) is absent until their
+  // OWN heartbeat is stamped, then appears IMMEDIATELY — no dependency on a prior/separate
+  // heartbeat call or poll ordering. This is what GET /api/presence now guarantees by
+  // stamping the caller before listing.
+  const fresh1 = await mkUser(A, "CLIENT_USER", "nadia", null); // brand-new, never seen
+  const beforeStamp = await listPresentMembers(A);
+  check(!beforeStamp.some((p) => p.id === fresh1.id), "brand-new member (lastSeenAt null) is absent before any heartbeat");
+  await stampHeartbeat(fresh1.id);
+  const afterStamp = await listPresentMembers(A);
+  check(afterStamp.some((p) => p.id === fresh1.id), "member appears IMMEDIATELY after their own heartbeat is stamped (self-view fix)");
 
   // (5) heartbeat keys off REAL identity. Simulate impersonation: realUser=owner (admin),
   // req.user carries owner's id downgraded into tenant A (as the middleware builds it).

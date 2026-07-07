@@ -987,6 +987,10 @@ apiRouter.post("/presence/heartbeat", async (req: Request, res: Response) => {
 apiRouter.get("/presence", async (req: Request, res: Response) => {
   const tenantId = resolveTenantScope(req);
   if (!tenantId) { res.json({ present: [] }); return; }
+  // Stamp the caller first (REAL identity) so the self-view can never be empty due to
+  // poll/heartbeat ordering. Admins have no member row/tenant match, so this is a no-op
+  // for their visibility — they still never appear.
+  await stampHeartbeat((req.realUser || req.user)!.id);
   res.json({ present: await listPresentMembers(tenantId) });
 });
 

@@ -4514,14 +4514,16 @@
           ${field("Name", me.name || "—")}
           ${field("Email", me.email)}
           ${field("Role", roleLabel(me.role))}
+          <div class="field">
+            <span class="field-label">Dot color</span>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+              <div id="dot-preview" style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:0 0 auto;border:2px solid var(--topbar-bg);box-shadow:0 1px 2px rgba(0,0,0,.25)">?</div>
+              <input id="dot-color" type="color" value="#888888" style="width:44px;height:32px;padding:0;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel);cursor:pointer" />
+              <span id="dot-note" class="cell-muted" style="font-size:12px"></span>
+            </div>
+          </div>
         </div>
-        <label class="field-label" style="margin-top:4px">Dot color</label>
-        <div class="add-user" style="align-items:center;gap:12px">
-          <div id="dot-preview" style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:0 0 auto;border:2px solid var(--topbar-bg);box-shadow:0 1px 2px rgba(0,0,0,.25)">?</div>
-          <input id="dot-color" type="color" value="#888888" style="width:44px;height:32px;padding:0;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel);cursor:pointer" />
-          <span id="dot-note" class="cell-muted" style="font-size:12px"></span>
-        </div>
-        <label class="field-label" style="margin-top:12px">Change password</label>
+        <label class="field-label" style="margin-top:4px">Change password</label>
         <div class="add-user"><input id="acct-pass" class="input" type="password" placeholder="New password (8+)" />
           <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>
         <label class="field-label" style="margin-top:8px">Email signature</label>

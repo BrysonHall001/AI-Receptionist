@@ -68,21 +68,21 @@
   }
   function stopTimers() { if (hbTimer) clearInterval(hbTimer); if (pollTimer) clearInterval(pollTimer); hbTimer = pollTimer = 0; }
 
-  function onVisibility() {
+  async function onVisibility() {
     if (!running) return;
     if (document.hidden) { stopTimers(); }
-    else { heartbeat(); poll(); startTimers(); }
+    else { await heartbeat(); await poll(); startTimers(); }
   }
 
   // Called on every portal render with the fresh strip element.
-  function mount(el) {
+  async function mount(el) {
     container = el;
     if (!inPortal()) { stop(); return; }
     render(); // paint cached dots immediately into the new element
     if (!running) {
       running = true;
       if (!bound) { document.addEventListener("visibilitychange", onVisibility); bound = true; }
-      heartbeat(); poll(); startTimers();
+      await heartbeat(); await poll(); startTimers(); // stamp first, so the caller sees their OWN dot on the first poll
     }
   }
 
