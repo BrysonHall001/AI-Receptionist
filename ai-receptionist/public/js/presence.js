@@ -8,7 +8,16 @@
 
   let container = null, present = [], hbTimer = 0, pollTimer = 0, running = false, bound = false;
 
-  function inPortal() { return !!(App.state && App.state.currentPortalId); }
+  // A real portal member (PORTAL_ADMIN / CLIENT_USER / custom-role) is ALWAYS in their
+  // own portal — the server scopes presence to their tenant, so no currentPortalId is
+  // needed. Admins are "in a portal" only once they've opened one (currentPortalId set),
+  // so they don't poll on the master-hub tenant list.
+  function inPortal() {
+    if (!App.state) return false;
+    if (App.state.currentPortalId) return true;
+    var me = App.state.me;
+    return !!(me && App.isAdminTier && !App.isAdminTier(me.role));
+  }
 
   // Readable initial text: dark ink on light dots, white on dark dots.
   function textOn(hex) {
@@ -52,12 +61,15 @@
   }
 
   async function heartbeat() {
+    console.log("[presence] heartbeat() → POST /api/presence/heartbeat");
     try { await App.portalApi("/api/presence/heartbeat", { method: "POST" }); } catch (e) { /* quiet */ }
   }
   async function poll() {
+    console.log("[presence] poll() → GET /api/presence");
     try {
       const r = await App.portalApi("/api/presence");
       present = (r && r.present) || [];
+      console.log("[presence] poll() got", present.length, "present");
       render();
     } catch (e) { /* keep last dots; retry next cycle */ }
   }
@@ -76,8 +88,12 @@
 
   // Called on every portal render with the fresh strip element.
   async function mount(el) {
+    var me = App.state && App.state.me;
+    console.log("[presence] mount() called — inPortal:", inPortal(),
+      "| currentPortalId:", App.state && App.state.currentPortalId,
+      "| me.role:", me && me.role);
     container = el;
-    if (!inPortal()) { stop(); return; }
+    if (!inPortal()) { console.log("[presence] not in a portal — mount() bailing (no polling)"); stop(); return; }
     render(); // paint cached dots immediately into the new element
     if (!running) {
       running = true;
