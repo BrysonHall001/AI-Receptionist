@@ -520,6 +520,9 @@
       layer("sc-sun-mid", sunMid()) +
       layer("sc-sun-near", sunNear()) +
       layer("sc-sun-birds", sunBirds());
+    // EXPERIMENT (removable): overlay a WebGL Golden Hour sky on top of this SVG
+    // scene, which stays as the graceful fallback. See public/js/webgl-sunset.js.
+    if (App.webglSunset) App.webglSunset.activate(sc);
   }
 
   /* =====================================================================
@@ -671,6 +674,8 @@
     const sc = ensure();
     if (themeId === current) return;
     current = themeId;
+    // EXPERIMENT (removable): tear down the WebGL sunset renderer when leaving sunset.
+    if (App.webglSunset && themeId !== "sunset") App.webglSunset.deactivate();
     if (themeId === "dusk") buildDusk(sc);
     else if (themeId === "aero") buildAero(sc);
     else if (themeId === "cottage") buildCottage(sc);
