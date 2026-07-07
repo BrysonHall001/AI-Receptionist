@@ -403,7 +403,7 @@
 
     // Read-only note: hours are managed in Settings -> Scheduling (NOT here).
     const hoursNote = el("div", "cell-muted");
-    hoursNote.style.cssText = "font-size:12.5px;margin:0 0 12px;padding:8px 12px;background:var(--surface-2,#f8fafc);border-left:3px solid var(--accent,#c7d2fe);border-radius:4px;";
+    hoursNote.style.cssText = "font-size:12.5px;margin:0 0 12px;padding:8px 12px;background:var(--panel-2);border-left:3px solid var(--accent,#c7d2fe);border-radius:4px;";
     hoursNote.innerHTML = `Business hours &amp; availability aren't set here — the receptionist reads them from <a href="#/settings/scheduling" style="color:#2563eb;text-decoration:underline;">Settings &rarr; Scheduling</a>, so they always match your calendar.`;
     sec.appendChild(hoursNote);
 
@@ -457,7 +457,7 @@
       tabsCol.appendChild(label);
       sections.forEach((s, i) => {
         const tab = el("div", "ai-tab" + (i === activeIdx ? " active" : ""));
-        tab.style.cssText = "display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid " + (i === activeIdx ? "#c7d2fe" : "transparent") + ";background:" + (i === activeIdx ? "var(--surface-2,#eef2ff)" : "transparent") + ";";
+        tab.style.cssText = "display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid " + (i === activeIdx ? "var(--accent)" : "transparent") + ";background:" + (i === activeIdx ? "var(--panel-2)" : "transparent") + ";";
         if (editable) {
           const grip = el("span", "cell-muted"); grip.textContent = "\u2630"; grip.style.cssText = "cursor:grab;font-size:11px;opacity:.6;";
           tab.appendChild(grip);
@@ -593,7 +593,7 @@
             card.appendChild(h);
             const existing = (curBody(s.section) || "").trim();
             if (existing) { const ex = el("div", "cell-muted"); ex.style.cssText = "font-size:11.5px;margin:0 0 6px;"; ex.innerHTML = `<i>Current:</i> ${esc(existing.slice(0, 160))}${existing.length > 160 ? "…" : ""}`; card.appendChild(ex); }
-            const pre = el("div"); pre.style.cssText = "white-space:pre-wrap;font-size:12.5px;background:var(--surface-2,#f8fafc);border-radius:6px;padding:8px 10px;max-height:160px;overflow:auto;"; pre.textContent = s.content;
+            const pre = el("div"); pre.style.cssText = "white-space:pre-wrap;font-size:12.5px;background:var(--panel-2);border-radius:6px;padding:8px 10px;max-height:160px;overflow:auto;"; pre.textContent = s.content;
             card.appendChild(pre);
             body.appendChild(card);
           });
@@ -697,10 +697,10 @@
         // ---- Sync health: last synced + status, so drift is never silent. ----
         const rows = [];
         if (data.syncStatus === "degraded") {
-          rows.push(`<span style="color:var(--danger,#b91c1c);font-weight:600;">⚠ Sync degraded</span>` +
+          rows.push(`<span style="color:var(--red);font-weight:600;">⚠ Sync degraded</span>` +
             (data.lastSyncError ? ` — ${App.util.esc(data.lastSyncError)}` : ""));
         } else if (data.syncStatus === "ok") {
-          rows.push(`<span style="color:var(--ok,#15803d);font-weight:600;">● Sync OK</span>`);
+          rows.push(`<span style="color:var(--green);font-weight:600;">● Sync OK</span>`);
         }
         if (data.lastSyncedAt) {
           rows.push(`Last synced: ${new Date(data.lastSyncedAt).toLocaleString()}`);
@@ -711,7 +711,7 @@
 
         // ---- Write-scope: prompt a one-time reconnect to enable write-back (F). ----
         if (data.writeGranted) {
-          rows.push(`<span style="color:var(--ok,#15803d);">Write-back ready.</span>`);
+          rows.push(`<span style="color:var(--green);">Write-back ready.</span>`);
         } else {
           rows.push(`<span class="cell-muted">Write-back is not enabled yet (reading still works).</span>`);
         }
@@ -778,7 +778,7 @@
         const needsReconnect = e && e.data && e.data.needsReconnect;
         gMap.innerHTML = "";
         const warn = el("p", "cell-muted");
-        warn.style.cssText = "font-size:13px;color:var(--danger,#b91c1c);";
+        warn.style.cssText = "font-size:13px;color:var(--red);";
         warn.textContent = needsReconnect
           ? "Google connection needs reconnecting — click Disconnect, then Connect again."
           : ((e && e.message) || "Couldn't load calendars.");
@@ -4011,7 +4011,7 @@
 
       function roleListHtml() {
         const item = (active, label, sub, attrs) =>
-          `<div class="perm-role-item${active ? " active" : ""}" ${attrs} style="padding:8px 10px;border-radius:8px;cursor:pointer;${active ? "background:var(--accent-weak,#eef);font-weight:600" : ""}">${esc(label)}${sub ? `<span class="cell-muted" style="font-size:11px;display:block;font-weight:400">${esc(sub)}</span>` : ""}</div>`;
+          `<div class="perm-role-item${active ? " active" : ""}" ${attrs} style="padding:8px 10px;border-radius:8px;cursor:pointer;${active ? "background:var(--accent-soft);font-weight:600" : ""}">${esc(label)}${sub ? `<span class="cell-muted" style="font-size:11px;display:block;font-weight:400">${esc(sub)}</span>` : ""}</div>`;
         let html = `<div class="cell-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">System roles (reference)</div>`;
         html += data.systemRoles.map((s) => item(sel.kind === "system" && sel.role === s.role, s.label, "", `data-system="${s.role}"`)).join("");
         html += `<div class="cell-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px">Custom roles</div>`;
@@ -4039,10 +4039,10 @@
           if (!role.editable) {
             return granted
               ? `<td style="text-align:center;color:var(--accent,#2563eb);font-weight:700" title="Granted">\u2713</td>`
-              : `<td style="text-align:center;color:var(--muted);opacity:.4" title="Not granted">\u00b7</td>`;
+              : `<td style="text-align:center;color:var(--ink-faint);opacity:.4" title="Not granted">\u00b7</td>`;
           }
           const withinLevel = keys.every((k) => !!(my[k] && my[k][right] === true));
-          if (!withinLevel) return `<td style="text-align:center;color:var(--muted);opacity:.3" title="Beyond your own permission level — you can't grant this">\u00b7</td>`;
+          if (!withinLevel) return `<td style="text-align:center;color:var(--ink-faint);opacity:.3" title="Beyond your own permission level — you can't grant this">\u00b7</td>`;
           return `<td style="text-align:center"><input type="checkbox" data-area="${esc(keys.join(","))}" data-right="${right}" ${granted ? "checked" : ""}/></td>`;
         }
 
@@ -6088,7 +6088,7 @@
       actList.innerHTML = "";
       if (!items.length) { actList.appendChild(el("p", "cell-muted", "No activity yet.")); return; }
       items.forEach((it) => {
-        const row = el("div"); row.style.cssText = "padding:8px 0; border-bottom:1px solid var(--border);";
+        const row = el("div"); row.style.cssText = "padding:8px 0; border-bottom:1px solid var(--line);";
         const when = it.at ? new Date(it.at).toLocaleString() : "";
         const who = it.actorName ? it.actorName : (it.actorType === "automation" ? "Automation" : "System");
         const top = el("div"); top.textContent = it.text || "";

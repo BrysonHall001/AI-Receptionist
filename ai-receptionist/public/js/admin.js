@@ -1185,7 +1185,7 @@
       chips.innerHTML = "";
       if (!recipients.length) { const e = el("span", "cell-muted", "No recipients — the owner won’t be emailed."); e.style.fontSize = "12px"; chips.appendChild(e); }
       recipients.forEach((r, i) => {
-        const chip = el("span"); chip.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:var(--surface-2,#eef1f5);border-radius:14px;padding:3px 6px 3px 10px;font-size:12.5px";
+        const chip = el("span"); chip.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:var(--panel-2);border-radius:14px;padding:3px 6px 3px 10px;font-size:12.5px";
         chip.appendChild(document.createTextNode(r));
         const x = el("button", "icon-btn", "×"); x.style.cssText = "width:18px;height:18px;line-height:1"; x.onclick = () => { recipients.splice(i, 1); paintChips(); };
         chip.appendChild(x); chips.appendChild(chip);
@@ -1459,7 +1459,7 @@
     inner.querySelector("#th-close").onclick = () => overlay.remove();
     App.api(`/api/admin/billing-config/${encodeURIComponent(tenantId)}/audit`).then((rows) => {
       if (!rows || !rows.length) { body.innerHTML = `<div class="cell-muted" style="font-size:12.5px">No terms changes recorded yet.</div>`; return; }
-      body.innerHTML = `<div style="border-left:2px solid var(--border,#e5e7eb);padding-left:12px">${rows.map((a) => `
+      body.innerHTML = `<div style="border-left:2px solid var(--line);padding-left:12px">${rows.map((a) => `
         <div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0">
           <span style="width:9px;height:9px;border-radius:50%;background:#0ea5e9;margin-top:5px;flex:0 0 auto"></span>
           <div style="flex:1"><div style="font-size:13px;font-weight:600">${esc(a.note)}</div>
@@ -1525,7 +1525,7 @@
     card.appendChild(save);
 
     // ---- Payments (Stripe) — connection status + billing email + connect button ----
-    const sep = el("div"); sep.style.cssText = "border-top:1px solid var(--border,#e5e7eb);margin:16px 0 12px"; card.appendChild(sep);
+    const sep = el("div"); sep.style.cssText = "border-top:1px solid var(--line);margin:16px 0 12px"; card.appendChild(sep);
     const sh = el("div"); sh.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
     sh.appendChild(el("h4", null, "Payments (Stripe)")).style.cssText = "margin:0;font-size:13.5px";
     if (cfg.stripeConfigured && cfg.stripeMode === "test") { const t = el("span", null, "TEST"); t.style.cssText = "font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:6px;padding:1px 6px"; sh.appendChild(t); }
@@ -1760,7 +1760,7 @@
     inner.innerHTML = `<div class="modal-head"><h2>${existing ? "Edit charge" : "Create charge"}</h2><button class="icon-btn" id="c-close">&times;</button></div>
       <div class="modal-body">
         ${tenantPickerHTML}
-        ${locked ? `<div class="cell-muted" style="font-size:12px;margin:0 0 10px;padding:8px 10px;background:var(--surface-2,#f8fafc);border-left:3px solid #f59e0b;border-radius:4px">This charge is <b>${esc(existing.status)}</b>, so the amount and period are locked. To bill a different amount, void this charge and create a new one. You can still edit the note and due date.</div>` : ""}
+        ${locked ? `<div class="cell-muted" style="font-size:12px;margin:0 0 10px;padding:8px 10px;background:var(--panel-2);border-left:3px solid #f59e0b;border-radius:4px">This charge is <b>${esc(existing.status)}</b>, so the amount and period are locked. To bill a different amount, void this charge and create a new one. You can still edit the note and due date.</div>` : ""}
         <div style="display:flex;gap:12px;flex-wrap:wrap">
           <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period start</label><input id="c-start" class="input" type="date" value="${d0}" ${dis}></div>
           <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period end</label><input id="c-end" class="input" type="date" value="${d1}" ${dis}></div>
@@ -1914,7 +1914,7 @@
           ${charge.dueDate ? `<div class="cell-muted" style="font-size:12.5px">Due ${esc(fmtDateOnly(charge.dueDate))}</div>` : ""}
           ${charge.notes ? `<div style="font-size:12.5px;margin-top:4px">Notes: ${esc(charge.notes)}</div>` : ""}
           <label class="field-label" style="margin-top:12px">Timeline</label>
-          <div style="border-left:2px solid var(--border,#e5e7eb);padding-left:12px;margin:2px 0 6px">${timelineHTML}</div>
+          <div style="border-left:2px solid var(--line);padding-left:12px;margin:2px 0 6px">${timelineHTML}</div>
           <div class="cell-muted" style="font-size:12px;margin-bottom:8px">${esc(fmtMoney(charge.paidTotal))} paid · ${esc(fmtMoney(charge.outstanding))} outstanding${charge.paidAt ? ` · fully paid ${esc(fmtDateOnly(charge.paidAt))}` : ""}</div>
           <label class="field-label">Status</label>
           <select id="d-status" class="input" style="width:auto">${STATUSES.map((s) => `<option value="${s}"${charge.status === s ? " selected" : ""}>${cap(s)}</option>`).join("")}</select>
@@ -1925,7 +1925,7 @@
             ${(!charge.isPaid && charge.status !== "draft" && charge.status !== "void") ? `<button id="d-markpaid" class="btn btn-ghost btn-sm">Mark paid manually</button>` : ""}
             <button id="d-void" class="btn btn-ghost btn-sm" style="color:#dc2626">Void</button>
           </div>
-          <div style="border-top:1px solid var(--border,#e5e7eb);margin:14px 0 10px"></div>
+          <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
           <label class="field-label">Invoice (Stripe)</label>
           ${!stripeOn ? `<div class="cell-muted" style="font-size:12.5px">Stripe not connected — configure Stripe to invoice this charge.</div>`
             : (charge.status === "draft" ? `<div class="cell-muted" style="font-size:12.5px">Approve the charge to create its invoice.</div>`

@@ -1409,7 +1409,7 @@
     // condText, actionSummary) plus the shared FlowPreview assembler, so the two
     // can't drift. Re-rendered on every trigger/condition/action change.
     const previewNode = el("div", "wf-preview");
-    previewNode.style.cssText = "margin:12px 0 4px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.55;";
+    previewNode.style.cssText = "margin:12px 0 4px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);font-size:13px;line-height:1.55;";
     bodyEl.appendChild(previewNode);
     const PV_LAB = 'style="color:var(--ink-soft);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:7px;"';
     const PV_MUTED = 'style="color:var(--ink-soft);"';

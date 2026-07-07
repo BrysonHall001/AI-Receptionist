@@ -122,7 +122,7 @@
       });
       chipInput.value = "";
       typedNote.textContent = bad.length ? `Not a valid email: ${bad.slice(0, 3).join(", ")}${bad.length > 3 ? "…" : ""}` : "";
-      typedNote.style.color = bad.length ? "var(--danger, #c0392b)" : "";
+      typedNote.style.color = bad.length ? "var(--red)" : "";
       renderChips(); renderSummary();
     }
 
@@ -302,7 +302,7 @@
         ck.onchange = () => { if (ck.checked) state.selected.add(a.id); else state.selected.delete(a.id); renderSummary(); };
         const mid = el("div"); mid.style.cssText = "flex:1;min-width:0";
         mid.innerHTML = `<div style="font-weight:600">${esc(a.name)}</div>`;
-        const cnt = el("div"); cnt.style.cssText = "font-size:12.5px;" + (n === 0 ? "color:#b45309" : "color:var(--muted,#6b7280)");
+        const cnt = el("div"); cnt.style.cssText = "font-size:12.5px;" + (n === 0 ? "color:#b45309" : "color:var(--ink-faint)");
         cnt.textContent = n === 0 ? "0 — matches nobody right now" : `${n} ${nounLower(n)} match now`;
         mid.appendChild(cnt);
         row.appendChild(ck); row.appendChild(mid);
@@ -1276,7 +1276,7 @@
               optionBars((q.distribution || []).map((d) => ({ value: d.value, count: d.count, pct: q.answered ? Math.round((d.count / q.answered) * 100) : 0 }))));
           } else if (q.type === "short_text" || q.type === "long_text") {
             const list = el("div"); list.style.cssText = "margin-top:8px;max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:6px";
-            (q.texts || []).forEach((t) => { const row = el("div"); row.style.cssText = "border-left:2px solid var(--border,#e3e8ef);padding:2px 0 2px 10px"; row.innerHTML = `<div>${esc(t.value)}</div><div class="cell-muted" style="font-size:11.5px">${esc(t.contactName)}</div>`; list.appendChild(row); });
+            (q.texts || []).forEach((t) => { const row = el("div"); row.style.cssText = "border-left:2px solid var(--line);padding:2px 0 2px 10px"; row.innerHTML = `<div>${esc(t.value)}</div><div class="cell-muted" style="font-size:11.5px">${esc(t.contactName)}</div>`; list.appendChild(row); });
             if (!(q.texts || []).length) list.appendChild(el("div", "cell-muted", "No text answers."));
             block.appendChild(list);
           } else if (q.type === "date") {
@@ -1322,7 +1322,7 @@
       body.appendChild(meta);
       const fmtVal = (v) => Array.isArray(v) ? v.join(", ") : (v === true ? "Yes" : v === false ? "No" : String(v));
       (resp.answers || []).forEach((a) => {
-        const row = el("div"); row.style.cssText = "padding:8px 0;border-top:1px solid var(--border,#e3e8ef)";
+        const row = el("div"); row.style.cssText = "padding:8px 0;border-top:1px solid var(--line)";
         row.innerHTML = `<div class="cell-muted" style="font-size:12px">${esc(qLabelById[a.questionId] || "Question")}</div><div>${esc(fmtVal(a.value))}</div>`;
         body.appendChild(row);
       });

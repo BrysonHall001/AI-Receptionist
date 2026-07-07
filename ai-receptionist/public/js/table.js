@@ -404,7 +404,7 @@
         const prev = el("button", "btn btn-ghost btn-sm", "‹ Prev");
         const next = el("button", "btn btn-ghost btn-sm", "Next ›");
         const ind = el("span", "table-pager-info", `Page ${state.page + 1} of ${totalPages}`);
-        ind.style.cssText = "color:var(--muted,#6b7280);font-size:13px;";
+        ind.style.cssText = "color:var(--ink-faint);font-size:13px;";
         prev.disabled = state.page <= 0;
         next.disabled = state.page >= totalPages - 1;
         prev.onclick = () => { if (state.page > 0) { state.page--; render(); } };
