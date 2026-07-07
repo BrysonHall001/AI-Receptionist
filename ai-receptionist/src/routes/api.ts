@@ -58,6 +58,7 @@ import { analyzeFlowDefinition, applyFlowDefinition } from "../services/flowProv
 import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
 import { emitEvent } from "../events/bus";
 import { prisma } from "../db/client";
+import { listPresentMembers, stampHeartbeat, normalizeDotColor, setDotColor, getDotColor } from "../services/presenceService";
 import { logger } from "../utils/logger";
 
 // Authenticated, tenant-scoped surface for the portal dashboard.
@@ -967,6 +968,37 @@ apiRouter.patch("/account/signature", async (req: Request, res: Response) => {
   const { signature } = (req.body ?? {}) as { signature?: string };
   await prisma.user.update({ where: { id: req.user!.id }, data: { signature: signature ?? "" } });
   res.json({ ok: true });
+});
+
+// ===========================================================================
+// Presence ("who's online") — Google-Drive-style avatar dots, per portal.
+// Only real portal MEMBERS (PORTAL_ADMIN / CLIENT_USER, incl. custom-role users
+// whose base role is CLIENT_USER) ever appear. OWNER / SUPER_ADMIN / AUDITOR are
+// excluded unconditionally by the role filter — so an admin, even while
+// impersonating a member, never produces a dot (heartbeat keys off the REAL
+// identity, whose row is admin-tier + tenantId null → never matches a portal query).
+// Strictly per-tenant; exposes only name, first initial and color (no email/PII).
+// ===========================================================================
+apiRouter.post("/presence/heartbeat", async (req: Request, res: Response) => {
+  await stampHeartbeat((req.realUser || req.user)!.id); // REAL identity — impersonation never records a dot
+  res.json({ ok: true });
+});
+
+apiRouter.get("/presence", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.json({ present: [] }); return; }
+  res.json({ present: await listPresentMembers(tenantId) });
+});
+
+apiRouter.patch("/account/dot-color", async (req: Request, res: Response) => {
+  const color = normalizeDotColor((req.body ?? {}).color);
+  if (!color) { res.status(400).json({ error: "Please choose a valid color." }); return; }
+  await setDotColor((req.realUser || req.user)!.id, color); // store on the REAL user
+  res.json({ ok: true, color });
+});
+
+apiRouter.get("/account/dot-color", async (req: Request, res: Response) => {
+  res.json(await getDotColor((req.realUser || req.user)!.id));
 });
 
 // ---- Custom fields (definitions are admin-managed; values editable by all) ----

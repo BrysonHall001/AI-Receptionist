@@ -19,6 +19,7 @@
   };
 
   async function logout() {
+    try { if (App.presence) App.presence.stop(); } catch (e) {}
     try { await App.api("/api/auth/logout", { method: "POST" }); } catch (e) {}
     App.state.me = null;
     App.state.currentPortalId = null;
@@ -584,6 +585,12 @@
       // Impersonation control — immediately LEFT of Refresh, real super-admin only.
       if (App.isAdminTier(me.role)) topRight.appendChild(buildImpersonationControl());
 
+      // "Who's online" presence dots — directly left of Refresh.
+      const presenceStrip = el("div", "presence-strip");
+      presenceStrip.style.cssText = "display:flex;align-items:center;margin-right:2px;";
+      topRight.appendChild(presenceStrip);
+      if (App.presence) App.presence.mount(presenceStrip);
+
       const refresh = el("button", "btn btn-ghost btn-sm", "Refresh");
       refresh.onclick = () => App.portal.refresh();
       topRight.appendChild(refresh);
@@ -593,6 +600,8 @@
       gear.title = "Settings";
       gear.innerHTML = "&#9881;";
       topRight.appendChild(gear);
+    } else if (App.presence) {
+      App.presence.stop();
     }
     topbar.appendChild(topRight);
     main.appendChild(topbar);

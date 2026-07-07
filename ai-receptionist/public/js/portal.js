@@ -4515,12 +4515,44 @@
           ${field("Email", me.email)}
           ${field("Role", roleLabel(me.role))}
         </div>
-        <label class="field-label">Change password</label>
+        <label class="field-label" style="margin-top:4px">Dot color</label>
+        <div class="add-user" style="align-items:center;gap:12px">
+          <div id="dot-preview" style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:0 0 auto;border:2px solid var(--topbar-bg);box-shadow:0 1px 2px rgba(0,0,0,.25)">?</div>
+          <input id="dot-color" type="color" value="#888888" style="width:44px;height:32px;padding:0;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel);cursor:pointer" />
+          <span id="dot-note" class="cell-muted" style="font-size:12px"></span>
+        </div>
+        <label class="field-label" style="margin-top:12px">Change password</label>
         <div class="add-user"><input id="acct-pass" class="input" type="password" placeholder="New password (8+)" />
           <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>
         <label class="field-label" style="margin-top:8px">Email signature</label>
         <div id="sig-host"></div>
         <button id="sig-save" class="btn btn-ghost btn-sm" style="margin-top:10px">Save signature</button>`;
+      // Dot color: your "who's online" avatar color. Shows a live preview with your
+      // initial; readable text (dark on light colors, white on dark) is applied live.
+      (function () {
+        const initial = ((me.name || me.email || "?").trim()[0] || "?").toUpperCase();
+        const preview = App.util.$("#dot-preview"), input = App.util.$("#dot-color"), note = App.util.$("#dot-note");
+        const textOn = (hex) => {
+          const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return "#fff";
+          const n = parseInt(m[1], 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+          const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+          return (0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)) > 0.55 ? "#14140f" : "#ffffff";
+        };
+        const paint = (hex) => { preview.textContent = initial; preview.style.background = hex; preview.style.color = textOn(hex); };
+        paint("#888888");
+        App.portalApi("/api/account/dot-color").then((r) => {
+          const c = (r && r.color) || "#888888"; input.value = c; paint(c);
+          note.textContent = r && r.isDefault ? "Auto-chosen for you until you pick one." : "";
+        }).catch(() => {});
+        let t = 0;
+        input.oninput = () => { paint(input.value); note.textContent = ""; clearTimeout(t); t = setTimeout(save, 300); };
+        async function save() {
+          try {
+            await App.portalApi("/api/account/dot-color", { method: "PATCH", body: JSON.stringify({ color: input.value }) });
+            if (App.presence) App.presence.refresh(); // update your live dot
+          } catch (err) { toast((err && err.message) || "Couldn't save color", true); }
+        }
+      })();
       App.util.$("#acct-save").onclick = async () => {
         const pass = App.util.$("#acct-pass").value;
         if (!pass || pass.length < 8) { toast("Password must be at least 8 characters", true); return; }

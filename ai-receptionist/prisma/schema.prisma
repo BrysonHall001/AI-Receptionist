@@ -136,6 +136,10 @@ model User {
   resetToken       String?   @unique
   resetTokenExpiry DateTime?
   lastLoginAt      DateTime?
+  // Presence ("who's online"): lastSeenAt is heartbeat-stamped; dotColor is the
+  // user's chosen avatar-dot color (validated hex, e.g. "#a34bd0"). Both additive/nullable.
+  lastSeenAt       DateTime?
+  dotColor         String?
   expiresAt        DateTime?
   disabled         Boolean   @default(false)
   signature        String?
@@ -153,6 +157,7 @@ model User {
   feedbackMessages FeedbackMessage[]
 
   @@index([tenantId])
+  @@index([tenantId, lastSeenAt])
 }
 
 // A per-portal custom user role (a "class"): a named permission set scoped to one
