@@ -59,7 +59,11 @@
       return;
     }
     clearCustom();
-    const id = typeof t.preset === "string" && /^[a-z0-9_-]+$/.test(t.preset) ? t.preset : "light";
+    let id = typeof t.preset === "string" && /^[a-z0-9_-]+$/.test(t.preset) ? t.preset : "light";
+    // Safe fallback: a saved preset id that no longer exists (e.g. a retired theme)
+    // resolves to the default rather than leaving a blank/broken theme. Uses the
+    // server's known preset list once loaded; before that, the charset check stands.
+    if (App._presetIds && App._presetIds.length && App._presetIds.indexOf(id) === -1) id = "light";
     document.body.dataset.theme = id;
     if (App.scene) App.scene.mount(id);
   }
@@ -90,6 +94,7 @@
   async function loadAndApply() {
     try {
       const res = await App.portalApi("/api/theme");
+      if (res && res.presets) App._presetIds = res.presets.map((p) => p.id);
       applyUserTheme(res.theme);
       App.portalLogo = (res.theme && res.theme.logo) || null;
       return res;
@@ -109,6 +114,7 @@
     catch (e) { host.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
 
     const presets = data.presets || [];
+    if (data.presets) App._presetIds = data.presets.map((p) => p.id);
     const fonts = data.fonts || [];
 
     // Branding is a portal-admin setting. A CLIENT_USER sees the portal's theme

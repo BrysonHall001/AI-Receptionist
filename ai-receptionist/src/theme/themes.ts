@@ -65,10 +65,8 @@ export const PRESETS = [
   { id: "vaporwave", label: "Vaporwave", group: "fun", swatches: ["#1a1130", "#ff6ad5", "#6be1ff"] },
   { id: "forest", label: "Deep Woods", group: "fun", swatches: ["#1c2a22", "#7fae6a", "#eef0e6"] },
   { id: "sunset", label: "Golden Hour", group: "fun", swatches: ["#f8c69a", "#e8743c", "#3a2a33"] },
-  { id: "mono", label: "Brutalist", group: "fun", swatches: ["#ffffff", "#0040ff", "#000000"] },
-  { id: "ocean", label: "Deep Sea", group: "fun", swatches: ["#06243a", "#2fd6d0", "#eaf7fb"] },
-  { id: "sakura", label: "Cherry Blossom", group: "fun", swatches: ["#fdf4f7", "#d96a93", "#4a3a42"] },
-  { id: "terminal", label: "Terminal", group: "fun", swatches: ["#050805", "#39ff14", "#5fff9f"] },
+  { id: "dreamcore", label: "Dreamcore", group: "fun", swatches: ["#f1e6fb", "#ff9ecf", "#43384e"] },
+  { id: "academia", label: "Dark Academia", group: "fun", swatches: ["#241a12", "#c8a24a", "#ece0cf"] },
 ] as const;
 
 export const PRESET_IDS: string[] = PRESETS.map((p) => p.id);

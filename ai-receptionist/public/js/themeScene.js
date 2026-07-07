@@ -522,6 +522,150 @@
       layer("sc-sun-birds", sunBirds());
   }
 
+  /* =====================================================================
+     DREAMCORE — soft surreal pastel dreamscape (slow, weightless, calm)
+     ===================================================================== */
+  function puff(cx, cy, s, top, under) {
+    return `<g transform="translate(${cx} ${cy}) scale(${s})">
+      <ellipse cx="0" cy="28" rx="156" ry="36" fill="${under}"/>
+      <circle cx="-88" cy="6" r="46" fill="${top}"/><circle cx="-34" cy="-22" r="60" fill="${top}"/><circle cx="32" cy="-16" r="54" fill="${top}"/><circle cx="92" cy="6" r="42" fill="${top}"/>
+      <circle cx="-36" cy="-8" r="46" fill="#ffffff" opacity="0.5"/><circle cx="26" cy="-4" r="36" fill="#ffffff" opacity="0.4"/>
+    </g>`;
+  }
+  function dreamFar() {
+    let o = "";
+    for (let i = 0; i < 5; i++) { const x = R(80, 1520), y = R(360, 440); o += puff(x, y, R(0.4, 0.7), "#f3e8fb", "#e6d3f2"); }
+    return svg("1600 620", o, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function dreamClouds() {
+    const sets = [["#ffe3f2", "#ffc6e2"], ["#f0e6ff", "#dcc9f5"], ["#ffffff", "#e9d9f4"], ["#e6f6ff", "#cfe6f8"]];
+    let o = "";
+    for (const [x, y, s] of [[330, 260, 1.5], [860, 200, 1.9], [1280, 300, 1.5], [610, 400, 1.1], [1120, 430, 1.0]]) { const c = pick(sets); o += puff(x, y, s, c[0], c[1]); }
+    return svg("1600 620", o, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function dreamFloat() {
+    let o = `<defs><radialGradient id="orb" cx="38%" cy="34%" r="66%"><stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/><stop offset="45%" stop-color="#ffe3f5" stop-opacity="0.3"/><stop offset="80%" stop-color="#d9c9f5" stop-opacity="0.35"/><stop offset="100%" stop-color="#c9e6ff" stop-opacity="0.3"/></radialGradient></defs>`;
+    // crescent moon
+    o += `<g transform="translate(1240 150)"><circle r="42" fill="#fff6fb"/><circle cx="16" cy="-8" r="38" fill="#e3d4f7"/></g>`;
+    // distant liminal arch
+    o += `<g transform="translate(760 330)" opacity="0.6"><path d="M-26 40 L-26 -10 A26 26 0 0 1 26 -10 L26 40 Z" fill="none" stroke="#e7d3f0" stroke-width="6"/><path d="M-18 40 L-18 -6 A18 18 0 0 1 18 -6 L18 40" fill="#f6ecfb" opacity="0.5"/></g>`;
+    // floating orbs (bob via CSS)
+    for (let i = 0; i < 6; i++) { const x = R(140, 1460), y = R(120, 430), r = R(16, 46); o += `<circle class="orb-bob" style="--d:${R(0, 6).toFixed(2)}s" cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${r.toFixed(0)}" fill="url(#orb)" stroke="#ffffff" stroke-opacity="0.5"/>`; }
+    return svg("1600 620", o, ' preserveAspectRatio="none"');
+  }
+  function dreamSparkles() {
+    let o = "";
+    for (let i = 0; i < 22; i++) { const x = R(0, 1600), y = R(40, 520), s = R(3, 7); o += `<path class="tw" style="--d:${R(0, 4).toFixed(2)}s" d="M${x.toFixed(0)} ${(y - s).toFixed(0)} L${(x + s * 0.28).toFixed(0)} ${(y - s * 0.28).toFixed(0)} L${(x + s).toFixed(0)} ${y.toFixed(0)} L${(x + s * 0.28).toFixed(0)} ${(y + s * 0.28).toFixed(0)} L${x.toFixed(0)} ${(y + s).toFixed(0)} L${(x - s * 0.28).toFixed(0)} ${(y + s * 0.28).toFixed(0)} L${(x - s).toFixed(0)} ${y.toFixed(0)} L${(x - s * 0.28).toFixed(0)} ${(y - s * 0.28).toFixed(0)} Z" fill="#fff3fb"/>`; }
+    return svg("1600 620", o, ' preserveAspectRatio="none"');
+  }
+  function dreamFg() {
+    let o = "";
+    for (const [x, y, s] of [[220, 520, 1.2], [1000, 545, 1.4], [1450, 500, 1.1]]) o += puff(x, y, s, "#ffffff", "#f0e2f7");
+    return svg("1600 620", o, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function buildDreamcore(sc) {
+    sc.innerHTML =
+      layer("sc-dream-sky") +
+      layer("sc-dream-far", dreamFar()) +
+      layer("sc-dream-glow") +
+      layer("sc-dream-clouds", dreamClouds()) +
+      layer("sc-dream-float", dreamFloat()) +
+      layer("sc-dream-sparkles", dreamSparkles()) +
+      layer("sc-dream-fg", dreamFg());
+  }
+
+  /* =====================================================================
+     DARK ACADEMIA — candlelit library interior in one-point perspective
+     ===================================================================== */
+  function acadWall() {
+    return svg("1600 620",
+      `<defs><linearGradient id="winlight" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#9fb4c9"/><stop offset="100%" stop-color="#5a6f86"/></linearGradient></defs>
+       <rect x="710" y="150" width="180" height="230" fill="#1c140c"/>
+       <g transform="translate(800 250)">
+         <path d="M-58 -30 A58 58 0 0 1 58 -30 L58 120 L-58 120 Z" fill="url(#winlight)" opacity="0.85"/>
+         <g stroke="#2a1e12" stroke-width="3">
+           <path d="M0 -88 L0 120" /><line x1="-58" y1="20" x2="58" y2="20"/><line x1="-58" y1="70" x2="58" y2="70"/>
+           <path d="M-30 -74 L-30 120" /><path d="M30 -74 L30 120" />
+         </g>
+       </g>`, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function shelfWall(side) {
+    const nearX = side > 0 ? 0 : 1600, farX = side > 0 ? 620 : 980;
+    const topNear = 24, botNear = 596, topFar = 236, botFar = 352, M = 8;
+    const yAt = (i, u) => { const ny = topNear + i * (botNear - topNear) / M, fy = topFar + i * (botFar - topFar) / M; return ny + (fy - ny) * u; };
+    const spineCols = ["#7a2e28", "#3f5a3a", "#6a4a24", "#8a6a2a", "#54331f", "#3a4a5a", "#6a3050", "#946f2e"];
+    let o = `<path d="M${nearX} ${topNear} L${farX} ${topFar} L${farX} ${botFar} L${nearX} ${botNear} Z" fill="#231810"/>`;
+    o += `<path d="M${farX} ${topFar} L${farX} ${botFar}" stroke="#160f08" stroke-width="6"/>`;
+    for (let i = 0; i < M; i++) {
+      o += `<path d="M${nearX} ${yAt(i + 1, 0).toFixed(0)} L${farX} ${yAt(i + 1, 1).toFixed(0)}" stroke="#3a2a1a" stroke-width="3" opacity="0.9"/>`;
+      let u = 0.015;
+      while (u < 0.95) {
+        const x = nearX + (farX - nearX) * u, topY = yAt(i, u), botY = yAt(i + 1, u), h = (botY - topY) * 0.84, w = 9 * (1 - u) + 2.2;
+        o += `<rect x="${(x - (side > 0 ? 0 : w)).toFixed(1)}" y="${(botY - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${pick(spineCols)}"/>`;
+        u += (w + R(1.6, 3.6)) / Math.abs(farX - nearX);
+      }
+    }
+    return o;
+  }
+  function acadHall() {
+    const vpx = 800, vpy = 290;
+    // ceiling + floor as perspective trapezoids converging to the VP band
+    let o = `<path d="M0 0 L1600 0 L${vpx + 210} ${vpy - 20} L${vpx - 210} ${vpy - 20} Z" fill="#160f08"/>`;
+    // ceiling beams
+    for (let k = -3; k <= 3; k++) { const nx = 800 + k * 260; o += `<path d="M${nx} 0 L${(vpx + k * 30).toFixed(0)} ${(vpy - 22).toFixed(0)}" stroke="#0e0a05" stroke-width="4" opacity="0.7"/>`; }
+    o += `<path d="M0 620 L1600 620 L${vpx + 230} ${vpy + 30} L${vpx - 230} ${vpy + 30} Z" fill="#1a120a"/>`;
+    // rug runner down the middle
+    o += `<path d="M${vpx - 210} 620 L${vpx + 210} 620 L${vpx + 70} ${vpy + 34} L${vpx - 70} ${vpy + 34} Z" fill="#5a241f" opacity="0.7"/>`;
+    o += `<path d="M${vpx - 150} 620 L${vpx + 150} 620 L${vpx + 52} ${vpy + 40} L${vpx - 52} ${vpy + 40} Z" fill="none" stroke="#8a6a2a" stroke-width="3" opacity="0.5"/>`;
+    o += shelfWall(1) + shelfWall(-1);
+    return svg("1600 620", o, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function acadChandelier() {
+    let arms = "";
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2, x = Math.cos(a) * 74, y = Math.sin(a) * 26 + 8; arms += `<line x1="0" y1="0" x2="${x.toFixed(0)}" y2="${y.toFixed(0)}" stroke="#8a6a2a" stroke-width="3"/><g transform="translate(${x.toFixed(0)} ${y.toFixed(0)})"><rect x="-2" y="-11" width="4" height="11" fill="#e8dcc0"/><ellipse class="flame" style="--d:${R(0, 1.2).toFixed(2)}s" cx="0" cy="-15" rx="3" ry="6.5" fill="#ffcf6a"/></g>`; }
+    return svg("1600 620",
+      `<defs><radialGradient id="chglow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffb860" stop-opacity="0.5"/><stop offset="55%" stop-color="#ff9a3c" stop-opacity="0.12"/><stop offset="100%" stop-color="#ff9a3c" stop-opacity="0"/></radialGradient></defs>
+       <ellipse cx="800" cy="150" rx="260" ry="180" fill="url(#chglow)"/>
+       <g class="chand" style="transform-origin:800px 20px">
+         <line x1="800" y1="0" x2="800" y2="120" stroke="#5a4426" stroke-width="3"/>
+         <g transform="translate(800 132)"><ellipse cx="0" cy="0" rx="82" ry="26" fill="none" stroke="#8a6a2a" stroke-width="4"/>${arms}<circle cx="0" cy="0" r="6" fill="#8a6a2a"/></g>
+       </g>`, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function acadSconces() {
+    let o = "";
+    for (const [x, y] of [[150, 300], [1450, 300], [360, 340], [1240, 340]]) {
+      o += `<radialGradient id="sc${x}" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffb860" stop-opacity="0.4"/><stop offset="100%" stop-color="#ffb860" stop-opacity="0"/></radialGradient>`;
+      o = `<circle cx="${x}" cy="${y}" r="90" fill="url(#sc${x})"/>` + o;
+      o += `<g transform="translate(${x} ${y})"><rect x="-3" y="-2" width="6" height="16" fill="#7a5a2e"/><ellipse class="flame" style="--d:${R(0, 1).toFixed(2)}s" cx="0" cy="-8" rx="3.5" ry="8" fill="#ffcf6a"/></g>`;
+    }
+    return svg("1600 620", `<defs></defs>${o}`, ' preserveAspectRatio="none"');
+  }
+  function acadDesk() {
+    return svg("1600 620",
+      `<rect x="0" y="548" width="1600" height="72" fill="#1a1008"/>
+       <rect x="0" y="542" width="1600" height="8" fill="#301f10"/>
+       <g transform="translate(300 542)"><rect x="-9" y="-54" width="18" height="54" fill="#ece0c8"/><ellipse class="flame" style="--d:0.15s" cx="0" cy="-62" rx="5" ry="12" fill="#ffcf6a"/><ellipse cx="0" cy="-60" rx="2.2" ry="6" fill="#fff3c4"/></g>
+       <g transform="translate(780 512)"><path d="M0 26 L-96 8 L-96 -10 L0 6 Z" fill="#efe3cf"/><path d="M0 26 L96 8 L96 -10 L0 6 Z" fill="#e0d1b6"/><line x1="0" y1="6" x2="0" y2="26" stroke="#b89a6a" stroke-width="1.5"/></g>
+       <g transform="translate(1150 520)"><rect x="-46" y="0" width="92" height="12" rx="2" fill="#5a2e26"/><rect x="-40" y="-12" width="80" height="12" rx="2" fill="#3f5a3a"/><rect x="-34" y="-24" width="68" height="12" rx="2" fill="#6a4a24"/></g>
+       <g transform="translate(520 526)"><rect x="-10" y="-6" width="20" height="14" rx="2" fill="#241a12"/><path d="M6 -6 L22 -40" stroke="#d8c088" stroke-width="3" stroke-linecap="round"/></g>`, ' preserveAspectRatio="xMidYMax slice"');
+  }
+  function acadMotes() {
+    let o = "";
+    for (let i = 0; i < 16; i++) { const l = R(30, 62), t = R(20, 80), dur = R(8, 16), d = R(-14, 0); o += `<span class="mote" style="--l:${l.toFixed(1)}%;--t:${t.toFixed(1)}%;--dur:${dur.toFixed(1)}s;--d:${d.toFixed(1)}s"></span>`; }
+    return o;
+  }
+  function buildAcademia(sc) {
+    sc.innerHTML =
+      layer("sc-acad-wall", acadWall()) +
+      layer("sc-acad-hall", acadHall()) +
+      layer("sc-acad-shaft") +
+      layer("sc-acad-motes", acadMotes()) +
+      layer("sc-acad-sconces", acadSconces()) +
+      layer("sc-acad-chandelier", acadChandelier()) +
+      layer("sc-acad-desk", acadDesk()) +
+      layer("sc-acad-vignette");
+  }
+
   let current = null;
   function mount(themeId) {
     const sc = ensure();
@@ -533,6 +677,8 @@
     else if (themeId === "vaporwave") buildVaporwave(sc);
     else if (themeId === "forest") buildForest(sc);
     else if (themeId === "sunset") buildSunset(sc);
+    else if (themeId === "dreamcore") buildDreamcore(sc);
+    else if (themeId === "academia") buildAcademia(sc);
     else { sc.innerHTML = ""; } // no scene for other themes
   }
 

@@ -1079,132 +1079,41 @@ body[data-theme="sunset"] {
   background: linear-gradient(160deg, #ffd9a8 0%, #ffb98f 35%, #f5907a 65%, #b98fd0 100%) fixed;
 }
 
-/* ---- Fun: Brutalist / Monochrome (high contrast, hard edges) ---- */
-body[data-theme="mono"] {
-  --bg: #ffffff; --panel: #ffffff; --panel-2: #f2f2f2;
-  --ink: #000000; --ink-soft: #222222; --ink-faint: #555555;
-  --line: #111111; --line-strong: #000000;
-  --accent: #0040ff; --accent-soft: #dfe6ff; --accent-strong: #0030c0;
-  --green: #008040; --green-soft: #d6f0e0; --amber: #9a6b00; --amber-soft: #f6e8c8; --red: #d00000; --red-soft: #ffdada;
-  --gray-soft: #ededed; --row-hover: #eaeefc; --on-accent: #ffffff;
-  --radius: 2px; --radius-sm: 2px;
-  --font-display: "Poppins", "Arial Black", system-ui, sans-serif;
-  --shadow: none; --shadow-lg: 0 0 0 2px #000;
+/* ---- Fun: Dreamcore (soft surreal pastel dreamscape) ---- */
+body[data-theme="dreamcore"] {
+  --bg: #efe4fb; --panel: #fdf7fb; --panel-2: #f5ecf7;
+  --ink: #43384e; --ink-soft: #574c63; --ink-faint: #6b5f78;
+  --line: #ecdcf2; --line-strong: #ddc8e8;
+  --accent: #e87fc0; --accent-soft: #fbe6f4; --accent-strong: #d266ab;
+  --green: #6fbf9e; --green-soft: #e2f4ec; --amber: #dca23c; --amber-soft: #f8ecd6; --red: #e0748f; --red-soft: #fbe4ea;
+  --gray-soft: #f3ecf7; --row-hover: #f6eef9; --on-accent: #fff;
+  --sidebar-bg: #f7effb; --topbar-bg: #f7effb;
+  --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Nunito", "Segoe UI", system-ui, sans-serif;
+  --radius: 18px; --radius-sm: 13px;
+  background: linear-gradient(180deg, #d6f5ec 0%, #cfe8ff 22%, #e3d4f7 52%, #ffd9ec 82%, #ffe6d4 100%) fixed;
 }
-body[data-theme="mono"] .card, body[data-theme="mono"] .settings-card { border: 2px solid #000; }
-body[data-theme="mono"] .input { border-width: 2px; }
-body[data-theme="mono"] .page-title, body[data-theme="mono"] .settings-h { font-family: var(--font-display); font-weight: 700; }
-body[data-theme="mono"] .btn-primary:disabled { opacity: 0.5; }
 
-/* ---- Fun: Deep Sea / Ocean (bg: depth waves, frosted glass) ---- */
-body[data-theme="ocean"] {
-  --bg: #052033; --panel: rgba(20,66,88,0.62); --panel-2: rgba(20,66,88,0.48);
-  --ink: #ecfaff; --ink-soft: #b6dde8; --ink-faint: #80b6c6;
-  --line: rgba(120,210,230,0.28); --line-strong: rgba(120,210,230,0.46);
-  --accent: #2fe0d8; --accent-soft: #0e4250; --accent-strong: #57f0e8;
-  --green: #3fe0b0; --green-soft: #0e3a30; --amber: #e0b24a; --amber-soft: #2a2410; --red: #ef6f6a; --red-soft: #2c1614;
-  --gray-soft: #0e4250; --row-hover: rgba(255,255,255,0.07); --scrim: rgba(2,15,25,0.65); --on-accent: #052033;
-  --topbar-bg: rgba(8,40,58,0.55);
-  --font-ui: "Poppins", "Segoe UI", system-ui, sans-serif;
-  background:
-    url("/themes/ocean-depth.svg") repeat-x bottom,
-    radial-gradient(90% 60% at 50% 0%, rgba(47,224,216,0.22) 0%, rgba(47,224,216,0) 55%),
-    linear-gradient(180deg, #052033 0%, #093e54 55%, #0c6076 100%) fixed;
-}
-body[data-theme="ocean"] .card, body[data-theme="ocean"] .sidebar, body[data-theme="ocean"] .modal, body[data-theme="ocean"] .settings-card {
-  backdrop-filter: blur(13px) saturate(1.5); -webkit-backdrop-filter: blur(13px) saturate(1.5);
-  border: 1px solid rgba(120,210,230,0.32);
-  box-shadow: 0 8px 28px rgba(0,20,30,0.4), inset 0 1px 0 rgba(180,240,255,0.25);
-}
-body[data-theme="ocean"] .btn-primary { box-shadow: 0 0 14px rgba(47,224,216,0.45), inset 0 1px 0 rgba(255,255,255,0.25); }
-body[data-theme="ocean"] .brand-mark { box-shadow: 0 0 12px rgba(47,224,216,0.55); }
-
-/* ---- Fun: Cherry Blossom / Sakura (soft, elegant, no image) ---- */
-body[data-theme="sakura"] {
-  --bg: #fdf4f7; --panel: #fffafc; --panel-2: #fbeef3;
-  --ink: #4a3a42; --ink-soft: #7c6a72; --ink-faint: #7c6a72;
-  --line: #f3dde6; --line-strong: #ead0db;
-  --accent: #d96a93; --accent-soft: #fbe6ee; --accent-strong: #c2557e;
-  --green: #7aab86; --green-soft: #e6f0e8; --amber: #d39a4a; --amber-soft: #f7ead2; --red: #d8607a; --red-soft: #fbe2e8;
-  --gray-soft: #fbeef3; --row-hover: #fbeef3; --on-accent: #fff;
+/* ---- Fun: Dark Academia (moody candlelit library) ---- */
+body[data-theme="academia"] {
+  --bg: #1a130d; --panel: #241a12; --panel-2: #2c2016;
+  --ink: #ece0cf; --ink-soft: #c9b79c; --ink-faint: #b09a7e;
+  --line: #3a2c1e; --line-strong: #4d3a28;
+  --accent: #c8a24a; --accent-soft: #33261a; --accent-strong: #ddb85e;
+  --green: #8a9a5b; --green-soft: #23260f; --amber: #d0a34a; --amber-soft: #2a2210; --red: #cf7457; --red-soft: #2e180f;
+  --gray-soft: #241a12; --row-hover: #30231a; --scrim: rgba(10,6,2,0.7); --on-accent: #241a12;
+  --sidebar-bg: #201710; --topbar-bg: #201710;
   --font-ui: "Segoe UI", Candara, system-ui, sans-serif;
-  --font-display: "Fraunces", Georgia, serif;
-  --radius: 16px; --radius-sm: 12px;
-}
-body[data-theme="sakura"] .page-title, body[data-theme="sakura"] .settings-h { font-family: var(--font-display); font-weight: 500; }
-
-/* ---- Fun: Terminal / Hacker (bg: scanlines, mono) ---- */
-body[data-theme="terminal"] {
-  --bg: #050805; --panel: #0a0f0a; --panel-2: #0d140d;
-  --ink: #5fff9f; --ink-soft: #43c47a; --ink-faint: #308c57;
-  --line: #143a1f; --line-strong: #1f5a30;
-  --accent: #39ff14; --accent-soft: #0d240d; --accent-strong: #7dff5c;
-  --green: #39ff14; --green-soft: #0d240d; --amber: #ffb000; --amber-soft: #241a05; --red: #ff5f5f; --red-soft: #2a0f0f;
-  --gray-soft: #0c1a0c; --row-hover: #0c1a0c; --scrim: rgba(0,5,0,0.7); --on-accent: #050805;
-  --font-ui: var(--mono); --font-display: var(--mono);
-  --shadow: 0 0 0 1px rgba(57,255,20,0.12), 0 4px 18px rgba(0,0,0,0.6);
-  background: url("/themes/scanlines.svg") repeat, #050805 fixed;
-}
-body[data-theme="terminal"] .btn-primary { background: #0a0f0a; color: #39ff14; border: 1px solid #39ff14; box-shadow: 0 0 8px rgba(57,255,20,0.4); }
-body[data-theme="terminal"] .card, body[data-theme="terminal"] .settings-card { border: 1px solid var(--line-strong); box-shadow: 0 0 0 1px rgba(57,255,20,0.08); }
-
-/* ============================================================
-   FUN-THEME DECORATION — intensity driven by var(--fun) (0..1).
-   At --fun:0 every layer is opacity:0, so fun themes render EXACTLY
-   as before; theme.js raises --fun live from the "Fun intensity"
-   slider. Every layer sits BEHIND content (fixed, z-index:-1,
-   pointer-events:none), and panels are opaque/frosted, so on-panel
-   text contrast is never reduced at any slider value. Continuous
-   glows scale with calc(var(--fun)*k); discrete elements (skyline,
-   grass, foliage, petals) FADE IN across a sub-range via clamp().
-   Only fun presets define these; basic/custom themes ignore --fun.
-   ============================================================ */
-body[data-theme="ocean"]::before,  body[data-theme="ocean"]::after,
-body[data-theme="terminal"]::before, body[data-theme="terminal"]::after,
-body[data-theme="sakura"]::before {
-  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background-repeat: no-repeat; background-position: center; will-change: opacity;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.5);
+  background: radial-gradient(120% 90% at 50% 40%, #2a1e14 0%, #1a130d 60%, #120c07 100%) fixed;
 }
 
-/* Golden Hour and Deep Woods decoration is now a full animated SCENE — see the
-   "#theme-scene" section and public/js/themeScene.js. */
+/* (Deep Sea, Cherry Blossom, Terminal, and Brutalist themes retired.) */
 
-/* Deep Sea — drifting light rays + rising bubbles */
-body[data-theme="ocean"]::before {
-  background: repeating-linear-gradient(105deg, rgba(180,240,255,0.12) 0, rgba(180,240,255,0.12) 2px, rgba(180,240,255,0) 3px, rgba(180,240,255,0) 46px);
-  opacity: calc(var(--fun) * 0.6);
-}
-body[data-theme="ocean"]::after {
-  background: url("/themes/bubbles.svg") repeat; background-size: 300px 300px;
-  opacity: calc(var(--fun) * 0.7); animation: fun-rise 30s linear infinite;
-}
 
-/* Terminal — stronger scanlines (subtle phosphor flicker) + green bloom */
-body[data-theme="terminal"]::before {
-  background: url("/themes/scanlines.svg") repeat; background-size: auto 4px;
-  opacity: calc(var(--fun) * 0.6); animation: fun-flicker 3.4s steps(7) infinite;
-}
-body[data-theme="terminal"]::after {
-  background: radial-gradient(100% 60% at 50% 0%, rgba(57,255,20,0.16) 0%, rgba(57,255,20,0) 60%);
-  opacity: calc(var(--fun) * 0.5);
-}
-
-/* Vaporwave and Cottage Warm decoration is now a full animated SCENE — see the
-   "#theme-scene" section and public/js/themeScene.js. */
-
-/* Cherry Blossom — drifting petals that fade in past ~0.15 */
-body[data-theme="sakura"]::before {
-  background: url("/themes/sakura-petals.svg") repeat; background-size: 260px 260px;
-  opacity: clamp(0, calc((var(--fun) - 0.15) * 1.4), 0.85); animation: fun-fall 24s linear infinite;
-}
-
-@keyframes fun-rise { from { background-position: 0 0; } to { background-position: 0 -340px; } }
-@keyframes fun-fall { from { background-position: 0 0; } to { background-position: 60px 260px; } }
-@keyframes fun-flicker { 0%, 100% { filter: none; } 46% { filter: brightness(1.22); } 56% { filter: brightness(0.86); } }
-/* Respect reduced-motion: keep the decoration, drop the animation. */
-@media (prefers-reduced-motion: reduce) {
-  body[data-theme]::before, body[data-theme]::after { animation: none !important; }
-}
+/* (Batch-4 pseudo-element decoration removed — all fun themes now use full
+   animated scenes; see the "#theme-scene" section and themeScene.js.) */
 
 /* ============================================================
    ANIMATED THEME SCENES (dusk, aero) — built by public/js/themeScene.js.
@@ -1343,6 +1252,32 @@ body[data-theme="sakura"]::before {
 .sc-sun-birds { opacity: clamp(0, calc((var(--fun) - 0.4) * 1.8), 1); animation: drift-far 80s ease-in-out infinite; }
 #theme-scene .bird { animation: bird-flap 0.7s ease-in-out infinite; animation-delay: var(--d, 0s); transform: translate(var(--x), var(--y)); }
 
+/* ---------------- DREAMCORE ---------------- */
+.sc-dream-sky { opacity: var(--fun); background: linear-gradient(180deg, #d6f5ec 0%, #cfe8ff 24%, #e3d4f7 52%, #ffd9ec 82%, #ffe6d4 100%); }
+.sc-dream-far { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.4), 0.8); animation: drift-far 100s ease-in-out infinite; }
+.sc-dream-far .sc-svg { height: 55%; top: auto; bottom: 20%; filter: blur(2px); }
+.sc-dream-glow { opacity: calc(var(--fun) * 0.5); animation: haze 30s ease-in-out infinite; background: radial-gradient(60% 50% at 50% 20%, rgba(255,255,255,0.5) 0%, rgba(255,240,250,0) 60%); }
+.sc-dream-clouds { opacity: clamp(0, calc((var(--fun) - 0.15) * 1.5), 1); animation: drift-near 80s ease-in-out infinite; }
+.sc-dream-clouds .sc-svg { height: 80%; top: auto; bottom: 8%; }
+.sc-dream-float { opacity: clamp(0, calc((var(--fun) - 0.3) * 1.5), 1); }
+.sc-dream-sparkles { opacity: clamp(0, calc((var(--fun) - 0.25) * 1.5), 1); }
+.sc-dream-fg { opacity: clamp(0, calc((var(--fun) - 0.1) * 1.3), 0.55); animation: drift-far 60s ease-in-out infinite; }
+.sc-dream-fg .sc-svg { height: 50%; top: auto; bottom: 0; }
+#theme-scene .orb-bob { animation: orb-bob 7s ease-in-out infinite; animation-delay: var(--d, 0s); }
+
+/* ---------------- DARK ACADEMIA ---------------- */
+.sc-acad-wall { opacity: clamp(0, calc((var(--fun) - 0.05) * 1.5), 1); }
+.sc-acad-hall { opacity: clamp(0, calc((var(--fun) - 0.08) * 1.5), 1); }
+.sc-acad-shaft { opacity: clamp(0, calc((var(--fun) - 0.35) * 1.6), 0.7); background: linear-gradient(200deg, transparent 40%, rgba(185,205,230,0.14) 50%, transparent 60%); }
+.sc-acad-motes { opacity: clamp(0, calc((var(--fun) - 0.35) * 1.6), 1); }
+.sc-acad-motes .mote { position: absolute; left: var(--l); top: var(--t); width: 3px; height: 3px; border-radius: 50%; background: #e8d8b0; box-shadow: 0 0 5px 1px rgba(230,210,160,0.7); animation: firefly var(--dur) ease-in-out var(--d) infinite; }
+.sc-acad-sconces { opacity: clamp(0, calc((var(--fun) - 0.3) * 1.5), 1); }
+.sc-acad-chandelier { opacity: clamp(0, calc((var(--fun) - 0.2) * 1.5), 1); }
+.sc-acad-chandelier .chand { transform-box: fill-box; transform-origin: top center; animation: chand-sway 9s ease-in-out infinite; }
+.sc-acad-desk { opacity: clamp(0, calc((var(--fun) - 0.15) * 1.5), 1); }
+.sc-acad-vignette { opacity: calc(var(--fun) * 0.85); background: radial-gradient(120% 100% at 50% 45%, transparent 50%, rgba(0,0,0,0.55) 100%); }
+#theme-scene .flame { transform-box: fill-box; transform-origin: center bottom; animation: flame 1.1s ease-in-out infinite; animation-delay: var(--d, 0s); }
+
 /* twinkles + flickers (shared; used by inline SVG stars / windows / sparkles) */
 #theme-scene .tw { animation: twinkle 3s ease-in-out infinite; animation-delay: var(--d, 0s); }
 #theme-scene .flick { animation: flick 4.5s steps(1) infinite; animation-delay: var(--d, 0s); }
@@ -1376,6 +1311,9 @@ body[data-theme="sakura"]::before {
 @keyframes rays { 0%,100% { transform: translateX(-3%); opacity: 0.8; } 50% { transform: translateX(3%); opacity: 1; } }
 @keyframes glow-fl { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
 @keyframes bird-flap { 0%,100% { transform: translate(var(--x),var(--y)) scaleY(1); } 50% { transform: translate(var(--x),var(--y)) scaleY(0.5); } }
+@keyframes orb-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+@keyframes flame { 0%,100% { opacity: 0.85; transform: scaleY(1); } 30% { opacity: 1; transform: scaleY(1.12); } 60% { opacity: 0.7; transform: scaleY(0.9); } }
+@keyframes chand-sway { 0%,100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } }
 @keyframes bfly-drift {
   0%   { transform: translate(0, 0) rotate(4deg); }
   25%  { transform: translate(-160px, -60px) rotate(-6deg); }
@@ -1388,7 +1326,8 @@ body[data-theme="sakura"]::before {
   #theme-scene .drone, #theme-scene .bubble, #theme-scene .bfly-path,
   #theme-scene .sc-bfly-svg, #theme-scene .sun-rays,
   #theme-scene .smoke, #theme-scene .firefly, #theme-scene .vap-plane, #theme-scene .shoot,
-  #theme-scene .glow-fl, #theme-scene .mote, #theme-scene .bird { animation: none !important; }
+  #theme-scene .glow-fl, #theme-scene .mote, #theme-scene .bird,
+  #theme-scene .orb-bob, #theme-scene .flame, #theme-scene .chand { animation: none !important; }
 }
 
 /* ---------- Row selection ---------- */
