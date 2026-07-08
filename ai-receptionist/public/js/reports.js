@@ -725,7 +725,7 @@
         ".rw-entry-card{display:flex;align-items:center;gap:13px;padding:15px 16px;border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .04s}" +
         ".rw-entry-card:hover{border-color:var(--accent);box-shadow:var(--shadow)}.rw-entry-card:active{transform:translateY(1px)}.rw-entry-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}" +
         ".rw-entry-icon{flex:0 0 auto;width:38px;height:38px;border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center}" +
-        ".rw-entry-main{min-width:0;flex:1}.rw-entry-title{font-size:14px;font-weight:700;color:var(--ink)}.rw-entry-sub{font-size:12.5px;color:var(--ink-faint);margin-top:2px}.rw-entry-cta{flex:0 0 auto;font-size:12.5px;font-weight:700;color:var(--accent)}" +
+        ".rw-entry-main{min-width:0;flex:1;display:flex;flex-direction:column}.rw-entry-title{font-size:14px;font-weight:700;color:var(--ink)}.rw-entry-sub{font-size:12.5px;color:var(--ink-faint);margin-top:2px}.rw-entry-cta{flex:0 0 auto;font-size:12.5px;font-weight:700;color:var(--accent)}" +
         ".preset-cat-head{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}.preset-cat-head:first-of-type{margin-top:6px}" +
         ".preset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:12px}" +
         ".preset-card{display:flex;flex-direction:column;gap:11px;border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);padding:14px}" +
@@ -742,6 +742,9 @@
     const sparkGlyph = () => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1.5l1.7 4.3 4.3 1.7-4.3 1.7L9 13.5 7.3 9.2 3 7.5l4.3-1.7L9 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
     const CHART_LABEL = { kpi: "Number", bar: "Bar chart", line: "Line chart", pie: "Pie chart", stacked: "Stacked bar", heatmap: "Heatmap", list: "Table" };
     const chartLabel = (t) => CHART_LABEL[t] || t;
+    // Relabel user-facing copy through the SAME helper the rest of the app uses, so a
+    // portal that renamed a noun (e.g. Contacts → "yogurt parfaits") sees its own word.
+    const RL = (s) => (App.relabelText ? App.relabelText(s, { all: true }) : s);
 
     function entryRow() {
       ensureOnrampCss();
@@ -805,10 +808,13 @@
         inCat.forEach((p) => {
           shown++;
           const card = el("div", "preset-card");
-          card.innerHTML = `<div><div class="preset-name">${esc(p.name)}</div><div class="preset-desc">${esc(p.description)}</div></div>
+          card.innerHTML = `<div><div class="preset-name">${esc(RL(p.name))}</div><div class="preset-desc">${esc(RL(p.description))}</div></div>
             <div class="preset-shape"><span class="shape-chip">${esc(chartLabel(p.type))}</span></div>
             <div class="preset-card-foot"><button class="btn btn-primary btn-sm">Add to dashboard</button></div>`;
-          card.querySelector("button").onclick = async () => { if (await applyWidget(p.widget)) { overlay.remove(); toast("Widget added"); } };
+          card.querySelector("button").onclick = async () => {
+            const def = Object.assign({}, p.widget, { title: RL(p.widget.title) });
+            if (await applyWidget(def)) { overlay.remove(); toast("Widget added"); }
+          };
           grid.appendChild(card);
         });
         body.appendChild(grid);
@@ -834,7 +840,7 @@
         const sl = (srcOpts.find((o) => o.key === draft.source) || {}).label || draft.source;
         let m = draft.measureOp === "count" ? sl : (draft.measureOp === "sum" ? "Total " : "Average ") + fieldLabel(draft.measureField);
         if (draft.groupKey) m += " by " + (isDate(draft.groupKey) ? draft.groupDate : fieldLabel(draft.groupKey));
-        return m;
+        return RL(m);
       }
       function buildWidget() {
         const type = draft.type === "auto" ? inferType() : draft.type;
@@ -857,18 +863,18 @@
         const body = inner.querySelector("#wz-body");
 
         if (step === 1) {
-          srcOpts.forEach((o) => body.appendChild(optBtn(esc(o.label), draft.source === o.key, () => { if (draft.source !== o.key) { draft.source = o.key; draft.measureOp = "count"; draft.measureField = null; draft.groupKey = ""; } render(); })));
+          srcOpts.forEach((o) => body.appendChild(optBtn(esc(RL(o.label)), draft.source === o.key, () => { if (draft.source !== o.key) { draft.source = o.key; draft.measureOp = "count"; draft.measureField = null; draft.groupKey = ""; } render(); })));
         } else if (step === 2) {
-          body.appendChild(optBtn("<b>Count</b> — how many " + esc((srcOpts.find((o) => o.key === draft.source) || {}).label || "rows").toLowerCase(), draft.measureOp === "count", () => { draft.measureOp = "count"; render(); }));
+          body.appendChild(optBtn("<b>Count</b> — how many " + esc(RL((srcOpts.find((o) => o.key === draft.source) || {}).label || "rows").toLowerCase()), draft.measureOp === "count", () => { draft.measureOp = "count"; render(); }));
           const nums = numericFields();
           if (!nums.length) { const p = el("p", "cell-muted"); p.style.cssText = "font-size:12.5px;margin-top:6px"; p.textContent = "This source has no numeric fields, so counting is the only option."; body.appendChild(p); }
           nums.forEach((f) => {
-            body.appendChild(optBtn("<b>Total</b> of " + esc(f.label), draft.measureOp === "sum" && draft.measureField === f.key, () => { draft.measureOp = "sum"; draft.measureField = f.key; render(); }));
-            body.appendChild(optBtn("<b>Average</b> of " + esc(f.label), draft.measureOp === "avg" && draft.measureField === f.key, () => { draft.measureOp = "avg"; draft.measureField = f.key; render(); }));
+            body.appendChild(optBtn("<b>Total</b> of " + esc(RL(f.label)), draft.measureOp === "sum" && draft.measureField === f.key, () => { draft.measureOp = "sum"; draft.measureField = f.key; render(); }));
+            body.appendChild(optBtn("<b>Average</b> of " + esc(RL(f.label)), draft.measureOp === "avg" && draft.measureField === f.key, () => { draft.measureOp = "avg"; draft.measureField = f.key; render(); }));
           });
         } else if (step === 3) {
           body.appendChild(optBtn("<b>Don't break it down</b> — one total", !draft.groupKey, () => { draft.groupKey = ""; render(); }));
-          (srcObj().reportFields || []).forEach((f) => body.appendChild(optBtn("By " + esc(f.label), draft.groupKey === f.key, () => { draft.groupKey = f.key; render(); })));
+          (srcObj().reportFields || []).forEach((f) => body.appendChild(optBtn("By " + esc(RL(f.label)), draft.groupKey === f.key, () => { draft.groupKey = f.key; render(); })));
           if (draft.groupKey && isDate(draft.groupKey)) {
             const g = el("div"); g.style.cssText = "margin-top:10px";
             g.innerHTML = `<label class="field-label">Group dates by</label>`;

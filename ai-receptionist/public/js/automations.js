@@ -665,7 +665,7 @@
   function presetCard(p, pbody, data, overlay) {
     const card = el("div", "preset-card");
     const head = el("div");
-    head.innerHTML = `<div class="preset-name">${esc(App.relabelText(p.name))}</div><div class="preset-desc">${esc(App.relabelText(p.description))}</div>`;
+    head.innerHTML = `<div class="preset-name">${esc(App.relabelText(p.name, { all: true }))}</div><div class="preset-desc">${esc(App.relabelText(p.description, { all: true }))}</div>`;
     card.appendChild(head);
     card.appendChild(shapeEl(p.shape));
     if (p.missing && p.missing.length) {
@@ -708,7 +708,7 @@
     pbody.appendChild(back);
 
     const head = el("div", "preset-pv-head");
-    head.innerHTML = `<div class="preset-pv-title">${esc(App.relabelText(p.name))}</div><div class="preset-pv-desc">${esc(App.relabelText(p.description))}</div>`;
+    head.innerHTML = `<div class="preset-pv-title">${esc(App.relabelText(p.name, { all: true }))}</div><div class="preset-pv-desc">${esc(App.relabelText(p.description, { all: true }))}</div>`;
     pbody.appendChild(head);
 
     pbody.appendChild(shapeEl(p.shape));
