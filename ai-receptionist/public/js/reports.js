@@ -519,6 +519,8 @@
       const dash = current();
       if (state.topNode) wrap.appendChild(state.topNode);
       if (!dash) { const e = el("div", "card"); e.innerHTML = `<div class="empty"><div class="empty-emoji">📊</div><h3>Create your first dashboard</h3><p>Build KPIs and charts from your CRM data.</p></div>`; wrap.appendChild(e); host.appendChild(wrap); return; }
+      // On-ramp cards (Analytics only): "Start from a template" + "Build with a wizard".
+      if (opts.onramps && canEdit) wrap.appendChild(entryRow());
       const allWidgets = dash.widgets || [];
       const widgets = opts.widgetFilter ? allWidgets.filter(opts.widgetFilter) : allWidgets;
       const hiddenCount = allWidgets.length - widgets.length;
@@ -714,11 +716,193 @@
 
     function modal(inner) { const overlay = el("div", "modal-overlay"); const box = el("div", "modal modal-wide"); box.appendChild(inner); overlay.appendChild(box); overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); }; document.body.appendChild(overlay); return overlay; }
 
+    // ===================== Analytics on-ramps (templates + wizard) =====================
+    function ensureOnrampCss() {
+      if (document.getElementById("reports-onramp-css")) return;
+      const st = document.createElement("style"); st.id = "reports-onramp-css";
+      st.textContent =
+        ".rw-entry-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px}" +
+        ".rw-entry-card{display:flex;align-items:center;gap:13px;padding:15px 16px;border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .04s}" +
+        ".rw-entry-card:hover{border-color:var(--accent);box-shadow:var(--shadow)}.rw-entry-card:active{transform:translateY(1px)}.rw-entry-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}" +
+        ".rw-entry-icon{flex:0 0 auto;width:38px;height:38px;border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center}" +
+        ".rw-entry-main{min-width:0;flex:1}.rw-entry-title{font-size:14px;font-weight:700;color:var(--ink)}.rw-entry-sub{font-size:12.5px;color:var(--ink-faint);margin-top:2px}.rw-entry-cta{flex:0 0 auto;font-size:12.5px;font-weight:700;color:var(--accent)}" +
+        ".preset-cat-head{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}.preset-cat-head:first-of-type{margin-top:6px}" +
+        ".preset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:12px}" +
+        ".preset-card{display:flex;flex-direction:column;gap:11px;border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);padding:14px}" +
+        ".preset-card .preset-name{font-size:14px;font-weight:700;color:var(--ink)}.preset-card .preset-desc{font-size:12.5px;color:var(--ink-soft);margin-top:3px;line-height:1.45}" +
+        ".preset-shape{display:flex;gap:6px;flex-wrap:wrap}.preset-shape .shape-chip{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}" +
+        ".preset-card-foot{display:flex;gap:7px;margin-top:auto}.preset-card-foot .btn{flex:1;justify-content:center}" +
+        ".rw-wiz-steps{display:flex;gap:6px;margin:2px 0 16px}.rw-wiz-step{flex:1;height:4px;border-radius:2px;background:var(--line)}.rw-wiz-step.on{background:var(--accent)}" +
+        ".rw-wiz-opt{display:block;width:100%;text-align:left;border:1px solid var(--line-strong);background:var(--panel);color:var(--ink);border-radius:var(--radius-sm);padding:11px 13px;margin-bottom:8px;cursor:pointer;font-size:13.5px}" +
+        ".rw-wiz-opt:hover{border-color:var(--accent)}.rw-wiz-opt.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}" +
+        ".rw-wiz-foot{display:flex;justify-content:space-between;gap:10px;margin-top:16px}@media (max-width:640px){.rw-entry-row{grid-template-columns:1fr}.preset-grid{grid-template-columns:1fr}}";
+      document.head.appendChild(st);
+    }
+    const gridGlyph = () => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="1" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="10" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="10" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>`;
+    const sparkGlyph = () => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1.5l1.7 4.3 4.3 1.7-4.3 1.7L9 13.5 7.3 9.2 3 7.5l4.3-1.7L9 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+    const CHART_LABEL = { kpi: "Number", bar: "Bar chart", line: "Line chart", pie: "Pie chart", stacked: "Stacked bar", heatmap: "Heatmap", list: "Table" };
+    const chartLabel = (t) => CHART_LABEL[t] || t;
+
+    function entryRow() {
+      ensureOnrampCss();
+      const row = el("div", "rw-entry-row");
+      const mk = (glyph, title, sub, cta, onClick) => {
+        const c = el("div", "rw-entry-card"); c.setAttribute("role", "button"); c.tabIndex = 0;
+        c.innerHTML = `<span class="rw-entry-icon">${glyph}</span><span class="rw-entry-main"><span class="rw-entry-title">${title}</span><span class="rw-entry-sub">${sub}</span></span><span class="rw-entry-cta">${cta}</span>`;
+        c.onclick = onClick; c.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } };
+        return c;
+      };
+      row.appendChild(mk(gridGlyph(), "Start from a template", "Browse ready-made report widgets and add one to this dashboard.", "Browse →", openTemplateGallery));
+      row.appendChild(mk(sparkGlyph(), "Build with a wizard", "Answer a few questions and we'll build the widget for you.", "Start →", openWizard));
+      return row;
+    }
+
+    // Clone a preset/wizard widget, drop anything not present in THIS portal's sources
+    // (graceful), assign an id, then append + persist + repaint via the normal path.
+    function sanitizeWidget(def) {
+      const src = state.sources[def.source];
+      if (!src) return { error: "This template's data source isn't available in this portal." };
+      const w = JSON.parse(JSON.stringify(def));
+      const byKey = {}; (src.reportFields || []).forEach((f) => { byKey[f.key] = f; });
+      w.groupBy = (w.groupBy || []).filter((d) => d && byKey[d.key]);
+      w.series = (w.series || []).filter((d) => d && byKey[d.key]);
+      if (w.measure && (w.measure.op === "sum" || w.measure.op === "avg")) {
+        const f = byKey[w.measure.field];
+        if (!f || (f.type !== "number" && f.type !== "percent")) w.measure = { op: "count" };
+      }
+      w.series = w.series || []; w.filters = w.filters || [];
+      return { widget: w };
+    }
+    async function applyWidget(def) {
+      let dash = current();
+      if (!dash && state.dashboards.length) { state.currentId = state.dashboards[0].id; dash = current(); }
+      if (!dash) { toast("Create a dashboard first", true); return false; }
+      const s = sanitizeWidget(def);
+      if (s.error) { toast(s.error, true); return false; }
+      s.widget.id = "w" + Date.now() + Math.floor(Math.random() * 999);
+      dash.widgets = dash.widgets || []; dash.widgets.push(s.widget);
+      await persist(dash); paint();
+      return true;
+    }
+
+    async function openTemplateGallery() {
+      ensureOnrampCss();
+      const inner = el("div");
+      inner.innerHTML = `<div class="modal-head"><h2>Report templates</h2><button class="icon-btn" id="tpl-close">&times;</button></div><div class="modal-body" id="tpl-body"><div class="cell-muted">Loading…</div></div>`;
+      const overlay = modal(inner);
+      inner.querySelector("#tpl-close").onclick = () => overlay.remove();
+      let data;
+      try { data = await App.portalApi("/api/reports/presets"); }
+      catch (e) { inner.querySelector("#tpl-body").innerHTML = `<div class="cell-muted">Couldn't load templates.</div>`; return; }
+      const body = inner.querySelector("#tpl-body"); body.innerHTML = "";
+      const cats = data.categories || [], presets = data.presets || [];
+      let shown = 0;
+      cats.forEach((cat) => {
+        const inCat = presets.filter((p) => p.category === cat.key);
+        if (!inCat.length) return;
+        body.appendChild(el("div", "preset-cat-head", cat.label));
+        const grid = el("div", "preset-grid");
+        inCat.forEach((p) => {
+          shown++;
+          const card = el("div", "preset-card");
+          card.innerHTML = `<div><div class="preset-name">${esc(p.name)}</div><div class="preset-desc">${esc(p.description)}</div></div>
+            <div class="preset-shape"><span class="shape-chip">${esc(chartLabel(p.type))}</span></div>
+            <div class="preset-card-foot"><button class="btn btn-primary btn-sm">Add to dashboard</button></div>`;
+          card.querySelector("button").onclick = async () => { if (await applyWidget(p.widget)) { overlay.remove(); toast("Widget added"); } };
+          grid.appendChild(card);
+        });
+        body.appendChild(grid);
+      });
+      if (!shown) body.innerHTML = `<div class="cell-muted">No templates available.</div>`;
+    }
+
+    function openWizard() {
+      ensureOnrampCss();
+      const srcOpts = sourceOptions();
+      if (!srcOpts.length) { toast("No data sources available yet.", true); return; }
+      const draft = { source: srcOpts[0].key, measureOp: "count", measureField: null, groupKey: "", groupDate: "day", type: "auto", title: "" };
+      let step = 1; const LAST = 5; let previewCharts = [];
+      const inner = el("div"); const overlay = modal(inner);
+      const clearPreview = () => { previewCharts.forEach((c) => { try { c.destroy(); } catch (e) {} }); previewCharts = []; };
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) clearPreview(); });
+      const srcObj = () => state.sources[draft.source] || state.sources[srcOpts[0].key];
+      const fieldLabel = (k) => { const f = (srcObj().reportFields || []).find((x) => x.key === k); return f ? f.label : k; };
+      const isDate = (k) => { const f = (srcObj().reportFields || []).find((x) => x.key === k); return !!(f && f.type === "date"); };
+      const numericFields = () => (srcObj().reportFields || []).filter((f) => f.type === "number" || f.type === "percent");
+      function inferType() { if (!draft.groupKey) return "kpi"; return isDate(draft.groupKey) ? "line" : "bar"; }
+      function autoTitle() {
+        const sl = (srcOpts.find((o) => o.key === draft.source) || {}).label || draft.source;
+        let m = draft.measureOp === "count" ? sl : (draft.measureOp === "sum" ? "Total " : "Average ") + fieldLabel(draft.measureField);
+        if (draft.groupKey) m += " by " + (isDate(draft.groupKey) ? draft.groupDate : fieldLabel(draft.groupKey));
+        return m;
+      }
+      function buildWidget() {
+        const type = draft.type === "auto" ? inferType() : draft.type;
+        const measure = draft.measureOp === "count" ? { op: "count" } : { op: draft.measureOp, field: draft.measureField };
+        const groupBy = draft.groupKey ? [isDate(draft.groupKey) ? { key: draft.groupKey, date: draft.groupDate } : { key: draft.groupKey }] : [];
+        return { title: (draft.title || "").trim() || autoTitle(), type, source: draft.source, measure, groupBy, series: [], filters: [] };
+      }
+      function optBtn(label, selected, onClick) { const b = el("button", "rw-wiz-opt" + (selected ? " sel" : "")); b.innerHTML = label; b.onclick = onClick; return b; }
+      function render() {
+        clearPreview();
+        const titles = ["", "What do you want to look at?", "What do you want to measure?", "Break it down by? (optional)", "How should it look?", "Review & add"];
+        const steps = [1, 2, 3, 4, 5].map((n) => `<div class="rw-wiz-step${n <= step ? " on" : ""}"></div>`).join("");
+        inner.innerHTML = `<div class="modal-head"><h2>Build a widget</h2><button class="icon-btn" id="wz-close">&times;</button></div>
+          <div class="modal-body"><div class="rw-wiz-steps">${steps}</div><h3 style="margin:0 0 12px;font-size:15px">${esc(titles[step])}</h3><div id="wz-body"></div>
+          <div class="rw-wiz-foot"><button class="btn btn-ghost btn-sm" id="wz-back">Back</button><button class="btn btn-primary btn-sm" id="wz-next">${step === LAST ? "Add to dashboard" : "Next →"}</button></div></div>`;
+        inner.querySelector("#wz-close").onclick = () => { clearPreview(); overlay.remove(); };
+        const back = inner.querySelector("#wz-back"); back.disabled = step === 1; back.style.visibility = step === 1 ? "hidden" : "visible";
+        back.onclick = () => { step = Math.max(1, step - 1); render(); };
+        inner.querySelector("#wz-next").onclick = onNext;
+        const body = inner.querySelector("#wz-body");
+
+        if (step === 1) {
+          srcOpts.forEach((o) => body.appendChild(optBtn(esc(o.label), draft.source === o.key, () => { if (draft.source !== o.key) { draft.source = o.key; draft.measureOp = "count"; draft.measureField = null; draft.groupKey = ""; } render(); })));
+        } else if (step === 2) {
+          body.appendChild(optBtn("<b>Count</b> — how many " + esc((srcOpts.find((o) => o.key === draft.source) || {}).label || "rows").toLowerCase(), draft.measureOp === "count", () => { draft.measureOp = "count"; render(); }));
+          const nums = numericFields();
+          if (!nums.length) { const p = el("p", "cell-muted"); p.style.cssText = "font-size:12.5px;margin-top:6px"; p.textContent = "This source has no numeric fields, so counting is the only option."; body.appendChild(p); }
+          nums.forEach((f) => {
+            body.appendChild(optBtn("<b>Total</b> of " + esc(f.label), draft.measureOp === "sum" && draft.measureField === f.key, () => { draft.measureOp = "sum"; draft.measureField = f.key; render(); }));
+            body.appendChild(optBtn("<b>Average</b> of " + esc(f.label), draft.measureOp === "avg" && draft.measureField === f.key, () => { draft.measureOp = "avg"; draft.measureField = f.key; render(); }));
+          });
+        } else if (step === 3) {
+          body.appendChild(optBtn("<b>Don't break it down</b> — one total", !draft.groupKey, () => { draft.groupKey = ""; render(); }));
+          (srcObj().reportFields || []).forEach((f) => body.appendChild(optBtn("By " + esc(f.label), draft.groupKey === f.key, () => { draft.groupKey = f.key; render(); })));
+          if (draft.groupKey && isDate(draft.groupKey)) {
+            const g = el("div"); g.style.cssText = "margin-top:10px";
+            g.innerHTML = `<label class="field-label">Group dates by</label>`;
+            const sel = el("select", "input"); [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (v === draft.groupDate) o.selected = true; sel.appendChild(o); });
+            sel.onchange = () => { draft.groupDate = sel.value; }; g.appendChild(sel); body.appendChild(g);
+          }
+        } else if (step === 4) {
+          body.appendChild(optBtn("<b>Pick a sensible default for me</b> — currently: " + chartLabel(inferType()), draft.type === "auto", () => { draft.type = "auto"; render(); }));
+          const types = draft.groupKey ? ["bar", "line", "pie"] : ["kpi"];
+          types.forEach((t) => body.appendChild(optBtn(chartLabel(t), draft.type === t, () => { draft.type = t; render(); })));
+          if (!draft.groupKey) { const p = el("p", "cell-muted"); p.style.cssText = "font-size:12.5px;margin-top:6px"; p.textContent = "With no breakdown, a single number (KPI) fits best."; body.appendChild(p); }
+        } else if (step === 5) {
+          const nameWrap = el("div"); nameWrap.innerHTML = `<label class="field-label">Widget name</label>`;
+          const nameIn = el("input", "input"); nameIn.value = draft.title || autoTitle(); nameIn.oninput = () => { draft.title = nameIn.value; };
+          nameWrap.appendChild(nameIn); body.appendChild(nameWrap);
+          body.appendChild(el("div", "field-label", "Preview"));
+          const pv = el("div", "card"); pv.style.cssText = "padding:12px;min-height:180px"; body.appendChild(pv);
+          try { const s = srcObj(); renderWidgetBody(pv, buildWidget(), s, s.rows, s.reportFields, previewCharts); }
+          catch (e) { pv.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; }
+        }
+      }
+      async function onNext() {
+        if (step < LAST) { step++; render(); return; }
+        clearPreview();
+        if (await applyWidget(buildWidget())) { overlay.remove(); toast("Widget added"); }
+      }
+      render();
+    }
+
     return api;
   }
 
   App.reports = {
-    render: (host) => createView(host, {}).boot(),
+    render: (host) => createView(host, { onramps: true }).boot(),
     mountHome: (host) => createView(host, { compact: true, home: true }).boot(),
     aggregate, valueOf, bucketDate, measureValue, renderWidgetBody, openWidgetEditor,
     createDashboardEngine: (host, o) => createView(host, o || {}),
