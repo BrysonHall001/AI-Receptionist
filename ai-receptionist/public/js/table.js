@@ -307,17 +307,19 @@
         htr.appendChild(th);
       }
       columns.forEach((c) => {
-        const th = el("th");
+        const th = el("th", c.headerClass || "");
         const wrap = el("div", "th-wrap");
         const label = el("span", "th-label", esc(c.label));
-        label.onclick = () => {
-          if (state.sortKey === c.key) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
-          else { state.sortKey = c.key; state.sortDir = "asc"; }
-          saveSort();
-          render();
-        };
+        if (c.sortable !== false) {
+          label.onclick = () => {
+            if (state.sortKey === c.key) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+            else { state.sortKey = c.key; state.sortDir = "asc"; }
+            saveSort();
+            render();
+          };
+        } else { label.style.cursor = "default"; }
         wrap.appendChild(label);
-        if (state.sortKey === c.key) wrap.appendChild(el("span", "th-caret", state.sortDir === "asc" ? "▲" : "▼"));
+        if (c.sortable !== false && state.sortKey === c.key) wrap.appendChild(el("span", "th-caret", state.sortDir === "asc" ? "▲" : "▼"));
         if (c.filterable !== false) {
           const fbtn = el("button", "th-filter" + (state.colFilters[c.key] ? " active" : ""), "&#9662;");
           fbtn.onclick = (e) => { e.stopPropagation(); openColPopover(th, c); };

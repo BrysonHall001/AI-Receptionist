@@ -909,7 +909,7 @@
 
   App.reports = {
     render: (host) => createView(host, { onramps: true }).boot(),
-    mountHome: (host) => createView(host, { compact: true, home: true }).boot(),
+    mountHome: (host) => createView(host, { compact: true, home: true, onramps: true }).boot(),
     aggregate, valueOf, bucketDate, measureValue, renderWidgetBody, openWidgetEditor,
     createDashboardEngine: (host, o) => createView(host, o || {}),
   };

@@ -2297,6 +2297,12 @@
     catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:24px">${esc(e.message)}</div>`; return; }
     body.innerHTML = "";
 
+    // Plain-English explainer so a non-technical user understands what this tab is.
+    const explain = el("div");
+    explain.style.cssText = "font-size:13px;color:var(--ink-soft);line-height:1.55;margin:2px 0 14px";
+    explain.textContent = "When an automation has a “wait” step, the delayed part is queued here until it's due. You can see what's scheduled and cancel a job before it runs.";
+    body.appendChild(explain);
+
     // Super-admin-only manual processor (stand-in for the deployed host heartbeat).
     const isSuper = App.state && App.state.me && App.isAdminTier(App.state.me.role);
     if (isSuper) {

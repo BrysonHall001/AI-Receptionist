@@ -131,7 +131,7 @@
       const ck = {
         key: "__ck", label: "", type: "text", get: () => "",
         render: (c) => `<input type="checkbox" class="aud-ck" data-id="${esc(c.id)}" ${state.checked.has(c.id) ? "checked" : ""} aria-label="Select" />`,
-        cellClass: "cell-check",
+        cellClass: "cell-check", headerClass: "cell-check", filterable: false, sortable: false,
       };
       return [ck].concat(state.columns.slice());
     }
