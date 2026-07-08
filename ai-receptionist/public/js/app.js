@@ -58,11 +58,14 @@
   // at render time via App.label(kind,"many") so renaming the contact/job record
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
-  const PORTAL_NAV = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
   const ADMIN_NAV = [["#/admin/portals", "Tenants"], ["#/admin/users", "Users"], ["#/admin/email", "Email"], ["#/admin/usage", "Billing & Usage"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
-  // Exposed so the Settings → Labels → "Pages & navigation" editor builds its rows
-  // from the same canonical list the sidebar uses (no drift, no second definition).
-  App.PORTAL_NAV = PORTAL_NAV;
+  // The portal nav is now registry-driven: fixed pages + one item per record type
+  // (from navModel.js, which reads the live record types with the three system types
+  // as the always-present default). Exposed as a LIVE getter so the Settings → Labels
+  // → "Pages & navigation" editor and other readers build from the same list the
+  // sidebar uses. For a portal with only the three system types this is byte-for-byte
+  // the historical PORTAL_NAV (same items, order, hrefs, labels).
+  Object.defineProperty(App, "PORTAL_NAV", { configurable: true, get: function () { return App.buildPortalNav(); } });
 
   // ---- Per-portal nav config (single source of truth = App.state.labels.nav) ----
   // Read by the sidebar here and, later, by the per-row nav menu. Order, hide, and
@@ -109,6 +112,7 @@
     var me = App.state.me;
     if (me && me.lockedPages && me.lockedPages.indexOf(href) !== -1) return false;
     var area = App.NAV_VIEW_AREA[href];
+    if (area === undefined && href.indexOf("#/records/") === 0) area = "records"; // future record types
     if (!area) return true; // always-visible items (page-load not permission-gated)
     var pv = me && me.permView;
     if (!pv) return true; // permissions not loaded yet -> don't hide (matches old default)
@@ -118,7 +122,7 @@
   // spot when a requested page isn't viewable (locked or no permission). No "locked"
   // messaging: locked pages simply behave as if they don't exist for the user.
   App.firstAvailableNav = function () {
-    var order = ["#/dashboard", "#/calls", "#/contacts", "#/jobs", "#/bookings", "#/reports", "#/automations", "#/communication", "#/learn", "#/feedback"];
+    var order = App.buildPortalNav().map(function (it) { return it[0]; });
     for (var i = 0; i < order.length; i++) { if (App.canViewNav(order[i])) return order[i]; }
     // Nothing viewable (extreme case: every nav page locked). NEVER return a locked page:
     // fall back to Settings, which isn't a lockable page and always passes canViewNav, so
@@ -134,18 +138,21 @@
     return !!(me && me.lockedPages && me.lockedPages.indexOf(href) !== -1);
   };
   // Map a permission AREA to its nav href(s); an area is "locked" if any of its pages is.
-  // (Jobs & Bookings share the records area and lock together.)
-  App.AREA_HREFS = { contacts: ["#/contacts"], records: ["#/jobs", "#/bookings"], automations: ["#/automations"], communication: ["#/communication"], dashboard: ["#/dashboard"], reports: ["#/reports"], calls: ["#/calls"], learn: ["#/learn"] };
+  // The "records" area covers ALL non-contact record types (jobs, bookings, and any
+  // future type), derived from the record-type list so it extends automatically.
+  App.AREA_HREFS = { contacts: ["#/contacts"], automations: ["#/automations"], communication: ["#/communication"], dashboard: ["#/dashboard"], reports: ["#/reports"], calls: ["#/calls"], learn: ["#/learn"] };
+  Object.defineProperty(App.AREA_HREFS, "records", { enumerable: true, configurable: true, get: function () { return App.recordsAreaHrefs(); } });
   App.isAreaLocked = function (areaKey) {
     var hrefs = App.AREA_HREFS[areaKey]; if (!hrefs) return false;
     for (var i = 0; i < hrefs.length; i++) if (App.isPageLocked(hrefs[i])) return true;
     return false;
   };
-  // Map a record-type kind (contact/job/booking/custom) to its nav href, then to locked.
-  // Built-in kinds have a PORTAL_NAV entry; custom record types live in the records area.
+  // Map a record-type kind to its nav href. System kinds have a bespoke href
+  // (contact→#/contacts, job→#/jobs, booking→#/bookings); custom kinds return null
+  // so isRecordTypeLocked falls back to the records area (they live under records).
   App.recordKindHref = function (kind) {
-    var nav = (App.PORTAL_NAV || []).filter(function (it) { return it[2] === kind; })[0];
-    return nav ? nav[0] : null;
+    var href = App.recordTypeHref(kind);
+    return href.indexOf("#/records/") === 0 ? null : href;
   };
   App.isRecordTypeLocked = function (typeKey) {
     var href = App.recordKindHref(typeKey);
@@ -523,7 +530,7 @@
     const nav = el("nav", "sidebar-nav");
     const isAdmin = section === "admin";
     const canEditNav = !isAdmin && me && (me.role === "PORTAL_ADMIN" || App.isAdminTier(me.role));
-    let items = isAdmin ? ADMIN_NAV.slice() : App.applyNavConfig(PORTAL_NAV);
+    let items = isAdmin ? ADMIN_NAV.slice() : App.applyNavConfig(App.buildPortalNav());
     // The cross-tenant Email + Billing pages are OWNER/SUPER_ADMIN only — hide them from
     // Auditors (the backend endpoints enforce the same, this just keeps the nav honest).
     if (isAdmin && !(me.role === "OWNER" || me.role === "SUPER_ADMIN")) {
@@ -697,8 +704,13 @@
       return App.portal.render("settings", sub);
     }
 
-    // Portal section
-    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/contacts": "contacts", "/jobs": "jobs", "/bookings": "bookings", "/reports": "reports", "/communication": "communication", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
+    // Portal section — fixed pages + registry-derived record-type routes. System
+    // types map to their bespoke views (/contacts→contacts, /jobs→jobs, /bookings→
+    // bookings); a future #/records/<key> maps to null until its view is wired, so it
+    // falls through exactly like any unknown path today (no change for the three).
+    const portalViews = { "/dashboard": "dashboard", "/calls": "calls", "/reports": "reports", "/communication": "communication", "/automations": "automations", "/learn": "learn", "/feedback": "feedback", "/settings": "settings" };
+    const rtViews = App.recordTypePortalViews();
+    Object.keys(rtViews).forEach(function (p) { if (rtViews[p]) portalViews[p] = rtViews[p]; });
     if (portalViews[path]) {
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       // Batch 3: hide is now COSMETIC — a hidden page the user can View still loads by

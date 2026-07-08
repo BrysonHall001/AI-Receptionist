@@ -34,7 +34,8 @@ async function main() {
   check((await can({ role: "OWNER" } as any, "communication", "view")) === true, "communication:view resolves true for OWNER via can()");
   check((await can({ role: "CLIENT_USER" } as any, "communication", "view")) === true, "communication:view resolves true for CLIENT_USER (readonly area)");
   // Default nav label is "Communication" and label-agnostic (no record-type label key).
-  const appJs = readFileSync(resolve(__dirname, "../../public/js/app.js"), "utf8");
+  // The record-type nav model now lives in navModel.js, so read both nav sources.
+  const appJs = readFileSync(resolve(__dirname, "../../public/js/app.js"), "utf8") + "\n" + readFileSync(resolve(__dirname, "../../public/js/navModel.js"), "utf8");
   check(appJs.includes('["#/communication", "Communication"]'), "PORTAL_NAV default label is \"Communication\" (renamable, no fixed label key)");
 
   // ---------- (2) audience math via the REAL App.table.pipeline ----------

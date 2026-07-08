@@ -22,7 +22,7 @@
   const NAV_SECTIONS_SENTINEL = "@@NAV_SECTIONS@@";
   function listJoin(a) { if (a.length <= 1) return a.join(""); if (a.length === 2) return a[0] + " and " + a[1]; return a.slice(0, -1).join(", ") + ", and " + a[a.length - 1]; }
   function navSectionsSentence() {
-    const NAV_LABELS = [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts"], ["#/jobs", "Jobs"], ["#/bookings", "Bookings"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]];
+    const NAV_LABELS = (App.buildPortalNav ? App.buildPortalNav() : [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts"], ["#/jobs", "Jobs"], ["#/bookings", "Bookings"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]]).map(function (it) { return [it[0], it[1]]; });
     const names = NAV_LABELS.filter((x) => !(App.isPageLocked && App.isPageLocked(x[0]))).map((x) => x[1]);
     return "The left navigation lists the main sections: " + listJoin(names) + ".";
   }

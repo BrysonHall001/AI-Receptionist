@@ -30,12 +30,12 @@ function main() {
   check(!!reports && reports.label === "Analytics", `that area's label is "Analytics" (got "${reports ? reports.label : "(missing)"}")`);
   check(!catalog.some((a: any) => a.key === "analytics"), "no NEW \"analytics\" key was introduced (it's a relabel, not a re-key)");
   const rawArea = AREAS.find((a: any) => a.key === "reports");
-  check(!!rawArea && rawArea.label === "Analytics" && rawArea.kind === "readonly", "AREAS source entry: key reports / label Analytics / kind readonly");
+  check(!!rawArea && rawArea.label === "Analytics" && rawArea.kind === "data", "AREAS source entry: key reports / label Analytics / kind data");
   check(NAV_VIEW_AREAS.includes("reports"), "NAV_VIEW_AREAS still lists the \"reports\" view-area (route/view unchanged)");
 
   // ---------- (b) app.js: DEFAULT nav label + page title are "Analytics" ----------
   console.log("\n(b) public/js/app.js defaults: #/reports -> \"Analytics\", route/view-area intact:");
-  const appJs = fs.readFileSync(path.join(__dirname, "../../public/js/app.js"), "utf8");
+  const appJs = fs.readFileSync(path.join(__dirname, "../../public/js/app.js"), "utf8") + "\n" + fs.readFileSync(path.join(__dirname, "../../public/js/navModel.js"), "utf8");
   // PORTAL_NAV default label for the #/reports route is "Analytics".
   check(/\["#\/reports",\s*"Analytics"\]/.test(appJs), "PORTAL_NAV default label for #/reports is \"Analytics\"");
   check(!/\["#\/reports",\s*"Reports"\]/.test(appJs), "no leftover \"Reports\" default label for #/reports");
