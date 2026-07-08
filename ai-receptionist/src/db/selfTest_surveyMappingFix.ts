@@ -98,10 +98,10 @@ async function main() {
     // ---------- (7) client wiring fixes (static) ----------
     console.log("\n(7) client wiring (static):");
     const comm = readFileSync(resolve(__dirname, "../../public/js/communication.js"), "utf8");
-    check(/MAP_TYPES = \[\["contact"[^\]]*\], \["job"[^\]]*\], \["booking"[^\]]*\]\]/.test(comm), "record-type options always include contact, job, booking");
+    check(/\[\{ key: "contact" \}, \{ key: "job" \}, \{ key: "booking" \}\]/.test(comm), "record-type options always include contact, job, booking (registry-derived, with the three as fallback)");
     check(/async function ensureFields\(rt\)/.test(comm) && /\/api\/fields\?recordType=/.test(comm), "selecting a type fetches THAT type's fields (per-record-type)");
     check(/rtSel\.onchange = \(\) => \{ q\.mapRecordType = rtSel\.value \|\| null; q\.mapFieldKey = null; fillFields\(\); updateWarn\(\); \}/.test(comm), "cascade fills fields in place (no full repaint that resets the choice)");
-    check(/\["new", "New Survey"\]/.test(comm) && /if \(v === "new"\) setEdit\(null\)/.test(comm), "New Survey tab present and resets the builder (no stale id)");
+    check(/newBtn\.onclick = \(\) => setEdit\(null\)/.test(comm) && /if \(v === "new"\) setEdit\(null\)/.test(comm), "New Survey affordance present and resets the builder (no stale id)");
   } catch (e) {
     console.error("\nUNEXPECTED ERROR:", e);
     failures.push("unexpected error: " + (e as Error).message);

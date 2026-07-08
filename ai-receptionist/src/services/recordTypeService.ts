@@ -112,43 +112,56 @@ async function ensureRecordType(tenantId: string, key: string, data: Record<stri
   }
 }
 
+// ---------------------------------------------------------------------------
+// SYSTEM RECORD TYPE REGISTRY — the ONE source of truth for the built-in types.
+// Adding a future system type later = add ONE entry to this list; every consumer
+// below (ensureAllSystemRecordTypes / listRecordTypes / resolveRecordTypeId) and
+// in other files (e.g. surveyService's allowed map types) iterates this list, so
+// no if-chains or literal trios need editing. Each `defaults` is EXACTLY the
+// create payload (minus tenantId) used before this refactor, so the seeded data
+// for contact/job/booking is byte-for-byte identical.
+// ---------------------------------------------------------------------------
+export interface SystemRecordTypeDef { key: string; defaults: Record<string, unknown>; }
+
+export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
+  { key: CONTACT_RECORD_TYPE_KEY, defaults: {
+    key: CONTACT_RECORD_TYPE_KEY, label: "Contact", labelPlural: "Contacts", system: true, stages: [], recordStages: [], order: 0,
+  } },
+  { key: JOB_RECORD_TYPE_KEY, defaults: {
+    key: JOB_RECORD_TYPE_KEY, label: "Job", labelPlural: "Jobs", system: false,
+    stages: DEFAULT_JOB_STAGES, recordStages: DEFAULT_JOB_RECORD_STAGES, subtypes: DEFAULT_JOB_SUBTYPES, order: 1,
+  } },
+  { key: BOOKING_RECORD_TYPE_KEY, defaults: {
+    key: BOOKING_RECORD_TYPE_KEY, label: "Booking", labelPlural: "Bookings", system: false,
+    stages: [], recordStages: DEFAULT_BOOKING_RECORD_STAGES, subtypes: DEFAULT_BOOKING_SUBTYPES, order: 2,
+  } },
+];
+
+/** Keys of the built-in system record types, in registry order. Derived (not a
+ *  hardcoded trio) so consumers auto-include a future system type. */
+export function systemRecordTypeKeys(): string[] { return SYSTEM_RECORD_TYPES.map((d) => d.key); }
+
+function systemDef(key: string): SystemRecordTypeDef | undefined { return SYSTEM_RECORD_TYPES.find((d) => d.key === key); }
+
+/** Generic idempotent seeder for a system type, from its registry entry. */
+async function ensureSystemRecordType(tenantId: string, def: SystemRecordTypeDef): Promise<string> {
+  return ensureRecordType(tenantId, def.key, { tenantId, ...def.defaults });
+}
+
+/** Ensure every system record type exists for a portal (iterates the registry). */
+export async function ensureAllSystemRecordTypes(tenantId: string): Promise<void> {
+  for (const def of SYSTEM_RECORD_TYPES) await ensureSystemRecordType(tenantId, def);
+}
+
+// The three named ensurers other files import — now thin delegates to the registry.
 export async function ensureContactRecordType(tenantId: string): Promise<string> {
-  return ensureRecordType(tenantId, CONTACT_RECORD_TYPE_KEY, {
-    tenantId, key: CONTACT_RECORD_TYPE_KEY, label: "Contact", labelPlural: "Contacts", system: true, stages: [], recordStages: [], order: 0,
-  });
+  return ensureSystemRecordType(tenantId, systemDef(CONTACT_RECORD_TYPE_KEY)!);
 }
-
-/** The portal's "job" record type id (recruiting — the first visible type), created if missing. */
 export async function ensureJobRecordType(tenantId: string): Promise<string> {
-  return ensureRecordType(tenantId, JOB_RECORD_TYPE_KEY, {
-    tenantId,
-    key: JOB_RECORD_TYPE_KEY,
-    label: "Job",
-    labelPlural: "Jobs",
-    system: false,
-    stages: DEFAULT_JOB_STAGES,
-    recordStages: DEFAULT_JOB_RECORD_STAGES,
-    subtypes: DEFAULT_JOB_SUBTYPES,
-    order: 1,
-  });
+  return ensureSystemRecordType(tenantId, systemDef(JOB_RECORD_TYPE_KEY)!);
 }
-
-/** The portal's "booking" record type id, created if missing. Seeded ONCE (the
- *  existence check means renames/deletes of its statuses or sample services are
- *  never undone on later loads). Bookings carry the typed Record.appointmentAt
- *  date+time; everything else here reuses the generic record backbone. */
 export async function ensureBookingRecordType(tenantId: string): Promise<string> {
-  return ensureRecordType(tenantId, BOOKING_RECORD_TYPE_KEY, {
-    tenantId,
-    key: BOOKING_RECORD_TYPE_KEY,
-    label: "Booking",
-    labelPlural: "Bookings",
-    system: false,
-    stages: [],
-    recordStages: DEFAULT_BOOKING_RECORD_STAGES,
-    subtypes: DEFAULT_BOOKING_SUBTYPES,
-    order: 2,
-  });
+  return ensureSystemRecordType(tenantId, systemDef(BOOKING_RECORD_TYPE_KEY)!);
 }
 
 export function serializeRecordType(rt: any) {
@@ -165,21 +178,18 @@ export function serializeRecordType(rt: any) {
   };
 }
 
-/** All record types for a portal (ensures the built-in contact + job types exist). */
+/** All record types for a portal (ensures every system type exists first). */
 export async function listRecordTypes(tenantId: string) {
-  await ensureContactRecordType(tenantId);
-  await ensureJobRecordType(tenantId);
-  await ensureBookingRecordType(tenantId);
+  await ensureAllSystemRecordTypes(tenantId);
   const rows = await db.recordType.findMany({ where: { tenantId }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] });
   return rows.map(serializeRecordType);
 }
 
-/** Resolve a record type given a key ("contact"/"job") or an id, to its id. Defaults to contact. */
+/** Resolve a record type given a key ("contact"/"job"/…) or an id, to its id. Defaults to contact. */
 export async function resolveRecordTypeId(tenantId: string, keyOrId?: string | null): Promise<string> {
   const k = (keyOrId || CONTACT_RECORD_TYPE_KEY).toString().trim();
-  if (k === CONTACT_RECORD_TYPE_KEY) return ensureContactRecordType(tenantId);
-  if (k === JOB_RECORD_TYPE_KEY) return ensureJobRecordType(tenantId);
-  if (k === BOOKING_RECORD_TYPE_KEY) return ensureBookingRecordType(tenantId);
+  const sys = systemDef(k);
+  if (sys) return ensureSystemRecordType(tenantId, sys);
   const byId = await db.recordType.findFirst({ where: { tenantId, id: k } });
   if (byId) return byId.id;
   const byKey = await db.recordType.findFirst({ where: { tenantId, key: k } });

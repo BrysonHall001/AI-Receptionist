@@ -2,6 +2,7 @@ import { prisma } from "../db/client";
 import crypto from "crypto";
 import { listFields } from "./fieldService";
 import { isQuestionType, isMappingCompatible } from "./surveyTypes";
+import { systemRecordTypeKeys } from "./recordTypeService";
 
 const db = prisma as any;
 
@@ -80,7 +81,11 @@ export async function getSurvey(tenantId: string, id: string) {
 // Validate questions: known type, has a label, and any mapFieldKey is a real field of
 // the target type whose field-type is compatible with the question type. Returns a
 // normalized question list or throws a user-facing Error.
-const MAP_RECORD_TYPES = ["contact", "job", "booking"];
+// The record types a survey answer may map into. Derived from the system record
+// type registry (NOT a hardcoded trio), so a future system type is allowed
+// automatically without editing this file. Exported so a self-test can prove the
+// doorway works.
+export function allowedMapRecordTypeKeys(): string[] { return systemRecordTypeKeys(); }
 
 async function validateQuestions(tenantId: string, mapTargetType: string, questions: QuestionInput[]): Promise<QuestionInput[]> {
   // Fields are loaded per record type, lazily + cached, so a survey can mix
@@ -107,7 +112,7 @@ async function validateQuestions(tenantId: string, mapTargetType: string, questi
     let mapFieldKey: string | null = q.mapFieldKey ? String(q.mapFieldKey) : null;
     let mapRecordType: string | null = null;
     if (mapFieldKey) {
-      mapRecordType = MAP_RECORD_TYPES.includes(String(q.mapRecordType || "")) ? String(q.mapRecordType) : "contact";
+      mapRecordType = allowedMapRecordTypeKeys().includes(String(q.mapRecordType || "")) ? String(q.mapRecordType) : "contact";
       const byKey = await fieldsFor(mapRecordType);
       const f = byKey[mapFieldKey];
       if (!f) throw new Error(`${where}: mapped field "${mapFieldKey}" doesn't exist for ${mapRecordType}.`);

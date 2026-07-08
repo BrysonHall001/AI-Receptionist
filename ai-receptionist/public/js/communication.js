@@ -855,8 +855,20 @@
     host.innerHTML = "";
     let surveys = [];
     const fieldCache = {};   // recordType -> field defs (fetched lazily, cached)
-    function rtLabel(k) { const d = { contact: "Contact", job: "Job", booking: "Booking" }; return (App.label ? App.label(k, "one") : null) || d[k]; }
-    const MAP_TYPES = [["contact", rtLabel("contact")], ["job", rtLabel("job")], ["booking", rtLabel("booking")]];
+    // Record types the frontend already exposes via /api/record-types (registry-
+    // driven), so a future type is offered automatically. Falls back to the three
+    // system types if the fetch hasn't landed yet — identical behavior today.
+    let rtList = [];
+    App.portalApi("/api/record-types").then((t) => { rtList = Array.isArray(t) ? t : []; }).catch(() => {});
+    function rtLabel(t) {
+      const k = typeof t === "string" ? t : (t && t.key);
+      const own = (t && typeof t === "object") ? t.label : null;
+      return (App.label ? App.label(k, "one") : null) || own || k;
+    }
+    function mapTypeList() {
+      const types = (rtList && rtList.length) ? rtList : [{ key: "contact" }, { key: "job" }, { key: "booking" }];
+      return types.map((t) => [t.key, rtLabel(t)]);
+    }
     async function ensureFields(rt) {
       if (fieldCache[rt]) return fieldCache[rt];
       let list = [];
@@ -1058,7 +1070,7 @@
         const mapRow = el("div"); mapRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
         const rtSel = el("select", "input"); rtSel.style.cssText = "flex:0 0 160px";
         const noMap = el("option", null, "— don't map (collect only) —"); noMap.value = ""; rtSel.appendChild(noMap);
-        MAP_TYPES.forEach(([key, label]) => { const o = el("option", null, label); o.value = key; rtSel.appendChild(o); });
+        mapTypeList().forEach(([key, label]) => { const o = el("option", null, label); o.value = key; rtSel.appendChild(o); });
         rtSel.value = q.mapRecordType || (q.mapFieldKey ? "contact" : "");
         const fieldSel = el("select", "input"); fieldSel.style.cssText = "flex:1;min-width:170px";
         const jbNote = el("div", "cell-muted"); jbNote.style.cssText = "font-size:12px;margin-top:6px;display:none";
