@@ -250,6 +250,17 @@
     return App.state.labels;
   };
 
+  // Warm the live record-type registry so the sidebar shows every type the portal
+  // has (Contacts/Jobs/Bookings + data-driven ones like Equipment), not just the
+  // built-in fallback trio. On failure we keep whatever's cached (fallback still works).
+  App.loadRecordTypes = async function () {
+    try {
+      const types = await portalApi("/api/record-types");
+      if (Array.isArray(types)) App.state.recordTypes = types;
+    } catch (e) { /* keep fallback */ }
+    return App.state.recordTypes;
+  };
+
   // Warm the cache once per portal context (re-loads if the portal changes).
   // After the first successful load, repaint the current view once so the nav /
   // page title reflect this portal's labels even on first entry. The per-portal
@@ -258,7 +269,7 @@
     const key = App.state.currentPortalId || "self";
     if (App.state._labelsFor === key) return;
     App.state._labelsFor = key;
-    App.loadLabels().then(function () { if (App._route) App._route(); });
+    Promise.all([App.loadLabels(), App.loadRecordTypes()]).then(function () { if (App._route) App._route(); });
   };
 
   // Warm the per-portal "AI Receptionist" on/off flag once per portal context,

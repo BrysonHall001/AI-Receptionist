@@ -12,6 +12,38 @@ const db = prisma as any;
 export const CONTACT_RECORD_TYPE_KEY = "contact";
 export const JOB_RECORD_TYPE_KEY = "job";
 export const BOOKING_RECORD_TYPE_KEY = "booking";
+export const EQUIPMENT_RECORD_TYPE_KEY = "equipment";
+
+// Default fields seeded ONCE when a portal's Equipment type is first created (see the
+// onCreate hook below). Equipment is a flat catalog (no pipeline), so these are plain
+// editable/removable custom fields — the business can rename, reorder, add or delete
+// them on the Fields page afterward; deletions are never undone (seeded on create only).
+// The unit's display name is the record's own required title (like a Job's title), so
+// there is deliberately NO separate "name" field here — that would duplicate the title.
+const DEFAULT_EQUIPMENT_FIELDS = [
+  { key: "equipment_type", label: "Type", type: "single_select", order: 0, options: ["Air conditioner", "Furnace", "Water heater", "Other"] },
+  { key: "brand", label: "Brand", type: "text", order: 1, options: [] as string[] },
+  { key: "model", label: "Model", type: "text", order: 2, options: [] as string[] },
+  { key: "serial", label: "Serial number", type: "text", order: 3, options: [] as string[] },
+  { key: "install_date", label: "Install date", type: "date", order: 4, options: [] as string[] },
+  { key: "last_service_date", label: "Last service date", type: "date", order: 5, options: [] as string[] },
+  { key: "next_service_due", label: "Next service due", type: "date", order: 6, options: [] as string[] },
+  { key: "warranty_expires", label: "Warranty expires", type: "date", order: 7, options: [] as string[] },
+  { key: "status", label: "Status", type: "single_select", order: 8, options: ["Active", "Needs service", "Retired"] },
+  { key: "notes", label: "Notes", type: "textarea", order: 9, options: [] as string[] },
+];
+
+/** Seed Equipment's default fields (idempotent by key). Runs once, at type creation. */
+export async function ensureEquipmentDefaultFields(tenantId: string, recordTypeId: string): Promise<void> {
+  const existing = await db.fieldDef.findMany({ where: { tenantId, recordTypeId }, select: { key: true } });
+  const have = new Set(existing.map((e: any) => e.key));
+  const toCreate = DEFAULT_EQUIPMENT_FIELDS.filter((f) => !have.has(f.key));
+  if (!toCreate.length) return;
+  await db.fieldDef.createMany({
+    data: toCreate.map((f) => ({ tenantId, recordTypeId, scope: "record", key: f.key, label: f.label, type: f.type, required: !!(f as any).required, options: f.options || [], order: f.order, system: false })) as any,
+    skipDuplicates: true,
+  });
+}
 
 // Booking lifecycle statuses (Record.stageKey) — the exact pipeline requested:
 // Requested -> Confirmed -> Completed -> No-show. Keys are stable; labels are
@@ -96,11 +128,12 @@ const DEFAULT_JOB_SUBTYPES = [
  * threw and, being an un-awaited rejection in a request handler, crashed the
  * whole server process.) Any other error is still surfaced.
  */
-async function ensureRecordType(tenantId: string, key: string, data: Record<string, unknown>): Promise<string> {
+async function ensureRecordType(tenantId: string, key: string, data: Record<string, unknown>, onCreate?: (recordTypeId: string) => Promise<void>): Promise<string> {
   const existing = await db.recordType.findFirst({ where: { tenantId, key } });
   if (existing) return existing.id;
   try {
     const created = await db.recordType.create({ data });
+    if (onCreate) await onCreate(created.id); // one-time seeding (e.g. default fields)
     return created.id;
   } catch (err: any) {
     if (err?.code === "P2002") {
@@ -121,7 +154,7 @@ async function ensureRecordType(tenantId: string, key: string, data: Record<stri
 // create payload (minus tenantId) used before this refactor, so the seeded data
 // for contact/job/booking is byte-for-byte identical.
 // ---------------------------------------------------------------------------
-export interface SystemRecordTypeDef { key: string; defaults: Record<string, unknown>; }
+export interface SystemRecordTypeDef { key: string; defaults: Record<string, unknown>; onCreate?: (tenantId: string, recordTypeId: string) => Promise<void>; }
 
 export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
   { key: CONTACT_RECORD_TYPE_KEY, defaults: {
@@ -135,6 +168,13 @@ export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
     key: BOOKING_RECORD_TYPE_KEY, label: "Booking", labelPlural: "Bookings", system: false,
     stages: [], recordStages: DEFAULT_BOOKING_RECORD_STAGES, subtypes: DEFAULT_BOOKING_SUBTYPES, order: 2,
   } },
+  // First data-driven system type: a flat catalog (no pipeline/subtypes). Its default
+  // fields are seeded once via onCreate. Nav item + list page + permissions come for
+  // free from the registry + records-area work done in earlier batches.
+  { key: EQUIPMENT_RECORD_TYPE_KEY, defaults: {
+    key: EQUIPMENT_RECORD_TYPE_KEY, label: "Equipment", labelPlural: "Equipment", system: false,
+    stages: [], recordStages: [], subtypes: [], order: 3,
+  }, onCreate: ensureEquipmentDefaultFields },
 ];
 
 /** Keys of the built-in system record types, in registry order. Derived (not a
@@ -145,7 +185,7 @@ function systemDef(key: string): SystemRecordTypeDef | undefined { return SYSTEM
 
 /** Generic idempotent seeder for a system type, from its registry entry. */
 async function ensureSystemRecordType(tenantId: string, def: SystemRecordTypeDef): Promise<string> {
-  return ensureRecordType(tenantId, def.key, { tenantId, ...def.defaults });
+  return ensureRecordType(tenantId, def.key, { tenantId, ...def.defaults }, def.onCreate ? (id) => def.onCreate!(tenantId, id) : undefined);
 }
 
 /** Ensure every system record type exists for a portal (iterates the registry). */

@@ -53,6 +53,7 @@
     if (v === "contacts") return renderContacts();
     if (v === "jobs") return renderRecordList("job");
     if (v === "bookings") return renderRecordList("booking");
+    if (v === "recordlist") return renderRecordList(sub); // data-driven types (e.g. equipment) via #/records/<key>
     if (v === "fields") return renderFields();
     if (v === "reports") return App.reports.render(view());
     if (v === "communication") return App.communication.render(view());
@@ -3304,6 +3305,80 @@
     const jobAddRow = el("div", "link-add");
     jobsCard.appendChild(jobAddRow);
     if (!ro) wrap.appendChild(jobsCard); // linked-jobs management is hidden in the read-only preview
+
+    // ---- Equipment panel: units linked to THIS contact. Same shape as the linked-
+    // records pattern (a Record of type "equipment" + a RecordLink parentType
+    // "contact"), but flat — equipment has no pipeline, so no stage dropdown. Add
+    // creates + links in one step and refreshes in place; Unlink detaches the unit
+    // without deleting it. Empty state keeps it unobtrusive for portals that ignore
+    // equipment. Nav/permissions/import/automations/analytics arrive in later batches.
+    if (!ro) {
+      const eqCard = el("div", "card linked-equipment-card");
+      const eqHead = el("div", "cand-head");
+      const eqTitle = el("div", "drawer-section-title", "Equipment");
+      eqHead.appendChild(eqTitle);
+      eqCard.appendChild(eqHead);
+      const eqBody = el("div");
+      eqCard.appendChild(eqBody);
+      const eqAddRow = el("div", "link-add");
+      const eqAddBtn = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#43;</span> Add equipment`);
+      eqAddRow.appendChild(eqAddBtn);
+      eqCard.appendChild(eqAddRow);
+      wrap.appendChild(eqCard);
+
+      let eqType = null, eqFields = [];
+      const eqFmt = (v) => (v == null || v === "") ? "" : String(v);
+      async function ensureEqMeta() {
+        if (eqType) return;
+        const [types, fields] = await Promise.all([
+          App.portalApi("/api/record-types").catch(() => []),
+          App.portalApi("/api/fields?recordType=equipment").catch(() => []),
+        ]);
+        eqType = (types || []).find((t) => t.key === "equipment") || { key: "equipment", label: "Equipment", labelPlural: "Equipment", stages: [], recordStages: [], subtypes: [] };
+        eqFields = Array.isArray(fields) ? fields : [];
+        eqTitle.textContent = eqType.labelPlural || eqType.label || "Equipment";
+      }
+      eqAddBtn.onclick = async () => {
+        await ensureEqMeta();
+        openCreateRecord("equipment", eqFields, eqType, { linkContactId: id, onCreated: () => loadLinkedEquipment() });
+      };
+      async function loadLinkedEquipment() {
+        eqBody.innerHTML = `<div class="cell-muted">Loading…</div>`;
+        await ensureEqMeta();
+        let links;
+        try { links = await App.portalApi(`/api/contacts/${id}/links?type=equipment`); }
+        catch (e) { eqBody.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+        if (!Array.isArray(links)) links = [];
+        eqBody.innerHTML = "";
+        if (!links.length) {
+          eqBody.appendChild(el("div", "cell-muted", "No equipment on this " + App.label("contact", "one").toLowerCase() + " yet."));
+          return;
+        }
+        const list = el("div", "link-list");
+        links.forEach((lk) => {
+          const rec = lk.record || {};
+          const cf = rec.customFields || {};
+          const row = el("div", "link-row");
+          const title = rec.title || "Untitled";
+          const meta = [eqFmt(cf.equipment_type), eqFmt(cf.status), cf.next_service_due ? ("next service " + eqFmt(cf.next_service_due)) : ""].filter(Boolean).join(" · ");
+          const nameEl = el("div", "link-name");
+          nameEl.innerHTML = `${esc(title)}${meta ? ` <span class="cell-muted link-ptype">${esc(meta)}</span>` : ""}`;
+          nameEl.style.cursor = "pointer";
+          nameEl.onclick = () => App.go("#/record/" + rec.id);
+          row.appendChild(nameEl);
+          const unlink = el("button", "link-danger", "Unlink");
+          unlink.onclick = async () => {
+            if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return;
+            try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedEquipment(); }
+            catch (e) { toast(e.message, true); }
+          };
+          row.appendChild(unlink);
+          list.appendChild(row);
+        });
+        eqBody.appendChild(list);
+      }
+      loadLinkedEquipment();
+    }
     let jobLinks = [];
     let jobsView = "list"; // List is the default; Board is the toggle
     jobsListBtn.onclick = () => { if (jobsView === "list") return; jobsView = "list"; jobsListBtn.classList.add("seg-on"); jobsBoardBtn.classList.remove("seg-on"); renderJobs(); };
@@ -5681,13 +5756,18 @@
             throw e;
           }
         }
-        // Optional: link the chosen contact (reuses the detail-page link path).
-        if (contactSel && contactSel.value) {
-          try { await App.portalApi("/api/records/" + rec.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: contactSel.value, stageKey: null }) }); }
-          catch (e) { /* booking is created; a failed link shouldn't block it */ }
+        // Optional: link a contact — either the in-modal selector (bookings) or a
+        // fixed contact passed by the caller (e.g. the contact-profile Equipment panel).
+        const linkContactId = (contactSel && contactSel.value) || opts.linkContactId || null;
+        if (linkContactId) {
+          try { await App.portalApi("/api/records/" + rec.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: linkContactId, stageKey: null }) }); }
+          catch (e) { /* record is created; a failed link shouldn't block it */ }
         }
         toast(`${type.label || App.label("record","one")} created`);
         overlay.remove();
+        // Caller-controlled follow-up (used by the Equipment panel to refresh in place
+        // instead of navigating away to the new record's detail page).
+        if (opts.onCreated) { try { opts.onCreated(rec); } catch (e) {} return; }
         // Bookings: stay on the Bookings page (re-render calendar + list in place)
         // instead of redirecting to the detail page. Other types keep the redirect.
         if (typeKey === "booking") { renderRecordList("booking"); }

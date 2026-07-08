@@ -28,11 +28,12 @@ async function main() {
   // (1) Fresh tenant lists exactly the three system types, expected keys/labels/order.
   const A = await mkTenant("A");
   const types = await listRecordTypes(A);
-  check(types.length === 3, "fresh tenant has exactly 3 system record types");
+  check(types.length === 4, "fresh tenant has exactly 4 system record types");
   const want = [
     { key: "contact", label: "Contact", labelPlural: "Contacts", order: 0 },
     { key: "job", label: "Job", labelPlural: "Jobs", order: 1 },
     { key: "booking", label: "Booking", labelPlural: "Bookings", order: 2 },
+    { key: "equipment", label: "Equipment", labelPlural: "Equipment", order: 3 },
   ];
   want.forEach((w, i) => {
     const t = types[i];
@@ -56,7 +57,7 @@ async function main() {
   check((await resolveRecordTypeId(A, null)) === idByKey["contact"], "resolveRecordTypeId(null) → contact default");
 
   // (3) ADDITIVE doorway: register a mock system type in the registry only.
-  check(systemRecordTypeKeys().join(",") === "contact,job,booking", "registry keys are exactly the three before adding");
+  check(systemRecordTypeKeys().join(",") === "contact,job,booking,equipment", "registry keys are exactly the four before adding");
   check(!allowedMapRecordTypeKeys().includes("equipment_mock"), "survey allow-list excludes the mock before adding");
   const MOCK = { key: "equipment_mock", defaults: { key: "equipment_mock", label: "Equipment", labelPlural: "Equipment", system: false, stages: [], recordStages: [], order: 99 } };
   SYSTEM_RECORD_TYPES.push(MOCK);
@@ -72,7 +73,7 @@ async function main() {
     const i = SYSTEM_RECORD_TYPES.indexOf(MOCK);
     if (i >= 0) SYSTEM_RECORD_TYPES.splice(i, 1);
   }
-  check(systemRecordTypeKeys().join(",") === "contact,job,booking", "registry restored to the three after the test");
+  check(systemRecordTypeKeys().join(",") === "contact,job,booking,equipment", "registry restored to the four after the test");
 }
 
 main()

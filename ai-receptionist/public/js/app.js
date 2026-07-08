@@ -704,6 +704,18 @@
       return App.portal.render("settings", sub);
     }
 
+    // Data-driven record-type list page (e.g. Equipment at #/records/<key>). System
+    // types keep their bespoke routes above; every OTHER type renders through the same
+    // generic record-list view Jobs/Bookings already use. Access is governed by the
+    // shared "records" permission area (canViewNav), so no per-type gating is needed.
+    const rtList = path.match(/^\/records\/([A-Za-z0-9_-]+)$/);
+    if (rtList) {
+      if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
+      if (App.canViewNav && App.canViewNav("#" + path) === false) return App.go(App.firstAvailableNav());
+      buildShell("portal", "#" + path);
+      return App.portal.render("recordlist", rtList[1]);
+    }
+
     // Portal section — fixed pages + registry-derived record-type routes. System
     // types map to their bespoke views (/contacts→contacts, /jobs→jobs, /bookings→
     // bookings); a future #/records/<key> maps to null until its view is wired, so it
