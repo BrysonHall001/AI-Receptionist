@@ -54,7 +54,7 @@ import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteE
 import { ACTION_TYPES } from "../automation/actions";
 import { smsEnabled } from "../config/env";
 import { AUTOMATION_PRESETS, getPreset, PRESET_CATEGORIES } from "../automation/presets";
-import { REPORT_PRESET_CATEGORIES, publicReportPresets } from "../analytics/reportPresets";
+import { REPORT_PRESET_CATEGORIES, publicReportPresets, publicRecordTypePresets } from "../analytics/reportPresets";
 import { analyzeFlowDefinition, applyFlowDefinition } from "../services/flowProvisioningService";
 import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
 import { emitEvent } from "../events/bus";
@@ -754,8 +754,15 @@ apiRouter.delete("/templates/:id", async (req: Request, res: Response) => {
 // Built-in report-widget presets ("templates") for the Analytics on-ramp. Static
 // path is defined before "/dashboards/:id" so it's never mistaken for an id.
 // Read-only; the internal `vertical` tag is stripped by publicReportPresets().
-apiRouter.get("/reports/presets", async (_req: Request, res: Response) => {
-  res.json({ categories: REPORT_PRESET_CATEGORIES, presets: publicReportPresets() });
+// Record-type templates (e.g. Equipment) are appended ONLY for the record types
+// this portal actually has — so a portal without equipment never sees them.
+apiRouter.get("/reports/presets", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const types = await listRecordTypes(tenantId).catch(() => []);
+  const presentKeys = (types as any[]).map((t) => t.key);
+  const presets = publicReportPresets().concat(publicRecordTypePresets(presentKeys));
+  res.json({ categories: REPORT_PRESET_CATEGORIES, presets });
 });
 
 apiRouter.get("/dashboards", async (req: Request, res: Response) => {

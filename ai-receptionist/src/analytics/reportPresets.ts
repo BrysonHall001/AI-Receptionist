@@ -21,6 +21,10 @@ export const REPORT_PRESET_CATEGORIES: ReportPresetCategory[] = [
   { key: "conversion_pipeline", label: "Conversion & pipeline" },
   { key: "breakdowns", label: "Breakdowns" },
   { key: "trends", label: "Trends over time" },
+  // Record-type category. Only appears when the portal has that type's templates —
+  // the gallery skips any category with no presets — so portals without equipment
+  // never see an empty "Equipment" heading.
+  { key: "equipment", label: "Equipment" },
 ];
 
 // Internal-only. NOT shown anywhere in the UI; not sent to the browser.
@@ -65,6 +69,69 @@ export const PRESET_SOURCE_FIELDS: Record<string, { key: string; type: string }[
 };
 
 const W = (w: WidgetDef): WidgetDef => w; // tiny helper for readable definitions
+
+// -------------------------------------------------------------------------
+// RECORD-TYPE presets — CONDITIONAL: only offered when the portal actually has
+// that record type. Keyed by record type key so any FUTURE record type can get
+// its own templates the same way (only equipment is populated today). The widget
+// `source` is the record type key, matching buildRecordSource() in reports.js,
+// and every field key used below is a REAL default field on that type — so each
+// template applies cleanly. Status/Type here are the equipment single-select
+// fields ("status"/"equipment_type"), not the record-level stage/subtype (which
+// equipment doesn't use). RECORD_TYPE_PRESET_FIELDS is the per-source allowlist
+// the validator + self-test use, mirroring PRESET_SOURCE_FIELDS above.
+// -------------------------------------------------------------------------
+export const RECORD_TYPE_PRESET_FIELDS: Record<string, { key: string; type: string }[]> = {
+  equipment: [
+    { key: "title", type: "text" },
+    { key: "status", type: "text" },           // default single-select "Status"
+    { key: "equipment_type", type: "text" },   // default single-select "Type"
+    { key: "next_service_due", type: "date" },
+    { key: "warranty_expires", type: "date" },
+    { key: "createdAt", type: "date" },
+  ],
+};
+
+export const RECORD_TYPE_PRESETS: Record<string, ReportPreset[]> = {
+  equipment: [
+    {
+      key: "equipment_total", name: "Total equipment", category: "equipment", vertical: "home_services",
+      description: "A single headline number: how many pieces of equipment you're tracking.",
+      widget: W({ title: "Total equipment", type: "kpi", source: "equipment", measure: { op: "count" }, groupBy: [], series: [], filters: [] }),
+    },
+    {
+      key: "equipment_by_status", name: "Equipment by status", category: "equipment", vertical: "home_services",
+      description: "A pie of your equipment split by status (e.g. Active, Needs service, Retired).",
+      widget: W({ title: "Equipment by status", type: "pie", source: "equipment", measure: { op: "count" }, groupBy: [{ key: "status" }], series: [], filters: [] }),
+    },
+    {
+      key: "equipment_by_type", name: "Equipment by type", category: "equipment", vertical: "home_services",
+      description: "A bar of your equipment grouped by type (e.g. AC, Furnace, Water heater).",
+      widget: W({ title: "Equipment by type", type: "bar", source: "equipment", measure: { op: "count" }, groupBy: [{ key: "equipment_type" }], series: [], filters: [] }),
+    },
+    {
+      key: "equipment_service_due_by_month", name: "Units due for service", category: "equipment", vertical: "home_services",
+      description: "How many units are due for service each month — the upcoming service load, so you can plan ahead.",
+      widget: W({ title: "Units due for service (by month)", type: "bar", source: "equipment", measure: { op: "count" }, groupBy: [{ key: "next_service_due", date: "month" }], series: [], filters: [] }),
+    },
+    {
+      key: "equipment_warranty_by_month", name: "Warranties expiring", category: "equipment", vertical: "home_services",
+      description: "How many warranties expire each month — see what's lapsing soon and reach out before it does.",
+      widget: W({ title: "Warranties expiring (by month)", type: "bar", source: "equipment", measure: { op: "count" }, groupBy: [{ key: "warranty_expires", date: "month" }], series: [], filters: [] }),
+    },
+  ],
+};
+
+// Presets for the record types a portal actually HAS (by key). Generic: any type
+// with an entry in RECORD_TYPE_PRESETS contributes; types without one — and types
+// the portal doesn't have — are silently skipped. This is the conditional gating.
+export function recordTypePresetsFor(presentKeys: string[]): ReportPreset[] {
+  const set = new Set(presentKeys || []);
+  const out: ReportPreset[] = [];
+  for (const key of Object.keys(RECORD_TYPE_PRESETS)) if (set.has(key)) out.push(...RECORD_TYPE_PRESETS[key]);
+  return out;
+}
+
 
 export const REPORT_PRESETS: ReportPreset[] = [
   // ---------------- Volume & activity ----------------
@@ -134,7 +201,7 @@ export function validateReportPreset(p: ReportPreset): string[] {
   const problems: string[] = [];
   const w = p.widget;
   if (!w) return [`${p.key}: missing widget`];
-  const fields = PRESET_SOURCE_FIELDS[w.source];
+  const fields = PRESET_SOURCE_FIELDS[w.source] || RECORD_TYPE_PRESET_FIELDS[w.source];
   if (!fields) problems.push(`${p.key}: unknown source "${w.source}"`);
   if (!VALID_TYPES.includes(w.type)) problems.push(`${p.key}: invalid type "${w.type}"`);
   if (!w.measure || !VALID_OPS.includes(w.measure.op)) problems.push(`${p.key}: invalid measure op`);
@@ -154,13 +221,21 @@ export function validateReportPreset(p: ReportPreset): string[] {
 
 // Public projection sent to the browser — the internal `vertical` tag is stripped,
 // exactly like the automations presets route.
-export function publicReportPresets() {
-  return REPORT_PRESETS.map((p) => ({
+function stripPreset(p: ReportPreset) {
+  return {
     key: p.key,
     name: p.name,
     description: p.description,
     category: p.category,
     type: p.widget.type,
     widget: p.widget, // ready-made widget to apply (no internal metadata inside)
-  }));
+  };
+}
+export function publicReportPresets() {
+  return REPORT_PRESETS.map(stripPreset);
+}
+// Public projection of the CONDITIONAL record-type presets for the types a portal
+// has — same strip, so no internal `vertical` tag leaks here either.
+export function publicRecordTypePresets(presentKeys: string[]) {
+  return recordTypePresetsFor(presentKeys).map(stripPreset);
 }
