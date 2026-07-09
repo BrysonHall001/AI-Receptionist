@@ -173,6 +173,14 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: stri
   // "Scheduled:<field>:<amount>:<unit>:<dir>" (no schema change). It does not
   // fire on instant events; the daily sweep evaluates and queues it.
   { type: "Scheduled", label: "On a date (relative to a date field)", group: "Time-based", description: "Runs on a date worked out from a date field (e.g. 3 days before)." },
+  // Record date-field due: like Scheduled, but the subject is a RECORD of a chosen
+  // type and the date lives on one of that type's date fields (e.g. Equipment
+  // "Next service due"). When it comes due per the offset, the flow runs against
+  // the record's linked contact (so Send email/SMS/Add note reach a real inbox),
+  // with record tokens like {{record_title}} available. Encoded as
+  // "RecordDateReached:<recordTypeKey>:<field>:<amount>:<unit>:<dir>". Evaluated by
+  // the daily sweep, once per record per due date.
+  { type: "RecordDateReached", label: "When a record's date is due (e.g. service/warranty)", group: "Time-based", description: "Runs when a date field on a record (like Equipment's 'Next service due') comes due — on the day or a set number of days before. Messages the record's linked contact." },
   // Time-in-stage: a candidate has sat in their CURRENT stage with no movement
   // for N days. Encoded as "Stalled:<days>" or "Stalled:<days>:<stageKey>"
   // (no schema change). Like Scheduled, it does not fire on instant events — the

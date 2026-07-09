@@ -282,6 +282,15 @@
       const f = (meta.fields || []).find((x) => x.key === p[0]);
       return `${p[1] || "0"} ${p[2] || "days"} ${p[3] || "before"} ${f ? f.label : (p[0] || "a date field")}`;
     }
+    // "RecordDateReached:<recordTypeKey>:<field>:<amount>:<unit>:<dir>" — record date due.
+    if (type && type.indexOf("RecordDateReached:") === 0) {
+      const p = type.slice("RecordDateReached:".length).split(":");
+      const rt = (meta.recordTypes || []).find((x) => x.key === p[0]);
+      const f = (meta.recordConditionFields || []).find((x) => x.key === p[1]);
+      const rtLabel = rt ? (rt.label || p[0]) : (p[0] || "a record");
+      const fLabel = f ? f.label : (p[1] || "a date field");
+      return `${p[2] || "0"} ${p[3] || "days"} ${p[4] || "before"} ${rtLabel} “${fLabel}”`;
+    }
     // "Stalled:<days>" or "Stalled:<days>:<stageKey>" — time-in-stage trigger.
     if (type && type.indexOf("Stalled:") === 0) {
       const p = type.slice("Stalled:".length).split(":");
@@ -310,11 +319,16 @@
       const p = type.slice("Scheduled:".length).split(":");
       if (!p[0]) return `${p[1] || "0"} ${p[2] || "days"} ${p[3] || "before"} — choose a date field`;
     }
+    if (type.indexOf("RecordDateReached:") === 0) {
+      const p = type.slice("RecordDateReached:".length).split(":");
+      if (!p[0] || !p[1]) return `${p[2] || "0"} ${p[3] || "days"} ${p[4] || "before"} — choose a record type and date field`;
+    }
     return triggerLabel(type);
   }
   function isWhenIncomplete(type) {
     if (!type) return true;
     if (type.indexOf("Scheduled:") === 0) return !type.slice("Scheduled:".length).split(":")[0];
+    if (type.indexOf("RecordDateReached:") === 0) { const p = type.slice("RecordDateReached:".length).split(":"); return !p[0] || !p[1]; }
     return false;
   }
 
@@ -336,6 +350,7 @@
     if (tt.indexOf("StageChanged:") === 0) return "StageChanged";
     if (tt.indexOf("RecordUpdated:") === 0) return "RecordUpdated";
     if (tt.indexOf("Scheduled:") === 0) return "Scheduled";
+    if (tt.indexOf("RecordDateReached:") === 0) return "RecordDateReached";
     if (tt.indexOf("AppointmentReminder:") === 0) return "AppointmentReminder";
     if (tt.indexOf("Stalled:") === 0) return "Stalled";
     if (tt.indexOf("EnrollAudience:") === 0) return "EnrollAudience";
@@ -372,13 +387,18 @@
   function actionDescription(type) { const a = (meta.actions || []).find((x) => x.type === type); return App.relabelText((a && a.description) || "", { all: true }); }
   // A record-subject trigger acts on the record (e.g. a job), not a contact.
   function isRecordTrigger(tt) { return tt === "RecordUpdated" || (tt && tt.indexOf("RecordUpdated:") === 0); }
+  // The record date-reached trigger is evaluated against a RECORD's fields (so its
+  // CONDITIONS use record fields), but its ACTIONS run against the record's linked
+  // CONTACT (so Send email/SMS/Add note are allowed) — hence it is NOT an
+  // isRecordTrigger (which would restrict actions to record-only ones).
+  function isRecordDateTrigger(tt) { return tt === "RecordDateReached" || (tt && tt.indexOf("RecordDateReached:") === 0); }
   // The condition field list depends on the subject: a record trigger offers the
   // record's own fields; otherwise contact fields. _condTrigger is set to the
   // active trigger right before the wizard / list condition rows render, so
   // fieldType/fieldLabel/condRow show the right fields. (The editor passes the
   // trigger explicitly via buildColumns(); this covers the wizard + previews.)
   let _condTrigger = null;
-  function condFieldList() { return isRecordTrigger(_condTrigger) ? (meta.recordConditionFields || []) : (meta.fields || []); }
+  function condFieldList() { return (isRecordTrigger(_condTrigger) || isRecordDateTrigger(_condTrigger)) ? (meta.recordConditionFields || []) : (meta.fields || []); }
   // Which actions the builder offers for a given trigger. Record-subject
   // automations support only record-safe actions ("Create internal note" on the
   // record, "Act on linked contacts"); everything else is contact-only, and
@@ -825,6 +845,7 @@
     if (w.baseTrigger === "StageChanged") return w.triggerStage ? "StageChanged:" + w.triggerStage : "StageChanged";
     if (w.baseTrigger === "RecordUpdated") return w.recField ? (w.recValue ? "RecordUpdated:" + w.recField + "=" + w.recValue : "RecordUpdated:" + w.recField) : "RecordUpdated";
     if (w.baseTrigger === "Scheduled") return `Scheduled:${w.sched.field}:${w.sched.amount || 0}:${w.sched.unit}:${w.sched.dir}`;
+    if (w.baseTrigger === "RecordDateReached") return `RecordDateReached:${w.recDate.recordType}:${w.recDate.field}:${w.recDate.amount || 0}:${w.recDate.unit}:${w.recDate.dir}`;
     if (w.baseTrigger === "AppointmentReminder") return `AppointmentReminder:${w.remind.amount || 2}:${w.remind.unit}:before`;
     if (w.baseTrigger === "Stalled") return "Stalled:" + (w.stall.days || 7) + (w.stall.stageKey ? ":" + w.stall.stageKey : "");
     if (w.baseTrigger === "EnrollAudience") return w.enrollAudienceId ? "EnrollAudience:" + w.enrollAudienceId : "EnrollAudience";
@@ -884,6 +905,7 @@
       recField: "",
       recValue: "",
       sched: { field: "", amount: "", unit: "days", dir: "before" },
+      recDate: { recordType: "", field: "", amount: "", unit: "days", dir: "before", fields: null, loading: false },
       remind: { amount: "2", unit: "hours" },
       stall: { days: "", stageKey: "" },
       enrollAudienceId: "",
@@ -955,6 +977,8 @@
 
   function validateStep(w) {
     if (w.step === 1 && w.baseTrigger === "Scheduled" && !w.sched.field) { toast("Pick a date field for the schedule", true); return false; }
+    if (w.step === 1 && w.baseTrigger === "RecordDateReached" && !w.recDate.recordType) { toast("Pick a record type", true); return false; }
+    if (w.step === 1 && w.baseTrigger === "RecordDateReached" && !w.recDate.field) { toast("Pick a date field on that record type", true); return false; }
     if (w.step === 1 && w.baseTrigger === "EnrollAudience" && !w.enrollAudienceId) { toast("Pick an audience to enroll", true); return false; }
     if (w.step === 1 && w.baseTrigger === "AppointmentReminder" && !(Number(w.remind.amount) > 0)) { toast("Enter how long before the appointment to remind", true); return false; }
     if (w.step === 3 && w.branch && !condComplete(w.branchCond)) { toast("Finish the branch condition first", true); return false; }
@@ -1043,6 +1067,44 @@
         rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(dir); rowEl.appendChild(fs);
         extra.appendChild(rowEl);
         extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”, not instantly."));
+      } else if (w.baseTrigger === "RecordDateReached") {
+        // Record type (locking-respected) → its date field → offset. The date
+        // field list is fetched for the chosen type so only real fields appear.
+        const types = (meta.recordTypes || []).filter((rt) => !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
+        if (!types.length) { extra.appendChild(small("No record types are available to you. (A locked type won't appear here.)")); }
+        extra.appendChild(small("Which record type, which date field, and how far before/after:"));
+        const rowType = el("div", "wiz-cond-row");
+        const ts = el("select", "input"); const tb = el("option", null, "— record type —"); tb.value = ""; ts.appendChild(tb);
+        types.forEach((rt) => { const o = el("option", null, esc(App.relabelText(rt.label || rt.key, { all: true }))); o.value = rt.key; if (rt.key === w.recDate.recordType) o.selected = true; ts.appendChild(o); });
+        function loadRecDateFields() {
+          if (!w.recDate.recordType) { w.recDate.fields = null; return; }
+          w.recDate.loading = true;
+          App.portalApi("/api/fields?recordType=" + encodeURIComponent(w.recDate.recordType))
+            .then((fs) => { w.recDate.fields = (Array.isArray(fs) ? fs : []).filter((f) => f.type === "date"); })
+            .catch(() => { w.recDate.fields = []; })
+            .finally(() => { w.recDate.loading = false; renderExtra(); });
+        }
+        ts.onchange = () => { w.recDate.recordType = ts.value; w.recDate.field = ""; w.recDate.fields = null; loadRecDateFields(); renderExtra(); };
+        rowType.appendChild(ts); extra.appendChild(rowType);
+
+        const rowEl = el("div", "wiz-cond-row");
+        const amt = el("input", "input"); amt.type = "number"; amt.min = "0"; amt.placeholder = "7"; amt.style.flex = "0 0 70px"; amt.value = w.recDate.amount; amt.oninput = () => { w.recDate.amount = amt.value; };
+        const unit = el("select", "input"); [["days", "days"], ["weeks", "weeks"], ["months", "months"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.recDate.unit === v) o.selected = true; unit.appendChild(o); }); unit.onchange = () => { w.recDate.unit = unit.value; };
+        const dir = el("select", "input"); [["before", "before"], ["after", "after"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.recDate.dir === v) o.selected = true; dir.appendChild(o); }); dir.onchange = () => { w.recDate.dir = dir.value; };
+        const fs = el("select", "input");
+        if (!w.recDate.recordType) { const o = el("option", null, "— pick a record type first —"); o.value = ""; fs.appendChild(o); fs.disabled = true; }
+        else if (w.recDate.loading) { const o = el("option", null, "Loading…"); o.value = ""; fs.appendChild(o); fs.disabled = true; }
+        else {
+          const b = el("option", null, "— date field —"); b.value = ""; fs.appendChild(b);
+          (w.recDate.fields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === w.recDate.field) o.selected = true; fs.appendChild(o); });
+          fs.onchange = () => { w.recDate.field = fs.value; };
+          if (!(w.recDate.fields || []).length) extra.appendChild(small("This record type has no Date fields yet. Add one under Settings → Fields (e.g. a service or renewal date)."));
+        }
+        rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(dir); rowEl.appendChild(fs);
+        extra.appendChild(rowEl);
+        // Lazy-load the field list the first time we land on this trigger with a type already set (edit flow).
+        if (w.recDate.recordType && w.recDate.fields === null && !w.recDate.loading) loadRecDateFields();
+        extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”. Messages the record's linked contact, so Send email/SMS and Add note all work; use {{record_title}} and the date field in your message."));
       } else if (w.baseTrigger === "AppointmentReminder") {
         extra.appendChild(small("Send this long before a booking's appointment:"));
         const rowEl = el("div", "wiz-cond-row");
@@ -1064,7 +1126,7 @@
         extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”. The stalled contact is the subject — moving them resets the clock."));
       }
     }
-    sel.onchange = () => { w.baseTrigger = sel.value; if (w.baseTrigger !== "FieldChanged") w.triggerField = ""; if (w.baseTrigger !== "StageChanged") w.triggerStage = ""; if (w.baseTrigger !== "RecordUpdated") { w.recField = ""; w.recValue = ""; } if (w.baseTrigger !== "Stalled") { w.stall.days = ""; w.stall.stageKey = ""; } renderExtra(); };
+    sel.onchange = () => { w.baseTrigger = sel.value; if (w.baseTrigger !== "FieldChanged") w.triggerField = ""; if (w.baseTrigger !== "StageChanged") w.triggerStage = ""; if (w.baseTrigger !== "RecordUpdated") { w.recField = ""; w.recValue = ""; } if (w.baseTrigger !== "Stalled") { w.stall.days = ""; w.stall.stageKey = ""; } if (w.baseTrigger !== "RecordDateReached") { w.recDate.recordType = ""; w.recDate.field = ""; w.recDate.fields = null; } renderExtra(); };
     renderExtra();
   }
 
@@ -1466,6 +1528,7 @@
     let recField = "";
     let recValue = "";
     const sched = { field: "", amount: "", unit: "days", dir: "before" };
+    const recDate = { recordType: "", field: "", amount: "", unit: "days", dir: "before", fields: null, loading: false };
     const remind = { amount: "2", unit: "hours" };
     const stall = { days: "", stageKey: "" };
     if (baseTrigger.indexOf("FieldChanged:") === 0) {
@@ -1482,6 +1545,10 @@
       const p = baseTrigger.slice("Scheduled:".length).split(":");
       sched.field = p[0] || ""; sched.amount = p[1] || ""; sched.unit = p[2] || "days"; sched.dir = p[3] || "before";
       baseTrigger = "Scheduled";
+    } else if (baseTrigger.indexOf("RecordDateReached:") === 0) {
+      const p = baseTrigger.slice("RecordDateReached:".length).split(":");
+      recDate.recordType = p[0] || ""; recDate.field = p[1] || ""; recDate.amount = p[2] || ""; recDate.unit = p[3] || "days"; recDate.dir = p[4] || "before";
+      baseTrigger = "RecordDateReached";
     } else if (baseTrigger.indexOf("AppointmentReminder:") === 0) {
       const p = baseTrigger.slice("AppointmentReminder:".length).split(":");
       remind.amount = p[0] || "2"; remind.unit = p[1] || "hours";
@@ -1496,6 +1563,7 @@
       else if (baseTrigger === "StageChanged" && triggerStage) draft.triggerType = "StageChanged:" + triggerStage;
       else if (baseTrigger === "RecordUpdated" && recField) draft.triggerType = recValue ? ("RecordUpdated:" + recField + "=" + recValue) : ("RecordUpdated:" + recField);
       else if (baseTrigger === "Scheduled") draft.triggerType = `Scheduled:${sched.field}:${sched.amount || 0}:${sched.unit}:${sched.dir}`;
+      else if (baseTrigger === "RecordDateReached") draft.triggerType = `RecordDateReached:${recDate.recordType}:${recDate.field}:${recDate.amount || 0}:${recDate.unit}:${recDate.dir}`;
       else if (baseTrigger === "AppointmentReminder") draft.triggerType = `AppointmentReminder:${remind.amount || 2}:${remind.unit}:before`;
       else if (baseTrigger === "Stalled") draft.triggerType = "Stalled:" + (stall.days || 7) + (stall.stageKey ? ":" + stall.stageKey : "");
       else draft.triggerType = baseTrigger;
@@ -1600,6 +1668,48 @@
         const note2 = el("div", "wf-hint", ""); note2.style.margin = "6px 0 0";
         note2.textContent = "Evaluated by the daily sweep / “Process due jobs now”, not instantly.";
         trigExtra.appendChild(note2);
+      } else if (baseTrigger === "RecordDateReached") {
+        const types = (meta.recordTypes || []).filter((rt) => !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
+        if (!types.length) trigExtra.appendChild(small("No record types are available to you. (A locked type won't appear here.)"));
+        trigExtra.appendChild(small("Which record type, which date field, and how far before/after:"));
+        const typeRow = el("div"); typeRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px";
+        const typeSel = el("select", "input"); typeSel.style.marginBottom = "0";
+        const tb = el("option", null, "— record type —"); tb.value = ""; typeSel.appendChild(tb);
+        types.forEach((rt) => { const o = el("option", null, esc(App.relabelText(rt.label || rt.key, { all: true }))); o.value = rt.key; if (rt.key === recDate.recordType) o.selected = true; typeSel.appendChild(o); });
+        function loadRecDateFields() {
+          if (!recDate.recordType) { recDate.fields = null; return; }
+          recDate.loading = true;
+          App.portalApi("/api/fields?recordType=" + encodeURIComponent(recDate.recordType))
+            .then((fs) => { recDate.fields = (Array.isArray(fs) ? fs : []).filter((f) => f.type === "date"); })
+            .catch(() => { recDate.fields = []; })
+            .finally(() => { recDate.loading = false; renderTrigExtra(); });
+        }
+        typeSel.onchange = () => { recDate.recordType = typeSel.value; recDate.field = ""; recDate.fields = null; syncTrigger(); loadRecDateFields(); renderTrigExtra(); };
+        typeRow.appendChild(typeSel); trigExtra.appendChild(typeRow);
+
+        const rowEl = el("div"); rowEl.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+        const amt = el("input", "input"); amt.type = "number"; amt.min = "0"; amt.style.cssText = "margin-bottom:0;flex:0 0 70px"; amt.placeholder = "7"; amt.value = recDate.amount; amt.oninput = () => { recDate.amount = amt.value; syncTrigger(); };
+        const unitSel = el("select", "input"); unitSel.style.marginBottom = "0";
+        [["days", "days"], ["weeks", "weeks"], ["months", "months"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (recDate.unit === v) o.selected = true; unitSel.appendChild(o); });
+        unitSel.onchange = () => { recDate.unit = unitSel.value; syncTrigger(); };
+        const dirSel = el("select", "input"); dirSel.style.marginBottom = "0";
+        [["before", "before"], ["after", "after"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (recDate.dir === v) o.selected = true; dirSel.appendChild(o); });
+        dirSel.onchange = () => { recDate.dir = dirSel.value; syncTrigger(); };
+        const fieldSel = el("select", "input"); fieldSel.style.marginBottom = "0";
+        if (!recDate.recordType) { const o = el("option", null, "— pick a record type first —"); o.value = ""; fieldSel.appendChild(o); fieldSel.disabled = true; }
+        else if (recDate.loading) { const o = el("option", null, "Loading…"); o.value = ""; fieldSel.appendChild(o); fieldSel.disabled = true; }
+        else {
+          const blank = el("option", null, "— date field —"); blank.value = ""; fieldSel.appendChild(blank);
+          (recDate.fields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === recDate.field) o.selected = true; fieldSel.appendChild(o); });
+          fieldSel.onchange = () => { recDate.field = fieldSel.value; syncTrigger(); };
+          if (!(recDate.fields || []).length) trigExtra.appendChild(small("This record type has no Date fields yet. Add one under Settings → Fields."));
+        }
+        rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(dirSel); rowEl.appendChild(fieldSel);
+        trigExtra.appendChild(rowEl);
+        if (recDate.recordType && recDate.fields === null && !recDate.loading) loadRecDateFields();
+        const note4 = el("div", "wf-hint", ""); note4.style.margin = "6px 0 0";
+        note4.textContent = "Evaluated by the daily sweep / “Process due jobs now”. Messages the record's linked contact — use {{record_title}} and the date field in your message.";
+        trigExtra.appendChild(note4);
       } else if (baseTrigger === "AppointmentReminder") {
         trigExtra.appendChild(small("Send this long before a booking's appointment:"));
         const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px"; rowEl.style.flexWrap = "wrap"; rowEl.style.alignItems = "center";
@@ -1633,7 +1743,7 @@
         trigExtra.appendChild(snote);
       }
     }
-    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } if (baseTrigger !== "Stalled") { stall.days = ""; stall.stageKey = ""; } syncTrigger(); renderTrigExtra(); renderConditions(); redrawActions(); renderPreview(); };
+    trig.onchange = () => { baseTrigger = trig.value; if (baseTrigger !== "FieldChanged") triggerField = ""; if (baseTrigger !== "StageChanged") triggerStage = ""; if (baseTrigger !== "RecordUpdated") { recField = ""; recValue = ""; } if (baseTrigger !== "Stalled") { stall.days = ""; stall.stageKey = ""; } if (baseTrigger !== "RecordDateReached") { recDate.recordType = ""; recDate.field = ""; recDate.fields = null; } syncTrigger(); renderTrigExtra(); renderConditions(); redrawActions(); renderPreview(); };
     renderTrigExtra();
     flow.appendChild(trigNode);
 

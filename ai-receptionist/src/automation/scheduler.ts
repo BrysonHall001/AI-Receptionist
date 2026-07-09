@@ -2,6 +2,7 @@ import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions";
 import { loadFieldDefs, buildColumns, valueOf } from "./contactRow";
+import { loadRecordFieldDefs, buildRecordColumns, recordValueOf } from "./recordRow";
 import { evalRules } from "./conditions";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "../services/recordTypeService";
 import { runGoogleCalendarSync } from "../services/googleSyncService";
@@ -283,6 +284,105 @@ export async function runDailySweep(scope?: string): Promise<number> {
 }
 
 // ===========================================================================
+// RECORD DATE-REACHED SWEEP (Equipment service/warranty reminders, generic)
+// A "RecordDateReached:<recordTypeKey>:<field>:<amount>:<unit>:<dir>" trigger —
+// e.g. "RecordDateReached:equipment:next_service_due:7:days:before". Like the
+// contact daily sweep it is day-granular and evaluated here (the instant engine
+// needs no change), but the subject is a RECORD of the chosen type. When the
+// record's chosen date field is due per the offset, we queue the flow's actions
+// against the record's FIRST linked contact (who has an inbox, so Send email/SMS
+// and Add note all work), with the record's own tokens ({{record_title}},
+// {{next_service_due}}, {{status}}, …) pre-rendered at queue time. Idempotent per
+// (automation, record, fire-date) so a record fires ONCE per due date, never
+// again on later sweeps. Honors each flow's conditions against the record's
+// fields (fail-closed on an unknown field, matching the event-driven record path).
+// ===========================================================================
+interface RecordDateTrigger { recordTypeKey: string; field: string; amount: number; unit: string; dir: string; }
+export function parseRecordDateTrigger(triggerType: string): RecordDateTrigger | null {
+  if (!triggerType || triggerType.indexOf("RecordDateReached:") !== 0) return null;
+  const parts = triggerType.slice("RecordDateReached:".length).split(":");
+  if (parts.length < 5) return null;
+  const amount = Number(parts[2]);
+  if (!isFinite(amount)) return null;
+  return { recordTypeKey: parts[0], field: parts[1], amount, unit: parts[3] || "days", dir: parts[4] || "before" };
+}
+
+// Contact-owned tokens are LEFT for run time (resolved from the linked contact),
+// so a record field must never clobber them even if a type reused the key.
+const RESERVED_CONTACT_TOKENS = new Set(["name", "email", "phone", "first_name", "last_name"]);
+// Pre-render RECORD tokens into the action at enqueue time (we know the record
+// now): {{record_title}} + every one of the record's field values as {{<key>}}.
+export function injectRecordTokens(action: ActionConfig, record: any, custom: any[]): ActionConfig {
+  const cfg: any = { ...(action.config || {}) };
+  const tokens: Record<string, string> = { record_title: record.title || "" };
+  for (const f of custom || []) {
+    if (RESERVED_CONTACT_TOKENS.has(f.key)) continue;
+    const v = recordValueOf(record, f.key);
+    tokens[f.key] = v == null ? "" : String(v);
+  }
+  const subst = (s: string) => s.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (m, k) => (k in tokens ? tokens[k] : m));
+  for (const k of ["body", "html", "subject", "text"]) {
+    if (typeof cfg[k] === "string") cfg[k] = subst(cfg[k]);
+  }
+  return { ...action, config: cfg };
+}
+
+export async function runRecordDateSweep(scope?: string): Promise<number> {
+  const where: any = { enabled: true };
+  if (scope) where.tenantId = scope;
+  const autos = await db.automation.findMany({ where });
+  const flows = autos.filter((a: any) => parseRecordDateTrigger(a.triggerType || ""));
+  if (!flows.length) return 0;
+  const today = todayUtc();
+  const floor = shiftDateString(today, -366, "days") || "0000-00-00"; // don't resurrect very old dates
+  let swept = 0;
+
+  for (const auto of flows) {
+    const parsed = parseRecordDateTrigger(auto.triggerType)!;
+    const recordTypeId = await resolveRecordTypeId(auto.tenantId, parsed.recordTypeKey).catch(() => null);
+    if (!recordTypeId) continue;
+    const custom = await loadRecordFieldDefs(auto.tenantId, recordTypeId);
+    const cols = buildRecordColumns(custom);
+    const knownKeys = new Set(cols.map((c: any) => c.key));
+    const records = await db.record.findMany({ where: { tenantId: auto.tenantId, recordTypeId, deletedAt: null } as any, take: 5000 });
+    const actions: ActionConfig[] = (auto.actions as any) || [];
+
+    for (const rec of records) {
+      const dateVal = recordValueOf(rec, parsed.field);
+      const delta = parsed.dir === "after" ? parsed.amount : -parsed.amount;
+      const fireDate = shiftDateString(dateVal, delta, parsed.unit);
+      if (!fireDate) continue;
+      if (fireDate > today) continue;   // not due yet
+      if (fireDate < floor) continue;   // too old, ignore
+      // Honor conditions against the record's own fields; fail closed on an
+      // unknown field (never a silent pass), matching runRecordOne.
+      const activeRules = ((auto.conditions as any[]) || []).filter((r: any) => r && r.field);
+      if (activeRules.some((r: any) => !knownKeys.has(r.field))) continue;
+      if (!evalRules(rec, (auto.conditions as any) || [], cols)) continue;
+      // Message the record's FIRST linked contact (who has an inbox).
+      const link = await db.recordLink.findFirst({ where: { tenantId: auto.tenantId, recordId: rec.id, parentType: "contact", deletedAt: null }, orderBy: { createdAt: "asc" } });
+      if (!link) continue;
+      const contact = await db.contact.findFirst({ where: { id: link.parentId, tenantId: auto.tenantId, deletedAt: null } });
+      if (!contact) continue;
+      const contactName = contact.name || contact.phone || contact.email || contact.id;
+      for (let i = 0; i < actions.length; i++) {
+        if (actions[i].type === "wait") continue;
+        // Stable dedupeKey per (automation, record, fire-date, action) → fires ONCE.
+        const row = await enqueueJob({
+          tenantId: auto.tenantId, automationId: auto.id, automationName: auto.name,
+          contactId: contact.id, contactName,
+          action: injectRecordTokens(actions[i], rec, custom),
+          dueAt: new Date(fireDate + "T00:00:00Z"), kind: "schedule",
+          dedupeKey: `recdate:${auto.id}:${rec.id}:${fireDate}:${i}`,
+        });
+        if (row) swept++;
+      }
+    }
+  }
+  return swept;
+}
+
+// ===========================================================================
 // STALE-CANDIDATE NUDGE (Stage 3c)
 // A "Stalled:<days>" or "Stalled:<days>:<stageKey>" trigger. NOT an instant
 // event — like Scheduled, it's evaluated by the sweep below (so the automation
@@ -419,6 +519,7 @@ async function writeStalledRun(auto: any, status: string, matched: boolean, resu
 export async function processDueJobs(scope?: string): Promise<{ swept: number; ran: number; failed: number; stalledMatched: number; stalledActed: number; stalledBlocked: number }> {
   const swept = await runDailySweep(scope);
   const reminded = await runAppointmentReminderSweep(scope); // Batch 2: appointment reminders
+  const recDated = await runRecordDateSweep(scope); // record date-field due (e.g. equipment service/warranty)
   const stalled = await runStalledSweep(scope); // Stage 3c: time-in-stage nudges
   // Google Calendar READ-IN sync (Sub-batch D): flag-gated per tenant, OFF by
   // default. Self-contained + never throws, but wrap defensively so a sync hiccup
@@ -445,8 +546,8 @@ export async function processDueJobs(scope?: string): Promise<{ swept: number; r
       failed++;
     }
   }
-  logger.info(`[scheduler] processed (scope=${scope || "all"}): swept ${swept + reminded}, ran ${ran}, failed ${failed}; stalled[matched ${stalled.matched}, acted ${stalled.acted}, blocked ${stalled.blocked}]`);
-  return { swept: swept + reminded, ran, failed, stalledMatched: stalled.matched, stalledActed: stalled.acted, stalledBlocked: stalled.blocked };
+  logger.info(`[scheduler] processed (scope=${scope || "all"}): swept ${swept + reminded + recDated}, ran ${ran}, failed ${failed}; stalled[matched ${stalled.matched}, acted ${stalled.acted}, blocked ${stalled.blocked}]`);
+  return { swept: swept + reminded + recDated, ran, failed, stalledMatched: stalled.matched, stalledActed: stalled.acted, stalledBlocked: stalled.blocked };
 }
 
 async function markFailed(id: string, error: string) {

@@ -766,6 +766,69 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
     },
     note: "Texts the booking's linked contact ~2 hours before the appointment (change the timing on the trigger). Won't send until Twilio is connected. Reminders are based on the appointment's clock time; if your business doesn't operate in UTC the send time shifts by your timezone offset — exact local-time reminders need the upcoming per-business timezone setting.",
   },
+  // ===================== Equipment (date-reached) =====================
+  // These use the record date-reached trigger on the built-in Equipment type's
+  // default date fields, and message the unit's linked contact. Because the
+  // trigger field lives on the record (not the contact) it is not flagged as a
+  // missing contact field; the Equipment default fields exist for every portal.
+  {
+    key: "equipment_service_reminder",
+    name: "Equipment service reminder",
+    description: "A week before a piece of equipment is due for service, email the linked contact to schedule it.",
+    category: "stay_in_touch",
+    vertical: "home_services",
+    summary: {
+      trigger: "7 days before an equipment's 'Next service due' date",
+      conditions: ["Runs for every equipment record with that date set and a linked contact"],
+      actions: ["Email the linked contact", "Add a reminder note"],
+    },
+    shape: { trigger: "7 days before next service due", actions: ["Send email", "Add note"] },
+    definition: {
+      name: "Equipment service reminder",
+      triggerType: "RecordDateReached:equipment:next_service_due:7:days:before",
+      conditions: [],
+      actions: [
+        {
+          type: "send_email",
+          config: {
+            subject: "Time to service your {{record_title}}",
+            html: "<p>Hi {{name}},</p><p>Your {{record_title}} is due for service on {{next_service_due}}. Reply and we'll get you booked in.</p>",
+          },
+        },
+        { type: "create_note", config: { text: "{{record_title}} is due for service on {{next_service_due}} — reminder sent to the linked contact." } },
+      ],
+    },
+    note: "Uses the Equipment type's 'Next service due' date and messages the unit's first linked contact. Email won't send until Resend is connected. Runs on the scheduled-jobs sweep, once per unit per due date.",
+  },
+  {
+    key: "equipment_warranty_expiring",
+    name: "Warranty expiring soon",
+    description: "A month before a piece of equipment's warranty expires, notify the linked contact.",
+    category: "stay_in_touch",
+    vertical: "home_services",
+    summary: {
+      trigger: "30 days before an equipment's 'Warranty expires' date",
+      conditions: ["Runs for every equipment record with that date set and a linked contact"],
+      actions: ["Email the linked contact", "Add a reminder note"],
+    },
+    shape: { trigger: "30 days before warranty expires", actions: ["Send email", "Add note"] },
+    definition: {
+      name: "Warranty expiring soon",
+      triggerType: "RecordDateReached:equipment:warranty_expires:30:days:before",
+      conditions: [],
+      actions: [
+        {
+          type: "send_email",
+          config: {
+            subject: "Your {{record_title}} warranty is expiring soon",
+            html: "<p>Hi {{name}},</p><p>The warranty on your {{record_title}} expires on {{warranty_expires}}. Let's talk about your options before it lapses.</p>",
+          },
+        },
+        { type: "create_note", config: { text: "{{record_title}} warranty expires {{warranty_expires}} — heads-up sent to the linked contact." } },
+      ],
+    },
+    note: "Uses the Equipment type's 'Warranty expires' date and messages the unit's first linked contact. Email won't send until Resend is connected. Runs on the scheduled-jobs sweep, once per unit per due date.",
+  },
 ];
 
 export function getPreset(key: string): FlowPreset | undefined {
