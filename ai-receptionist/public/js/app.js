@@ -520,29 +520,17 @@
     if (App.theme) App.theme.loadAndApply().then(function () { if (App.refreshBrand) App.refreshBrand(); });
 
     const layout = el("div", "app-shell");
-
-    // Sidebar
-    const side = el("aside", "sidebar");
-    const brand = el("div", "sidebar-brand");
-    renderBrand(brand);
-    side.appendChild(brand);
-
-    const nav = el("nav", "sidebar-nav");
     const isAdmin = section === "admin";
-    const canEditNav = !isAdmin && me && (me.role === "PORTAL_ADMIN" || App.isAdminTier(me.role));
-    let items = isAdmin ? ADMIN_NAV.slice() : App.applyNavConfig(App.buildPortalNav());
-    // The cross-tenant Email + Billing pages are OWNER/SUPER_ADMIN only — hide them from
-    // Auditors (the backend endpoints enforce the same, this just keeps the nav honest).
-    if (isAdmin && !(me.role === "OWNER" || me.role === "SUPER_ADMIN")) {
-      items = items.filter(function (it) { return it[0] !== "#/admin/email" && it[0] !== "#/admin/usage"; });
-    }
-    // Hide the Calls nav item when this portal has the AI Receptionist turned off.
-    // Only hide when we KNOW it's off (flag explicitly false); while it's still
-    // loading we show it — the server still blocks the data either way.
-    if (!isAdmin && App.state.receptionistEnabled === false) {
-      items = items.filter(function (it) { return it[0] !== "#/calls"; });
-    }
-    items.forEach(([href, label, kind]) => {
+    const isPortal = section === "portal";
+    const isAdminTier = App.isAdminTier(me.role);
+    const canEditNav = !isAdmin && me && (me.role === "PORTAL_ADMIN" || isAdminTier);
+    // Collapse state (in-memory; persists across navigation within the session).
+    if (isPortal && App.state.chromeCollapsed) layout.classList.add("chrome-collapsed");
+
+    // Shared nav-anchor builder — used by BOTH the left column (modules) and the
+    // new top row (pages), so the hamburger rename/reorder/hide works identically.
+    function makeNavAnchor(tuple) {
+      const href = tuple[0], label = tuple[1], kind = tuple[2];
       const text = isAdmin ? (kind ? App.label(kind, "many") : label) : App.navLabel(href, label, kind);
       const a = el("a", "nav-item" + (href === activePath ? " active" : "") + (canEditNav ? " nav-item--editable" : ""), esc(text));
       a.href = href;
@@ -553,54 +541,120 @@
         attachNavBurger(burger, a, href, label, kind);
         a.appendChild(burger);
       }
-      nav.appendChild(a);
-    });
+      return a;
+    }
+
+    // Sidebar
+    const side = el("aside", "sidebar");
+    const brand = el("div", "sidebar-brand");
+    renderBrand(brand);
+    side.appendChild(brand);
+
+    const nav = el("nav", "sidebar-nav");
+    let items = isAdmin ? ADMIN_NAV.slice() : App.applyNavConfig(App.buildPortalNav());
+    // The cross-tenant Email + Billing pages are OWNER/SUPER_ADMIN only — hide them from
+    // Auditors (the backend endpoints enforce the same, this just keeps the nav honest).
+    if (isAdmin && !(me.role === "OWNER" || me.role === "SUPER_ADMIN")) {
+      items = items.filter(function (it) { return it[0] !== "#/admin/email" && it[0] !== "#/admin/usage"; });
+    }
+    // Hide the Calls nav item when this portal has the AI Receptionist turned off.
+    if (!isAdmin && App.state.receptionistEnabled === false) {
+      items = items.filter(function (it) { return it[0] !== "#/calls"; });
+    }
+    // Portal: split into MODULES (record types -> left column) and PAGES (the rest
+    // -> horizontal top row). Derived from the registry, so a future record type
+    // lands in the left column automatically. Admin: everything stays in the sidebar.
+    let pageItems = [];
+    if (isPortal) {
+      const moduleHrefs = new Set(App.recordTypeNavItems().map(function (it) { return it[0]; }));
+      const moduleItems = items.filter(function (it) { return moduleHrefs.has(it[0]); });
+      pageItems = items.filter(function (it) { return !moduleHrefs.has(it[0]); });
+      moduleItems.forEach(function (it) { nav.appendChild(makeNavAnchor(it)); });
+    } else {
+      items.forEach(function (it) { nav.appendChild(makeNavAnchor(it)); });
+    }
     side.appendChild(nav);
 
     const userBox = el("div", "sidebar-user");
     const chip = el("div");
     chip.innerHTML = `<div class="user-chip"><div class="user-avatar">${esc((me.name || me.email).charAt(0).toUpperCase())}</div>
-      <div class="user-meta"><div class="user-name">${esc(me.name || me.email)}</div><div class="user-role">${esc(roleLabel(me.role))}</div></div></div>
-      <button class="btn btn-ghost btn-sm btn-block" id="logout-btn">Sign out</button>`;
+      <div class="user-meta"><div class="user-name">${esc(me.name || me.email)}</div><div class="user-role">${esc(roleLabel(me.role))}</div></div></div>`;
     userBox.appendChild(chip);
+    // Admin-tier in a portal: Sign out (a little under half width) + Impersonate as an
+    // equal-width button to its right. Everyone else: Sign out unchanged (full width).
+    if (isPortal && isAdminTier) {
+      const actionRow = el("div", "user-actions");
+      const logoutBtn = el("button", "btn btn-ghost btn-sm user-action-half", "Sign out");
+      logoutBtn.id = "logout-btn";
+      const imp = buildImpersonationControl();
+      imp.classList.add("user-action-half");
+      actionRow.appendChild(logoutBtn);
+      actionRow.appendChild(imp);
+      userBox.appendChild(actionRow);
+    } else {
+      const logoutBtn = el("button", "btn btn-ghost btn-sm btn-block", "Sign out");
+      logoutBtn.id = "logout-btn";
+      userBox.appendChild(logoutBtn);
+    }
     side.appendChild(userBox);
     layout.appendChild(side);
 
     // Main
     const main = el("div", "main");
-    // Persistent, unmistakable impersonation banner — present in EVERY section so
-    // the Exit affordance is always reachable. Survives refresh (state is reloaded
-    // from the server in boot()).
     if (isImpersonating()) main.appendChild(buildImpersonationBanner());
+
+    // Collapse toggle — sits in the top-left corner (intersection of the pages row
+    // and the modules column). One click hides BOTH; click again restores. Stays
+    // visible in either state (anchored to .main, above the collapsible chrome).
+    if (isPortal) {
+      const toggle = el("button", "chrome-toggle");
+      toggle.type = "button";
+      toggle.setAttribute("aria-label", "Toggle menus");
+      toggle.title = App.state.chromeCollapsed ? "Show menus" : "Hide menus";
+      toggle.innerHTML = "&#9776;"; // ☰
+      toggle.onclick = function () {
+        App.state.chromeCollapsed = !App.state.chromeCollapsed;
+        layout.classList.toggle("chrome-collapsed", App.state.chromeCollapsed);
+        toggle.title = App.state.chromeCollapsed ? "Show menus" : "Hide menus";
+      };
+      main.appendChild(toggle);
+    }
+
+    // Top row: PAGES (moved from the left column), horizontal, each with its burger.
+    if (isPortal) {
+      const pagesRow = el("nav", "portal-pages-row");
+      pageItems.forEach(function (it) { pagesRow.appendChild(makeNavAnchor(it)); });
+      main.appendChild(pagesRow);
+    }
+
+    // Context bar (second row): page name + presence + gear. No Refresh; the
+    // impersonation CONTROL moved to the user box. Admin keeps the "All tenants"
+    // context affordance here alongside the page title.
     const topbar = el("header", "topbar");
     const topLeft = el("div", "top-left");
-
-    if (section === "portal" && App.isAdminTier(me.role)) {
+    if (isPortal && isAdminTier) {
       const back = el("a", "back-link", "← All tenants");
       back.href = "#/admin/portals";
       back.onclick = () => { App.state.currentPortalId = null; App.state.currentPortalName = null; };
       topLeft.appendChild(back);
       topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
-    } else {
-      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/usage": "Billing & Usage", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
-      topLeft.appendChild(el("h1", "page-title", titleMap[activePath] || "Home Dashboard"));
     }
+    const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/usage": "Billing & Usage", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
+    let pageTitle = titleMap[activePath];
+    if (!pageTitle) {
+      const found = items.find(function (it) { return it[0] === activePath; });
+      if (found) pageTitle = isAdmin ? (found[2] ? App.label(found[2], "many") : found[1]) : App.navLabel(found[0], found[1], found[2]);
+    }
+    if (!pageTitle) pageTitle = isAdmin ? "Admin" : "Home Dashboard";
+    topLeft.appendChild(el("h1", "page-title", pageTitle));
     topbar.appendChild(topLeft);
 
     const topRight = el("div", "top-right");
-    if (section === "portal") {
-      // Impersonation control — immediately LEFT of Refresh, real super-admin only.
-      if (App.isAdminTier(me.role)) topRight.appendChild(buildImpersonationControl());
-
-      // "Who's online" presence dots — directly left of Refresh.
+    if (isPortal) {
       const presenceStrip = el("div", "presence-strip");
       presenceStrip.style.cssText = "display:flex;align-items:center;margin-right:2px;";
       topRight.appendChild(presenceStrip);
       if (App.presence) App.presence.mount(presenceStrip);
-
-      const refresh = el("button", "btn btn-ghost btn-sm", "Refresh");
-      refresh.onclick = () => App.portal.refresh();
-      topRight.appendChild(refresh);
 
       const gear = el("a", "icon-btn gear");
       gear.href = "#/settings";
