@@ -406,7 +406,7 @@
     host.appendChild(card);
   }
 
-  function enterPortal(p) {
+  async function enterPortal(p) {
     App.state.currentPortalId = p.id;
     App.state.currentPortalName = p.name;
     // Read the AI Receptionist flag from the just-loaded card data so the left nav
@@ -414,6 +414,11 @@
     // and clear the cache key so it's re-confirmed fresh from the server on entry.
     App.state.receptionistEnabled = !!(p && p.receptionistEnabled === true);
     App.state._recepFor = null;
+    // Re-sync the cached identity so the portal view renders the LIVE role (e.g. after
+    // a make-owner promotion the sidebar shows "Owner", matching the admin Users list —
+    // not a stale "Super Admin"). Non-blocking-safe: awaited, but errors are swallowed
+    // inside refreshMe so entry never gets stuck.
+    if (App.refreshMe) { await App.refreshMe(); }
     App.go("#/dashboard");
   }
 

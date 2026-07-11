@@ -118,14 +118,22 @@ body {
 
 /* ---------- Portal layout restructure: pages row + collapse toggle ---------- */
 .main { position: relative; }
-/* Horizontal PAGES row at the top of the main content (moved from the sidebar). */
+/* Horizontal PAGES row at the top of the main content (moved from the sidebar).
+   The row itself does not scroll; its inner .pages-scroll strip flexes to fill the
+   width and scrolls horizontally when the pages overflow, while the right-hand
+   cluster (presence + Settings gear) stays pinned and visible in the upper-right. */
 .portal-pages-row {
-  display: flex; align-items: center; gap: 4px;
-  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  display: flex; align-items: center; gap: 8px;
   padding: 10px 20px 10px 52px; /* left room for the corner collapse toggle */
   background: var(--topbar-bg, var(--panel));
   border-bottom: 1px solid var(--line);
 }
+.pages-scroll {
+  display: flex; align-items: center; gap: 4px;
+  flex: 1 1 auto; min-width: 0;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.pages-row-right { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; margin-left: 8px; }
 .portal-pages-row .nav-item { white-space: nowrap; flex: 0 0 auto; }
 /* Small corner toggle at the pages-row / modules-column intersection. Solid
    background + border so it stays legible on every theme, in both states. */
@@ -145,7 +153,7 @@ body {
 /* Sign out + Impersonate side by side (admin-tier, bottom-left): equal-width, each
    a little under half thanks to the gap between them. */
 .user-actions { display: flex; gap: 8px; align-items: stretch; }
-.user-actions .user-action-half { flex: 1 1 0; min-width: 0; width: auto; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.user-actions .user-action-half { flex: 1 1 0; min-width: 0; width: auto; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; justify-content: center; text-align: center; }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -327,6 +335,7 @@ tbody tr:hover { background: var(--row-hover); }
 @media (max-width: 860px) {
   .sidebar { width: 64px; padding: 16px 8px; }
   .brand-name, .nav-item span:not(.nav-dot), .mode-badge { display: none; }
+  .brand-context { display: none; }
   .brand-logo--full { display: none; }
   .brand-logo--icon { display: inline-flex; }
   .nav-item { justify-content: center; }
@@ -341,7 +350,11 @@ tbody tr:hover { background: var(--row-hover); }
 /* ---------- App shell ---------- */
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 4px 8px 22px; }
-.brand-row { display: flex; align-items: center; gap: 10px; }
+/* Logo on the left; the admin "← All tenants" + portal-name context sits to its
+   top-right (wrapping beneath the logo on very narrow rails rather than clipping). */
+.brand-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; row-gap: 6px; width: 100%; }
+.brand-context { display: flex; flex-direction: column; gap: 1px; }
+.brand-portal-name { font-size: 12.5px; font-weight: 600; color: var(--ink); line-height: 1.2; }
 .brand-logo { max-height: 34px; max-width: 160px; width: auto; height: auto; object-fit: contain; display: block; }
 .brand-logo--full { display: inline-flex; align-items: center; }
 .brand-logo--full svg { height: 30px; width: auto; display: block; }
@@ -351,7 +364,13 @@ tbody tr:hover { background: var(--row-hover); }
 .auth-logo svg { height: 40px; width: auto; display: block; }
 .brand-logo-preview { max-height: 56px; max-width: 220px; width: auto; height: auto; object-fit: contain; display: block; border-radius: 6px; }
 .brand-attribution { font-size: 10px; line-height: 1.2; color: var(--ink-faint); letter-spacing: 0.02em; }
-.sidebar-nav { display: flex; flex-direction: column; gap: 2px; }
+/* Tagline when relocated to the user block (portal view): tuck it just above the
+   user's name/role line. */
+.user-attribution { padding-left: 6px; margin-bottom: -4px; }
+/* Modules column: FLEX to the available height and scroll vertically when the list
+   of modules overflows (never clip) — the brand stays pinned above, the user block
+   below. */
+.sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .sidebar-user { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
 .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 6px; }
 .user-avatar { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 13px; }

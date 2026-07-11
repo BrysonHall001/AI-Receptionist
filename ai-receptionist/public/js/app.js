@@ -18,6 +18,25 @@
     else App.go(App.firstAvailableNav()); // portal user lands on first available (skips a locked Home Dashboard)
   };
 
+  // Re-sync the cached identity (App.state.me) with the server's LIVE view of the
+  // user. App.state.me is captured once at boot and, before this, was never re-read
+  // during ordinary hash navigation — so a role change applied out-of-band (e.g. the
+  // make-owner promotion, which sets role=OWNER in the DB) showed up immediately in
+  // freshly-fetched lists (the admin Users page calls /api/admin/users every render)
+  // but NOT in the cached sidebar identity the portal view renders from. The two then
+  // disagreed (Users: "Owner"; portal chip: stale "Super Admin"). Re-reading /me makes
+  // every surface resolve the role from the same source. Returns the updated user.
+  App.refreshMe = async function () {
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "same-origin" });
+      if (!res.ok) return App.state.me;
+      const j = await res.json();
+      App.state.me = j.user;
+      App.state.features = j.features || App.state.features || {};
+      return App.state.me;
+    } catch (e) { return App.state.me; }
+  };
+
   async function logout() {
     try { if (App.presence) App.presence.stop(); } catch (e) {}
     try { await App.api("/api/auth/logout", { method: "POST" }); } catch (e) {}
@@ -29,9 +48,18 @@
   }
 
   // Top-left brand. When this portal has a white-label logo, the logo REPLACES the
-  // "C" mark + name entirely; otherwise the default name shows. The small
-  // "A Vaala product" attribution is ALWAYS shown, in both states.
-  function renderBrand(brandEl) {
+  // "C" mark + name entirely; otherwise the default name shows.
+  //
+  // opts.attribution — show the small "A Vaala product" line under the logo. In the
+  //   PORTAL view this is FALSE: the tagline is relocated to just above the user's
+  //   name/role in the bottom user block. In the admin/master hub it stays TRUE
+  //   (unchanged) so the master layout is untouched.
+  // opts.adminContext — OWNER/SUPER_ADMIN/AUDITOR viewing a portal: show the
+  //   "← All tenants" affordance at the top of the left column, to the top-right of
+  //   the logo, with the portal name directly beneath it (no "Viewing:" prefix).
+  function renderBrand(brandEl, opts) {
+    opts = opts || {};
+    App._brandOpts = opts; // remembered so App.refreshBrand repaints identically
     brandEl.innerHTML = "";
     const row = el("div", "brand-row");
     const logo = (App.theme && App.theme.getLogo && App.theme.getLogo()) || null;
@@ -48,11 +76,25 @@
       row.appendChild(full);
       row.appendChild(icon);
     }
+    if (opts.adminContext) {
+      // "← All tenants" (top) + portal name (beneath), to the top-right of the logo.
+      const ctx = el("div", "brand-context");
+      const back = el("a", "back-link", "← All tenants");
+      back.href = "#/admin/portals";
+      back.onclick = () => { App.state.currentPortalId = null; App.state.currentPortalName = null; };
+      ctx.appendChild(back);
+      ctx.appendChild(el("div", "brand-portal-name", esc(App.state.currentPortalName || "portal")));
+      row.appendChild(ctx);
+    }
     brandEl.appendChild(row);
-    brandEl.appendChild(el("div", "brand-attribution", "A Vaala product"));
+    // Tagline stays under the logo ONLY where requested (admin). Portal relocates it
+    // to the user block (see buildShell), so it is intentionally omitted here.
+    if (opts.attribution) brandEl.appendChild(el("div", "brand-attribution", "A Vaala product"));
   }
-  // Lets the Appearance panel repaint the brand immediately after a logo change.
-  App.refreshBrand = function () { const b = document.querySelector(".sidebar-brand"); if (b) renderBrand(b); };
+  // Lets the Appearance panel repaint the brand immediately after a logo change —
+  // reusing the SAME options the current shell rendered with (so the portal's
+  // relocated tagline / All-tenants block don't reappear/disappear on a logo swap).
+  App.refreshBrand = function () { const b = document.querySelector(".sidebar-brand"); if (b) renderBrand(b, App._brandOpts || { attribution: true }); };
 
   // The 3rd element (when present) is a label "kind": the nav text is resolved
   // at render time via App.label(kind,"many") so renaming the contact/job record
@@ -312,9 +354,15 @@
     document.body.appendChild(menu);
     navMenuEl = menu;
     const r = anchor.getBoundingClientRect();
+    const pad = 8;
     menu.style.position = "fixed";
-    menu.style.top = Math.round(r.bottom + 4) + "px";
-    menu.style.left = Math.round(Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + "px";
+    menu.style.left = Math.round(Math.min(r.left, window.innerWidth - menu.offsetWidth - pad)) + "px";
+    // Open below the burger, but if that would run off the bottom (e.g. a burger low
+    // in the scrolling modules column), flip to open ABOVE it instead. Always clamped.
+    let top = r.bottom + 4;
+    if (top + menu.offsetHeight > window.innerHeight - pad) top = r.top - 4 - menu.offsetHeight;
+    if (top < pad) top = pad;
+    menu.style.top = Math.round(top) + "px";
     setTimeout(() => {
       document.addEventListener("pointerdown", onNavMenuDocDown, true);
       document.addEventListener("keydown", onNavMenuKey, true);
@@ -470,10 +518,25 @@
       menu.appendChild(item);
     });
     document.body.appendChild(menu); impMenuEl = menu;
+    // The trigger now lives in the BOTTOM-LEFT user box, so the menu must open UPWARD
+    // and left-aligned to the button — and be clamped so it is always fully on-screen
+    // (never cut off past the bottom, left, or right), whatever the button position.
     const r = anchor.getBoundingClientRect();
+    const pad = 8, gap = 6;
     menu.style.position = "fixed";
-    menu.style.top = Math.round(r.bottom + 6) + "px";
-    menu.style.right = Math.round(Math.max(8, window.innerWidth - r.right)) + "px";
+    menu.style.top = "0px"; menu.style.left = "0px"; // neutral spot to measure at
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    // Left-align to the button, clamp within [pad, viewport - width - pad].
+    let left = Math.max(pad, Math.min(r.left, window.innerWidth - mw - pad));
+    // Prefer opening above the button; if there isn't room, clamp to the top and let
+    // the menu's own max-height/scroll handle a very tall list. Final min() keeps it
+    // off the bottom edge too.
+    let top = r.top - gap - mh;
+    if (top < pad) top = pad;
+    top = Math.min(top, window.innerHeight - mh - pad);
+    if (top < pad) top = pad;
+    menu.style.left = Math.round(left) + "px";
+    menu.style.top = Math.round(top) + "px";
     setTimeout(() => {
       document.addEventListener("pointerdown", onImpDocDown, true);
       document.addEventListener("keydown", onImpKey, true);
@@ -547,7 +610,10 @@
     // Sidebar
     const side = el("aside", "sidebar");
     const brand = el("div", "sidebar-brand");
-    renderBrand(brand);
+    // Portal view: tagline moves to the user block, and admin-tier gets the
+    // "← All tenants" + portal-name context at the top of the left column. Admin
+    // (master hub) is untouched: tagline stays under the logo, no context block.
+    renderBrand(brand, isPortal ? { attribution: false, adminContext: isAdminTier } : { attribution: true, adminContext: false });
     side.appendChild(brand);
 
     const nav = el("nav", "sidebar-nav");
@@ -576,6 +642,9 @@
     side.appendChild(nav);
 
     const userBox = el("div", "sidebar-user");
+    // Portal view: the "A Vaala product" tagline sits directly ABOVE the user's
+    // name/role line (relocated from under the logo). Admin keeps it under the logo.
+    if (isPortal) userBox.appendChild(el("div", "brand-attribution user-attribution", "A Vaala product"));
     const chip = el("div");
     chip.innerHTML = `<div class="user-chip"><div class="user-avatar">${esc((me.name || me.email).charAt(0).toUpperCase())}</div>
       <div class="user-meta"><div class="user-name">${esc(me.name || me.email)}</div><div class="user-role">${esc(roleLabel(me.role))}</div></div></div>`;
@@ -620,52 +689,50 @@
       main.appendChild(toggle);
     }
 
-    // Top row: PAGES (moved from the left column), horizontal, each with its burger.
     if (isPortal) {
+      // Top row: PAGES (moved from the left column), horizontal, each with its full
+      // burger menu (Rename/Hide/reorder — same makeNavAnchor as the left column).
+      // The page items live in a FLEXING, horizontally-scrolling strip so they reach
+      // the whole width and overflow scrolls (never clips); the presence strip + the
+      // Settings gear are pinned to the upper-right and stay visible.
       const pagesRow = el("nav", "portal-pages-row");
-      pageItems.forEach(function (it) { pagesRow.appendChild(makeNavAnchor(it)); });
-      main.appendChild(pagesRow);
-    }
+      const pagesScroll = el("div", "pages-scroll");
+      pageItems.forEach(function (it) { pagesScroll.appendChild(makeNavAnchor(it)); });
+      pagesRow.appendChild(pagesScroll);
 
-    // Context bar (second row): page name + presence + gear. No Refresh; the
-    // impersonation CONTROL moved to the user box. Admin keeps the "All tenants"
-    // context affordance here alongside the page title.
-    const topbar = el("header", "topbar");
-    const topLeft = el("div", "top-left");
-    if (isPortal && isAdminTier) {
-      const back = el("a", "back-link", "← All tenants");
-      back.href = "#/admin/portals";
-      back.onclick = () => { App.state.currentPortalId = null; App.state.currentPortalName = null; };
-      topLeft.appendChild(back);
-      topLeft.appendChild(el("span", "context-banner", "Viewing: " + esc(App.state.currentPortalName || "portal")));
-    }
-    const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/usage": "Billing & Usage", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
-    let pageTitle = titleMap[activePath];
-    if (!pageTitle) {
-      const found = items.find(function (it) { return it[0] === activePath; });
-      if (found) pageTitle = isAdmin ? (found[2] ? App.label(found[2], "many") : found[1]) : App.navLabel(found[0], found[1], found[2]);
-    }
-    if (!pageTitle) pageTitle = isAdmin ? "Admin" : "Home Dashboard";
-    topLeft.appendChild(el("h1", "page-title", pageTitle));
-    topbar.appendChild(topLeft);
-
-    const topRight = el("div", "top-right");
-    if (isPortal) {
+      const pagesRight = el("div", "pages-row-right");
       const presenceStrip = el("div", "presence-strip");
       presenceStrip.style.cssText = "display:flex;align-items:center;margin-right:2px;";
-      topRight.appendChild(presenceStrip);
+      pagesRight.appendChild(presenceStrip);
       if (App.presence) App.presence.mount(presenceStrip);
-
+      // Settings gear — relocated here (upper-right of the top row) now that the old
+      // context row is gone. Still opens Settings.
       const gear = el("a", "icon-btn gear");
       gear.href = "#/settings";
       gear.title = "Settings";
       gear.innerHTML = "&#9881;";
-      topRight.appendChild(gear);
-    } else if (App.presence) {
-      App.presence.stop();
+      pagesRight.appendChild(gear);
+      pagesRow.appendChild(pagesRight);
+
+      main.appendChild(pagesRow);
+    } else {
+      // Admin (master hub) — UNCHANGED: the top bar carries the page title, and there
+      // is no portal presence strip, so presence is stopped.
+      const topbar = el("header", "topbar");
+      const topLeft = el("div", "top-left");
+      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/usage": "Billing & Usage", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
+      let pageTitle = titleMap[activePath];
+      if (!pageTitle) {
+        const found = items.find(function (it) { return it[0] === activePath; });
+        if (found) pageTitle = found[2] ? App.label(found[2], "many") : found[1];
+      }
+      if (!pageTitle) pageTitle = "Admin";
+      topLeft.appendChild(el("h1", "page-title", pageTitle));
+      topbar.appendChild(topLeft);
+      topbar.appendChild(el("div", "top-right"));
+      if (App.presence) App.presence.stop();
+      main.appendChild(topbar);
     }
-    topbar.appendChild(topRight);
-    main.appendChild(topbar);
 
     const content = el("div", "content");
     const viewEl = el("div");
@@ -681,6 +748,23 @@
   function route() {
     const { path, query } = parseHash();
     const me = App.state.me;
+
+    // Keep the cached identity in step with the live role. Without this, App.state.me
+    // is only ever read at boot, so a role change applied while the user is logged in
+    // (e.g. the make-owner promotion) is reflected in freshly-fetched lists but not in
+    // the cached sidebar identity — the admin Users list and the portal view then
+    // disagree. We re-read /me in the background and, only if the role actually
+    // changed, repaint. Skipped while impersonating (there /me is the intended
+    // EFFECTIVE role and the impersonation flow already owns App.state.me), and
+    // guarded so the fetches never overlap or loop (once refreshed, the role matches
+    // and no further repaint happens).
+    if (me && !isImpersonating() && !App.state._meSyncing) {
+      App.state._meSyncing = true;
+      App.refreshMe().then(function (u) {
+        App.state._meSyncing = false;
+        if (u && u.role !== me.role && App._route) App._route();
+      }).catch(function () { App.state._meSyncing = false; });
+    }
 
     // Foundation (relabeling): keep the per-portal label cache warm — but only
     // when there's a portal in context. A SUPER_ADMIN who hasn't picked a portal
