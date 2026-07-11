@@ -350,11 +350,20 @@ tbody tr:hover { background: var(--row-hover); }
 /* ---------- App shell ---------- */
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 4px 8px 22px; }
-/* Logo on the left; the admin "← All tenants" + portal-name context sits to its
-   top-right (wrapping beneath the logo on very narrow rails rather than clipping). */
-.brand-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; row-gap: 6px; width: 100%; }
+/* Logo on the left. When the admin "← All tenants" + portal-name context is present
+   the row becomes a 2×2 grid: the logo occupies the LEFT column (both rows) and the
+   context stacks in the RIGHT column, top-aligned — beside the logo, never wrapping
+   beneath it. */
+.brand-row { display: flex; align-items: flex-start; gap: 10px; width: 100%; }
+.brand-row--with-context { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; align-items: start; }
+.brand-row--with-context > .brand-logo,
+.brand-row--with-context > .brand-logo--full,
+.brand-row--with-context > .brand-logo--icon { grid-column: 1; align-self: start; max-width: 120px; }
+.brand-row--with-context > .brand-logo--full svg { height: 26px; }
+.brand-row--with-context > .brand-context { grid-column: 2; align-self: start; min-width: 0; }
 .brand-context { display: flex; flex-direction: column; gap: 1px; }
-.brand-portal-name { font-size: 12.5px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+.brand-context .back-link { white-space: nowrap; }
+.brand-portal-name { font-size: 12.5px; font-weight: 600; color: var(--ink); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand-logo { max-height: 34px; max-width: 160px; width: auto; height: auto; object-fit: contain; display: block; }
 .brand-logo--full { display: inline-flex; align-items: center; }
 .brand-logo--full svg { height: 30px; width: auto; display: block; }
@@ -364,9 +373,9 @@ tbody tr:hover { background: var(--row-hover); }
 .auth-logo svg { height: 40px; width: auto; display: block; }
 .brand-logo-preview { max-height: 56px; max-width: 220px; width: auto; height: auto; object-fit: contain; display: block; border-radius: 6px; }
 .brand-attribution { font-size: 10px; line-height: 1.2; color: var(--ink-faint); letter-spacing: 0.02em; }
-/* Tagline when relocated to the user block (portal view): tuck it just above the
-   user's name/role line. */
-.user-attribution { padding-left: 6px; margin-bottom: -4px; }
+/* Tagline relocated (portal view) to sit directly ABOVE the divider that tops the
+   bottom user block: last sidebar element before .sidebar-user, with a small gap. */
+.sidebar-tagline { padding: 0 8px; margin-bottom: 8px; }
 /* Modules column: FLEX to the available height and scroll vertically when the list
    of modules overflows (never clip) — the brand stays pinned above, the user block
    below. */
@@ -381,6 +390,10 @@ tbody tr:hover { background: var(--row-hover); }
 .top-right { display: flex; align-items: center; gap: 8px; }
 .page-title { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
 .content { padding: 28px 40px 60px; max-width: 1600px; }
+/* Item 3 — the single consistent page/module title at the top-left of the content
+   region. Sits above the page's own toolbar/content; per-page duplicate top-level
+   headings were removed so this is the only one. */
+.content-page-title { margin: 0 0 18px; text-align: left; }
 .back-link { color: var(--ink-soft); text-decoration: none; font-size: 13px; font-weight: 600; }
 .back-link:hover { color: var(--ink); }
 .context-banner { font-size: 13px; color: var(--ink-faint); padding-left: 14px; border-left: 1px solid var(--line-strong); }

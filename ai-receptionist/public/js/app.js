@@ -77,7 +77,11 @@
       row.appendChild(icon);
     }
     if (opts.adminContext) {
-      // "← All tenants" (top) + portal name (beneath), to the top-right of the logo.
+      // 2×2 layout: the logo occupies the LEFT column (spanning both rows); "← All
+      // tenants" sits top-right (beside the logo, top-aligned) with the portal name
+      // flush directly beneath it — NOT wrapping under the logo. The grid modifier
+      // (see .brand-row--with-context) keeps them beside the logo.
+      row.classList.add("brand-row--with-context");
       const ctx = el("div", "brand-context");
       const back = el("a", "back-link", "← All tenants");
       back.href = "#/admin/portals";
@@ -642,9 +646,6 @@
     side.appendChild(nav);
 
     const userBox = el("div", "sidebar-user");
-    // Portal view: the "A Vaala product" tagline sits directly ABOVE the user's
-    // name/role line (relocated from under the logo). Admin keeps it under the logo.
-    if (isPortal) userBox.appendChild(el("div", "brand-attribution user-attribution", "A Vaala product"));
     const chip = el("div");
     chip.innerHTML = `<div class="user-chip"><div class="user-avatar">${esc((me.name || me.email).charAt(0).toUpperCase())}</div>
       <div class="user-meta"><div class="user-name">${esc(me.name || me.email)}</div><div class="user-role">${esc(roleLabel(me.role))}</div></div></div>`;
@@ -665,6 +666,11 @@
       logoutBtn.id = "logout-btn";
       userBox.appendChild(logoutBtn);
     }
+    // Portal view: the "A Vaala product" tagline sits directly ABOVE the thin divider
+    // that tops the bottom user block (relocated from under the logo). Placed as the
+    // last sidebar element before the user box, so it renders just above that divider.
+    // Admin (master hub) keeps the tagline under the logo, untouched.
+    if (isPortal) side.appendChild(el("div", "brand-attribution sidebar-tagline", "A Vaala product"));
     side.appendChild(userBox);
     layout.appendChild(side);
 
@@ -735,6 +741,14 @@
     }
 
     const content = el("div", "content");
+    // Item 3 — one CONSISTENT, left-aligned page/module title at the top of the content
+    // region (just under the pages row), shown for EVERY portal page/module using the
+    // SAME label the nav uses (relabel-aware via App.navLabel/App.label). Pages that
+    // used to hardcode their own top-level heading had it removed so it isn't doubled.
+    if (isPortal) {
+      const title = portalPageTitle(activePath);
+      if (title) content.appendChild(el("h1", "page-title content-page-title", esc(title)));
+    }
     const viewEl = el("div");
     viewEl.id = "view";
     content.appendChild(viewEl);
@@ -744,6 +758,19 @@
     root.appendChild(layout);
     App.util.$("#logout-btn").onclick = logout;
   }
+
+  // The consistent portal page/module title for an active hash. Resolved from the FULL
+  // portal nav (so a hidden-but-URL-reachable page still gets a title) via the same
+  // label path the sidebar uses; Settings and the fixed pages have explicit fallbacks.
+  function portalPageTitle(activePath) {
+    if (activePath === "#/settings") return "Settings";
+    const full = (App.buildPortalNav && App.buildPortalNav()) || [];
+    const found = full.find(function (it) { return it[0] === activePath; });
+    if (found) return App.navLabel(found[0], found[1], found[2]);
+    const fixed = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/learn": "Learning Center", "#/feedback": "Feedback" };
+    return fixed[activePath] || "";
+  }
+  App.portalPageTitle = portalPageTitle; // exposed for the layout self-test
 
   function route() {
     const { path, query } = parseHash();

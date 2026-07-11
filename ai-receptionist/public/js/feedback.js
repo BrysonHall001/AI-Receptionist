@@ -107,7 +107,7 @@
 
     const intro = el("div", "fb-intro");
     intro.innerHTML =
-      `<h1 class="page-title" style="font-size:22px">Feedback</h1>` +
+      (mode === "master" ? `<h1 class="page-title" style="font-size:22px">Feedback</h1>` : "") +
       `<p class="cell-muted" style="font-size:13px;margin-top:2px">` +
       (mode === "master"
         ? "Raise issues for the team. Auditors, super-admins and the owner can see and reply to all tickets here."

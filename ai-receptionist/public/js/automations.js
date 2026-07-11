@@ -192,8 +192,7 @@
     host = target;
     host.innerHTML = "";
     const head = el("div", "page-head");
-    head.innerHTML = `<div><h1 class="page-title">Automations</h1>
-      <p class="page-sub">Run actions automatically when things happen in your CRM.</p></div>`;
+    head.innerHTML = `<div><p class="page-sub">Run actions automatically when things happen in your CRM.</p></div>`;
     const newBtn = el("button", "btn btn-primary", "+ New automation");
     newBtn.onclick = () => openEditor(null);
     head.appendChild(newBtn);

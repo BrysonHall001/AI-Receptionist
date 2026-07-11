@@ -688,7 +688,7 @@
     host.innerHTML = "";
     const wrap = el("div", "fade-in learn-wrap");
     const head = el("div", "learn-head");
-    head.innerHTML = `<h1 class="learn-title">Learning Center</h1><p class="cell-muted">Step-by-step guides for using ${esc(App.BRAND || "the app")}.</p>`;
+    head.innerHTML = `<p class="cell-muted">Step-by-step guides for using ${esc(App.BRAND || "the app")}.</p>`;
     wrap.appendChild(head);
 
     const layout = el("div", "learn-layout");
