@@ -830,6 +830,7 @@ apiRouter.get("/account/ai-instructions", async (req: Request, res: Response) =>
   const portal = await getPortal(tenantId);
   res.json({
     aiInstructions: (portal as any)?.aiInstructions ?? "",
+    aiKnowledgeModules: Array.isArray((portal as any)?.aiKnowledgeModules) ? (portal as any).aiKnowledgeModules : [],
     editable: aiInstructionsEditable(req),
     // For the Receptionist-voice picker in the same panel:
     voiceId: (portal as any)?.voiceId ?? DEFAULT_VOICE_ID,
@@ -861,6 +862,31 @@ apiRouter.patch("/account/ai-instructions", async (req: Request, res: Response) 
       payload: { length: aiInstructions.length },
     });
     res.json({ ok: true, aiInstructions });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Save the "System knowledge" module selection — the record-type keys whose linked
+// records a KNOWN caller brings into the receptionist's context. Validated against
+// the portal's real, non-contact record types (contact is the caller, not a linked
+// module); unknown/locked/contact keys are dropped. Same admin gate as Instructions.
+apiRouter.patch("/account/ai-knowledge-modules", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!aiInstructionsEditable(req)) {
+    res.status(403).json({ error: "You don't have permission to edit AI Receptionist settings." });
+    return;
+  }
+  const raw = (req.body ?? {}).aiKnowledgeModules;
+  const requested: string[] = Array.isArray(raw) ? raw.filter((k: any) => typeof k === "string") : [];
+  // Keep only real, non-contact record types this portal actually has.
+  const types = await listRecordTypes(tenantId).catch(() => [] as any[]);
+  const valid = new Set((types as any[]).map((t) => t.key).filter((k) => k !== "contact"));
+  const aiKnowledgeModules = Array.from(new Set(requested.filter((k) => valid.has(k))));
+  try {
+    await updatePortal(tenantId, { aiKnowledgeModules } as any);
+    res.json({ ok: true, aiKnowledgeModules });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

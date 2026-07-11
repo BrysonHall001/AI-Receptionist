@@ -158,13 +158,7 @@
     view().appendChild(container);
     let handle = buildCallsTable(container, calls);
     callsSig = callsSignature(calls);
-    // AI Instructions editor below the table. Mount it INTO the table's
-    // .table-area column (not the full-width view) so it shares the exact same
-    // width constraint as the Calls panel above and their edges line up. Falls
-    // back to the full view if the area isn't found. It is preserved across live
-    // refreshes (the node is moved, not rebuilt), so in-progress edits survive.
-    const tableArea = container.querySelector(".table-area");
-    await mountAiInstructions(tableArea || view());
+    // (AI Instructions now lives under Settings → AI Receptionist, not here.)
 
     // Start the live auto-refresh for this Calls view (stopped on navigation).
     callsPoll = setInterval(() => {
@@ -258,10 +252,6 @@
     if (callsRefreshBlocked()) return;  // don't disrupt the user; catch it next tick
     callsSig = sig;
 
-    // Detach the AI Instructions card so it survives the table remount untouched.
-    const aiCard = container.querySelector(".ai-instructions-card");
-    if (aiCard && aiCard.parentNode) aiCard.parentNode.removeChild(aiCard);
-
     // Preserve sort/search/filters across the remount.
     const prevHandle = getHandle && getHandle();
     const prevState = prevHandle && prevHandle.getState ? prevHandle.getState() : null;
@@ -269,12 +259,6 @@
     const handle = buildCallsTable(container, calls);
     if (prevState && handle && handle.applyState) handle.applyState(prevState);
     if (setHandle) setHandle(handle);
-
-    // Re-attach the AI editor into the fresh table area (same node => edits kept).
-    if (aiCard) {
-      const area = container.querySelector(".table-area") || container;
-      area.appendChild(aiCard);
-    }
   }
 
   // Per-portal AI Instructions box. The server (GET) returns `editable`; editable users get the
@@ -3883,6 +3867,7 @@
     const SECTIONS = [
       { key: "general", label: "Business Profile", admin: true, build: secGeneral },
       { key: "appearance", label: "Appearance", admin: true, build: secAppearance },
+      { key: "aireceptionist", label: "AI Receptionist", admin: true, build: secAiReceptionist },
       { key: "team", label: "Team & Permissions", admin: true, build: secTeam },
       { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
       { key: "scheduling", label: "Scheduling & Resources", admin: true, build: secSchedulingResources },
@@ -3959,6 +3944,72 @@
         <p class="cell-muted" style="font-size:13px;margin-bottom:6px">Pick a theme for this portal, or design your own. Applies to everyone in this portal.</p>
         <div id="theme-host"></div>`;
       if (App.theme) { const h = App.util.$("#theme-host"); if (h) App.theme.mountSettings(h); }
+    }
+
+    // AI Receptionist settings — two sub-tabs: the (moved) Instructions editor and
+    // the new System knowledge module-awareness checklist.
+    async function secAiReceptionist(panel) {
+      panel.innerHTML = "";
+      const bar = el("div"); bar.style.cssText = "display:flex;gap:4px;margin:0 0 16px;border-bottom:1px solid var(--line,#eee);";
+      const body = el("div");
+      const subtabs = [{ key: "instructions", label: "Instructions" }, { key: "knowledge", label: "System knowledge" }];
+      let active = "instructions";
+      function paintBar() {
+        bar.innerHTML = "";
+        subtabs.forEach((t) => {
+          const b = el("button", null, t.label);
+          b.style.cssText = "padding:8px 14px;border:none;background:none;cursor:pointer;font-size:14px;border-bottom:2px solid " + (active === t.key ? "var(--accent,#5b5bd6)" : "transparent") + ";font-weight:" + (active === t.key ? "600" : "400") + ";color:" + (active === t.key ? "var(--text,#111)" : "var(--muted,#666)") + ";";
+          b.onclick = () => { if (active !== t.key) { active = t.key; paintBar(); paintBody(); } };
+          bar.appendChild(b);
+        });
+      }
+      async function paintBody() {
+        body.innerHTML = "";
+        if (active === "instructions") { await mountAiInstructions(body); }
+        else { await mountSystemKnowledge(body); }
+      }
+      panel.appendChild(bar); panel.appendChild(body);
+      paintBar(); await paintBody();
+    }
+
+    // System knowledge: a checklist of the portal's modules (record types, minus
+    // Contacts and any locked type), pulled from the registry so future modules
+    // appear automatically. Checked = the receptionist is aware of a KNOWN caller's
+    // own records of that module. Persisted via /api/account/ai-knowledge-modules.
+    async function mountSystemKnowledge(host) {
+      const card = el("div", "card"); card.style.cssText = "padding:18px;";
+      card.innerHTML = `<h3 style="margin:0 0 6px;">System knowledge</h3>
+        <p class="cell-muted" style="margin:0 0 12px;">Choose which modules the receptionist is aware of. When a <b>known</b> caller phones in, the receptionist can see that caller's own records of the checked modules and reference them naturally — it can't create or change them. Default: everything off, so nothing is shared until you check something.</p>`;
+      host.appendChild(card);
+      const listHost = el("div"); card.appendChild(listHost);
+      listHost.appendChild(el("p", "cell-muted", "Loading…"));
+
+      let saved = [], editable = true;
+      try { const data = await App.portalApi("/api/account/ai-instructions"); saved = Array.isArray(data.aiKnowledgeModules) ? data.aiKnowledgeModules : []; editable = !!data.editable; } catch (e) {}
+      let types = [];
+      try { types = await App.portalApi("/api/record-types"); } catch (e) {}
+      const modules = (Array.isArray(types) ? types : []).filter((t) => t && t.key && t.key !== "contact" && !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)));
+      const chosen = new Set(saved);
+      listHost.innerHTML = "";
+      if (!modules.length) { listHost.appendChild(el("p", "cell-muted", "No modules available yet.")); return; }
+      modules.forEach((t) => {
+        const row = el("label"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;cursor:" + (editable ? "pointer" : "default") + ";border-top:1px solid var(--line,#eee)";
+        const cb = el("input"); cb.type = "checkbox"; cb.checked = chosen.has(t.key); cb.disabled = !editable;
+        const name = App.relabelText ? App.relabelText(t.labelPlural || t.label || t.key, { all: true }) : (t.labelPlural || t.label || t.key);
+        cb.onchange = () => { if (cb.checked) chosen.add(t.key); else chosen.delete(t.key); };
+        row.appendChild(cb); row.appendChild(document.createTextNode(" " + name));
+        listHost.appendChild(row);
+      });
+      if (editable) {
+        const save = el("button", "btn btn-primary btn-sm", "Save"); save.style.marginTop = "14px";
+        save.onclick = async () => {
+          save.disabled = true;
+          try { await App.portalApi("/api/account/ai-knowledge-modules", { method: "PATCH", body: JSON.stringify({ aiKnowledgeModules: Array.from(chosen) }) }); toast("System knowledge saved"); }
+          catch (e) { toast(e.message, true); }
+          save.disabled = false;
+        };
+        card.appendChild(save);
+      }
     }
 
     async function secTeam(panel) {

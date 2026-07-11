@@ -55,7 +55,7 @@ function main() {
   check(/label: "Business Profile"/.test(portal) && /key: "general"/.test(portal), "nav label renamed; the 'general' key is preserved");
   check(/id="set-name"/.test(portal) && /id="set-email"/.test(portal), "keeps Business name + Notify email fields");
   check(!/id="set-type"/.test(portal) && !/id="set-phone"/.test(portal) && !/id="set-greet"/.test(portal), "removes Business type, Phone number, and Greeting fields");
-  check(/Notify email is where call summaries and business notifications are sent/.test(portal), "notify-email helper caption is present");
+  check(/Where call summaries and business notifications are sent/.test(portal), "notify-email helper caption is present");
   // Save payload now sends only name + notifyEmail.
   check(/JSON\.stringify\(\{\s*\n?\s*name: App\.util\.\$\("#set-name"\)\.value, notifyEmail: App\.util\.\$\("#set-email"\)\.value \}\)/.test(portal)
         || /name: App\.util\.\$\("#set-name"\)\.value, notifyEmail: App\.util\.\$\("#set-email"\)\.value/.test(portal),

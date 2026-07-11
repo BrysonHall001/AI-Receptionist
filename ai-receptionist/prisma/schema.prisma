@@ -42,6 +42,10 @@ model Tenant {
   // Per-portal, client-editable guidance appended on top of the AI receptionist's
   // core prompt (business facts + tone). Empty = core behavior only.
   aiInstructions String      @default("")
+  // Record-type keys the receptionist is "aware of": for a KNOWN caller, their
+  // linked records of these modules are summarized into the call prompt. Empty =
+  // off (default), so nothing changes for existing portals until an admin opts in.
+  aiKnowledgeModules Json     @default("[]")
   theme        Json          @default("{}")
   // Per-portal overrides for GENERIC display words that aren't a record type
   // (e.g. "record", "stage"). Shape: {"record":{"one":"Item","many":"Items"}}.

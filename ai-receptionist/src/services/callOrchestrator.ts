@@ -20,6 +20,7 @@ import { createOrUpdateContact, phoneFromExtracted } from "./contactService";
 import { sendCallSummaryEmail } from "./notificationService";
 import { createBookingFromCall, looksLikeBookingIntent } from "./bookingCaptureService";
 import { buildHoursContext } from "./availabilityService";
+import { buildCallerRecordKnowledge } from "../ai/callerKnowledge";
 
 export interface TurnResult {
   messageToSpeak: string;
@@ -156,6 +157,18 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
     } catch (e) {
       logger.warn(`[orchestrator] buildHoursContext failed: ${(e as Error).message}`);
     }
+    // System knowledge: for a KNOWN caller, summarize their linked records of the
+    // modules the portal enabled. Best-effort; never blocks a turn. Empty when no
+    // modules are enabled or the caller is unknown (so nothing changes by default).
+    let callerRecordKnowledge = "";
+    try {
+      const modules = Array.isArray((tenant as any).aiKnowledgeModules) ? ((tenant as any).aiKnowledgeModules as string[]) : [];
+      if (modules.length && session.fromNumber) {
+        callerRecordKnowledge = await buildCallerRecordKnowledge(tenant.id, session.fromNumber, modules);
+      }
+    } catch (e) {
+      logger.warn(`[orchestrator] caller knowledge failed: ${(e as Error).message}`);
+    }
     const ai = await runAITurn({
       tenantId: tenant.id,
       context: {
@@ -167,6 +180,7 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
         aiInstructions: (tenant as any).aiInstructions ?? "",
         currentDate: new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
         hoursSummary,
+        callerRecordKnowledge,
       },
       history: toOpenAIMessages(transcript),
       latestCallerUtterance: speech,
