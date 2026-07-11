@@ -547,7 +547,7 @@
   // no theme. Every step is active from the start; there is no "create tenant first" gate.
   function renderSetupScreen() {
     const prior = { id: App.state.currentPortalId, name: App.state.currentPortalName };
-    const draft = { users: [], themePreset: "", voiceMode: "OFF", lockedPages: [] };
+    const draft = { users: [], themePreset: "", voiceMode: "OFF", lockedPages: [], hiddenRecordTypes: [] };
 
     // Built-in theme preset ids (match src/theme/themes.ts). "" = leave the default.
     const THEME_PRESETS = [
@@ -661,6 +661,43 @@
     lockHost.appendChild(lockLab); lockHost.appendChild(lockNote);
     lockChecklist(lockHost, draft.lockedPages, (arr) => { draft.lockedPages = arr; });
     s4.appendChild(lockHost);
+
+    // ---- Sections / record types (VISIBILITY at creation) --------------------
+    // A checklist of the record-type sections this new tenant starts with. Contacts
+    // is core (always on). Unchecking a section HIDES its nav item — the type is
+    // still created, so it can be un-hidden later under Settings → Labels with no
+    // data risk. The list is DYNAMIC (from the registry), so a future record type
+    // shows up here automatically. Default: everything checked (all visible).
+    const secHost = el("div"); secHost.style.marginTop = "16px";
+    const secLab = el("label", "field-label", "Sections / record types"); secLab.style.cssText = "margin:0 0 2px";
+    const secNote = el("p", "cell-muted"); secNote.style.cssText = "margin:0 0 4px;font-size:12.5px;";
+    secNote.textContent = "Choose which record-type sections show in this tenant's menu. Unchecked ones are just hidden (still created) — you can turn them back on anytime under Settings → Labels.";
+    secHost.appendChild(secLab); secHost.appendChild(secNote);
+    const secList = el("div"); secList.appendChild(el("p", "cell-muted", "Loading…"));
+    secHost.appendChild(secList);
+    s4.appendChild(secHost);
+    App.api("/api/admin/portals/record-type-options").then((r) => {
+      const options = (r && r.options) || [];
+      secList.innerHTML = "";
+      options.forEach((opt) => {
+        const row = el("label"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;cursor:pointer;border-top:1px solid var(--line,#eee)";
+        const cb = el("input"); cb.type = "checkbox"; cb.checked = true;
+        const name = opt.labelPlural || opt.label || opt.key;
+        if (!opt.togglable) {
+          // Contact (core): always on, not editable.
+          cb.disabled = true; row.style.cursor = "default";
+          row.appendChild(cb); row.appendChild(document.createTextNode(" " + name + " (always on)"));
+        } else {
+          cb.onchange = () => {
+            const set = new Set(draft.hiddenRecordTypes);
+            if (cb.checked) set.delete(opt.key); else set.add(opt.key);
+            draft.hiddenRecordTypes = Array.from(set);
+          };
+          row.appendChild(cb); row.appendChild(document.createTextNode(" " + name));
+        }
+        secList.appendChild(row);
+      });
+    }).catch(() => { secList.innerHTML = ""; secList.appendChild(el("p", "cell-muted", "Couldn't load sections — the tenant will start with all sections visible.")); });
     wrap.appendChild(s4);
 
     // ---- Footer: Finish creates the tenant, then applies the draft, then enters it ----
@@ -681,7 +718,7 @@
       // 1) Create the tenant. If THIS fails, nothing was persisted — stay on the screen.
       let portal;
       try {
-        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages, billingStatus }) });
+        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages, billingStatus, hiddenRecordTypes: draft.hiddenRecordTypes }) });
       } catch (err) { toast(err.message || "Could not create the tenant", true); finish.disabled = false; return; }
 
       // 2) Apply the queued draft in sequence. Collect failures instead of throwing, so

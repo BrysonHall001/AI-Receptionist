@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal, isBillingStatus, BILLING_STATUSES } from "../services/portalService";
+import { systemRecordTypeOptions } from "../services/recordTypeService";
 import { createUser, listUsers, deleteUser, publicUser, updateUserName } from "../services/userService";
 import { createInvite, listPendingInvites, listPendingInvitesAsUsers, revokeInvite, sendInvite, sendCustomInvite, hasInviteLinkToken, inviteLink } from "../services/inviteService";
 import { prisma } from "../db/client";
@@ -43,6 +44,14 @@ adminRouter.get("/portals", async (_req: Request, res: Response) => {
   res.json(await listPortals());
 });
 
+// Record-type section options for the "which sections show" picker in the create-
+// tenant form. Derived from the system record-type registry, so a future type
+// appears here automatically. Contact is core (togglable:false). Portal-independent.
+// Defined BEFORE "/portals/:id" so it's never mistaken for a portal id.
+adminRouter.get("/portals/record-type-options", async (_req: Request, res: Response) => {
+  res.json({ options: systemRecordTypeOptions() });
+});
+
 adminRouter.get("/portals/:id", async (req: Request, res: Response) => {
   const p = await getPortal(req.params.id);
   if (!p) {
@@ -53,7 +62,7 @@ adminRouter.get("/portals/:id", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/portals", async (req: Request, res: Response) => {
-  const { name, notifyEmail, lockedPages, billingStatus } = (req.body ?? {}) as Record<string, any>;
+  const { name, notifyEmail, lockedPages, billingStatus, hiddenRecordTypes } = (req.body ?? {}) as Record<string, any>;
   if (!name) {
     res.status(400).json({ error: "name is required" });
     return;
@@ -68,7 +77,7 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
     // phone, greeting, and the identity rule are no longer set here (dead/decoupled or
     // set later under Integrations); requireEmail is hard-set true and not accepted.
     // lockedPages (owner page-lock) may be set atomically at creation.
-    const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages, billingStatus });
+    const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages, billingStatus, hiddenRecordTypes });
     logger.info(`Portal created: ${portal.name} (${portal.id})`);
     res.json(portal);
   } catch (err) {

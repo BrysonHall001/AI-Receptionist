@@ -181,6 +181,28 @@ export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
  *  hardcoded trio) so consumers auto-include a future system type. */
 export function systemRecordTypeKeys(): string[] { return SYSTEM_RECORD_TYPES.map((d) => d.key); }
 
+// Nav href convention (server-side mirror of navModel.js recordTypeHref): the three
+// original system types keep bespoke hrefs; every other type uses #/records/<key>.
+const SYSTEM_RT_HREF: Record<string, string> = { contact: "#/contacts", job: "#/jobs", booking: "#/bookings" };
+export function recordTypeHref(key: string): string { return SYSTEM_RT_HREF[key] || ("#/records/" + key); }
+
+// Registry options for the "which sections show" picker at portal creation. Derived
+// from SYSTEM_RECORD_TYPES so a FUTURE system type appears automatically. Contact is
+// core (togglable:false) — every other type can be shown/hidden.
+export function systemRecordTypeOptions() {
+  return SYSTEM_RECORD_TYPES.map((d) => ({
+    key: d.key,
+    label: String((d.defaults as any).label ?? d.key),
+    labelPlural: String((d.defaults as any).labelPlural ?? (d.defaults as any).label ?? d.key),
+    href: recordTypeHref(d.key),
+    togglable: d.key !== CONTACT_RECORD_TYPE_KEY,
+  }));
+}
+// The record-type keys that MAY be hidden at creation (everything except contact).
+export function togglableRecordTypeKeys(): string[] {
+  return SYSTEM_RECORD_TYPES.filter((d) => d.key !== CONTACT_RECORD_TYPE_KEY).map((d) => d.key);
+}
+
 function systemDef(key: string): SystemRecordTypeDef | undefined { return SYSTEM_RECORD_TYPES.find((d) => d.key === key); }
 
 /** Generic idempotent seeder for a system type, from its registry entry. */

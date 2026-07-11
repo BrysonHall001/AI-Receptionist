@@ -1,6 +1,7 @@
 import { prisma } from "../db/client";
 import { DEFAULT_VOICE_ID } from "../config/voices";
 import { DEFAULT_TIMEZONE } from "../config/timezones";
+import { recordTypeHref, togglableRecordTypeKeys } from "./recordTypeService";
 
 // ---- Owner page-lock -------------------------------------------------------
 // The canonical set of lockable left-nav hrefs. Any lockedPages input is filtered
@@ -146,6 +147,12 @@ export async function createPortal(input: {
   notifyEmail?: string;
   lockedPages?: string[];
   billingStatus: BillingStatus;
+  // Record-type sections to START HIDDEN in this portal's nav (by record-type KEY,
+  // e.g. ["equipment"]). VISIBILITY ONLY — the types are still seeded on first use,
+  // so the choice is fully reversible (un-hide later under Settings → Labels). Only
+  // togglable (non-contact) keys are honored; anything else is ignored. Omitted =
+  // nothing hidden = all sections visible (today's behavior).
+  hiddenRecordTypes?: string[];
 }) {
   // Create writes only name + (optional) notifyEmail now. greeting, businessType and
   // requireEmail fall back to their column defaults (they're no longer collected at
@@ -155,12 +162,23 @@ export async function createPortal(input: {
   if (!isBillingStatus(input.billingStatus)) {
     throw new Error("billingStatus must be one of: " + BILLING_STATUSES.join(", "));
   }
+  // Translate the unchosen record-type KEYS into hidden nav HREFS, using the exact
+  // hide mechanism Settings → Labels uses (Tenant.labels.nav.hidden). Validated
+  // against the togglable registry keys so core pages (Contacts/Home/etc.) can never
+  // be hidden here. Contacts is core and always stays visible.
+  const togglable = new Set(togglableRecordTypeKeys());
+  const hideKeys = Array.isArray(input.hiddenRecordTypes)
+    ? Array.from(new Set(input.hiddenRecordTypes.filter((k) => typeof k === "string" && togglable.has(k))))
+    : [];
+  const hiddenHrefs = hideKeys.map(recordTypeHref).filter((h) => h !== NAV_HOME_HREF);
+  const labels = hiddenHrefs.length ? { nav: { order: [], hidden: hiddenHrefs, labels: {} } } : undefined;
   return prisma.tenant.create({
     data: {
       name: input.name,
       notifyEmail: input.notifyEmail || "",
       lockedPages: sanitizeLockedPages(input.lockedPages),
       billingStatus: input.billingStatus,
+      ...(labels ? { labels } : {}),
     } as any,
   });
 }
