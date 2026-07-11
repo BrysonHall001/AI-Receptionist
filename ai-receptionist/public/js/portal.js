@@ -2754,11 +2754,11 @@
     const canEdit = App.state.me.role !== "CLIENT_USER";
     const wrap = el("div", refresh ? "" : "fade-in"); // don't replay the fade-in animation on in-place refreshes
 
-    // Column 3 header — the selected module's sections & fields. The module is now
-    // chosen in the Modules column (highlighted there), so the old "Editing fields
-    // for" dropdown is gone.
+    // Column header — the selected module's fields. The module is chosen in the
+    // Modules column (highlighted there), so the old "Editing fields for" dropdown
+    // is gone. Heading is just "Fields".
     const col3Head = el("div", "mf-fields-head");
-    col3Head.appendChild(el("div", "mf-col-title", "Sections & fields"));
+    col3Head.appendChild(el("div", "mf-col-title", "Fields"));
     col3Head.appendChild(el("div", "mf-fields-module", esc(selectedType ? (selectedType.labelPlural || selectedType.label || "") : "")));
     wrap.appendChild(col3Head);
 
@@ -3934,16 +3934,14 @@
       listWrap.appendChild(row);
     });
     if (!ordered.length) listWrap.appendChild(el("div", "cell-muted", "No modules yet."));
-
-    buildTermsSection(col); // Terms (Record / Stage / Resource) beneath the modules
   }
 
   // Compact "Terms" editor for the generic words (Record / Stage / Resource), moved
   // here from the old Labels page. Same PATCH /api/labels { generic } save.
   async function buildTermsSection(col) {
     const wrap = el("div", "mf-terms");
-    wrap.appendChild(el("div", "mf-col-subtitle", "Terms"));
-    wrap.appendChild(el("p", "mf-col-hint", "Generic words used across modules."));
+    wrap.appendChild(el("div", "mf-col-title", "Terms"));
+    wrap.appendChild(el("p", "mf-col-hint", "Generic words used across modules (Record / Stage / Resource)."));
     const body = el("div"); wrap.appendChild(body);
     col.appendChild(wrap);
     const GENERIC_WORDS = [
@@ -4024,23 +4022,26 @@
     const subTab = rest.join("/") || null;
     const active = SECTIONS.some((s) => s.key === secKey) ? secKey : SECTIONS[0].key;
 
-    // Two-pane shell: sub-sidebar (left) + content panel (right). The global app
-    // nav is untouched; this layout lives entirely inside the settings view.
-    const shell = el("div", "fade-in settings-shell");
-    const subnav = el("aside", "settings-subnav");
-    subnav.appendChild(el("div", "settings-subnav-title", "Settings"));
-    SECTIONS.forEach((s) => {
-      const a = el("a", "settings-subnav-item" + (s.key === active ? " active" : ""), esc(s.label));
-      a.href = "#/settings/" + s.key; // hash drives selection -> refresh/back work
-      subnav.appendChild(a);
+    // Tiles shell: the section tiles sit across the top (alphabetical by label, they
+    // wrap into roughly two rows), and the section content fills the FULL width below
+    // — the old left sub-nav column is gone, so the content reclaims that width.
+    // SECTIONS is already visibility-filtered above, so admin-only tiles stay hidden
+    // for non-admins exactly as the sub-nav did. Default/active selection still keys
+    // off the original SECTIONS order (we sort a COPY for display only).
+    const wrap = el("div", "fade-in settings-tiles-shell");
+    const tiles = el("div", "settings-tiles");
+    SECTIONS.slice().sort((a, b) => a.label.localeCompare(b.label)).forEach((s) => {
+      const tile = el("a", "settings-tile" + (s.key === active ? " active" : ""), esc(s.label));
+      tile.href = "#/settings/" + s.key; // hash drives selection -> refresh/back work
+      tiles.appendChild(tile);
     });
-    const panel = el("div", "settings-panel");
+    const panel = el("div", "settings-panel settings-panel--full");
     panel.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
-    shell.appendChild(subnav);
-    shell.appendChild(panel);
+    wrap.appendChild(tiles);
+    wrap.appendChild(panel);
 
     view().innerHTML = "";
-    view().appendChild(shell);
+    view().appendChild(wrap);
 
     const def = SECTIONS.find((s) => s.key === active);
     try { await def.build(panel, subTab); }
@@ -4865,18 +4866,24 @@
         App.state.fieldsType = (visible[0] && visible[0].key) || "contact";
       }
 
+      // Columns, left -> right: 1) Modules  2) Field library  3) Fields  4) Terms.
+      // Field library sits directly LEFT of Fields so a future drag library -> Fields
+      // is adjacent; Terms is pulled out of the Modules column into its own rightmost
+      // column.
       const grid = el("div", "mf-grid");
-      const colLib = el("div", "mf-col mf-col-library");
       const colMods = el("div", "mf-col mf-col-modules");
-      const host = el("div", "mf-col mf-col-fields"); // column 3 — the fields editor mount
-      grid.appendChild(colLib); grid.appendChild(colMods); grid.appendChild(host);
+      const colLib = el("div", "mf-col mf-col-library");
+      const host = el("div", "mf-col mf-col-fields"); // "Fields" column — the editor mount
+      const colTerms = el("div", "mf-col mf-col-terms");
+      grid.appendChild(colMods); grid.appendChild(colLib); grid.appendChild(host); grid.appendChild(colTerms);
       panel.appendChild(grid);
 
-      buildFieldLibrary(colLib);                    // column 1
-      buildModulesColumn(colMods, host, visible);   // column 2 (+ Terms); drives column 3
+      buildModulesColumn(colMods, host, visible);   // 1) Modules (drives the Fields column)
+      buildFieldLibrary(colLib);                    // 2) Field library
+      buildTermsSection(colTerms);                  // 4) Terms — its own rightmost column
 
       fieldsMount = host;
-      await renderFields(true, host);               // column 3
+      await renderFields(true, host);               // 3) Fields
     }
   }
 

@@ -1681,16 +1681,33 @@ tbody tr.row-selected { background: var(--accent-soft); }
   .settings-panel { width: 100%; }
 }
 
+/* Settings section TILES (replaces the left sub-nav column). Tiles sit across the
+   top, beneath the "Settings" page title, wrapping into roughly two rows; the
+   content panel below then fills the full reclaimed width. */
+.settings-tiles-shell { display: block; }
+.settings-tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.settings-tile {
+  flex: 1 1 150px; min-width: 128px; max-width: 240px;
+  text-align: center; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--ink-soft);
+  text-decoration: none; font-weight: 600; font-size: 13.5px;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.settings-tile:hover { background: var(--gray-soft); color: var(--ink); }
+.settings-tile.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.settings-panel--full { width: 100%; }
+
 /* Labels editor (settings → Labels) */
 .lbl-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
 .lbl-row .input { margin-bottom: 0; }
 .lbl-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; margin-bottom: 2px; }
 @media (max-width: 560px) { .lbl-row { grid-template-columns: 1fr 1fr; gap: 6px; } }
 
-/* ---------- Modules & Fields (three-column settings layout) ---------- */
-.mf-grid { display: grid; grid-template-columns: minmax(140px, 190px) minmax(160px, 220px) minmax(0, 1fr); gap: 16px; align-items: start; }
+/* ---------- Modules & Fields (four-column: Modules | Field library | Fields | Terms) ---------- */
+.mf-grid { display: grid; grid-template-columns: minmax(150px, 210px) minmax(140px, 185px) minmax(0, 1fr) minmax(160px, 220px); gap: 16px; align-items: start; }
 .mf-col { min-width: 0; }
-.mf-col-library, .mf-col-modules { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
+.mf-col-library, .mf-col-modules, .mf-col-terms { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
 .mf-col-title { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; color: var(--ink); margin-bottom: 8px; }
 .mf-col-subtitle { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 4px; }
 .mf-col-hint { font-size: 11.5px; color: var(--ink-faint); margin: 0 0 10px; line-height: 1.4; }
@@ -1712,7 +1729,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-mod-menu-item:hover:not([disabled]) { background: var(--row-hover); }
 .mf-mod-menu-item[disabled] { opacity: 0.45; cursor: not-allowed; }
 /* Terms sub-section (generic words) beneath the modules */
-.mf-terms { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mf-terms { margin-top: 0; }
 .mf-term-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
 .mf-term-input { margin-bottom: 0; font-size: 12.5px; padding: 6px 8px; }
 /* Column 3 — compact sections & fields */
@@ -1728,7 +1745,9 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-col-fields .btn-sm { padding: 4px 8px; font-size: 12px; }
 .mf-col-fields .page-actions { flex-wrap: wrap; gap: 8px; }
 /* Responsive: 3 cols -> library+modules with fields full-width below -> single col */
-@media (max-width: 1100px) {
+/* Medium: Modules + Field library share the top row, Fields spans full width,
+   Terms drops to its own row below — never crushed. */
+@media (max-width: 1200px) {
   .mf-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .mf-col-fields { grid-column: 1 / -1; }
 }
