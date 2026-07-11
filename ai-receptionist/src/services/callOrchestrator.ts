@@ -20,7 +20,7 @@ import { createOrUpdateContact, phoneFromExtracted } from "./contactService";
 import { sendCallSummaryEmail } from "./notificationService";
 import { createBookingFromCall, looksLikeBookingIntent } from "./bookingCaptureService";
 import { buildHoursContext } from "./availabilityService";
-import { buildCallerRecordKnowledge } from "../ai/callerKnowledge";
+import { buildCallerRecordKnowledge, buildCallerCallHistory } from "../ai/callerKnowledge";
 
 export interface TurnResult {
   messageToSpeak: string;
@@ -169,6 +169,16 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
     } catch (e) {
       logger.warn(`[orchestrator] caller knowledge failed: ${(e as Error).message}`);
     }
+    // "Pages" knowledge sources (e.g. Calls history) — same awareness-only pattern.
+    let callerCallHistory = "";
+    try {
+      const pages = Array.isArray((tenant as any).aiKnowledgePages) ? ((tenant as any).aiKnowledgePages as string[]) : [];
+      if (pages.length && session.fromNumber) {
+        callerCallHistory = await buildCallerCallHistory(tenant.id, session.fromNumber, pages, params.callSid);
+      }
+    } catch (e) {
+      logger.warn(`[orchestrator] caller call history failed: ${(e as Error).message}`);
+    }
     const ai = await runAITurn({
       tenantId: tenant.id,
       context: {
@@ -181,6 +191,7 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
         currentDate: new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
         hoursSummary,
         callerRecordKnowledge,
+        callerCallHistory,
       },
       history: toOpenAIMessages(transcript),
       latestCallerUtterance: speech,

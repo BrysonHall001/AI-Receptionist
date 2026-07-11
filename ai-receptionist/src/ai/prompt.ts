@@ -21,6 +21,9 @@ export interface PromptContext {
    *  only — the AI may reference these, never create/edit them. Empty/omitted for
    *  unknown callers or when no modules are enabled. */
   callerRecordKnowledge?: string | null;
+  /** Concise summary of a KNOWN caller's PRIOR calls, injected when the portal
+   *  enabled the "Calls" page-source under System knowledge. Awareness only. */
+  callerCallHistory?: string | null;
 }
 
 /** Builds the system prompt that defines receptionist behavior + output format. */
@@ -41,6 +44,9 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       : "",
     ctx.callerRecordKnowledge && ctx.callerRecordKnowledge.trim()
       ? `WHAT YOU ALREADY KNOW ABOUT THIS CALLER (from your own records for this specific caller — you MAY reference these naturally when relevant, e.g. "I see we installed an AC for you back in 2018"; but do NOT recite this list unprompted, do NOT read out internal details robotically, and do NOT offer to create, edit, or delete any of these records — this is for awareness only):\n${ctx.callerRecordKnowledge.trim()}`
+      : "",
+    ctx.callerCallHistory && ctx.callerCallHistory.trim()
+      ? `THIS CALLER'S PRIOR CALLS (for awareness — you MAY acknowledge a repeat caller naturally, e.g. "good to hear from you again"; do NOT recite this list unprompted or read it out mechanically):\n${ctx.callerCallHistory.trim()}`
       : "",
     `Information gathered so far (JSON): ${JSON.stringify(ctx.alreadyExtracted)}. Current call state: ${ctx.currentState}.`,
     "",

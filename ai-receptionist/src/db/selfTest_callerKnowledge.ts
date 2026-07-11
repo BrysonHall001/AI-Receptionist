@@ -11,7 +11,7 @@
 //      module (a mock record type works end-to-end);
 //  (3) aiKnowledgeModules persists and round-trips via the portal settings.
 import { prisma, disconnectDb } from "./client";
-import { buildCallerRecordKnowledge } from "../ai/callerKnowledge";
+import { buildCallerRecordKnowledge, buildCallerCallHistory } from "../ai/callerKnowledge";
 import { buildSystemPrompt } from "../ai/prompt";
 import { resolveRecordTypeId, listRecordTypes, SYSTEM_RECORD_TYPES } from "../services/recordTypeService";
 import { createRecord } from "../services/recordService";
@@ -75,6 +75,22 @@ async function main() {
   await updatePortal(T, { aiKnowledgeModules: ["equipment"] } as any);
   const p: any = await getPortal(T);
   check(Array.isArray(p.aiKnowledgeModules) && p.aiKnowledgeModules.join(",") === "equipment", "aiKnowledgeModules persists and round-trips via portal settings");
+
+  // (4) Pages / Calls history: a KNOWN caller's PRIOR finished calls
+  await prisma.callSession.create({ data: { callSid: `sid-prior-${stamp}`, tenantId: T, contactId: contact.id, fromNumber: phone, status: "COMPLETED", extracted: { intent: "Broken furnace" }, finalizedAt: new Date() } as any });
+  const callsChecked = await buildCallerCallHistory(T, phone, ["calls"]);
+  check(callsChecked.includes("Broken furnace") && /prior calls/i.test(callsChecked), "Calls page checked + known caller -> summary names the prior call");
+  const callsNone = await buildCallerCallHistory(T, phone, []);
+  check(callsNone === "", "Calls page unchecked -> no call history");
+  const callsUnknown = await buildCallerCallHistory(T, "+15550009999", ["calls"]);
+  check(callsUnknown === "", "unknown caller -> no call history");
+  const withCH = buildSystemPrompt({ ...base, callerCallHistory: callsChecked });
+  const withoutCH = buildSystemPrompt({ ...base, callerCallHistory: "" });
+  check(withCH.includes("PRIOR CALLS") && withCH.includes("Broken furnace"), "buildSystemPrompt injects the prior-calls block ONLY when Calls is checked");
+  check(!withoutCH.includes("PRIOR CALLS"), "buildSystemPrompt omits the prior-calls block when empty");
+  await updatePortal(T, { aiKnowledgePages: ["calls"] } as any);
+  const p2: any = await getPortal(T);
+  check(Array.isArray(p2.aiKnowledgePages) && p2.aiKnowledgePages.join(",") === "calls", "aiKnowledgePages persists and round-trips via portal settings");
 }
 
 main()

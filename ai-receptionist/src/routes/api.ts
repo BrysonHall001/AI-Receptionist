@@ -824,6 +824,14 @@ function aiInstructionsEditable(req: Request): boolean {
   return aiEnabled && req.user!.role !== "CLIENT_USER";
 }
 
+// Curated non-module knowledge sources for the "Pages" checklist. NOT registry-
+// derived (pages are a hand-picked, non-uniform set) — add entries here as more
+// page-level sources gain awareness support. `key` is what's stored/validated.
+const AI_KNOWLEDGE_PAGE_SOURCES = [
+  { key: "calls", label: "Calls", description: "The caller's prior call history (so a repeat caller can be recognized)." },
+];
+const AI_KNOWLEDGE_PAGE_KEYS = new Set(AI_KNOWLEDGE_PAGE_SOURCES.map((p) => p.key));
+
 apiRouter.get("/account/ai-instructions", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
@@ -831,6 +839,10 @@ apiRouter.get("/account/ai-instructions", async (req: Request, res: Response) =>
   res.json({
     aiInstructions: (portal as any)?.aiInstructions ?? "",
     aiKnowledgeModules: Array.isArray((portal as any)?.aiKnowledgeModules) ? (portal as any).aiKnowledgeModules : [],
+    aiKnowledgePages: Array.isArray((portal as any)?.aiKnowledgePages) ? (portal as any).aiKnowledgePages : [],
+    // Curated non-module knowledge sources (the "Pages" checklist). Extensible;
+    // Calls (prior call history) is the only source today.
+    aiKnowledgePageOptions: AI_KNOWLEDGE_PAGE_SOURCES,
     editable: aiInstructionsEditable(req),
     // For the Receptionist-voice picker in the same panel:
     voiceId: (portal as any)?.voiceId ?? DEFAULT_VOICE_ID,
@@ -887,6 +899,27 @@ apiRouter.patch("/account/ai-knowledge-modules", async (req: Request, res: Respo
   try {
     await updatePortal(tenantId, { aiKnowledgeModules } as any);
     res.json({ ok: true, aiKnowledgeModules });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Save the "Pages" knowledge selection — curated non-module sources (e.g. Calls
+// history). Validated against the fixed AI_KNOWLEDGE_PAGE_SOURCES list; unknown
+// keys are dropped. Same admin gate as Instructions.
+apiRouter.patch("/account/ai-knowledge-pages", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!aiInstructionsEditable(req)) {
+    res.status(403).json({ error: "You don't have permission to edit AI Receptionist settings." });
+    return;
+  }
+  const raw = (req.body ?? {}).aiKnowledgePages;
+  const requested: string[] = Array.isArray(raw) ? raw.filter((k: any) => typeof k === "string") : [];
+  const aiKnowledgePages = Array.from(new Set(requested.filter((k) => AI_KNOWLEDGE_PAGE_KEYS.has(k))));
+  try {
+    await updatePortal(tenantId, { aiKnowledgePages } as any);
+    res.json({ ok: true, aiKnowledgePages });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

@@ -3972,43 +3972,72 @@
       paintBar(); await paintBody();
     }
 
-    // System knowledge: a checklist of the portal's modules (record types, minus
-    // Contacts and any locked type), pulled from the registry so future modules
-    // appear automatically. Checked = the receptionist is aware of a KNOWN caller's
-    // own records of that module. Persisted via /api/account/ai-knowledge-modules.
+    // System knowledge: TWO checklists. "Modules" = the portal's record types
+    // (registry-driven, minus Contacts and locked types) — a known caller's linked
+    // records of the checked modules feed the receptionist. "Pages" = curated non-
+    // module sources (e.g. Calls history). Both awareness-only; default off.
     async function mountSystemKnowledge(host) {
-      const card = el("div", "card"); card.style.cssText = "padding:18px;";
-      card.innerHTML = `<h3 style="margin:0 0 6px;">System knowledge</h3>
-        <p class="cell-muted" style="margin:0 0 12px;">Choose which modules the receptionist is aware of. When a <b>known</b> caller phones in, the receptionist can see that caller's own records of the checked modules and reference them naturally — it can't create or change them. Default: everything off, so nothing is shared until you check something.</p>`;
-      host.appendChild(card);
-      const listHost = el("div"); card.appendChild(listHost);
-      listHost.appendChild(el("p", "cell-muted", "Loading…"));
+      const intro = el("div"); intro.style.cssText = "margin:0 0 14px;";
+      intro.innerHTML = `<h3 style="margin:0 0 6px;">System knowledge</h3>
+        <p class="cell-muted" style="margin:0;">Choose what the receptionist is aware of when a <b>known</b> caller phones in. It can reference these naturally in conversation, but can't create or change anything. Everything is off by default.</p>`;
+      host.appendChild(intro);
+      const status = el("div"); host.appendChild(status);
+      status.appendChild(el("p", "cell-muted", "Loading…"));
 
-      let saved = [], editable = true;
-      try { const data = await App.portalApi("/api/account/ai-instructions"); saved = Array.isArray(data.aiKnowledgeModules) ? data.aiKnowledgeModules : []; editable = !!data.editable; } catch (e) {}
+      let editable = true, savedModules = [], savedPages = [], pageOptions = [];
+      try {
+        const data = await App.portalApi("/api/account/ai-instructions");
+        editable = !!data.editable;
+        savedModules = Array.isArray(data.aiKnowledgeModules) ? data.aiKnowledgeModules : [];
+        savedPages = Array.isArray(data.aiKnowledgePages) ? data.aiKnowledgePages : [];
+        pageOptions = Array.isArray(data.aiKnowledgePageOptions) ? data.aiKnowledgePageOptions : [];
+      } catch (e) {}
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
       const modules = (Array.isArray(types) ? types : []).filter((t) => t && t.key && t.key !== "contact" && !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)));
-      const chosen = new Set(saved);
-      listHost.innerHTML = "";
-      if (!modules.length) { listHost.appendChild(el("p", "cell-muted", "No modules available yet.")); return; }
-      modules.forEach((t) => {
-        const row = el("label"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;cursor:" + (editable ? "pointer" : "default") + ";border-top:1px solid var(--line,#eee)";
-        const cb = el("input"); cb.type = "checkbox"; cb.checked = chosen.has(t.key); cb.disabled = !editable;
-        const name = App.relabelText ? App.relabelText(t.labelPlural || t.label || t.key, { all: true }) : (t.labelPlural || t.label || t.key);
-        cb.onchange = () => { if (cb.checked) chosen.add(t.key); else chosen.delete(t.key); };
-        row.appendChild(cb); row.appendChild(document.createTextNode(" " + name));
-        listHost.appendChild(row);
-      });
+      const chosenModules = new Set(savedModules);
+      const chosenPages = new Set(savedPages);
+      status.innerHTML = "";
+
+      function checklistCard(title, note, rows, chosen, labelOf, keyOf) {
+        const card = el("div", "card"); card.style.cssText = "padding:18px;margin-bottom:14px;";
+        card.innerHTML = `<h4 style="margin:0 0 4px;">${esc(title)}</h4><p class="cell-muted" style="margin:0 0 10px;font-size:12.5px;">${esc(note)}</p>`;
+        if (!rows.length) { card.appendChild(el("p", "cell-muted", "None available yet.")); host.appendChild(card); return; }
+        rows.forEach((r) => {
+          const row = el("label"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;cursor:" + (editable ? "pointer" : "default") + ";border-top:1px solid var(--line,#eee)";
+          const cb = el("input"); cb.type = "checkbox"; cb.checked = chosen.has(keyOf(r)); cb.disabled = !editable;
+          cb.onchange = () => { if (cb.checked) chosen.add(keyOf(r)); else chosen.delete(keyOf(r)); };
+          row.appendChild(cb); row.appendChild(document.createTextNode(" " + labelOf(r)));
+          card.appendChild(row);
+        });
+        host.appendChild(card);
+      }
+
+      checklistCard(
+        "Modules", "A known caller's own records of the checked modules (e.g. their Equipment).",
+        modules, chosenModules,
+        (t) => (App.relabelText ? App.relabelText(t.labelPlural || t.label || t.key, { all: true }) : (t.labelPlural || t.label || t.key)),
+        (t) => t.key,
+      );
+      checklistCard(
+        "Pages", "Other sources of caller history.",
+        pageOptions, chosenPages,
+        (p) => p.label + (p.description ? " — " + p.description : ""),
+        (p) => p.key,
+      );
+
       if (editable) {
-        const save = el("button", "btn btn-primary btn-sm", "Save"); save.style.marginTop = "14px";
+        const save = el("button", "btn btn-primary btn-sm", "Save");
         save.onclick = async () => {
           save.disabled = true;
-          try { await App.portalApi("/api/account/ai-knowledge-modules", { method: "PATCH", body: JSON.stringify({ aiKnowledgeModules: Array.from(chosen) }) }); toast("System knowledge saved"); }
-          catch (e) { toast(e.message, true); }
+          try {
+            await App.portalApi("/api/account/ai-knowledge-modules", { method: "PATCH", body: JSON.stringify({ aiKnowledgeModules: Array.from(chosenModules) }) });
+            await App.portalApi("/api/account/ai-knowledge-pages", { method: "PATCH", body: JSON.stringify({ aiKnowledgePages: Array.from(chosenPages) }) });
+            toast("System knowledge saved");
+          } catch (e) { toast(e.message, true); }
           save.disabled = false;
         };
-        card.appendChild(save);
+        host.appendChild(save);
       }
     }
 

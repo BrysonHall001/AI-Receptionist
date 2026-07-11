@@ -77,3 +77,36 @@ export async function moduleExists(tenantId: string, key: string): Promise<boole
   const id = await resolveRecordTypeId(tenantId, key).catch(() => null);
   return !!id;
 }
+
+const MAX_PRIOR_CALLS = 3;
+
+/**
+ * Build a concise summary of a KNOWN caller's PRIOR (finished) calls — the "Calls"
+ * page-source. Only runs when "calls" is among the enabled page keys. Awareness
+ * only. Returns "" for unknown callers, no prior calls, or when Calls isn't enabled.
+ * `excludeCallSid` drops the in-progress call so it's never summarized as "prior".
+ */
+export async function buildCallerCallHistory(
+  tenantId: string,
+  callerPhone: string | null | undefined,
+  pageKeys: string[],
+  excludeCallSid?: string | null,
+): Promise<string> {
+  if (!callerPhone || !Array.isArray(pageKeys) || !pageKeys.includes("calls")) return "";
+  const contact = await prisma.contact.findFirst({ where: { tenantId, deletedAt: null, phone: callerPhone } as any });
+  if (!contact) return "";
+  const sessions = await prisma.callSession.findMany({
+    where: { tenantId, contactId: contact.id, finalizedAt: { not: null }, ...(excludeCallSid ? { callSid: { not: excludeCallSid } } : {}) } as any,
+    orderBy: { createdAt: "desc" },
+    take: MAX_PRIOR_CALLS,
+  });
+  if (!sessions.length) return "";
+  const bits = sessions.map((s: any) => {
+    const when = s.createdAt ? new Date(s.createdAt).toISOString().slice(0, 10) : "";
+    const ex = (s.extracted && typeof s.extracted === "object") ? s.extracted : {};
+    const reason = ex.intent ? String(ex.intent) : "no reason recorded";
+    const outcome = s.status === "COMPLETED" ? "completed" : String(s.status || "").toLowerCase();
+    return `${when ? when + ": " : ""}${reason}${outcome ? ` (${outcome})` : ""}`;
+  });
+  return `Recent prior calls from this caller — ${bits.join("; ")}.`;
+}
