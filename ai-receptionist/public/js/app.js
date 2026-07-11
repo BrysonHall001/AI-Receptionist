@@ -378,7 +378,7 @@
       // Record-type-backed: edit the noun (singular), plural auto-derives — exactly
       // like the Settings noun editor. This updates the word everywhere it's used.
       const cur = App.label(kind, "one");
-      const val = await App.ui.promptModal({ title: "Rename", label: "Singular name (the plural updates automatically — fine-tune it in Settings → Labels)", value: cur, okText: "Save" });
+      const val = await App.ui.promptModal({ title: "Rename", label: "Singular name (the plural updates automatically — fine-tune it in Settings → Modules & Fields)", value: cur, okText: "Save" });
       if (val === null) return;
       const one = String(val).trim(); if (!one) { navToast("Name can’t be blank", true); return; }
       await App.persistTypeLabel(kind, one, App.pluralize(one));
@@ -398,7 +398,7 @@
     const disp = kind ? App.label(kind, "many") : (App.navConfig().labels[href] || label);
     const ok = await App.ui.confirmModal({
       title: "Hide this page?",
-      message: "“" + disp + "” will be removed from the left-hand menu. You can restore it any time from Settings → Labels → “Pages & navigation”.",
+      message: "“" + disp + "” will be removed from the left-hand menu. You can restore it any time from Settings → Pages.",
       confirmText: "Hide page",
     });
     if (!ok) return;

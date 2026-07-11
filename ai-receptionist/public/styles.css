@@ -1687,6 +1687,56 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .lbl-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; margin-bottom: 2px; }
 @media (max-width: 560px) { .lbl-row { grid-template-columns: 1fr 1fr; gap: 6px; } }
 
+/* ---------- Modules & Fields (three-column settings layout) ---------- */
+.mf-grid { display: grid; grid-template-columns: minmax(140px, 190px) minmax(160px, 220px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.mf-col { min-width: 0; }
+.mf-col-library, .mf-col-modules { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
+.mf-col-title { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; color: var(--ink); margin-bottom: 8px; }
+.mf-col-subtitle { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 4px; }
+.mf-col-hint { font-size: 11.5px; color: var(--ink-faint); margin: 0 0 10px; line-height: 1.4; }
+/* Column 1 — field library palette (static this batch; drag-drop lands next batch) */
+.mf-lib-list { display: flex; flex-direction: column; gap: 6px; }
+.mf-lib-item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12.5px; color: var(--ink-soft); cursor: default; }
+.mf-lib-dot { color: var(--ink-faint); font-size: 12px; }
+.mf-lib-name { font-weight: 600; }
+/* Column 2 — modules list */
+.mf-mod-list { display: flex; flex-direction: column; gap: 4px; }
+.mf-mod-row { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.mf-mod-row.active { border-color: var(--accent); background: var(--accent-soft); }
+.mf-mod-name { flex: 1 1 auto; min-width: 0; text-align: left; background: none; border: none; padding: 8px 10px; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mf-mod-row.active .mf-mod-name { color: var(--accent); }
+.mf-mod-burger { flex: 0 0 auto; background: none; border: none; color: var(--ink-faint); font-size: 16px; line-height: 1; cursor: pointer; padding: 6px 8px; border-radius: 6px; }
+.mf-mod-burger:hover { background: var(--gray-soft); color: var(--ink); }
+.mf-mod-menu { z-index: 1300; min-width: 150px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.mf-mod-menu-item { text-align: left; background: none; border: none; padding: 8px 10px; border-radius: 7px; font-size: 13.5px; color: var(--ink); cursor: pointer; }
+.mf-mod-menu-item:hover:not([disabled]) { background: var(--row-hover); }
+.mf-mod-menu-item[disabled] { opacity: 0.45; cursor: not-allowed; }
+/* Terms sub-section (generic words) beneath the modules */
+.mf-terms { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mf-term-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.mf-term-input { margin-bottom: 0; font-size: 12.5px; padding: 6px 8px; }
+/* Column 3 — compact sections & fields */
+.mf-fields-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.mf-fields-module { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; }
+.mf-col-fields .field-row { padding: 8px 10px; gap: 8px; flex-wrap: wrap; }
+.mf-col-fields .field-row-left { gap: 8px; }
+.mf-col-fields .field-row-label { font-size: 13px; }
+.mf-col-fields .field-row-type { font-size: 11px; }
+.mf-col-fields .field-row-actions { gap: 6px; flex-wrap: wrap; }
+.mf-col-fields .field-move-sel { min-width: 96px; font-size: 11px; padding: 3px 6px; }
+.mf-col-fields .fields-section-card { padding: 10px 12px; }
+.mf-col-fields .btn-sm { padding: 4px 8px; font-size: 12px; }
+.mf-col-fields .page-actions { flex-wrap: wrap; gap: 8px; }
+/* Responsive: 3 cols -> library+modules with fields full-width below -> single col */
+@media (max-width: 1100px) {
+  .mf-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .mf-col-fields { grid-column: 1 / -1; }
+}
+@media (max-width: 680px) {
+  .mf-grid { grid-template-columns: 1fr; }
+  .mf-col-fields { grid-column: auto; }
+}
+
 /* Feedback page layout — fills the FULL content width like Calls/Contacts/Jobs
    (which render a plain .fade-in into .content). The earlier fix added inner
    padding on the form/thread cards because a bare .card has none, which is what

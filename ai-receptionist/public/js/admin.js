@@ -461,7 +461,7 @@
     const h = el("h2", "settings-h", "Pages");
     sec.appendChild(h);
     const hint = el("p", "cell-muted"); hint.style.cssText = "font-size:12.5px;margin:0 0 8px";
-    hint.textContent = "Lock fixed app pages for this tenant. A locked page is hidden from everyone in the tenant — including its Portal Admin — and can't be reached by direct link or API. (Record-type sections are managed as Modules, chosen when the tenant is created and toggled under Settings → Labels.)";
+    hint.textContent = "Lock fixed app pages for this tenant. A locked page is hidden from everyone in the tenant — including its Portal Admin — and can't be reached by direct link or API. (Record-type sections are managed as Modules, chosen when the tenant is created and toggled under Settings → Modules & Fields.)";
     sec.appendChild(hint);
     const card = el("div", "card"); card.style.cssText = "padding:20px";
     const listHost = el("div");
@@ -672,12 +672,12 @@
     // listed individually and pulled from the registry (so a future type appears
     // here automatically). Contacts is core (always on). Unchecking a module HIDES
     // its nav item — the type is still created, so it can be turned back on later
-    // under Settings → Labels with no data risk. Default: everything checked.
+    // under Settings → Modules & Fields with no data risk. Default: everything checked.
     // This is VISIBILITY only (reversible hide), distinct from the hard-lock above.
     const secHost = el("div"); secHost.style.marginTop = "16px";
     const secLab = el("label", "field-label", "Modules"); secLab.style.cssText = "margin:0 0 2px";
     const secNote = el("p", "cell-muted"); secNote.style.cssText = "margin:0 0 4px;font-size:12.5px;";
-    secNote.textContent = "Choose which record sections this portal has. Unchecked ones are hidden (still created) — turn them on anytime under Settings → Labels.";
+    secNote.textContent = "Choose which record sections this portal has. Unchecked ones are hidden (still created) — turn them on anytime under Settings → Modules & Fields.";
     secHost.appendChild(secLab); secHost.appendChild(secNote);
     const secList = el("div"); secList.appendChild(el("p", "cell-muted", "Loading…"));
     secHost.appendChild(secList);

@@ -22,13 +22,19 @@ import { ACTION_TYPES } from "../automation/actions";
 const db = prisma as any;
 const T_NAME = "__SELFTEST_RELABEL__";
 
-// The complete, expected set of action keys (17). If this pass renamed/removed a
-// key or added one, this set won't match exactly and (a)/(c) will fail.
+// The complete, expected set of action keys. If this pass renamed/removed a key or
+// added one, this set won't match exactly and (a)/(c) will fail.
+// NOTE (stale-test fix): this list previously hardcoded 17 keys and was never updated
+// as later batches added send_survey, unenroll, notify_business and the four
+// *_record_item*/find_record_items actions. It failed against the untouched baseline
+// for that reason (registry = 24 keys). Refreshed here to the real registry so the
+// guard is meaningful again; the relabel behaviour checks below are unchanged.
 const EXPECTED_KEYS = [
-  "send_email", "send_sms", "update_field", "add_tag", "remove_tag", "create_note",
-  "assign_owner", "wait", "create_record", "update_record", "search_records",
-  "delete_record", "compute_field", "send_webhook", "act_on_linked", "move_to_stage",
-  "set_record_field",
+  "send_email", "send_survey", "unenroll", "send_sms", "notify_business", "update_field",
+  "add_tag", "remove_tag", "create_note", "assign_owner", "wait", "create_record",
+  "update_record", "search_records", "delete_record", "compute_field", "send_webhook",
+  "act_on_linked", "move_to_stage", "set_record_field", "create_record_item",
+  "update_record_item", "find_record_items", "delete_record_items",
 ].sort();
 const FOUR = ["create_record", "update_record", "search_records", "delete_record"];
 

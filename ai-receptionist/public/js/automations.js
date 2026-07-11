@@ -1097,7 +1097,7 @@
           const b = el("option", null, "— date field —"); b.value = ""; fs.appendChild(b);
           (w.recDate.fields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === w.recDate.field) o.selected = true; fs.appendChild(o); });
           fs.onchange = () => { w.recDate.field = fs.value; };
-          if (!(w.recDate.fields || []).length) extra.appendChild(small("This record type has no Date fields yet. Add one under Settings → Fields (e.g. a service or renewal date)."));
+          if (!(w.recDate.fields || []).length) extra.appendChild(small("This record type has no Date fields yet. Add one under Settings → Modules & Fields (e.g. a service or renewal date)."));
         }
         rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(dir); rowEl.appendChild(fs);
         extra.appendChild(rowEl);
@@ -1701,7 +1701,7 @@
           const blank = el("option", null, "— date field —"); blank.value = ""; fieldSel.appendChild(blank);
           (recDate.fields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === recDate.field) o.selected = true; fieldSel.appendChild(o); });
           fieldSel.onchange = () => { recDate.field = fieldSel.value; syncTrigger(); };
-          if (!(recDate.fields || []).length) trigExtra.appendChild(small("This record type has no Date fields yet. Add one under Settings → Fields."));
+          if (!(recDate.fields || []).length) trigExtra.appendChild(small("This record type has no Date fields yet. Add one under Settings → Modules & Fields."));
         }
         rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(dirSel); rowEl.appendChild(fieldSel);
         trigExtra.appendChild(rowEl);

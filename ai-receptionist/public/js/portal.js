@@ -2754,19 +2754,13 @@
     const canEdit = App.state.me.role !== "CLIENT_USER";
     const wrap = el("div", refresh ? "" : "fade-in"); // don't replay the fade-in animation on in-place refreshes
 
-    // Object-type selector ("Editing fields for: [Contacts | Jobs]").
-    const typeBar = el("div", "fields-typebar");
-    typeBar.appendChild(el("span", "fields-typebar-label", "Editing fields for:"));
-    const typeSel = el("select", "input fields-typebar-select");
-    visibleTypes.forEach((t) => {
-      const o = el("option", null, esc(t.labelPlural || t.label));
-      o.value = t.key;
-      if (t.key === selectedKey) o.selected = true;
-      typeSel.appendChild(o);
-    });
-    typeSel.onchange = () => { App.state.fieldsType = typeSel.value; renderFields(true); };
-    typeBar.appendChild(typeSel);
-    wrap.appendChild(typeBar);
+    // Column 3 header — the selected module's sections & fields. The module is now
+    // chosen in the Modules column (highlighted there), so the old "Editing fields
+    // for" dropdown is gone.
+    const col3Head = el("div", "mf-fields-head");
+    col3Head.appendChild(el("div", "mf-col-title", "Sections & fields"));
+    col3Head.appendChild(el("div", "mf-fields-module", esc(selectedType ? (selectedType.labelPlural || selectedType.label || "") : "")));
+    wrap.appendChild(col3Head);
 
     const bar = el("div", "page-actions");
     if (canEdit) {
@@ -3696,66 +3690,29 @@
   // setup screen via App.labelsEditor.mount(host). Same editor, one definition.
 
     async function secLabels(panel) {
-      panel.innerHTML = `<h2 class="settings-h">Labels</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:16px">Control what things are called in this portal and how the left-hand menu looks.</p>
+      panel.innerHTML = `<h2 class="settings-h">Pages</h2>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:16px">Rename, reorder, or hide the pages in your menu. Module names and generic words now live on the <strong>Modules &amp; Fields</strong> tab.</p>
         <div id="lbl-body"><div class="cell-muted" style="padding:6px">Loading…</div></div>`;
       const body = panel.querySelector("#lbl-body");
-      let types, labelsData;
+      let labelsData;
       try {
-        const r = await Promise.all([App.portalApi("/api/record-types"), App.portalApi("/api/labels")]);
-        types = r[0]; labelsData = r[1];
-      } catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:6px">Couldn’t load labels.</div>`; return; }
+        labelsData = await App.portalApi("/api/labels");
+      } catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:6px">Couldn’t load pages.</div>`; return; }
 
-      const pluralize = App.pluralize;
-      const generic = (labelsData && labelsData.generic) || {};
       const navCfg = (labelsData && labelsData.nav && typeof labelsData.nav === "object") ? labelsData.nav : { order: [], hidden: [], labels: {} };
-      const GENERIC_WORDS = [
-        { key: "record", dflt: { one: "Record", many: "Records" } },
-        { key: "stage", dflt: { one: "Stage", many: "Stages" } },
-        { key: "resource", dflt: { one: "Resource", many: "Resources" } },
-      ];
 
       body.innerHTML = "";
 
-      // ===================== Group 1: What things are called =====================
-      body.appendChild(el("h3", "settings-sub", "What things are called"));
-      const g1hint = el("p", "cell-muted"); g1hint.style.cssText = "font-size:12.5px;margin:0 0 10px"; g1hint.innerHTML = "Type the <strong>singular</strong> — the plural fills in for you, and you can edit it for irregulars.";
-      body.appendChild(g1hint);
-      const nounWrap = el("div", "lbl-group");
-      const head = el("div", "lbl-row lbl-head");
-      head.appendChild(el("div", null, "Singular"));
-      head.appendChild(el("div", null, "Plural (auto — editable)"));
-      nounWrap.appendChild(head);
-      const rows = []; // { key, scope, oneEl, manyEl, touched }
-      function addRow(scope, key, one, many) {
-        const r = el("div", "lbl-row");
-        const o = el("input", "input"); o.value = one || ""; o.placeholder = "Singular";
-        const m = el("input", "input"); m.value = many || ""; m.placeholder = "Plural";
-        m.title = "Auto-generated from the singular — edit for irregulars (e.g. Person → People)";
-        r.appendChild(o); r.appendChild(m);
-        nounWrap.appendChild(r);
-        const row = { key: key, scope: scope, oneEl: o, manyEl: m, touched: !!(many && many !== pluralize(one)) };
-        o.addEventListener("input", () => { if (!row.touched) m.value = pluralize(o.value); });
-        m.addEventListener("input", () => { row.touched = true; });
-        rows.push(row);
-      }
-      (types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((t) => {
-        addRow("type", t.key, t.label || "", t.labelPlural || pluralize(t.label || ""));
-      });
-      GENERIC_WORDS.forEach((w) => {
-        const cur = generic[w.key] || {};
-        addRow("generic", w.key, cur.one || w.dflt.one, cur.many || w.dflt.many);
-      });
-      body.appendChild(nounWrap);
-
-      // ===================== Group 2: Pages & navigation =========================
-      body.appendChild(el("h3", "settings-sub", "Pages & navigation"));
+      // ===================== Pages & navigation (pages only) =====================
       const g2hint = el("p", "cell-muted"); g2hint.style.cssText = "font-size:12.5px;margin:0 0 10px"; g2hint.innerHTML = "Rename, drag to reorder, or hide the items in your left-hand menu. <strong>Home Dashboard</strong> always stays so there’s a landing page.";
       body.appendChild(g2hint);
       const navListEl = el("div", "nav-edit-list");
       body.appendChild(navListEl);
 
-      let NAV = (App.PORTAL_NAV || []).slice();
+      // PAGES ONLY: modules (record-type nav items, kind set) are managed on the
+      // Modules & Fields tab, so they're excluded here — this tab lists the fixed
+      // pages of the left-hand/top nav only.
+      let NAV = (App.PORTAL_NAV || []).slice().filter(function (it) { return !it[2]; });
       // When the AI Receptionist is off for this portal, the Calls page doesn't
       // exist for them — so don't list it in the relabel/reorder editor either.
       if (App.state.receptionistEnabled === false) {
@@ -3787,25 +3744,18 @@
           const row = el("div", "nav-edit-row" + (isHidden ? " nav-edit-hidden" : ""));
           row.draggable = true; row.dataset.href = href;
           row.appendChild(el("span", "mc-drag", "⠿"));
-          if (kind) {
-            const lab = el("div", "nav-edit-label-fixed");
-            lab.appendChild(el("span", null, esc(App.label(kind, "many"))));
-            lab.appendChild(el("span", "nav-edit-note", "set by the “" + esc(App.label(kind, "one")) + "” label above"));
-            row.appendChild(lab);
-          } else {
-            const inp = el("input", "input nav-edit-input");
-            inp.value = ((navCfg.labels || {})[href]) || dflt;
-            inp.placeholder = dflt;
-            row.appendChild(inp);
-            labelInputs[href] = inp;
-          }
+          const inp = el("input", "input nav-edit-input");
+          inp.value = ((navCfg.labels || {})[href]) || dflt;
+          inp.placeholder = dflt;
+          row.appendChild(inp);
+          labelInputs[href] = inp;
           if (isHome) {
             row.appendChild(el("span", "nav-edit-pill", "Always shown"));
           } else {
             const btn = el("button", "btn btn-ghost btn-sm nav-edit-toggle", isHidden ? "Show" : "Hide");
             btn.onclick = async () => {
               if (!isHidden) {
-                const ok = await confirmModal({ title: "Hide this page?", message: "“" + navDisplay(it) + "” will be removed from the left-hand menu. You can restore it any time from Settings → Labels → Pages & navigation.", confirmText: "Hide page" });
+                const ok = await confirmModal({ title: "Hide this page?", message: "“" + navDisplay(it) + "” will be removed from the menu. You can restore it any time here on the Pages tab.", confirmText: "Hide page" });
                 if (!ok) return;
                 hiddenSet.add(href);
               } else {
@@ -3832,21 +3782,27 @@
       }
       paintNav();
 
-      // ===================== Save (both groups together) =========================
+      // ===================== Save (pages/nav only) =========================
+      // Merge our page-only nav edits onto the FULL saved nav (which also carries
+      // module order/hide/labels managed on Modules & Fields) so we never clobber
+      // the module entries: keep their saved order slots and hidden/label state.
       const saveBtn = el("button", "btn btn-primary btn-sm", "Save");
       saveBtn.style.marginTop = "18px";
       saveBtn.onclick = async () => {
-        const payload = { types: {}, generic: {}, nav: { order: [], hidden: [], labels: {} } };
-        for (const row of rows) {
-          const one = row.oneEl.value.trim();
-          let many = row.manyEl.value.trim();
-          if (!one) { toast("Each word needs a singular name", true); return; }
-          if (!many) many = pluralize(one);
-          payload[row.scope === "type" ? "types" : "generic"][row.key] = { one: one, many: many };
-        }
-        payload.nav.order = navOrder.slice();
-        payload.nav.hidden = Array.from(hiddenSet);
-        Object.keys(labelInputs).forEach((href) => { const v = labelInputs[href].value.trim(); if (v) payload.nav.labels[href] = v; });
+        const cur = (App.navConfig && App.navConfig()) || { order: [], hidden: [], labels: {} };
+        const pageSet = new Set(navOrder); // hrefs this (pages-only) editor manages
+        // Order: our edited page order first, then any saved hrefs we don't manage
+        // (modules) kept in their existing relative order. buildShell renders pages and
+        // modules as separate groups, so what matters is each group's own relative order.
+        const mergedOrder = navOrder.slice();
+        (cur.order || []).forEach((h) => { if (!pageSet.has(h) && mergedOrder.indexOf(h) === -1) mergedOrder.push(h); });
+        // Hidden: our page hidden set, plus any hidden hrefs we don't manage here (modules).
+        const mergedHidden = Array.from(hiddenSet);
+        (cur.hidden || []).forEach((h) => { if (!navByHref[h] && mergedHidden.indexOf(h) === -1) mergedHidden.push(h); });
+        // Labels: keep existing labels, overwrite the page labels from our inputs.
+        const mergedLabels = Object.assign({}, cur.labels || {});
+        Object.keys(labelInputs).forEach((href) => { const v = labelInputs[href].value.trim(); if (v) mergedLabels[href] = v; else delete mergedLabels[href]; });
+        const payload = { nav: { order: mergedOrder, hidden: mergedHidden, labels: mergedLabels } };
         try {
           await App.portalApi("/api/labels", { method: "PATCH", body: JSON.stringify(payload) });
           await App.loadLabels();
@@ -3856,6 +3812,176 @@
       };
       body.appendChild(saveBtn);
     }
+
+  // ============ Modules & Fields — three-column helpers (Batch 1 of 2) ============
+  // Column 1 — the field-type "library" (palette). A simple labeled list in THIS
+  // batch (a later batch wires drag-and-drop from here into a module's fields). The
+  // types are exactly those the Add-field flow supports (App.fields.TYPE_LABELS).
+  function buildFieldLibrary(col) {
+    col.appendChild(el("div", "mf-col-title", "Field library"));
+    col.appendChild(el("p", "mf-col-hint", "The field types you can add. Drag-and-drop is coming soon — for now open a module and use “+ Add field”."));
+    const list = el("div", "mf-lib-list");
+    Object.keys(App.fields.TYPE_LABELS).forEach(function (t) {
+      const item = el("div", "mf-lib-item");
+      item.dataset.type = t;
+      item.appendChild(el("span", "mf-lib-dot", "▦"));
+      item.appendChild(el("span", "mf-lib-name", App.fields.TYPE_LABELS[t]));
+      list.appendChild(item);
+    });
+    col.appendChild(list);
+  }
+
+  // Reorder a module by moving its nav href up/down relative to the neighbouring
+  // module, reusing the SAME nav-order persistence the Pages editor uses (persistNav).
+  async function moveModuleOrder(orderedTypes, idx, dir) {
+    const j = idx + dir; if (j < 0 || j >= orderedTypes.length) return;
+    const movingHref = App.recordTypeHref(orderedTypes[idx].key);
+    const neighborHref = App.recordTypeHref(orderedTypes[j].key);
+    let order = App.fullNavOrder().slice().filter(function (h) { return h !== movingHref; });
+    let ni = order.indexOf(neighborHref); if (ni < 0) ni = order.length;
+    order.splice(dir < 0 ? ni : ni + 1, 0, movingHref);
+    const cfg = App.navConfig();
+    await App.persistNav({ order: order, hidden: cfg.hidden, labels: cfg.labels }); // repaints via App._route
+  }
+
+  // Rename a module (singular + editable plural). Reuses the existing record-type
+  // label update (App.persistTypeLabel -> PATCH /api/labels types), so the new name
+  // propagates GLOBALLY (nav, page title, labels) — exactly like the nav ⋮ rename.
+  function renameModuleModal(t) {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Rename module</h2><button class="icon-btn" id="mm-close">&times;</button></div>
+      <div class="modal-body">
+        <label class="field-label">Singular *</label>
+        <input id="mm-one" class="input" value="${esc(t.label || "")}" placeholder="e.g. Client" />
+        <label class="field-label">Plural (auto — editable)</label>
+        <input id="mm-many" class="input" value="${esc(t.labelPlural || App.pluralize(t.label || ""))}" placeholder="e.g. Clients" />
+        <p class="muted" style="margin:-4px 0 12px">Renaming updates this module everywhere in the portal — the menu, the page title, and labels. Field keys and saved data never change.</p>
+        <button id="mm-save" class="btn btn-primary btn-block" style="margin-top:8px">Save</button>
+      </div>`;
+    const overlay = modal(inner);
+    const oneEl = inner.querySelector("#mm-one");
+    const manyEl = inner.querySelector("#mm-many");
+    let touched = !!(t.labelPlural && t.labelPlural !== App.pluralize(t.label || ""));
+    oneEl.addEventListener("input", function () { if (!touched) manyEl.value = App.pluralize(oneEl.value); });
+    manyEl.addEventListener("input", function () { touched = true; });
+    inner.querySelector("#mm-close").onclick = function () { overlay.remove(); };
+    inner.querySelector("#mm-save").onclick = async function () {
+      const one = oneEl.value.trim(); let many = manyEl.value.trim();
+      if (!one) { App.util.toast("Singular name is required", true); return; }
+      if (!many) many = App.pluralize(one);
+      overlay.remove();
+      await App.persistTypeLabel(t.key, one, many);
+    };
+  }
+
+  // The ⋮ menu on a module row: Rename + Move up / Move down.
+  let mfModMenuEl = null;
+  function closeModMenu() { if (mfModMenuEl) { mfModMenuEl.remove(); mfModMenuEl = null; document.removeEventListener("pointerdown", onModMenuDown, true); } }
+  function onModMenuDown(e) { if (mfModMenuEl && !mfModMenuEl.contains(e.target)) closeModMenu(); }
+  function openModuleMenu(anchor, t, idx, orderedTypes) {
+    closeModMenu();
+    const menu = el("div", "mf-mod-menu");
+    const rename = el("button", "mf-mod-menu-item", "Rename…");
+    rename.onclick = function () { closeModMenu(); renameModuleModal(t); };
+    menu.appendChild(rename);
+    const up = el("button", "mf-mod-menu-item", "Move up"); up.disabled = idx === 0;
+    up.onclick = function () { closeModMenu(); moveModuleOrder(orderedTypes, idx, -1); };
+    const down = el("button", "mf-mod-menu-item", "Move down"); down.disabled = idx === orderedTypes.length - 1;
+    down.onclick = function () { closeModMenu(); moveModuleOrder(orderedTypes, idx, 1); };
+    menu.appendChild(up); menu.appendChild(down);
+    document.body.appendChild(menu); mfModMenuEl = menu;
+    const r = anchor.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.left = Math.round(Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + "px";
+    let top = r.bottom + 4;
+    if (top + menu.offsetHeight > window.innerHeight - 8) top = r.top - 4 - menu.offsetHeight;
+    if (top < 8) top = 8;
+    menu.style.top = Math.round(top) + "px";
+    setTimeout(function () { document.addEventListener("pointerdown", onModMenuDown, true); }, 0);
+  }
+
+  // Column 2 — Modules (record types) in nav order, each with a ⋮ (Rename / Move
+  // up / Move down). Selecting a module shows its sections & fields in column 3
+  // (the passed `host`). A compact "Terms" sub-section is appended beneath.
+  function buildModulesColumn(col, host, visibleTypes) {
+    col.appendChild(el("div", "mf-col-title", "Modules"));
+    const listWrap = el("div", "mf-mod-list");
+    col.appendChild(listWrap);
+
+    // Order modules to match the nav (module reorder writes nav.order via persistNav).
+    const navPos = {}; (App.fullNavOrder() || []).forEach(function (h, i) { navPos[h] = i; });
+    const ordered = (visibleTypes || []).slice().sort(function (a, b) {
+      const pa = navPos[App.recordTypeHref(a.key)]; const pb = navPos[App.recordTypeHref(b.key)];
+      return (pa == null ? 1e9 : pa) - (pb == null ? 1e9 : pb);
+    });
+
+    function selectModule(key) {
+      App.state.fieldsType = key;
+      Array.prototype.forEach.call(listWrap.querySelectorAll(".mf-mod-row"), function (r) { r.classList.toggle("active", r.dataset.key === key); });
+      renderFields(true); // repaints column 3 only (fieldsMount === host)
+    }
+
+    ordered.forEach(function (t, idx) {
+      const row = el("div", "mf-mod-row" + (t.key === App.state.fieldsType ? " active" : ""));
+      row.dataset.key = t.key;
+      const name = el("button", "mf-mod-name", esc(t.labelPlural || t.label || t.key));
+      name.onclick = function () { selectModule(t.key); };
+      row.appendChild(name);
+      const burger = el("button", "mf-mod-burger", "⋮");
+      burger.title = "Rename or reorder";
+      burger.onclick = function (e) { e.stopPropagation(); openModuleMenu(burger, t, idx, ordered); };
+      row.appendChild(burger);
+      listWrap.appendChild(row);
+    });
+    if (!ordered.length) listWrap.appendChild(el("div", "cell-muted", "No modules yet."));
+
+    buildTermsSection(col); // Terms (Record / Stage / Resource) beneath the modules
+  }
+
+  // Compact "Terms" editor for the generic words (Record / Stage / Resource), moved
+  // here from the old Labels page. Same PATCH /api/labels { generic } save.
+  async function buildTermsSection(col) {
+    const wrap = el("div", "mf-terms");
+    wrap.appendChild(el("div", "mf-col-subtitle", "Terms"));
+    wrap.appendChild(el("p", "mf-col-hint", "Generic words used across modules."));
+    const body = el("div"); wrap.appendChild(body);
+    col.appendChild(wrap);
+    const GENERIC_WORDS = [
+      { key: "record", dflt: { one: "Record", many: "Records" } },
+      { key: "stage", dflt: { one: "Stage", many: "Stages" } },
+      { key: "resource", dflt: { one: "Resource", many: "Resources" } },
+    ];
+    let generic = {};
+    try { const labelsData = await App.portalApi("/api/labels"); generic = (labelsData && labelsData.generic) || {}; }
+    catch (e) { body.appendChild(el("div", "cell-muted", "Couldn’t load terms.")); return; }
+    const rows = [];
+    GENERIC_WORDS.forEach(function (w) {
+      const cur = generic[w.key] || {};
+      const r = el("div", "mf-term-row");
+      const o = el("input", "input mf-term-input"); o.value = cur.one || w.dflt.one; o.placeholder = w.dflt.one;
+      const m = el("input", "input mf-term-input"); m.value = cur.many || w.dflt.many; m.placeholder = w.dflt.many;
+      m.title = "Plural — auto-fills from the singular; edit for irregulars";
+      r.appendChild(o); r.appendChild(m); body.appendChild(r);
+      const row = { key: w.key, oneEl: o, manyEl: m, touched: !!(cur.many && cur.many !== App.pluralize(cur.one || w.dflt.one)) };
+      o.addEventListener("input", function () { if (!row.touched) m.value = App.pluralize(o.value); });
+      m.addEventListener("input", function () { row.touched = true; });
+      rows.push(row);
+    });
+    const save = el("button", "btn btn-ghost btn-sm", "Save terms");
+    save.style.marginTop = "8px";
+    save.onclick = async function () {
+      const payload = { generic: {} };
+      for (const row of rows) {
+        const one = row.oneEl.value.trim(); let many = row.manyEl.value.trim();
+        if (!one) { App.util.toast("Each term needs a singular name", true); return; }
+        if (!many) many = App.pluralize(one);
+        payload.generic[row.key] = { one: one, many: many };
+      }
+      try { await App.portalApi("/api/labels", { method: "PATCH", body: JSON.stringify(payload) }); await App.loadLabels(); App.util.toast("Terms saved"); if (App._route) App._route(); }
+      catch (err) { App.util.toast(err.message, true); }
+    };
+    body.appendChild(save);
+  }
 
   async function renderSettings(sub) {
     const me = App.state.me;
@@ -3878,8 +4004,8 @@
       { key: "billing", label: "Billing", admin: false, build: renderBillingSettings },
       { key: "data", label: "Data Administration", admin: false, build: renderDataAdmin },
       { key: "account", label: "Your account", admin: false, build: secAccount },
-      { key: "labels", label: "Labels", admin: true, build: secLabels },
-      { key: "fields", label: "Fields", admin: true, build: secFields },
+      { key: "labels", label: "Pages", admin: true, build: secLabels },
+      { key: "fields", label: "Modules & Fields", admin: true, build: secFields },
     ].filter((s) => canEditPortal || !s.admin)
       // Owner page-lock: hide a settings tab that exists only to serve a locked page.
       //   scheduling -> Scheduling & Resources serves Bookings (#/bookings).
@@ -4724,27 +4850,33 @@
       };
     }
 
-    // Labels editor — TWO groups:
-    //  1) "What things are called": the concept nouns (record types + record/stage)
-    //     that ripple through the app. Type the SINGULAR; the plural auto-fills and
-    //     stays editable. Record types write label/labelPlural; generic words go to
-    //     Tenant.labels.
-    //  2) "Pages & navigation": the left-nav items — rename the fixed ones, drag to
-    //     reorder, and show/hide. All written to the ONE nav config (Tenant.labels.nav)
-    //     that the sidebar and the later per-row menu both read. Items already named
-    //     by group 1 (e.g. Contacts→Clients) keep that name here — not renamed twice.
-
-    // RESERVED — links out to the existing Fields route (not moved in this step).
+    // Modules & Fields — three columns: field library | modules (+ Terms) | the
+    // selected module's sections & fields. Module selection replaces the old dropdown.
     async function secFields(panel) {
-      // Host the full Fields editor inline here (relocated from the old #/fields page).
-      // Reuse renderFields verbatim; only its mount target changes. refresh=true skips
-      // loading() so the surrounding settings shell isn't wiped, and routes every
-      // internal renderFields(true) refresh back into this panel.
-      panel.innerHTML = "";
-      const host = el("div");
-      panel.appendChild(host);
+      panel.innerHTML = `<h2 class="settings-h">Modules &amp; Fields</h2>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:16px">Your modules, what their records are called, and the fields on each. Drag-and-drop field creation is coming soon — for now use “+ Add field”.</p>`;
+      // Default the selected module BEFORE building the columns, so the Modules list
+      // highlights the right row and column 3 shows its fields. (Locked record types
+      // are excluded here just as the old Labels noun editor excluded them.)
+      let types = [];
+      try { types = await App.portalApi("/api/record-types"); } catch (e) {}
+      const visible = (types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      if (!App.state.fieldsType || !visible.some((t) => t.key === App.state.fieldsType)) {
+        App.state.fieldsType = (visible[0] && visible[0].key) || "contact";
+      }
+
+      const grid = el("div", "mf-grid");
+      const colLib = el("div", "mf-col mf-col-library");
+      const colMods = el("div", "mf-col mf-col-modules");
+      const host = el("div", "mf-col mf-col-fields"); // column 3 — the fields editor mount
+      grid.appendChild(colLib); grid.appendChild(colMods); grid.appendChild(host);
+      panel.appendChild(grid);
+
+      buildFieldLibrary(colLib);                    // column 1
+      buildModulesColumn(colMods, host, visible);   // column 2 (+ Terms); drives column 3
+
       fieldsMount = host;
-      await renderFields(true, host);
+      await renderFields(true, host);               // column 3
     }
   }
 

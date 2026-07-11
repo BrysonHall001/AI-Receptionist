@@ -620,7 +620,7 @@
           id: "labels-and-nav",
           title: "Renaming things and tidying your menu",
           blocks: [
-            { p: "Settings → Labels lets you rename the words the app uses (like 'Contacts' or 'Jobs') and control your left-hand menu." },
+            { p: "Settings → Pages lets you rename, reorder and hide your menu pages. Settings → Modules & Fields is where you rename modules (like 'Contacts' or 'Jobs') and the words the app uses." },
             { steps: [
               "Open Settings and choose 'Labels'.",
               "Rename a word by typing the singular — the plural fills in for you, and you can edit it for irregulars.",
