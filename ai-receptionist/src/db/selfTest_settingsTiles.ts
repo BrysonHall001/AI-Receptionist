@@ -35,23 +35,25 @@ check(!/el\("aside", "settings-subnav"\)/.test(portal) && !/settings-subnav-item
 check(/settings-panel settings-panel--full/.test(portal), "content panel is full-width (reclaims the sub-nav width)");
 check(/\.filter\(\(s\) => canEditPortal \|\| !s\.admin\)/.test(portal), "admin-only sections stay hidden for non-admins (visibility unchanged)");
 
-// (2) Modules & Fields column order + Terms own column + Fields heading.
-console.log("\n(2) Modules & Fields — Modules | Field library | Fields | Terms:");
-check(/grid\.appendChild\(colMods\); grid\.appendChild\(colLib\); grid\.appendChild\(host\); grid\.appendChild\(colTerms\);/.test(portal), "columns appended in order: Modules, Field library, Fields, Terms");
-check(/mf-col mf-col-modules/.test(portal) && /mf-col mf-col-library/.test(portal) && /mf-col mf-col-fields/.test(portal) && /mf-col mf-col-terms/.test(portal), "all four column classes present (incl. mf-col-terms)");
-check(/buildTermsSection\(colTerms\)/.test(portal), "Terms is built into its OWN column");
-check(!/beneath the modules/.test(portal), "Terms is no longer a sub-section under Modules");
-check(/el\("div", "mf-col-title", "Fields"\)/.test(portal), 'the Fields column heading is now "Fields"');
+// (2) Modules & Fields layout: Modules is now a horizontal ROW; below are three
+//     columns Field library | Fields | Terms (updated by the later refinements batch).
+console.log("\n(2) Modules & Fields — modules row + Field library | Fields | Terms:");
+check(/grid\.appendChild\(colLib\); grid\.appendChild\(host\); grid\.appendChild\(colTerms\);/.test(portal), "below-row columns appended in order: Field library, Fields, Terms");
+check(/mf-modules-row/.test(portal) && /mf-mod-tab/.test(portal), "Modules render as a horizontal row of tabs");
+check(/mf-col mf-col-library/.test(portal) && /mf-col mf-col-fields/.test(portal) && /mf-col mf-col-terms/.test(portal), "the three column classes are present");
+check(/buildTermsSection\(colTerms, currentType\(\), generic\)/.test(portal), "Terms column is built per selected module");
+check(!/beneath the modules/.test(portal), "Terms is not a sub-section under Modules");
+check(/el\("div", "mf-col-title", "Fields"\)/.test(portal), 'the Fields column heading is "Fields"');
 check(!/"mf-col-title", "Sections & fields"/.test(portal), '"Sections & fields" heading is gone');
-// Behaviour untouched (still reuses the same saves the last batch wired).
+// Behaviour untouched (still reuses the same saves the earlier batches wired).
 check(/await App\.persistTypeLabel\(t\.key, one, many\)/.test(portal) && /await App\.persistNav\(\{ order: order, hidden: cfg\.hidden, labels: cfg\.labels \}\)/.test(portal), "module rename/reorder wiring unchanged");
 check(/payload\.generic\[row\.key\] = \{ one: one, many: many \}/.test(portal), "Terms save (generic words) unchanged");
 check(/fieldsMount = host;\s*\n\s*await renderFields\(true, host\);/.test(portal), "Fields column still mounts renderFields (host)");
 
 // (3) CSS.
 console.log("\n(3) CSS:");
-check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(150px, 210px\) minmax\(140px, 185px\) minmax\(0, 1fr\) minmax\(160px, 220px\)/.test(css), "four-column grid template");
-check(/\.mf-col-library, \.mf-col-modules, \.mf-col-terms \{/.test(css), "Terms column gets the card styling");
+check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(150px, 200px\) minmax\(0, 1fr\) minmax\(170px, 230px\)/.test(css), "three-column grid template (Field library | Fields | Terms)");
+check(/\.mf-col-library, \.mf-col-terms \{/.test(css), "Field library + Terms columns get the card styling");
 check(/\.settings-tile \{/.test(css) && /\.settings-tiles \{ display: flex; flex-wrap: wrap/.test(css), "tile styles exist and wrap");
 
 console.log(`\n${failures === 0 ? "ALL PASSED \u2705 (tiles alphabetical; MF = Modules | Field library | Fields | Terms)" : failures + " FAILED \u274c"}`);

@@ -36,11 +36,11 @@ check(/\{ key: "labels", label: "Pages", admin: true, build: secLabels \}/.test(
 check(!/label: "Fields", admin: true, build: secFields/.test(portal) && !/label: "Labels", admin: true, build: secLabels/.test(portal), "old tab labels removed");
 
 // (2) Three-column Modules & Fields.
-console.log("\n(2) Modules & Fields — three columns + reused saves:");
+console.log("\n(2) Modules & Fields — Field library | Fields | Terms + modules row + reused saves:");
 check(/<h2 class="settings-h">Modules &amp; Fields<\/h2>/.test(portal), "Modules & Fields heading present");
-check(/mf-col mf-col-library/.test(portal) && /mf-col mf-col-modules/.test(portal) && /mf-col mf-col-fields/.test(portal), "three columns: library | modules | fields");
-check(/function buildFieldLibrary\(/.test(portal) && /Object\.keys\(App\.fields\.TYPE_LABELS\)\.forEach/.test(portal), "column 1 lists the Add-field type library (App.fields.TYPE_LABELS)");
-check(/function buildModulesColumn\(/.test(portal), "column 2 modules builder exists");
+check(/mf-col mf-col-library/.test(portal) && /mf-modules-row/.test(portal) && /mf-col mf-col-fields/.test(portal), "field library + fields columns and a modules row");
+check(/function buildFieldLibrary\(/.test(portal) && /Object\.keys\(App\.fields\.TYPE_LABELS\)\.forEach/.test(portal), "field library lists the Add-field type library (App.fields.TYPE_LABELS)");
+check(/function buildModulesRow\(/.test(portal), "modules row builder exists");
 check(/await App\.persistTypeLabel\(t\.key, one, many\)/.test(portal), "module RENAME reuses App.persistTypeLabel (global label update)");
 check(/await App\.persistNav\(\{ order: order, hidden: cfg\.hidden, labels: cfg\.labels \}\)/.test(portal), "module REORDER reuses App.persistNav (nav order, global)");
 check(/function buildTermsSection\(/.test(portal) && /payload\.generic\[row\.key\] = \{ one: one, many: many \}/.test(portal), "Terms (Record/Stage/Resource) editor saves generic words");

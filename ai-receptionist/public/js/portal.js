@@ -3874,7 +3874,26 @@
     };
   }
 
-  // The ⋮ menu on a module row: Rename + Move up / Move down.
+  // Hide (or Show) a module — same effect as hiding it from the left-hand nav:
+  // toggles the module's href in the nav.hidden list via the SAME persistNav the nav
+  // uses. Gated by the Modules & Fields tab itself (portal-admin-and-above).
+  async function toggleModuleHidden(t) {
+    const href = App.recordTypeHref(t.key);
+    const cfg = App.navConfig();
+    const isHidden = cfg.hidden.indexOf(href) !== -1;
+    let hidden;
+    if (isHidden) {
+      hidden = cfg.hidden.filter(function (h) { return h !== href; });
+    } else {
+      const disp = t.labelPlural || t.label || t.key;
+      const ok = await confirmModal({ title: "Hide this module?", message: "“" + disp + "” will be removed from the menu. You can show it again from its ⋮ menu here.", confirmText: "Hide module" });
+      if (!ok) return;
+      hidden = cfg.hidden.concat([href]);
+    }
+    await App.persistNav({ order: cfg.order, hidden: hidden, labels: cfg.labels }); // repaints via App._route
+  }
+
+  // The ⋮ menu on a module tab: Rename + Move up / Move down + Hide / Show.
   let mfModMenuEl = null;
   function closeModMenu() { if (mfModMenuEl) { mfModMenuEl.remove(); mfModMenuEl = null; document.removeEventListener("pointerdown", onModMenuDown, true); } }
   function onModMenuDown(e) { if (mfModMenuEl && !mfModMenuEl.contains(e.target)) closeModMenu(); }
@@ -3889,6 +3908,10 @@
     const down = el("button", "mf-mod-menu-item", "Move down"); down.disabled = idx === orderedTypes.length - 1;
     down.onclick = function () { closeModMenu(); moveModuleOrder(orderedTypes, idx, 1); };
     menu.appendChild(up); menu.appendChild(down);
+    const isHidden = App.isNavHidden(App.recordTypeHref(t.key));
+    const hide = el("button", "mf-mod-menu-item" + (isHidden ? "" : " nav-burger-danger"), isHidden ? "Show" : "Hide");
+    hide.onclick = function () { closeModMenu(); toggleModuleHidden(t); };
+    menu.appendChild(hide);
     document.body.appendChild(menu); mfModMenuEl = menu;
     const r = anchor.getBoundingClientRect();
     menu.style.position = "fixed";
@@ -3900,58 +3923,71 @@
     setTimeout(function () { document.addEventListener("pointerdown", onModMenuDown, true); }, 0);
   }
 
-  // Column 2 — Modules (record types) in nav order, each with a ⋮ (Rename / Move
-  // up / Move down). Selecting a module shows its sections & fields in column 3
-  // (the passed `host`). A compact "Terms" sub-section is appended beneath.
-  function buildModulesColumn(col, host, visibleTypes) {
-    col.appendChild(el("div", "mf-col-title", "Modules"));
-    const listWrap = el("div", "mf-mod-list");
-    col.appendChild(listWrap);
-
-    // Order modules to match the nav (module reorder writes nav.order via persistNav).
+  // Modules as a HORIZONTAL row of tabs (record types in nav order). Each tab has a
+  // ⋮ menu (Rename / Move up / Move down / Hide-Show). Selecting a tab calls onSelect
+  // with the module key. Hidden (from nav) modules stay shown here — greyed — so
+  // hiding is always recoverable (their ⋮ shows "Show").
+  function buildModulesRow(rowEl, visibleTypes, onSelect) {
+    rowEl.innerHTML = "";
     const navPos = {}; (App.fullNavOrder() || []).forEach(function (h, i) { navPos[h] = i; });
     const ordered = (visibleTypes || []).slice().sort(function (a, b) {
       const pa = navPos[App.recordTypeHref(a.key)]; const pb = navPos[App.recordTypeHref(b.key)];
       return (pa == null ? 1e9 : pa) - (pb == null ? 1e9 : pb);
     });
-
-    function selectModule(key) {
-      App.state.fieldsType = key;
-      Array.prototype.forEach.call(listWrap.querySelectorAll(".mf-mod-row"), function (r) { r.classList.toggle("active", r.dataset.key === key); });
-      renderFields(true); // repaints column 3 only (fieldsMount === host)
-    }
-
     ordered.forEach(function (t, idx) {
-      const row = el("div", "mf-mod-row" + (t.key === App.state.fieldsType ? " active" : ""));
-      row.dataset.key = t.key;
-      const name = el("button", "mf-mod-name", esc(t.labelPlural || t.label || t.key));
-      name.onclick = function () { selectModule(t.key); };
-      row.appendChild(name);
-      const burger = el("button", "mf-mod-burger", "⋮");
-      burger.title = "Rename or reorder";
+      const isHidden = App.isNavHidden(App.recordTypeHref(t.key));
+      const tab = el("div", "mf-mod-tab" + (t.key === App.state.fieldsType ? " active" : "") + (isHidden ? " mf-mod-tab-hidden" : ""));
+      tab.dataset.key = t.key;
+      const name = el("button", "mf-mod-tab-name", esc(t.labelPlural || t.label || t.key));
+      name.onclick = function () { onSelect(t.key); };
+      tab.appendChild(name);
+      const burger = el("button", "mf-mod-tab-burger", "⋮");
+      burger.title = "Rename, reorder, or hide";
       burger.onclick = function (e) { e.stopPropagation(); openModuleMenu(burger, t, idx, ordered); };
-      row.appendChild(burger);
-      listWrap.appendChild(row);
+      tab.appendChild(burger);
+      rowEl.appendChild(tab);
     });
-    if (!ordered.length) listWrap.appendChild(el("div", "cell-muted", "No modules yet."));
+    if (!ordered.length) rowEl.appendChild(el("div", "cell-muted", "No modules yet."));
   }
 
-  // Compact "Terms" editor for the generic words (Record / Stage / Resource), moved
-  // here from the old Labels page. Same PATCH /api/labels { generic } save.
-  async function buildTermsSection(col) {
-    const wrap = el("div", "mf-terms");
-    wrap.appendChild(el("div", "mf-col-title", "Terms"));
-    wrap.appendChild(el("p", "mf-col-hint", "Generic words used across modules (Record / Stage / Resource)."));
-    const body = el("div"); wrap.appendChild(body);
-    col.appendChild(wrap);
+  // Which generic Terms apply to a module. "Record" is universal; "Stage" applies to
+  // modules with a pipeline (Jobs have type/subtype stages; Contacts move THROUGH the
+  // pipeline so the word applies to them too) — not flat catalogs like Equipment;
+  // "Resource" is a Bookings concept. Driven off the module's own config where
+  // possible (stages/subtypes), keying off the known booking/contact system keys only
+  // where the config can't express it.
+  function moduleHasStages(t) {
+    if (!t) return false;
+    if (Array.isArray(t.stages) && t.stages.length) return true;
+    return (Array.isArray(t.subtypes) ? t.subtypes : []).some(function (st) { return Array.isArray(st.stages) && st.stages.length; });
+  }
+  function termAppliesToModule(termKey, t) {
+    if (termKey === "record") return true;
+    if (termKey === "stage") return moduleHasStages(t) || !!(t && t.key === "contact");
+    if (termKey === "resource") return !!(t && t.key === "booking");
+    return false;
+  }
+
+  // "Terms" column — the generic words, but showing ONLY those relevant to the
+  // SELECTED module (see termAppliesToModule). Values are portal-wide: editing here
+  // saves via PATCH /api/labels { generic } (merged server-side), exactly as before.
+  function buildTermsSection(col, selectedType, generic) {
+    col.innerHTML = "";
+    generic = generic || {};
+    const modName = selectedType ? (selectedType.labelPlural || selectedType.label || "") : "";
+    const head = el("div", "mf-terms-head");
+    head.appendChild(el("span", "mf-col-title", "Terms"));
+    if (modName) head.appendChild(el("span", "mf-terms-for", "for " + esc(modName)));
+    col.appendChild(head);
+    col.appendChild(el("p", "mf-col-hint", "Words used on " + (modName ? esc(modName) : "this module") + " — edited here, saved portal-wide."));
+    const body = el("div"); col.appendChild(body);
+
     const GENERIC_WORDS = [
       { key: "record", dflt: { one: "Record", many: "Records" } },
       { key: "stage", dflt: { one: "Stage", many: "Stages" } },
       { key: "resource", dflt: { one: "Resource", many: "Resources" } },
-    ];
-    let generic = {};
-    try { const labelsData = await App.portalApi("/api/labels"); generic = (labelsData && labelsData.generic) || {}; }
-    catch (e) { body.appendChild(el("div", "cell-muted", "Couldn’t load terms.")); return; }
+    ].filter(function (w) { return termAppliesToModule(w.key, selectedType); });
+
     const rows = [];
     GENERIC_WORDS.forEach(function (w) {
       const cur = generic[w.key] || {};
@@ -3968,6 +4004,8 @@
     const save = el("button", "btn btn-ghost btn-sm", "Save terms");
     save.style.marginTop = "8px";
     save.onclick = async function () {
+      // Only the shown terms are sent; the server MERGES per key, so terms not shown
+      // for this module keep their portal-wide values untouched.
       const payload = { generic: {} };
       for (const row of rows) {
         const one = row.oneEl.value.trim(); let many = row.manyEl.value.trim();
@@ -3978,7 +4016,7 @@
       try { await App.portalApi("/api/labels", { method: "PATCH", body: JSON.stringify(payload) }); await App.loadLabels(); App.util.toast("Terms saved"); if (App._route) App._route(); }
       catch (err) { App.util.toast(err.message, true); }
     };
-    body.appendChild(save);
+    col.appendChild(save);
   }
 
   async function renderSettings(sub) {
@@ -4855,35 +4893,44 @@
     // selected module's sections & fields. Module selection replaces the old dropdown.
     async function secFields(panel) {
       panel.innerHTML = `<h2 class="settings-h">Modules &amp; Fields</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:16px">Your modules, what their records are called, and the fields on each. Drag-and-drop field creation is coming soon — for now use “+ Add field”.</p>`;
-      // Default the selected module BEFORE building the columns, so the Modules list
-      // highlights the right row and column 3 shows its fields. (Locked record types
-      // are excluded here just as the old Labels noun editor excluded them.)
+        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Your modules, what their records are called, and the fields on each. Drag-and-drop field creation is coming soon — for now use “+ Add field”.</p>`;
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
       const visible = (types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
       if (!App.state.fieldsType || !visible.some((t) => t.key === App.state.fieldsType)) {
         App.state.fieldsType = (visible[0] && visible[0].key) || "contact";
       }
+      // Terms values are portal-wide; fetch the generic map once for this render.
+      let generic = {};
+      try { const ld = await App.portalApi("/api/labels"); generic = (ld && ld.generic) || {}; } catch (e) {}
 
-      // Columns, left -> right: 1) Modules  2) Field library  3) Fields  4) Terms.
-      // Field library sits directly LEFT of Fields so a future drag library -> Fields
-      // is adjacent; Terms is pulled out of the Modules column into its own rightmost
-      // column.
+      // Modules — a HORIZONTAL row of tabs directly beneath the description (Task 2).
+      const modulesRow = el("nav", "mf-modules-row");
+      panel.appendChild(modulesRow);
+
+      // Below: three columns — Field library | Fields | Terms (Modules is the row above).
       const grid = el("div", "mf-grid");
-      const colMods = el("div", "mf-col mf-col-modules");
       const colLib = el("div", "mf-col mf-col-library");
       const host = el("div", "mf-col mf-col-fields"); // "Fields" column — the editor mount
       const colTerms = el("div", "mf-col mf-col-terms");
-      grid.appendChild(colMods); grid.appendChild(colLib); grid.appendChild(host); grid.appendChild(colTerms);
+      grid.appendChild(colLib); grid.appendChild(host); grid.appendChild(colTerms);
       panel.appendChild(grid);
 
-      buildModulesColumn(colMods, host, visible);   // 1) Modules (drives the Fields column)
-      buildFieldLibrary(colLib);                    // 2) Field library
-      buildTermsSection(colTerms);                  // 4) Terms — its own rightmost column
+      const currentType = function () { return visible.find(function (t) { return t.key === App.state.fieldsType; }) || visible[0]; };
+      const renderTerms = function () { buildTermsSection(colTerms, currentType(), generic); };
+      function selectModule(key) {
+        App.state.fieldsType = key;
+        Array.prototype.forEach.call(modulesRow.querySelectorAll(".mf-mod-tab"), function (r) { r.classList.toggle("active", r.dataset.key === key); });
+        renderFields(true); // repaint the Fields column
+        renderTerms();      // repaint Terms for the newly-selected module
+      }
+
+      buildFieldLibrary(colLib);                              // Field library (two columns via CSS)
+      buildModulesRow(modulesRow, visible, selectModule);     // Modules horizontal row (⋮ rename/move/hide)
+      renderTerms();                                          // Terms (only those relevant to the module)
 
       fieldsMount = host;
-      await renderFields(true, host);               // 3) Fields
+      await renderFields(true, host);                         // Fields
     }
   }
 

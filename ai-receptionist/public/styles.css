@@ -1688,10 +1688,11 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .settings-tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .settings-tile {
   flex: 1 1 150px; min-width: 128px; max-width: 240px;
-  text-align: center; padding: 12px 14px;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 12px 14px; min-height: 48px;
   border: 1px solid var(--line); border-radius: var(--radius-sm);
   background: var(--panel); color: var(--ink-soft);
-  text-decoration: none; font-weight: 600; font-size: 13.5px;
+  text-decoration: none; font-weight: 600; font-size: 13.5px; line-height: 1.25;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 .settings-tile:hover { background: var(--gray-soft); color: var(--ink); }
@@ -1704,35 +1705,39 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .lbl-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; margin-bottom: 2px; }
 @media (max-width: 560px) { .lbl-row { grid-template-columns: 1fr 1fr; gap: 6px; } }
 
-/* ---------- Modules & Fields (four-column: Modules | Field library | Fields | Terms) ---------- */
-.mf-grid { display: grid; grid-template-columns: minmax(150px, 210px) minmax(140px, 185px) minmax(0, 1fr) minmax(160px, 220px); gap: 16px; align-items: start; }
+/* ---------- Modules & Fields (Modules = horizontal row above; then Field library | Fields | Terms) ---------- */
+.mf-grid { display: grid; grid-template-columns: minmax(150px, 200px) minmax(0, 1fr) minmax(170px, 230px); gap: 16px; align-items: start; }
 .mf-col { min-width: 0; }
-.mf-col-library, .mf-col-modules, .mf-col-terms { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
+.mf-col-library, .mf-col-terms { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
 .mf-col-title { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; color: var(--ink); margin-bottom: 8px; }
 .mf-col-subtitle { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 4px; }
 .mf-col-hint { font-size: 11.5px; color: var(--ink-faint); margin: 0 0 10px; line-height: 1.4; }
-/* Column 1 — field library palette (static this batch; drag-drop lands next batch) */
-.mf-lib-list { display: flex; flex-direction: column; gap: 6px; }
-.mf-lib-item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12.5px; color: var(--ink-soft); cursor: default; }
-.mf-lib-dot { color: var(--ink-faint); font-size: 12px; }
-.mf-lib-name { font-weight: 600; }
-/* Column 2 — modules list */
-.mf-mod-list { display: flex; flex-direction: column; gap: 4px; }
-.mf-mod-row { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
-.mf-mod-row.active { border-color: var(--accent); background: var(--accent-soft); }
-.mf-mod-name { flex: 1 1 auto; min-width: 0; text-align: left; background: none; border: none; padding: 8px 10px; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mf-mod-row.active .mf-mod-name { color: var(--accent); }
-.mf-mod-burger { flex: 0 0 auto; background: none; border: none; color: var(--ink-faint); font-size: 16px; line-height: 1; cursor: pointer; padding: 6px 8px; border-radius: 6px; }
-.mf-mod-burger:hover { background: var(--gray-soft); color: var(--ink); }
+/* Modules — horizontal row of tabs (⋮ rename / move / hide). Wraps on narrow widths. */
+.mf-modules-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.mf-mod-tab { display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.mf-mod-tab.active { border-color: var(--accent); background: var(--accent-soft); }
+.mf-mod-tab-name { background: none; border: none; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.mf-mod-tab.active .mf-mod-tab-name { color: var(--accent); }
+.mf-mod-tab-hidden .mf-mod-tab-name { opacity: 0.5; text-decoration: line-through; }
+.mf-mod-tab-burger { background: none; border: none; color: var(--ink-faint); font-size: 15px; line-height: 1; cursor: pointer; padding: 6px 8px; }
+.mf-mod-tab-burger:hover { background: var(--gray-soft); color: var(--ink); }
+/* Field library — TWO columns of field types. */
+.mf-lib-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mf-lib-item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12.5px; color: var(--ink-soft); cursor: default; min-width: 0; }
+.mf-lib-dot { color: var(--ink-faint); font-size: 12px; flex: 0 0 auto; }
+.mf-lib-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Module ⋮ menu (shared) */
 .mf-mod-menu { z-index: 1300; min-width: 150px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
 .mf-mod-menu-item { text-align: left; background: none; border: none; padding: 8px 10px; border-radius: 7px; font-size: 13.5px; color: var(--ink); cursor: pointer; }
 .mf-mod-menu-item:hover:not([disabled]) { background: var(--row-hover); }
 .mf-mod-menu-item[disabled] { opacity: 0.45; cursor: not-allowed; }
-/* Terms sub-section (generic words) beneath the modules */
+/* Terms column — per-module generic words. */
 .mf-terms { margin-top: 0; }
+.mf-terms-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.mf-terms-for { font-size: 11.5px; font-weight: 600; color: var(--ink-faint); }
 .mf-term-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
 .mf-term-input { margin-bottom: 0; font-size: 12.5px; padding: 6px 8px; }
-/* Column 3 — compact sections & fields */
+/* Fields column — compact rows */
 .mf-fields-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .mf-fields-module { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; }
 .mf-col-fields .field-row { padding: 8px 10px; gap: 8px; flex-wrap: wrap; }
@@ -1744,14 +1749,13 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-col-fields .fields-section-card { padding: 10px 12px; }
 .mf-col-fields .btn-sm { padding: 4px 8px; font-size: 12px; }
 .mf-col-fields .page-actions { flex-wrap: wrap; gap: 8px; }
-/* Responsive: 3 cols -> library+modules with fields full-width below -> single col */
-/* Medium: Modules + Field library share the top row, Fields spans full width,
-   Terms drops to its own row below — never crushed. */
-@media (max-width: 1200px) {
+/* Responsive: 3 cols -> Field library + Terms share a row with Fields full-width ->
+   single column. Never crush/clip. */
+@media (max-width: 1000px) {
   .mf-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .mf-col-fields { grid-column: 1 / -1; }
 }
-@media (max-width: 680px) {
+@media (max-width: 640px) {
   .mf-grid { grid-template-columns: 1fr; }
   .mf-col-fields { grid-column: auto; }
 }
