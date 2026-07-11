@@ -7,6 +7,7 @@
     textarea: "Long text",
     number: "Number",
     percent: "Percent",
+    currency: "Currency",
     date: "Date",
     checkbox: "Checkbox",
     single_select: "Single select",
@@ -16,6 +17,7 @@
     email: "Email",
     formula: "Formula",
     image: "Image",
+    file: "File",
   };
   const TYPES_WITH_OPTIONS = ["single_select", "multi_select"];
   const SYSTEM_KEYS = ["name", "phone", "email", "intent"];
@@ -39,8 +41,14 @@
   function formatValue(def, value, fields, values) {
     if (def.type === "formula") return computeFormula(def.formula, fields || [], values || {});
     if (def.type === "percent") return value === "" || value == null ? "" : `${value}%`;
+    if (def.type === "currency") {
+      if (value === "" || value == null) return "";
+      const n = Number(value);
+      return isFinite(n) ? "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "";
+    }
     if (def.type === "checkbox") return value ? "Yes" : "No";
     if (def.type === "image") return value ? "(image)" : "";
+    if (def.type === "file") return value ? ((value && value.name) || "(file)") : "";
     return scalar(value);
   }
 
@@ -58,7 +66,7 @@
     fields.forEach((def) => {
       const row = el("div", "form-row");
       // Wide field types span both columns in a two-column grid layout.
-      if (def.type === "textarea" || def.type === "multi_select" || def.type === "image" || def.type === "formula") row.classList.add("form-row--wide");
+      if (def.type === "textarea" || def.type === "multi_select" || def.type === "image" || def.type === "file" || def.type === "formula") row.classList.add("form-row--wide");
       const lab = el("label", "form-label", esc(def.label) + (def.required ? ' <span class="req">*</span>' : ""));
       row.appendChild(lab);
 
@@ -114,9 +122,46 @@
             node.appendChild(rm);
           }
         }
+      } else if (def.type === "file") {
+        // Parallel to "image": store { name, data-URL }. Accepts any file (PDF/doc/etc),
+        // shows a filename + open/download link. Same in-value storage as image.
+        node = el("div", "form-file");
+        const info = el("div", "form-file-info");
+        const renderInfo = () => {
+          info.innerHTML = "";
+          const v = values[def.key];
+          const href = v && (v.data || (typeof v === "string" ? v : ""));
+          if (href) {
+            const a = el("a", "form-file-link", esc((v && v.name) || "Attachment"));
+            a.href = href; a.target = "_blank"; a.rel = "noopener"; a.download = (v && v.name) || "attachment";
+            info.appendChild(a);
+          } else { info.appendChild(el("span", "cell-muted", "No file")); }
+        };
+        renderInfo();
+        node.appendChild(info);
+        if (!readOnly) {
+          const file = el("input"); file.type = "file"; file.className = "input";
+          let rmBtn = null;
+          file.onchange = () => {
+            const f = file.files[0]; if (!f) return;
+            if (f.size > 2 * 1024 * 1024) { App.util.toast("File must be under 2 MB", true); file.value = ""; return; }
+            const r = new FileReader();
+            r.onload = () => {
+              setVal({ name: f.name, data: String(r.result) }); renderInfo();
+              if (!rmBtn) { rmBtn = el("button", "link-danger", "Remove file"); rmBtn.onclick = () => { setVal(""); renderInfo(); rmBtn.remove(); rmBtn = null; }; node.appendChild(rmBtn); }
+            };
+            r.readAsDataURL(f);
+          };
+          node.appendChild(file);
+          if (values[def.key]) {
+            rmBtn = el("button", "link-danger", "Remove file");
+            rmBtn.onclick = () => { setVal(""); renderInfo(); rmBtn.remove(); rmBtn = null; };
+            node.appendChild(rmBtn);
+          }
+        }
       } else {
         node = el("input", "input");
-        node.type = def.type === "number" || def.type === "percent" ? "number"
+        node.type = def.type === "number" || def.type === "percent" || def.type === "currency" ? "number"
           : def.type === "email" ? "email" : def.type === "url" ? "url"
           : def.type === "phone" ? "tel" : def.type === "date" ? "date" : "text";
         let v = values[def.key];
@@ -125,6 +170,7 @@
         node.disabled = readOnly;
         node.oninput = () => setVal(node.value);
         if (def.type === "percent") { const wrap = el("div", "form-percent"); wrap.appendChild(node); wrap.appendChild(el("span", "form-suffix", "%")); row.appendChild(lab); row.appendChild(wrap); container.appendChild(row); return; }
+        if (def.type === "currency") { node.step = "0.01"; node.inputMode = "decimal"; const wrap = el("div", "form-currency"); wrap.appendChild(el("span", "form-prefix", "$")); wrap.appendChild(node); row.appendChild(lab); row.appendChild(wrap); container.appendChild(row); return; }
       }
 
       row.appendChild(node);

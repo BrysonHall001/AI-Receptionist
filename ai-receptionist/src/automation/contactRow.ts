@@ -61,7 +61,7 @@ export function valueOf(contact: any, key: string): any {
 export function buildColumns(custom: FieldMeta[]): Column[] {
   return conditionFields(custom).map((f) => ({
     key: f.key,
-    type: f.type === "percent" ? "number" : f.type,
+    type: (f.type === "percent" || f.type === "currency") ? "number" : f.type,
     // Audience membership reads the ids attached to the row at eval time (see attachAudienceMembership).
     get: f.key === AUDIENCE_FIELD_KEY ? (row: any) => (Array.isArray(row.__audienceIds) ? row.__audienceIds : []) : (row: any) => valueOf(row, f.key),
     text: (row: any) => scalar(valueOf(row, f.key)),

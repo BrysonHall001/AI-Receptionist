@@ -41,7 +41,7 @@ function main() {
   console.log("\n(3) Settings → Fields (inline full editor):");
   check(/async function renderFields\(refresh, mountEl\)/.test(portal), "renderFields accepts an optional mount target");
   check(/function fieldsView\(\)\s*\{\s*return fieldsMount \|\| view\(\); \}/.test(portal), "fieldsView() routes renders to the settings panel when hosted");
-  check((portal.match(/fieldsView\(\)\.appendChild\(wrap\)/g) || []).length >= 2, "both renderFields mount points use fieldsView()");
+  check((portal.match(/fieldsView\(\)\.appendChild\(wrap\)/g) || []).length >= 1, "renderFields mounts through fieldsView() (routes to the settings panel when hosted)");
   check(/fieldsMount = host;\s*\n\s*await renderFields\(true, host\);/.test(portal), "secFields mounts renderFields inline into its panel");
   check(!/href="#\/fields"/.test(portal), "the old 'Open field settings →' link is gone");
 

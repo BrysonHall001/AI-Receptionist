@@ -158,7 +158,7 @@ export function buildContactPayload(contact: any, fieldDefs: FieldMeta[]) {
 function sampleFor(f: FieldMeta): any {
   switch (f.type) {
     case "date": return "2025-01-01";
-    case "number": case "percent": return 42;
+    case "number": case "percent": case "currency": return 42;
     case "checkbox": return true;
     case "multi_select": return ["Sample"];
     default: return `Sample ${f.label}`;

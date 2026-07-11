@@ -458,6 +458,7 @@ export function randomValueForField(f: any): any {
   const opts: string[] = Array.isArray(f.options) ? f.options : [];
   switch (f.type) {
     case "number":
+    case "currency":
     case "percent": return rndInt(1, f.type === "percent" ? 100 : 5000);
     case "date": { const d = new Date(Date.now() - rndInt(0, 365) * 86400000); return d.toISOString().slice(0, 10); }
     case "select": return opts.length ? rnd(opts) : `${rnd(D_WORDS)}-${rndToken(3)}`;

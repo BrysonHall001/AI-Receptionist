@@ -90,7 +90,7 @@ export function recordValueOf(record: any, key: string): any {
 export function buildRecordColumns(custom: FieldMeta[]): Column[] {
   return recordConditionFields(custom).map((f) => ({
     key: f.key,
-    type: f.type === "percent" ? "number" : f.type,
+    type: (f.type === "percent" || f.type === "currency") ? "number" : f.type,
     get: (row: any) => recordValueOf(row, f.key),
     text: (row: any) => scalar(recordValueOf(row, f.key)),
   }));

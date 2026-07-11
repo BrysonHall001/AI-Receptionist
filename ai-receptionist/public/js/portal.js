@@ -4,6 +4,7 @@
 
   let current = "dashboard";
   let fieldDropHandled = false; // set true when a field is dropped on a section list
+  let mfLibraryDragType = null; // non-null while dragging a type out of the Field library
 
   function view() { return App.util.$("#view"); }
   function setView(v) { current = v; }
@@ -1849,7 +1850,7 @@
   // plus two synthetic columns (Calls, Time Created). Used by Contacts + Recycle Bin.
   function contactColumnDefs(fields) {
     const SYS = { name: 1, phone: 1, email: 1, intent: 1 };
-    const colType = (t) => (t === "number" ? "number" : t === "date" ? "date" : "text");
+    const colType = (t) => (t === "number" || t === "currency" ? "number" : t === "date" ? "date" : "text");
     const cols = (fields || []).map((f) => {
       const isSys = !!SYS[f.key];
       const get = isSys ? (r) => r[f.key] : (r) => (r.customFields || {})[f.key];
@@ -1860,6 +1861,10 @@
         render:
           f.type === "image"
             ? (r) => { const v = get(r); return v && /^data:image\//i.test(String(v)) ? `<img class="cell-thumb" src="${esc(String(v))}" alt="" />` : `<span class="cell-muted">—</span>`; }
+            : f.type === "file"
+            ? (r) => { const v = get(r); const href = v && (v.data || (typeof v === "string" ? v : "")); const name = (v && v.name) || "file"; return href ? `<a class="cell-link" href="${esc(String(href))}" target="_blank" rel="noopener" download="${esc(name)}">${esc(name)}</a>` : `<span class="cell-muted">—</span>`; }
+            : f.type === "currency"
+            ? (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; }
             : f.key === "name"
             ? (r) => esc(disp(r) || "Unknown")
             : (r) => esc(disp(r) || "—"),
@@ -2786,13 +2791,9 @@
       : `These are the fields on every ${typeWord} in this portal. Ask an admin to change them.`;
     wrap.appendChild(intro);
 
-    if (!fields.length) {
-      // No custom fields for this type — show nothing here (the "+ Add field" button
-      // already covers adding). Pipelines/stages/statuses below still render, so the
-      // tab never looks empty when those exist.
-      if (canEdit && selectedType && selectedType.key !== "contact") { wrap.appendChild(subtypesCard()); wrap.appendChild(statusesCard()); }
-      fieldsView().innerHTML = ""; fieldsView().appendChild(wrap); return;
-    }
+    // Even with no custom fields yet we still render the sections/ungrouped list below,
+    // so there's always a valid drop target for drag-from-library. (Pipelines/statuses
+    // render there too for non-contact types.)
 
     const sorted = sections.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
     const bySection = {}; sorted.forEach((s) => (bySection[s.id] = []));
@@ -2803,6 +2804,20 @@
     // Make a section's field list a drop target: a field dragged from any section
     // (or Ungrouped) can be dropped here, which reassigns its section (display-only)
     // and persists order within this section. Works for locked/system fields too.
+    // Create a new field of a library-dragged TYPE in the given section, then open its
+    // Edit dialog so the user can name it. Uses the same create API + permission as
+    // "+ Add field" (createField also accepts the sectionId for placement).
+    async function createFieldFromLibrary(type, sectionId) {
+      if (!App.fields.TYPE_LABELS[type]) return;
+      const label = App.fields.TYPE_LABELS[type] || "Field";
+      try {
+        const created = await App.portalApi("/api/fields", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label, type, sectionId: sectionId || null }) });
+        App.util.toast(label + " field added — name it");
+        await renderFields(true);
+        if (created && created.id) openFieldModal(created, selectedKey);
+      } catch (err) { App.util.toast(err.message, true); }
+    }
+
     function attachDropList(sectionId) {
       const list = el("div", "field-list");
       list.dataset.section = sectionId || "";
@@ -2830,6 +2845,26 @@
           App.util.toast("Field moved");
           renderFields(true);
         } catch (err) { App.util.toast(err.message, true); renderFields(true); }
+      });
+      // Library drag → CREATE a field of the dropped type here. Separate from the
+      // reorder handlers above (which bail when there's no .field-row.dragging); this
+      // pair only fires while a library item is being dragged (mfLibraryDragType set).
+      list.addEventListener("dragover", (e) => {
+        if (!mfLibraryDragType) return;
+        e.preventDefault();
+        try { e.dataTransfer.dropEffect = "copy"; } catch (_e) {}
+        list.classList.add("field-list--drop");
+      });
+      list.addEventListener("dragleave", (e) => {
+        if (!mfLibraryDragType) return;
+        if (!list.contains(e.relatedTarget)) list.classList.remove("field-list--drop");
+      });
+      list.addEventListener("drop", async (e) => {
+        if (!mfLibraryDragType) return;
+        e.preventDefault();
+        const type = mfLibraryDragType; mfLibraryDragType = null;
+        list.classList.remove("field-list--drop");
+        await createFieldFromLibrary(type, list.dataset.section || null);
       });
       return list;
     }
@@ -2871,6 +2906,7 @@
       head.appendChild(el("div", "fields-section-name", sorted.length ? "Ungrouped" : "All fields"));
       card.appendChild(head);
       const list = attachDropList("");
+      if (!groupFields.length) list.appendChild(el("div", "cell-muted", "No fields here yet — drag a field type in, or use “+ Add field”."));
       sortByOrder(groupFields).forEach((f) => list.appendChild(fieldRow(f, canEdit, fields, selectedKey, sorted, "")));
       card.appendChild(list);
       return card;
@@ -3041,9 +3077,13 @@
       return card;
     }
 
-    sorted.forEach((s, i) => wrap.appendChild(sectionCard(s, bySection[s.id], i)));
-    if (ungrouped.length || !sorted.length) wrap.appendChild(ungroupedCard(ungrouped));
-    if (canEdit && selectedType && selectedType.key !== "contact") { wrap.appendChild(subtypesCard()); wrap.appendChild(statusesCard()); }
+    // Task 3: the sections/fields list scrolls on its own (max-height tied to the
+    // viewport) so the library (left) and Terms (right) columns and the page stay put.
+    const scroll = el("div", "mf-fields-scroll");
+    sorted.forEach((s, i) => scroll.appendChild(sectionCard(s, bySection[s.id], i)));
+    if (ungrouped.length || !sorted.length) scroll.appendChild(ungroupedCard(ungrouped));
+    if (canEdit && selectedType && selectedType.key !== "contact") { scroll.appendChild(subtypesCard()); scroll.appendChild(statusesCard()); }
+    wrap.appendChild(scroll);
 
     fieldsView().innerHTML = "";
     fieldsView().appendChild(wrap);
@@ -3819,13 +3859,29 @@
   // types are exactly those the Add-field flow supports (App.fields.TYPE_LABELS).
   function buildFieldLibrary(col) {
     col.appendChild(el("div", "mf-col-title", "Field library"));
-    col.appendChild(el("p", "mf-col-hint", "The field types you can add. Drag-and-drop is coming soon — for now open a module and use “+ Add field”."));
+    col.appendChild(el("p", "mf-col-hint", "Drag a field type onto a section to add it, or open a module and use “+ Add field”."));
     const list = el("div", "mf-lib-list");
+    const canEdit = App.state.me.role !== "CLIENT_USER";
     Object.keys(App.fields.TYPE_LABELS).forEach(function (t) {
       const item = el("div", "mf-lib-item");
       item.dataset.type = t;
       item.appendChild(el("span", "mf-lib-dot", "▦"));
       item.appendChild(el("span", "mf-lib-name", App.fields.TYPE_LABELS[t]));
+      if (canEdit) {
+        item.draggable = true;
+        item.classList.add("mf-lib-item--draggable");
+        item.addEventListener("dragstart", function (e) {
+          mfLibraryDragType = t;
+          item.classList.add("dragging");
+          try { e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", "fieldtype:" + t); } catch (_e) {}
+        });
+        item.addEventListener("dragend", function () {
+          mfLibraryDragType = null;
+          item.classList.remove("dragging");
+          // Clear any lingering drop highlight.
+          Array.prototype.forEach.call(document.querySelectorAll(".field-list--drop"), function (n) { n.classList.remove("field-list--drop"); });
+        });
+      }
       list.appendChild(item);
     });
     col.appendChild(list);
@@ -4893,7 +4949,7 @@
     // selected module's sections & fields. Module selection replaces the old dropdown.
     async function secFields(panel) {
       panel.innerHTML = `<h2 class="settings-h">Modules &amp; Fields</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Your modules, what their records are called, and the fields on each. Drag-and-drop field creation is coming soon — for now use “+ Add field”.</p>`;
+        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Your modules, what their records are called, and the fields on each. Drag a field type onto a section to add it, or use “+ Add field”.</p>`;
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
       const visible = (types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -5806,7 +5862,13 @@
     (fields || []).forEach((f) => {
       const get = (r) => (r.customFields || {})[f.key];
       const disp = (r) => { const v = get(r); return Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); };
-      cols.push({ key: f.key, label: f.label, type: (f.type === "number" ? "number" : f.type === "date" ? "date" : "text"), get, text: disp, render: (r) => esc(disp(r) || "—") });
+      const colTy = (f.type === "number" || f.type === "currency") ? "number" : f.type === "date" ? "date" : "text";
+      let render;
+      if (f.type === "image") render = (r) => { const v = get(r); return v && /^data:image\//i.test(String(v)) ? `<img class="cell-thumb" src="${esc(String(v))}" alt="" />` : `<span class="cell-muted">—</span>`; };
+      else if (f.type === "file") render = (r) => { const v = get(r); const href = v && (v.data || (typeof v === "string" ? v : "")); const name = (v && v.name) || "file"; return href ? `<a class="cell-link" href="${esc(String(href))}" target="_blank" rel="noopener" download="${esc(name)}">${esc(name)}</a>` : `<span class="cell-muted">—</span>`; };
+      else if (f.type === "currency") render = (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
+      else render = (r) => esc(disp(r) || "—");
+      cols.push({ key: f.key, label: f.label, type: colTy, get, text: disp, render });
     });
     cols.push({ key: "createdAt", label: "Created", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` });
     return cols;

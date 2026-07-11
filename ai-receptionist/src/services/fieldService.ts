@@ -2,8 +2,8 @@ import { prisma } from "../db/client";
 import { ensureContactRecordType, resolveRecordTypeId } from "./recordTypeService";
 
 export const FIELD_TYPES = [
-  "text", "textarea", "number", "percent", "date", "checkbox",
-  "single_select", "multi_select", "phone", "url", "email", "formula", "image",
+  "text", "textarea", "number", "percent", "currency", "date", "checkbox",
+  "single_select", "multi_select", "phone", "url", "email", "formula", "image", "file",
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
@@ -75,10 +75,18 @@ export async function createField(tenantId: string, input: {
   required?: boolean;
   options?: string[];
   formula?: string | null;
+  sectionId?: string | null;
 }, recordType?: string | null) {
   if (!input.label || !input.label.trim()) throw new Error("Label is required");
   if (!FIELD_TYPES.includes(input.type as FieldType)) throw new Error("Unknown field type");
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
+  // Optional section placement (used by drag-from-library). Validated the same way
+  // setFieldSection does: must be this tenant's section and the same record type.
+  let sectionId: string | null = input.sectionId ? String(input.sectionId) : null;
+  if (sectionId) {
+    const section = await (prisma as any).fieldSection.findFirst({ where: { id: sectionId, tenantId } });
+    if (!section || (section.recordTypeId && section.recordTypeId !== recordTypeId)) sectionId = null;
+  }
   const key = await uniqueKey(tenantId, recordTypeId, slugify(input.label));
   const max = await prisma.fieldDef.aggregate({ where: { tenantId, recordTypeId } as any, _max: { order: true } });
   const order = (max._max.order ?? -1) + 1;
@@ -93,6 +101,7 @@ export async function createField(tenantId: string, input: {
       required: !!input.required,
       options: (input.options ?? []) as any,
       formula: input.type === "formula" ? input.formula ?? "" : null,
+      sectionId,
       order,
       system: false,
     } as any,

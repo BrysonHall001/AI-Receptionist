@@ -1635,8 +1635,8 @@ apiRouter.post("/fields", async (req: Request, res: Response) => {
   if (!tenantId) return;
   if (!fieldsAdminOnly(req, res)) return;
   try {
-    const { label, type, required, options, formula, recordType } = (req.body ?? {}) as any;
-    res.json(await createField(tenantId, { label, type, required, options, formula }, recordType ?? null));
+    const { label, type, required, options, formula, recordType, sectionId } = (req.body ?? {}) as any;
+    res.json(await createField(tenantId, { label, type, required, options, formula, sectionId }, recordType ?? null));
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

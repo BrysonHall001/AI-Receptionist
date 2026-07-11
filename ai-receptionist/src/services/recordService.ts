@@ -692,8 +692,9 @@ export function coerceCustomValue(def: any, raw: any): { value?: any; empty?: bo
   const s = String(raw).trim();
   switch (def.type || "text") {
     case "number":
-    case "percent": {
-      const n = Number(s.replace(/,/g, ""));
+    case "percent":
+    case "currency": {
+      const n = Number(s.replace(/[$,\s]/g, ""));
       if (!isFinite(n)) return { error: `"${s}" isn't a valid number` };
       return { value: n };
     }

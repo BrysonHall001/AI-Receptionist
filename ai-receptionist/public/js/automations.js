@@ -812,7 +812,7 @@
   function fieldType(key) {
     const f = condFieldList().find((x) => x.key === key);
     const t = f ? f.type : "text";
-    return t === "percent" ? "number" : (t === "date" || t === "number") ? t : "text";
+    return (t === "percent" || t === "currency") ? "number" : (t === "date" || t === "number") ? t : "text";
   }
   function fieldLabel(key) {
     const f = condFieldList().find((x) => x.key === key);
@@ -1391,7 +1391,7 @@
     if (isRecordTrigger(triggerType)) {
       return (meta.recordConditionFields || []).map((f) => ({
         key: f.key, label: f.label,
-        type: f.type === "percent" ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
+        type: (f.type === "percent" || f.type === "currency") ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
         get: (row) => recordValueOf(row, f.key),
         text: (row) => scalar(recordValueOf(row, f.key)),
       }));
@@ -1399,7 +1399,7 @@
     return (meta.fields || []).map((f) => ({
       key: f.key,
       label: f.label,
-      type: f.type === "percent" ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
+      type: (f.type === "percent" || f.type === "currency") ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
       get: (row) => valueOf(row, f.key),
       text: (row) => scalar(valueOf(row, f.key)),
     })).concat([{
@@ -2006,7 +2006,7 @@
       }
       rebuildNotify();
     } else if (act.type === "update_field") {
-      const writable = (meta.fields || []).filter((f) => f.key !== "createdAt" && f.type !== "formula" && f.type !== "image").map((f) => ({ value: f.key, label: f.label }));
+      const writable = (meta.fields || []).filter((f) => f.key !== "createdAt" && f.type !== "formula" && f.type !== "image" && f.type !== "file").map((f) => ({ value: f.key, label: f.label }));
       cfg.appendChild(small("Field")); cfg.appendChild(selectOf("field", writable));
       cfg.appendChild(small("Set to (supports {{field}})")); cfg.appendChild(text("value", "value"));
     } else if (act.type === "add_tag" || act.type === "remove_tag") {
@@ -2194,7 +2194,7 @@
 
         const isDate = c.op === "date_add" || c.op === "date_subtract";
         const dateFields = (meta.fields || []).filter((f) => f.type === "date").map((f) => ({ value: f.key, label: f.label }));
-        const writable = (meta.fields || []).filter((f) => f.key !== "createdAt" && f.type !== "formula" && f.type !== "image").map((f) => ({ value: f.key, label: f.label }));
+        const writable = (meta.fields || []).filter((f) => f.key !== "createdAt" && f.type !== "formula" && f.type !== "image" && f.type !== "file").map((f) => ({ value: f.key, label: f.label }));
         const srcOptions = isDate ? dateFields : writable;
         const destOptions = isDate ? dateFields.filter((o) => o.value !== "createdAt") : writable;
 
@@ -2269,7 +2269,7 @@
   // custom fields (handled server-side).
   function valueRowsEditor(c) {
     if (!Array.isArray(c.values)) c.values = [];
-    const writable = (meta.fields || []).filter((f) => f.key !== "createdAt" && f.type !== "formula" && f.type !== "image").map((f) => ({ value: f.key, label: f.label }));
+    const writable = (meta.fields || []).filter((f) => f.key !== "createdAt" && f.type !== "formula" && f.type !== "image" && f.type !== "file").map((f) => ({ value: f.key, label: f.label }));
     const list = el("div");
     function redraw() {
       list.innerHTML = "";

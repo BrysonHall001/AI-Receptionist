@@ -601,8 +601,15 @@ textarea.input { resize: vertical; }
 .form-percent { display: flex; align-items: center; gap: 8px; }
 .form-percent .input { margin: 0; }
 .form-suffix { color: var(--ink-faint); }
+.form-currency { display: flex; align-items: center; gap: 6px; }
+.form-currency .input { margin: 0; }
+.form-prefix { color: var(--ink-faint); font-weight: 600; }
 .form-image { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .form-img-preview { max-width: 120px; max-height: 120px; border-radius: 8px; border: 1px solid var(--line); object-fit: cover; }
+.form-file { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.form-file-info { font-size: 13px; }
+.form-file-link { color: var(--accent); text-decoration: underline; word-break: break-all; }
+.cell-link { color: var(--accent); text-decoration: underline; }
 .field-editor .input { margin-bottom: 0; }
 .drawer-meta { display: flex; gap: 8px; font-size: 12px; color: var(--ink-faint); margin-bottom: 16px; }
 .drawer-save-bar { margin: 8px 0 20px; }
@@ -1724,6 +1731,9 @@ tbody tr.row-selected { background: var(--accent-soft); }
 /* Field library — TWO columns of field types. */
 .mf-lib-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .mf-lib-item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12.5px; color: var(--ink-soft); cursor: default; min-width: 0; }
+.mf-lib-item--draggable { cursor: grab; }
+.mf-lib-item--draggable:hover { border-color: var(--accent); color: var(--ink); }
+.mf-lib-item.dragging { opacity: 0.5; }
 .mf-lib-dot { color: var(--ink-faint); font-size: 12px; flex: 0 0 auto; }
 .mf-lib-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Module ⋮ menu (shared) */
@@ -1749,6 +1759,13 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-col-fields .fields-section-card { padding: 10px 12px; }
 .mf-col-fields .btn-sm { padding: 4px 8px; font-size: 12px; }
 .mf-col-fields .page-actions { flex-wrap: wrap; gap: 8px; }
+/* Task 2: a section list highlights as a valid drop target while dragging a field
+   type out of the library. */
+.field-list--drop { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 8px; background: var(--accent-soft); }
+/* Task 3: the sections/fields list scrolls independently so the side columns and the
+   rest of the page stay put. Disabled when columns stack on narrow screens. */
+.mf-fields-scroll { max-height: calc(100vh - 250px); min-height: 120px; overflow-y: auto; padding-right: 4px; }
+@media (max-width: 640px) { .mf-fields-scroll { max-height: none; overflow: visible; padding-right: 0; } }
 /* Responsive: 3 cols -> Field library + Terms share a row with Fields full-width ->
    single column. Never crush/clip. */
 @media (max-width: 1000px) {
