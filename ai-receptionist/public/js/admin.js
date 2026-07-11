@@ -418,13 +418,13 @@
   }
 
   // ===================== Owner page-lock (master-hub only) =====================
-  // The lockable left-nav pages. Jobs & Bookings share the records area + endpoints, so
-  // they're ONE lock unit (locking hides both nav items and blocks /records*).
+  // The lockable FIXED app pages only. Record-type pages (Contacts/Jobs/Bookings/
+  // Equipment/…) are intentionally NOT here — they're governed by Modules (nav
+  // visibility) + role permissions. Server enforcement (LOCKABLE_HREFS + lockGate)
+  // is unchanged, so any record-type lock set elsewhere still 403s.
   const LOCKABLE_PAGES = [
     { label: "Home Dashboard", hrefs: ["#/dashboard"] },
     { label: "Calls", hrefs: ["#/calls"] },
-    { label: "Contacts", hrefs: ["#/contacts"] },
-    { label: "Jobs & Bookings", hrefs: ["#/jobs", "#/bookings"] },
     { label: "Analytics", hrefs: ["#/reports"] },
     { label: "Automations", hrefs: ["#/automations"] },
     { label: "Communication", hrefs: ["#/communication"] },
@@ -433,8 +433,8 @@
     { label: "Billing", hrefs: ["#/billing"] },
   ];
   // Build a checklist of lockable pages into `host`, reflecting `lockedHrefs`. A box is
-  // checked when ALL of its hrefs are locked; toggling adds/removes all of them (so the
-  // Jobs & Bookings pair moves together). Returns a getter for the selected hrefs and
+  // checked when ALL of its hrefs are locked; toggling adds/removes all of them (so a
+  // multi-href page moves together). Returns a getter for the selected hrefs and
   // calls onChange(hrefs) on every toggle. Shared by the config view + wizard step 4.
   function lockChecklist(host, lockedHrefs, onChange) {
     const locked = new Set(lockedHrefs || []);
@@ -453,10 +453,10 @@
   // portal. Owner-only by the admin router guard; no in-portal equivalent exists.
   function pageAccessSection(portal) {
     const sec = el("div");
-    const h = el("h2", "settings-h", "Page access");
+    const h = el("h2", "settings-h", "Pages");
     sec.appendChild(h);
     const hint = el("p", "cell-muted"); hint.style.cssText = "font-size:12.5px;margin:0 0 8px";
-    hint.textContent = "Lock pages for this tenant. A locked page is hidden from everyone in the tenant — including its Portal Admin — and can't be reached by direct link or API.";
+    hint.textContent = "Lock fixed app pages for this tenant. A locked page is hidden from everyone in the tenant — including its Portal Admin — and can't be reached by direct link or API. (Record-type sections are managed as Modules, chosen when the tenant is created and toggled under Settings → Labels.)";
     sec.appendChild(hint);
     const card = el("div", "card"); card.style.cssText = "padding:20px";
     const listHost = el("div");
@@ -468,7 +468,7 @@
       try {
         await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ lockedPages: getLocked() }) });
         portal.lockedPages = getLocked();
-        toast("Page access updated"); save.disabled = false;
+        toast("Pages updated"); save.disabled = false;
       } catch (e) { toast(e.message, true); save.disabled = false; }
     };
     card.appendChild(save);
@@ -653,25 +653,26 @@
     const vCap = el("p", "cell-muted"); vCap.style.cssText = "margin:8px 0 0;font-size:13px;";
     vCap.textContent = "Off declines inbound calls. Standard voice is the basic back-and-forth receptionist. Premium voice uses the smooth ElevenLabs voice.";
     s4.appendChild(vWrap); s4.appendChild(vCap);
-    // Page access (owner page-lock) — sets the INITIAL locked set into the draft.
+    // Pages (owner hard-lock) — fixed app pages only; sets the INITIAL locked set.
     const lockHost = el("div"); lockHost.style.marginTop = "16px";
-    const lockLab = el("label", "field-label", "Page access"); lockLab.style.cssText = "margin:0 0 2px";
+    const lockLab = el("label", "field-label", "Pages"); lockLab.style.cssText = "margin:0 0 2px";
     const lockNote = el("p", "cell-muted"); lockNote.style.cssText = "margin:0 0 4px;font-size:12.5px;";
-    lockNote.textContent = "Lock pages so this tenant can't see or reach them. You can change this anytime from the tenant's row.";
+    lockNote.textContent = "Lock fixed app pages. A locked page is blocked for everyone in the tenant — including its Portal Admin — and can't be reached by menu, direct link, or API unless an admin unlocks it. (Record-type sections are managed under Modules below.)";
     lockHost.appendChild(lockLab); lockHost.appendChild(lockNote);
     lockChecklist(lockHost, draft.lockedPages, (arr) => { draft.lockedPages = arr; });
     s4.appendChild(lockHost);
 
-    // ---- Sections / record types (VISIBILITY at creation) --------------------
-    // A checklist of the record-type sections this new tenant starts with. Contacts
-    // is core (always on). Unchecking a section HIDES its nav item — the type is
-    // still created, so it can be un-hidden later under Settings → Labels with no
-    // data risk. The list is DYNAMIC (from the registry), so a future record type
-    // shows up here automatically. Default: everything checked (all visible).
+    // ---- Modules (record-type VISIBILITY at creation) ------------------------
+    // A checklist of the record-type modules this new tenant starts with, each
+    // listed individually and pulled from the registry (so a future type appears
+    // here automatically). Contacts is core (always on). Unchecking a module HIDES
+    // its nav item — the type is still created, so it can be turned back on later
+    // under Settings → Labels with no data risk. Default: everything checked.
+    // This is VISIBILITY only (reversible hide), distinct from the hard-lock above.
     const secHost = el("div"); secHost.style.marginTop = "16px";
-    const secLab = el("label", "field-label", "Sections / record types"); secLab.style.cssText = "margin:0 0 2px";
+    const secLab = el("label", "field-label", "Modules"); secLab.style.cssText = "margin:0 0 2px";
     const secNote = el("p", "cell-muted"); secNote.style.cssText = "margin:0 0 4px;font-size:12.5px;";
-    secNote.textContent = "Choose which record-type sections show in this tenant's menu. Unchecked ones are just hidden (still created) — you can turn them back on anytime under Settings → Labels.";
+    secNote.textContent = "Choose which record sections this portal has. Unchecked ones are hidden (still created) — turn them on anytime under Settings → Labels.";
     secHost.appendChild(secLab); secHost.appendChild(secNote);
     const secList = el("div"); secList.appendChild(el("p", "cell-muted", "Loading…"));
     secHost.appendChild(secList);
@@ -697,7 +698,7 @@
         }
         secList.appendChild(row);
       });
-    }).catch(() => { secList.innerHTML = ""; secList.appendChild(el("p", "cell-muted", "Couldn't load sections — the tenant will start with all sections visible.")); });
+    }).catch(() => { secList.innerHTML = ""; secList.appendChild(el("p", "cell-muted", "Couldn't load modules — the tenant will start with all modules visible.")); });
     wrap.appendChild(s4);
 
     // ---- Footer: Finish creates the tenant, then applies the draft, then enters it ----

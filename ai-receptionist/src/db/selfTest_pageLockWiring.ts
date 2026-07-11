@@ -68,7 +68,7 @@ function main() {
 
   // ---------- master-hub UI + wizard, no in-portal control ----------
   console.log("\n(6) master-hub UI + create wizard:");
-  check(has(adminjs, "LOCKABLE_PAGES") && has(adminjs, '"Jobs & Bookings"'), "lock checklist with Jobs & Bookings as one unit");
+  check(has(adminjs, "LOCKABLE_PAGES") && !has(adminjs, '"Jobs & Bookings"') && !has(slice(adminjs, "const LOCKABLE_PAGES", "];"), "#/jobs") && has(adminjs, '"Modules"'), "lock checklist is fixed-pages-only; record types (Jobs/Bookings) moved to Modules");
   const cfg = slice(adminjs, "function pageAccessSection", "async function renderTenantDetail");
   check(has(cfg, '/api/admin/portals/') && has(cfg, "lockedPages: getLocked()"), "page-access section PATCHes lockedPages");
   const detail = slice(adminjs, "async function renderTenantDetail(portalRow)", "function renderSetupScreen()");
