@@ -18,6 +18,9 @@
     formula: "Formula",
     image: "Image",
     file: "File",
+    address: "Address",
+    rating: "Rating",
+    duration: "Duration",
   };
   const TYPES_WITH_OPTIONS = ["single_select", "multi_select"];
   const SYSTEM_KEYS = ["name", "phone", "email", "intent"];
@@ -37,6 +40,18 @@
     });
   }
 
+  function fmtDuration(mins) {
+    const n = Math.max(0, Math.round(Number(mins) || 0));
+    const h = Math.floor(n / 60), m = n % 60;
+    if (!n) return "0m";
+    return (h ? h + "h" : "") + (h && m ? " " : "") + (m ? m + "m" : "");
+  }
+  function fmtAddress(v) {
+    if (!v) return "";
+    if (typeof v === "string") return v;
+    return [v.street, v.city, v.state, v.postal, v.country].map(function (x) { return (x == null ? "" : String(x)).trim(); }).filter(Boolean).join(", ");
+  }
+
   // Display string for a field value (used in read contexts).
   function formatValue(def, value, fields, values) {
     if (def.type === "formula") return computeFormula(def.formula, fields || [], values || {});
@@ -46,6 +61,9 @@
       const n = Number(value);
       return isFinite(n) ? "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "";
     }
+    if (def.type === "rating") { const n = Number(value); return value === "" || value == null || !isFinite(n) ? "" : `${Math.round(n)}/5`; }
+    if (def.type === "duration") return value === "" || value == null ? "" : fmtDuration(value);
+    if (def.type === "address") return fmtAddress(value);
     if (def.type === "checkbox") return value ? "Yes" : "No";
     if (def.type === "image") return value ? "(image)" : "";
     if (def.type === "file") return value ? ((value && value.name) || "(file)") : "";
@@ -66,7 +84,7 @@
     fields.forEach((def) => {
       const row = el("div", "form-row");
       // Wide field types span both columns in a two-column grid layout.
-      if (def.type === "textarea" || def.type === "multi_select" || def.type === "image" || def.type === "file" || def.type === "formula") row.classList.add("form-row--wide");
+      if (def.type === "textarea" || def.type === "multi_select" || def.type === "image" || def.type === "file" || def.type === "address" || def.type === "formula") row.classList.add("form-row--wide");
       const lab = el("label", "form-label", esc(def.label) + (def.required ? ' <span class="req">*</span>' : ""));
       row.appendChild(lab);
 
@@ -122,6 +140,43 @@
             node.appendChild(rm);
           }
         }
+      } else if (def.type === "rating") {
+        // 1–5 stars; click a star to set, click the current value to clear.
+        node = el("div", "form-rating");
+        const cur = Number(values[def.key]) || 0;
+        const stars = [];
+        const paint = (n) => stars.forEach((st, i) => { st.textContent = i < n ? "\u2605" : "\u2606"; st.classList.toggle("on", i < n); });
+        for (let i = 1; i <= 5; i++) {
+          const st = el("button", "form-star"); st.type = "button"; st.dataset.n = String(i);
+          if (!readOnly) st.onclick = () => { const nv = (Number(values[def.key]) || 0) === i ? "" : i; setVal(nv); paint(Number(nv) || 0); };
+          else st.disabled = true;
+          stars.push(st); node.appendChild(st);
+        }
+        paint(cur);
+      } else if (def.type === "duration") {
+        // Two inputs (hours + minutes) that store a single integer number of minutes.
+        node = el("div", "form-duration");
+        const total = Math.max(0, Math.round(Number(values[def.key]) || 0));
+        const hIn = el("input", "input"); hIn.type = "number"; hIn.min = "0"; hIn.placeholder = "0"; hIn.value = total ? String(Math.floor(total / 60)) : "";
+        const mIn = el("input", "input"); mIn.type = "number"; mIn.min = "0"; mIn.max = "59"; mIn.placeholder = "0"; mIn.value = total ? String(total % 60) : "";
+        hIn.disabled = mIn.disabled = readOnly;
+        const sync = () => { const mins = (parseInt(hIn.value, 10) || 0) * 60 + (parseInt(mIn.value, 10) || 0); setVal(mins ? mins : ""); };
+        hIn.oninput = sync; mIn.oninput = sync;
+        node.appendChild(hIn); node.appendChild(el("span", "form-suffix", "h"));
+        node.appendChild(mIn); node.appendChild(el("span", "form-suffix", "m"));
+      } else if (def.type === "address") {
+        // Structured address stored as { street, city, state, postal, country }.
+        node = el("div", "form-address");
+        const cur = (values[def.key] && typeof values[def.key] === "object") ? values[def.key] : {};
+        const parts = [["street", "Street"], ["city", "City"], ["state", "State / region"], ["postal", "Postal code"], ["country", "Country"]];
+        const model = { street: cur.street || "", city: cur.city || "", state: cur.state || "", postal: cur.postal || "", country: cur.country || "" };
+        const commit = () => { const any = Object.keys(model).some((k) => String(model[k]).trim()); setVal(any ? Object.assign({}, model) : ""); };
+        parts.forEach(([k, ph]) => {
+          const inp = el("input", "input form-address-part"); inp.placeholder = ph; inp.value = model[k]; inp.disabled = readOnly;
+          if (k === "street") inp.classList.add("form-address-street");
+          inp.oninput = () => { model[k] = inp.value; commit(); };
+          node.appendChild(inp);
+        });
       } else if (def.type === "file") {
         // Parallel to "image": store { name, data-URL }. Accepts any file (PDF/doc/etc),
         // shows a filename + open/download link. Same in-value storage as image.
@@ -213,5 +268,5 @@
     return combinedOnChange;
   }
 
-  App.fields = { TYPE_LABELS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, renderGroupedEditor, formatValue, computeFormula };
+  App.fields = { TYPE_LABELS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, renderGroupedEditor, formatValue, computeFormula, fmtDuration, fmtAddress };
 })(typeof window !== "undefined" ? window : globalThis);

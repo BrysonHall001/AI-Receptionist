@@ -34,7 +34,7 @@ check(F.formatValue({ type: "file" }, null) === "", "empty file shows blank");
 console.log("\n(2) editors (fields.js):");
 check(/def\.type === "file"/.test(fieldsSrc) && /form-file-link/.test(fieldsSrc), "file editor renders a download/open link");
 check(/def\.type === "currency"/.test(fieldsSrc) && /form-currency/.test(fieldsSrc) && /"form-prefix", "\$"/.test(fieldsSrc), "currency editor shows a $ prefix");
-check(/def\.type === "textarea" \|\| def\.type === "multi_select" \|\| def\.type === "image" \|\| def\.type === "file" \|\| def\.type === "formula"/.test(fieldsSrc), "file is a wide field row");
+check(/def\.type === "textarea" \|\| def\.type === "multi_select" \|\| def\.type === "image" \|\| def\.type === "file" \|\| def\.type === "address" \|\| def\.type === "formula"/.test(fieldsSrc), "file is a wide field row");
 
 console.log("\n(3) drag-from-library create (Task 2):");
 check(/item\.draggable = true;/.test(portal) && /mfLibraryDragType = t;/.test(portal), "library items are draggable and carry their type");

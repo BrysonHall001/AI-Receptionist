@@ -812,7 +812,7 @@
   function fieldType(key) {
     const f = condFieldList().find((x) => x.key === key);
     const t = f ? f.type : "text";
-    return (t === "percent" || t === "currency") ? "number" : (t === "date" || t === "number") ? t : "text";
+    return (t === "percent" || t === "currency" || t === "rating" || t === "duration") ? "number" : (t === "date" || t === "number") ? t : "text";
   }
   function fieldLabel(key) {
     const f = condFieldList().find((x) => x.key === key);
@@ -1391,7 +1391,7 @@
     if (isRecordTrigger(triggerType)) {
       return (meta.recordConditionFields || []).map((f) => ({
         key: f.key, label: f.label,
-        type: (f.type === "percent" || f.type === "currency") ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
+        type: (f.type === "percent" || f.type === "currency" || f.type === "rating" || f.type === "duration") ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
         get: (row) => recordValueOf(row, f.key),
         text: (row) => scalar(recordValueOf(row, f.key)),
       }));
@@ -1399,7 +1399,7 @@
     return (meta.fields || []).map((f) => ({
       key: f.key,
       label: f.label,
-      type: (f.type === "percent" || f.type === "currency") ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
+      type: (f.type === "percent" || f.type === "currency" || f.type === "rating" || f.type === "duration") ? "number" : (f.type === "date" ? "date" : (f.type === "number" ? "number" : "text")),
       get: (row) => valueOf(row, f.key),
       text: (row) => scalar(valueOf(row, f.key)),
     })).concat([{

@@ -4,6 +4,7 @@ import { ensureContactRecordType, resolveRecordTypeId } from "./recordTypeServic
 export const FIELD_TYPES = [
   "text", "textarea", "number", "percent", "currency", "date", "checkbox",
   "single_select", "multi_select", "phone", "url", "email", "formula", "image", "file",
+  "address", "rating", "duration",
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 

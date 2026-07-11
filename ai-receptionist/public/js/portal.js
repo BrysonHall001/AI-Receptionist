@@ -5,6 +5,7 @@
   let current = "dashboard";
   let fieldDropHandled = false; // set true when a field is dropped on a section list
   let mfLibraryDragType = null; // non-null while dragging a type out of the Field library
+  let mfScrollResizeBound = false; // window-resize listener for the Fields column height
 
   function view() { return App.util.$("#view"); }
   function setView(v) { current = v; }
@@ -1850,7 +1851,7 @@
   // plus two synthetic columns (Calls, Time Created). Used by Contacts + Recycle Bin.
   function contactColumnDefs(fields) {
     const SYS = { name: 1, phone: 1, email: 1, intent: 1 };
-    const colType = (t) => (t === "number" || t === "currency" ? "number" : t === "date" ? "date" : "text");
+    const colType = (t) => (t === "number" || t === "currency" || t === "rating" || t === "duration" ? "number" : t === "date" ? "date" : "text");
     const cols = (fields || []).map((f) => {
       const isSys = !!SYS[f.key];
       const get = isSys ? (r) => r[f.key] : (r) => (r.customFields || {})[f.key];
@@ -1863,6 +1864,12 @@
             ? (r) => { const v = get(r); return v && /^data:image\//i.test(String(v)) ? `<img class="cell-thumb" src="${esc(String(v))}" alt="" />` : `<span class="cell-muted">—</span>`; }
             : f.type === "file"
             ? (r) => { const v = get(r); const href = v && (v.data || (typeof v === "string" ? v : "")); const name = (v && v.name) || "file"; return href ? `<a class="cell-link" href="${esc(String(href))}" target="_blank" rel="noopener" download="${esc(name)}">${esc(name)}</a>` : `<span class="cell-muted">—</span>`; }
+            : f.type === "rating"
+            ? (r) => { const n = Math.round(Number(get(r)) || 0); return n ? `<span class="cell-stars">${esc("\u2605".repeat(n) + "\u2606".repeat(5 - n))}</span>` : `<span class="cell-muted">—</span>`; }
+            : f.type === "duration"
+            ? (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; }
+            : f.type === "address"
+            ? (r) => { const s = App.fields.fmtAddress(get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; }
             : f.type === "currency"
             ? (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; }
             : f.key === "name"
@@ -3077,8 +3084,10 @@
       return card;
     }
 
-    // Task 3: the sections/fields list scrolls on its own (max-height tied to the
-    // viewport) so the library (left) and Terms (right) columns and the page stay put.
+    // Task: give the Fields list its OWN scroll that fits the viewport, so scrolling
+    // while hovering it moves only this column (the library, Terms, and page stay put).
+    // Tie its max-height to the element's ACTUAL top so it always fits regardless of how
+    // much sits above it; recompute on resize.
     const scroll = el("div", "mf-fields-scroll");
     sorted.forEach((s, i) => scroll.appendChild(sectionCard(s, bySection[s.id], i)));
     if (ungrouped.length || !sorted.length) scroll.appendChild(ungroupedCard(ungrouped));
@@ -3087,6 +3096,22 @@
 
     fieldsView().innerHTML = "";
     fieldsView().appendChild(wrap);
+
+    if (typeof window !== "undefined" && window.requestAnimationFrame) {
+      window.requestAnimationFrame(sizeMfFieldsScroll);
+      if (!mfScrollResizeBound) { mfScrollResizeBound = true; window.addEventListener("resize", sizeMfFieldsScroll); }
+    }
+  }
+
+  // Cap the Fields column to the space between its top and the viewport bottom, so it
+  // scrolls internally instead of pushing the page. No-op when the column isn't shown
+  // or when it's stacked on a narrow screen (its CSS max-height is removed there).
+  function sizeMfFieldsScroll() {
+    const s = document.querySelector(".mf-fields-scroll");
+    if (!s) return;
+    if (window.innerWidth <= 640) { s.style.maxHeight = ""; return; }
+    const top = s.getBoundingClientRect().top;
+    s.style.maxHeight = Math.max(200, Math.round(window.innerHeight - top - 24)) + "px";
   }
 
   function fieldRow(f, canEdit, allFields, recordTypeKey, sections, currentSectionId) {
@@ -5862,10 +5887,13 @@
     (fields || []).forEach((f) => {
       const get = (r) => (r.customFields || {})[f.key];
       const disp = (r) => { const v = get(r); return Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); };
-      const colTy = (f.type === "number" || f.type === "currency") ? "number" : f.type === "date" ? "date" : "text";
+      const colTy = (f.type === "number" || f.type === "currency" || f.type === "rating" || f.type === "duration") ? "number" : f.type === "date" ? "date" : "text";
       let render;
       if (f.type === "image") render = (r) => { const v = get(r); return v && /^data:image\//i.test(String(v)) ? `<img class="cell-thumb" src="${esc(String(v))}" alt="" />` : `<span class="cell-muted">—</span>`; };
       else if (f.type === "file") render = (r) => { const v = get(r); const href = v && (v.data || (typeof v === "string" ? v : "")); const name = (v && v.name) || "file"; return href ? `<a class="cell-link" href="${esc(String(href))}" target="_blank" rel="noopener" download="${esc(name)}">${esc(name)}</a>` : `<span class="cell-muted">—</span>`; };
+      else if (f.type === "rating") render = (r) => { const n = Math.round(Number(get(r)) || 0); return n ? `<span class="cell-stars">${esc("\u2605".repeat(n) + "\u2606".repeat(5 - n))}</span>` : `<span class="cell-muted">—</span>`; };
+      else if (f.type === "duration") render = (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
+      else if (f.type === "address") render = (r) => { const s = App.fields.fmtAddress(get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
       else if (f.type === "currency") render = (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
       else render = (r) => esc(disp(r) || "—");
       cols.push({ key: f.key, label: f.label, type: colTy, get, text: disp, render });

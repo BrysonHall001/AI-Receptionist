@@ -693,9 +693,13 @@ export function coerceCustomValue(def: any, raw: any): { value?: any; empty?: bo
   switch (def.type || "text") {
     case "number":
     case "percent":
-    case "currency": {
+    case "currency":
+    case "rating":
+    case "duration": {
       const n = Number(s.replace(/[$,\s]/g, ""));
       if (!isFinite(n)) return { error: `"${s}" isn't a valid number` };
+      if (def.type === "rating") return { value: Math.max(1, Math.min(5, Math.round(n))) };
+      if (def.type === "duration") return { value: Math.max(0, Math.round(n)) };
       return { value: n };
     }
     case "date": {

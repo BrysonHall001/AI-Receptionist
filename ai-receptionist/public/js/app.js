@@ -231,7 +231,21 @@
     const byHref = {}; navList.forEach((it) => { byHref[it[0]] = it; });
     const seen = {}; const ordered = [];
     cfg.order.forEach((href) => { if (byHref[href] && !seen[href]) { ordered.push(byHref[href]); seen[href] = true; } });
-    navList.forEach((it) => { if (!seen[it[0]]) { ordered.push(it); seen[it[0]] = true; } });
+    // Items NOT in the saved order (e.g. a page like Calls dropped from an older saved
+    // order during a layout change) are re-inserted at their NATURAL position — right
+    // after their nearest preceding neighbour from the canonical nav — instead of being
+    // appended at the very end. So Calls lands directly right of Home Dashboard again,
+    // while any user reordering still wins once it's part of the saved order.
+    navList.forEach((it, idx) => {
+      if (seen[it[0]]) return;
+      let insertAt = ordered.length;
+      for (let k = idx - 1; k >= 0; k--) {
+        const pos = ordered.findIndex((o) => o[0] === navList[k][0]);
+        if (pos !== -1) { insertAt = pos + 1; break; }
+      }
+      ordered.splice(insertAt, 0, it);
+      seen[it[0]] = true;
+    });
     return ordered.filter((it) => {
       // Home Dashboard is always shown WITHOUT needing a View area — UNLESS it's locked.
       // Routing through canViewNav preserves the always-shown behavior when unlocked
@@ -617,7 +631,7 @@
     // Portal view: tagline moves to the user block, and admin-tier gets the
     // "← All tenants" + portal-name context at the top of the left column. Admin
     // (master hub) is untouched: tagline stays under the logo, no context block.
-    renderBrand(brand, isPortal ? { attribution: false, adminContext: isAdminTier } : { attribution: true, adminContext: false });
+    renderBrand(brand, isPortal ? { attribution: false, adminContext: false } : { attribution: true, adminContext: false });
     side.appendChild(brand);
 
     const nav = el("nav", "sidebar-nav");
@@ -666,11 +680,22 @@
       logoutBtn.id = "logout-btn";
       userBox.appendChild(logoutBtn);
     }
-    // Portal view: the "A Vaala product" tagline sits directly ABOVE the thin divider
-    // that tops the bottom user block (relocated from under the logo). Placed as the
-    // last sidebar element before the user box, so it renders just above that divider.
-    // Admin (master hub) keeps the tagline under the logo, untouched.
-    if (isPortal) side.appendChild(el("div", "brand-attribution sidebar-tagline", "A Vaala product"));
+    // Admin-tier viewing a portal: the "← All tenants" + portal-name block lives at the
+    // BOTTOM of the left column now — right-aligned, two lines stacked, sitting directly
+    // ABOVE the thin divider that tops the user block. (Removed from beside the logo.)
+    if (isPortal && isAdminTier) {
+      const ctxWrap = el("div", "sidebar-context");
+      const back = el("a", "back-link", "← All tenants");
+      back.href = "#/admin/portals";
+      back.onclick = () => { App.state.currentPortalId = null; App.state.currentPortalName = null; };
+      ctxWrap.appendChild(back);
+      ctxWrap.appendChild(el("div", "brand-portal-name", esc(App.state.currentPortalName || "portal")));
+      side.appendChild(ctxWrap);
+    }
+    // Portal view: "A Vaala product" now sits BELOW that divider, grouped with the user
+    // chip (moved inside the user block, above the chip). Admin (master hub) keeps the
+    // tagline under the logo, untouched.
+    if (isPortal) userBox.insertBefore(el("div", "brand-attribution sidebar-tagline", "A Vaala product"), userBox.firstChild);
     side.appendChild(userBox);
     layout.appendChild(side);
 

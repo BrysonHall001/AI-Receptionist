@@ -209,7 +209,7 @@ export function validateReportPreset(p: ReportPreset): string[] {
   if (w.measure && (w.measure.op === "sum" || w.measure.op === "avg")) {
     const f = w.measure.field ? byKey.get(w.measure.field) : undefined;
     if (!f) problems.push(`${p.key}: measure ${w.measure.op} needs a numeric field that exists in "${w.source}"`);
-    else if (f.type !== "number" && f.type !== "percent" && f.type !== "currency") problems.push(`${p.key}: measure field "${w.measure.field}" is not numeric`);
+    else if (f.type !== "number" && f.type !== "percent" && f.type !== "currency" && f.type !== "rating" && f.type !== "duration") problems.push(`${p.key}: measure field "${w.measure.field}" is not numeric`);
   }
   for (const d of w.groupBy || []) {
     const f = byKey.get(d.key);

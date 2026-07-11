@@ -124,6 +124,7 @@ body {
    cluster (presence + Settings gear) stays pinned and visible in the upper-right. */
 .portal-pages-row {
   display: flex; align-items: center; gap: 8px;
+  min-height: 54px; box-sizing: border-box;
   padding: 10px 20px 10px 52px; /* left room for the corner collapse toggle */
   background: var(--topbar-bg, var(--panel));
   border-bottom: 1px solid var(--line);
@@ -138,7 +139,7 @@ body {
 /* Small corner toggle at the pages-row / modules-column intersection. Solid
    background + border so it stays legible on every theme, in both states. */
 .chrome-toggle {
-  position: absolute; top: 8px; left: 10px; z-index: 20;
+  position: absolute; top: 11px; left: 10px; z-index: 20;
   width: 32px; height: 32px; display: grid; place-items: center;
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 8px; color: var(--ink-soft); cursor: pointer;
@@ -150,6 +151,9 @@ body {
 .app-shell.chrome-collapsed .sidebar { display: none; }
 .app-shell.chrome-collapsed .portal-pages-row { display: none; }
 .app-shell.chrome-collapsed .topbar { padding-left: 56px; }
+/* Portal full-screen (collapsed): give the content breathing room so the page/module
+   title isn't cramped against the top-left edge or under the corner toggle. */
+.app-shell.chrome-collapsed .content { padding-top: 36px; padding-left: 64px; }
 /* Sign out + Impersonate side by side (admin-tier, bottom-left): equal-width, each
    a little under half thanks to the gap between them. */
 .user-actions { display: flex; gap: 8px; align-items: stretch; }
@@ -376,6 +380,11 @@ tbody tr:hover { background: var(--row-hover); }
 /* Tagline relocated (portal view) to sit directly ABOVE the divider that tops the
    bottom user block: last sidebar element before .sidebar-user, with a small gap. */
 .sidebar-tagline { padding: 0 8px; margin-bottom: 8px; }
+/* Admin-tier: the relocated "← All tenants" + portal name — bottom of the left column,
+   right-aligned, two lines stacked, directly above the user-block divider. */
+.sidebar-context { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 1px; padding: 0 8px 8px; }
+.sidebar-context .back-link { white-space: nowrap; }
+.sidebar-context .brand-portal-name { max-width: 100%; text-align: right; }
 /* Modules column: FLEX to the available height and scroll vertically when the list
    of modules overflows (never clip) — the brand stays pinned above, the user block
    below. */
@@ -610,6 +619,16 @@ textarea.input { resize: vertical; }
 .form-file-info { font-size: 13px; }
 .form-file-link { color: var(--accent); text-decoration: underline; word-break: break-all; }
 .cell-link { color: var(--accent); text-decoration: underline; }
+.form-rating { display: flex; align-items: center; gap: 2px; }
+.form-star { background: none; border: none; cursor: pointer; font-size: 22px; line-height: 1; padding: 0 1px; color: var(--ink-faint); }
+.form-star.on { color: #f5b301; }
+.form-star:disabled { cursor: default; }
+.cell-stars { color: #f5b301; letter-spacing: 1px; }
+.form-duration { display: flex; align-items: center; gap: 6px; }
+.form-duration .input { margin: 0; width: 72px; }
+.form-address { display: flex; flex-direction: column; gap: 6px; }
+.form-address-part { margin: 0; }
+.form-address-street { width: 100%; }
 .field-editor .input { margin-bottom: 0; }
 .drawer-meta { display: flex; gap: 8px; font-size: 12px; color: var(--ink-faint); margin-bottom: 16px; }
 .drawer-save-bar { margin: 8px 0 20px; }
@@ -1764,7 +1783,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .field-list--drop { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 8px; background: var(--accent-soft); }
 /* Task 3: the sections/fields list scrolls independently so the side columns and the
    rest of the page stay put. Disabled when columns stack on narrow screens. */
-.mf-fields-scroll { max-height: calc(100vh - 250px); min-height: 120px; overflow-y: auto; padding-right: 4px; }
+.mf-fields-scroll { max-height: calc(100vh - 300px); min-height: 200px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 @media (max-width: 640px) { .mf-fields-scroll { max-height: none; overflow: visible; padding-right: 0; } }
 /* Responsive: 3 cols -> Field library + Terms share a row with Fields full-width ->
    single column. Never crush/clip. */
