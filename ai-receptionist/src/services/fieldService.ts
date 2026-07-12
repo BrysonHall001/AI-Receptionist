@@ -32,11 +32,42 @@ export async function ensureSystemFields(tenantId: string): Promise<void> {
   });
 }
 
+// Default CUSTOM fields for Contacts — a normal, fully editable/removable field stored in
+// Contact.customFields (system:false), NOT a column-backed system field. Seeded lazily from
+// the same spot ensureSystemFields runs (listFields for the contact type), so both new and
+// existing portals gain it on the next fields load with no separate backfill script.
+const DEFAULT_CONTACT_CUSTOM_FIELDS = [
+  { key: "address", label: "Address", type: "address", order: 4 },
+];
+
+/** Seed the default Contacts custom fields ONCE per tenant. Idempotent by key
+ *  (skipDuplicates, same shape as the other modules' default-field seeders) AND one-shot via a
+ *  per-tenant AppSetting marker: after the first successful seed, the marker prevents any
+ *  re-creation — so a field the user deletes on Modules & Fields STAYS deleted. (Contact fields
+ *  are hard-deleted, so without the marker a lazy seeder would silently resurrect it.) */
+export async function ensureContactDefaultFields(tenantId: string): Promise<void> {
+  const db = prisma as any;
+  const markerKey = "contacts_default_fields_seeded:" + tenantId;
+  const marker = await db.appSetting.findUnique({ where: { key: markerKey } });
+  if (marker) return; // already seeded once for this tenant — never re-create after deletion
+  const recordTypeId = await ensureContactRecordType(tenantId);
+  const existing = await prisma.fieldDef.findMany({ where: { tenantId, recordTypeId }, select: { key: true } });
+  const have = new Set(existing.map((e: any) => e.key));
+  const toCreate = DEFAULT_CONTACT_CUSTOM_FIELDS.filter((f) => !have.has(f.key));
+  if (toCreate.length) {
+    await prisma.fieldDef.createMany({
+      data: toCreate.map((f) => ({ tenantId, recordTypeId, scope: "record", key: f.key, label: f.label, type: f.type, system: false, order: f.order })) as any,
+      skipDuplicates: true,
+    });
+  }
+  await db.appSetting.upsert({ where: { key: markerKey }, update: { value: "1" }, create: { key: markerKey, value: "1" } });
+}
+
 /** List fields for ONE object type (defaults to contacts). System contact fields are seeded lazily. */
 export async function listFields(tenantId: string, recordType?: string | null) {
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
   const contactId = await ensureContactRecordType(tenantId);
-  if (recordTypeId === contactId) await ensureSystemFields(tenantId);
+  if (recordTypeId === contactId) { await ensureSystemFields(tenantId); await ensureContactDefaultFields(tenantId); }
   const rows = await prisma.fieldDef.findMany({ where: { tenantId, recordTypeId } as any, orderBy: [{ order: "asc" }, { createdAt: "asc" }] });
   return rows.map(serialize);
 }

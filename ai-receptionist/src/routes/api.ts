@@ -52,7 +52,7 @@ import { resolveMergeTags, contactMergeValues } from "../services/mergeTags";
 import { validateWebhookUrl, sendWebhook, buildSamplePayload } from "../automation/webhook";
 import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteEndpoint, listCalls as listInboundCalls } from "../services/inboundService";
 import { ACTION_TYPES } from "../automation/actions";
-import { smsEnabled } from "../config/env";
+import { smsEnabled, geocodingEnabled } from "../config/env";
 import { AUTOMATION_PRESETS, getPreset, PRESET_CATEGORIES } from "../automation/presets";
 import { REPORT_PRESET_CATEGORIES, publicReportPresets, publicRecordTypePresets } from "../analytics/reportPresets";
 import { analyzeFlowDefinition, applyFlowDefinition } from "../services/flowProvisioningService";
@@ -1805,7 +1805,9 @@ export async function getSettingsHandler(req: Request, res: Response) {
     res.status(404).json({ error: "Portal not found" });
     return;
   }
-  res.json(portal);
+  // Geocoding status (Map view): a platform-wide, read-only flag from the server's
+  // MAPBOX_TOKEN gate — same for every tenant, never exposes the token itself.
+  res.json({ ...portal, geocoding: { enabled: geocodingEnabled() } });
 }
 apiRouter.get("/settings", getSettingsHandler);
 

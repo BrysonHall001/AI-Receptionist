@@ -970,6 +970,30 @@
       mountGoogleCard(body);
     })();
 
+    // ---- Mapbox: geocoding status (status-only, read-only, identical for every tenant).
+    // Reflects the ONE shared platform key (server-side MAPBOX_TOKEN via geocodingEnabled()),
+    // not a per-tenant setting — so there's no input, no toggle, no save, and the token/secret
+    // is never exposed. Driven by the geocoding.enabled flag on /api/settings. ----
+    (function mapbox() {
+      const body = card("/img/mapbox.png", "Mapbox");
+      const desc = el("p", "cell-muted", "Powers address geocoding for the Map view.");
+      desc.style.cssText = "font-size:13px;margin:0 0 10px;";
+      body.appendChild(desc);
+      const on = !!(s.geocoding && s.geocoding.enabled);
+      const statLine = el("div");
+      statLine.style.cssText = "display:flex;gap:8px;align-items:center;font-size:14px;";
+      const dot = el("span");
+      dot.style.cssText = "width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:" + (on ? "var(--green)" : "var(--line-strong)") + ";";
+      statLine.appendChild(dot);
+      statLine.appendChild(el("span", null, on ? "Maps active" : "Not configured"));
+      body.appendChild(statLine);
+      if (!on) {
+        const note = el("p", "cell-muted", "Map geocoding is off until the server key is set.");
+        note.style.cssText = "font-size:12px;margin:8px 0 0;";
+        body.appendChild(note);
+      }
+    })();
+
     host.appendChild(wrap);
   }
 
