@@ -63,9 +63,10 @@
   // otherwise show long repeating decimals once summed); everything else to 6 decimals to strip
   // floating-point noise without changing meaningful precision. Integers/counts are unaffected.
   function roundMeasure(v, field) { const d = field === "callMinutes" ? 3 : 6; const p = Math.pow(10, d); return Math.round((Number(v) || 0) * p) / p; }
+  function liLike(v) { return Array.isArray(v) && v.length > 0 && v.every(function (x) { return x && typeof x === "object" && ("unitPrice" in x || "quantity" in x); }); }
   function measureValue(src, rows, m) {
     if (!m || m.op === "count") return rows.length;
-    const nums = rows.map((r) => Number(valueOf(src, r, m.field))).filter((n) => !isNaN(n));
+    const nums = rows.map((r) => { const v = valueOf(src, r, m.field); return Number(liLike(v) && App.fields && App.fields.lineItemsTotal ? App.fields.lineItemsTotal(v) : v); }).filter((n) => !isNaN(n));
     if (m.op === "sum") return roundMeasure(nums.reduce((a, b) => a + b, 0), m.field);
     if (m.op === "avg") return nums.length ? roundMeasure(nums.reduce((a, b) => a + b, 0) / nums.length, m.field) : 0;
     return rows.length;
@@ -254,7 +255,7 @@
       }
       function rebuildForSource(initial) {
         const src = curSource();
-        const numericFields = src.reportFields.filter((f) => f.type === "number" || f.type === "percent");
+        const numericFields = src.reportFields.filter((f) => f.type === "number" || f.type === "percent" || f.type === "line_items");
         $("#w-mfield").innerHTML = numericFields.map((f) => `<option value="${esc(f.key)}">${esc(f.label)}</option>`).join("");
         if (initial && w.measure && w.measure.field) $("#w-mfield").value = w.measure.field;
         $("#w-mop").options[0].textContent = "Count of " + String(src.label || "records").toLowerCase();
@@ -834,7 +835,7 @@
       const srcObj = () => state.sources[draft.source] || state.sources[srcOpts[0].key];
       const fieldLabel = (k) => { const f = (srcObj().reportFields || []).find((x) => x.key === k); return f ? f.label : k; };
       const isDate = (k) => { const f = (srcObj().reportFields || []).find((x) => x.key === k); return !!(f && f.type === "date"); };
-      const numericFields = () => (srcObj().reportFields || []).filter((f) => f.type === "number" || f.type === "percent");
+      const numericFields = () => (srcObj().reportFields || []).filter((f) => f.type === "number" || f.type === "percent" || f.type === "line_items");
       function inferType() { if (!draft.groupKey) return "kpi"; return isDate(draft.groupKey) ? "line" : "bar"; }
       function autoTitle() {
         const sl = (srcOpts.find((o) => o.key === draft.source) || {}).label || draft.source;

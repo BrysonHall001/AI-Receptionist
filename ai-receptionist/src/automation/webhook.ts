@@ -161,6 +161,7 @@ function sampleFor(f: FieldMeta): any {
     case "number": case "percent": case "currency": case "rating": case "duration": return 42;
     case "checkbox": return true;
     case "multi_select": return ["Sample"];
+    case "line_items": return [{ description: "Sample item", quantity: 2, unitPrice: 40 }];
     default: return `Sample ${f.label}`;
   }
 }

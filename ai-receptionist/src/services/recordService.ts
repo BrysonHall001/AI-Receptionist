@@ -715,6 +715,18 @@ export function coerceCustomValue(def: any, raw: any): { value?: any; empty?: bo
     }
     case "formula":
       return { empty: true }; // computed — never imported
+    case "line_items": {
+      // Accept an array of rows OR a JSON string of rows. Coerce qty/price to non-negative
+      // numbers and drop fully-empty rows. The line/grand totals are always derived.
+      let arr: any = raw;
+      if (typeof raw === "string") { try { arr = JSON.parse(raw); } catch { return { error: `"${s}" isn't valid line items (expected JSON rows)` }; } }
+      if (!Array.isArray(arr)) return { empty: true };
+      const nn = (x: any) => { const n = Number(x); return isFinite(n) && n > 0 ? n : 0; };
+      const rows = arr
+        .map((r: any) => ({ description: String((r && r.description) ?? "").trim(), quantity: nn(r && r.quantity), unitPrice: nn(r && r.unitPrice) }))
+        .filter((r: any) => r.description || r.quantity || r.unitPrice);
+      return rows.length ? { value: rows } : { empty: true };
+    }
     default:
       return { value: s }; // text / textarea / email / url / phone / single_select / image
   }

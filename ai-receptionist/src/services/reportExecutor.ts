@@ -54,6 +54,25 @@ function fmtAppt(iso: any): string {
 }
 const colType = (t: string) => (t === "number" ? "number" : t === "date" ? "date" : "text");
 
+// Line items: the field VALUE is an array of rows; its numeric total (qty×price summed) is
+// what reporting/measures should see, while CSV/export shows a readable "N items · $total".
+export function liTotal(v: any): number {
+  if (!Array.isArray(v)) return 0;
+  return v.reduce((sum: number, r: any) => sum + (Math.max(0, Number(r && r.quantity) || 0) * Math.max(0, Number(r && r.unitPrice) || 0)), 0);
+}
+export function liSummary(v: any): string {
+  if (!Array.isArray(v)) return "";
+  const n = v.filter((r: any) => r && (String(r.description || "").trim() || Number(r.quantity) || Number(r.unitPrice))).length;
+  if (!n) return "";
+  return n + (n === 1 ? " item · $" : " items · $") + liTotal(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+// Column spec for one field def — line_items exposes its numeric total (summable/chartable)
+// with a readable summary; everything else keeps the existing generic behavior.
+function fieldSpec(f: any, get: (r: any) => any): ColSpec {
+  if (f.type === "line_items") return { key: f.key, label: f.label, type: "number", raw: (r: any) => liTotal(get(r)), value: (r: any) => liSummary(get(r)) };
+  return { key: f.key, label: f.label, type: colType(f.type), raw: get, value: (r: any) => scalar(get(r)) };
+}
+
 // ---- CSV building, mirrored 1:1 from portal.js (csvCell + buildCSV) ------------
 function csvCell(v: any): string {
   const s = v == null ? "" : String(v);
@@ -74,7 +93,7 @@ export async function contactColSpecs(tenantId: string): Promise<ColSpec[]> {
   const SYS = new Set(["name", "phone", "email", "intent"]);
   const specs: ColSpec[] = fields.map((f: any) => {
     const get = SYS.has(f.key) ? (r: any) => r[f.key] : (r: any) => (r.customFields || {})[f.key];
-    return { key: f.key, label: f.label, type: colType(f.type), raw: get, value: (r: any) => scalar(get(r)) };
+    return fieldSpec(f, get);
   });
   specs.push({ key: "source", label: "Source", type: "text", raw: (r) => r.source, value: (r) => r.source || "unknown" });
   specs.push({ key: "callerId", label: "Caller ID", type: "text", raw: (r) => r.callerId, value: (r) => r.callerId || "" });
@@ -102,7 +121,7 @@ async function recordColSpecs(tenantId: string, type: any, resNameById: Map<stri
   }
   for (const f of fields as any[]) {
     const get = (r: any) => (r.customFields || {})[f.key];
-    specs.push({ key: f.key, label: f.label, type: colType(f.type), raw: get, value: (r) => scalar(get(r)) });
+    specs.push(fieldSpec(f, get));
   }
   specs.push({ key: "createdAt", label: "Created", type: "date", raw: (r) => r.createdAt, value: (r) => fmtDate(r.createdAt) });
   return specs;

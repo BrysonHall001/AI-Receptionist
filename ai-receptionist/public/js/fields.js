@@ -21,6 +21,7 @@
     address: "Address",
     rating: "Rating",
     duration: "Duration",
+    line_items: "Line items",
   };
   const TYPES_WITH_OPTIONS = ["single_select", "multi_select"];
   const SYSTEM_KEYS = ["name", "phone", "email", "intent"];
@@ -38,6 +39,32 @@
       const f = fields.find((ff) => ff.label.toLowerCase() === String(name).trim().toLowerCase());
       return f ? scalar(values[f.key]) : "";
     });
+  }
+
+  function fmtMoney(n) {
+    const x = Number(n);
+    return isFinite(x) ? "$" + x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "";
+  }
+  // Line items: value is an array of { description, quantity, unitPrice }. Line total and
+  // grand total are DERIVED. These helpers normalize/summarize and are the single source of
+  // truth reused by the editor, list cells, reporting, and export.
+  function lineItemsRows(v) {
+    if (!Array.isArray(v)) return [];
+    return v.map(function (r) {
+      r = r || {};
+      return { description: r.description == null ? "" : String(r.description), quantity: r.quantity, unitPrice: r.unitPrice };
+    });
+  }
+  function lineItemRowTotal(r) { return (Math.max(0, Number((r && r.quantity)) || 0)) * (Math.max(0, Number((r && r.unitPrice)) || 0)); }
+  function lineItemsTotal(v) { return lineItemsRows(v).reduce(function (sum, r) { return sum + lineItemRowTotal(r); }, 0); }
+  function lineItemsCount(v) {
+    return lineItemsRows(v).filter(function (r) { return (r.description && String(r.description).trim()) || Number(r.quantity) || Number(r.unitPrice); }).length;
+  }
+  // Compact one-line summary for list cells etc. e.g. "3 items · $815.00".
+  function lineItemsSummary(v) {
+    const n = lineItemsCount(v);
+    if (!n) return "";
+    return n + (n === 1 ? " item · " : " items · ") + fmtMoney(lineItemsTotal(v));
   }
 
   function fmtDuration(mins) {
@@ -58,9 +85,9 @@
     if (def.type === "percent") return value === "" || value == null ? "" : `${value}%`;
     if (def.type === "currency") {
       if (value === "" || value == null) return "";
-      const n = Number(value);
-      return isFinite(n) ? "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "";
+      return fmtMoney(value);
     }
+    if (def.type === "line_items") return lineItemsSummary(value);
     if (def.type === "rating") { const n = Number(value); return value === "" || value == null || !isFinite(n) ? "" : `${Math.round(n)}/5`; }
     if (def.type === "duration") return value === "" || value == null ? "" : fmtDuration(value);
     if (def.type === "address") return fmtAddress(value);
@@ -84,7 +111,7 @@
     fields.forEach((def) => {
       const row = el("div", "form-row");
       // Wide field types span both columns in a two-column grid layout.
-      if (def.type === "textarea" || def.type === "multi_select" || def.type === "image" || def.type === "file" || def.type === "address" || def.type === "formula") row.classList.add("form-row--wide");
+      if (def.type === "textarea" || def.type === "multi_select" || def.type === "image" || def.type === "file" || def.type === "address" || def.type === "line_items" || def.type === "formula") row.classList.add("form-row--wide");
       const lab = el("label", "form-label", esc(def.label) + (def.required ? ' <span class="req">*</span>' : ""));
       row.appendChild(lab);
 
@@ -164,6 +191,60 @@
         hIn.oninput = sync; mIn.oninput = sync;
         node.appendChild(hIn); node.appendChild(el("span", "form-suffix", "h"));
         node.appendChild(mIn); node.appendChild(el("span", "form-suffix", "m"));
+      } else if (def.type === "line_items") {
+        // Repeating-row mini-table: Description | Qty | Unit price | Line total (auto) | ×,
+        // with a live grand-total row and "+ Add row". Stored value is an array of
+        // { description, quantity, unitPrice }; fully-empty rows are dropped on commit;
+        // qty/price are coerced to non-negative numbers. Money reuses the currency format.
+        node = el("div", "form-line-items");
+        const work = lineItemsRows(values[def.key]);
+        if (!work.length) work.push({ description: "", quantity: "", unitPrice: "" });
+        const nonNeg = (x) => { const n = Number(x); return isFinite(n) && n > 0 ? n : 0; };
+        const rowIsEmpty = (r) => !(String(r.description || "").trim() || Number(r.quantity) || Number(r.unitPrice));
+        function commit() {
+          const clean = work.map((r) => ({ description: String(r.description || "").trim(), quantity: nonNeg(r.quantity), unitPrice: nonNeg(r.unitPrice) })).filter((r) => !rowIsEmpty(r));
+          setVal(clean);
+        }
+        if (readOnly) {
+          // Static, readable table (used in the read-only "All fields" / recycle preview).
+          const items = work.filter((r) => !rowIsEmpty(r));
+          const tbl = el("table", "li-table li-table--ro");
+          const thead = el("tr"); ["Description", "Qty", "Unit price", "Line total"].forEach((h, i) => { const th = el("th", i ? "li-num" : null, h); thead.appendChild(th); });
+          tbl.appendChild(thead);
+          if (!items.length) { const tr = el("tr"); const td = el("td", "cell-muted"); td.colSpan = 4; td.textContent = "No line items"; tr.appendChild(td); tbl.appendChild(tr); }
+          items.forEach((r) => { const tr = el("tr"); tr.appendChild(el("td", null, esc(r.description || ""))); tr.appendChild(el("td", "li-num", esc(String(nonNeg(r.quantity))))); tr.appendChild(el("td", "li-num", esc(fmtMoney(r.unitPrice)))); tr.appendChild(el("td", "li-num", esc(fmtMoney(lineItemRowTotal(r))))); tbl.appendChild(tr); });
+          const tot = el("tr", "li-total-row"); const tl = el("td", "li-total-label"); tl.colSpan = 3; tl.textContent = "Total"; tot.appendChild(tl); tot.appendChild(el("td", "li-num li-grand", esc(fmtMoney(lineItemsTotal(items))))); tbl.appendChild(tot);
+          node.appendChild(tbl);
+        } else {
+          const tbl = el("table", "li-table");
+          const grand = el("span", "li-grand");
+          function drawTotals() {
+            const rowTotals = node.querySelectorAll(".li-row-total");
+            work.forEach((r, i) => { if (rowTotals[i]) rowTotals[i].textContent = fmtMoney(lineItemRowTotal(r)); });
+            grand.textContent = fmtMoney(lineItemsTotal(work));
+          }
+          function render() {
+            tbl.innerHTML = "";
+            const head = el("tr"); ["Description", "Qty", "Unit price", "Line total", ""].forEach((h, i) => { const th = el("th", (i >= 1 && i <= 3) ? "li-num" : null, h); head.appendChild(th); });
+            tbl.appendChild(head);
+            work.forEach((r, idx) => {
+              const tr = el("tr", "li-row");
+              const dTd = el("td"); const dIn = el("input", "input"); dIn.value = r.description || ""; dIn.placeholder = "Description"; dIn.oninput = () => { r.description = dIn.value; commit(); }; dTd.appendChild(dIn); tr.appendChild(dTd);
+              const qTd = el("td", "li-num"); const qIn = el("input", "input li-qty"); qIn.type = "number"; qIn.min = "0"; qIn.step = "any"; qIn.value = r.quantity == null ? "" : r.quantity; qIn.oninput = () => { r.quantity = qIn.value; drawTotals(); commit(); }; qTd.appendChild(qIn); tr.appendChild(qTd);
+              const pTd = el("td", "li-num"); const pWrap = el("div", "form-currency li-price-wrap"); pWrap.appendChild(el("span", "form-prefix", "$")); const pIn = el("input", "input li-price"); pIn.type = "number"; pIn.min = "0"; pIn.step = "0.01"; pIn.inputMode = "decimal"; pIn.value = r.unitPrice == null ? "" : r.unitPrice; pIn.oninput = () => { r.unitPrice = pIn.value; drawTotals(); commit(); }; pWrap.appendChild(pIn); pTd.appendChild(pWrap); tr.appendChild(pTd);
+              const tTd = el("td", "li-num"); tTd.appendChild(el("span", "li-row-total", fmtMoney(lineItemRowTotal(r)))); tr.appendChild(tTd);
+              const xTd = el("td", "li-x-cell"); const x = el("button", "li-x", "×"); x.type = "button"; x.title = "Remove row"; x.onclick = () => { work.splice(idx, 1); if (!work.length) work.push({ description: "", quantity: "", unitPrice: "" }); render(); commit(); }; xTd.appendChild(x); tr.appendChild(xTd);
+              tbl.appendChild(tr);
+            });
+            const totRow = el("tr", "li-total-row"); const tl = el("td", "li-total-label"); tl.colSpan = 3; tl.textContent = "Total"; totRow.appendChild(tl); const gTd = el("td", "li-num"); gTd.appendChild(grand); totRow.appendChild(gTd); totRow.appendChild(el("td")); tbl.appendChild(totRow);
+            drawTotals();
+          }
+          render();
+          node.appendChild(tbl);
+          const addBtn = el("button", "btn btn-ghost btn-sm li-add", "+ Add row"); addBtn.type = "button";
+          addBtn.onclick = () => { work.push({ description: "", quantity: "", unitPrice: "" }); render(); };
+          node.appendChild(addBtn);
+        }
       } else if (def.type === "address") {
         // Structured address stored as { street, city, state, postal, country }.
         node = el("div", "form-address");
@@ -268,5 +349,5 @@
     return combinedOnChange;
   }
 
-  App.fields = { TYPE_LABELS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, renderGroupedEditor, formatValue, computeFormula, fmtDuration, fmtAddress };
+  App.fields = { TYPE_LABELS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, renderGroupedEditor, formatValue, computeFormula, fmtDuration, fmtAddress, fmtMoney, lineItemsRows, lineItemsTotal, lineItemsSummary };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -1856,6 +1856,10 @@
       const isSys = !!SYS[f.key];
       const get = isSys ? (r) => r[f.key] : (r) => (r.customFields || {})[f.key];
       const disp = (r) => { const v = get(r); return Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); };
+      if (f.type === "line_items") {
+        const summary = (r) => App.fields.lineItemsSummary(get(r));
+        return { key: f.key, label: f.label, type: "number", get: (r) => App.fields.lineItemsTotal(get(r)), text: summary, cellClass: "", render: (r) => { const s = summary(r); return s ? esc(s) : `<span class="cell-muted">—</span>`; } };
+      }
       return {
         key: f.key, label: f.label, type: colType(f.type), get, text: disp,
         cellClass: f.key === "name" ? "cell-strong" : f.key === "phone" ? "cell-mono" : f.key === "email" || f.key === "intent" ? "cell-muted" : "",
@@ -5878,6 +5882,11 @@
       const get = (r) => (r.customFields || {})[f.key];
       const disp = (r) => { const v = get(r); return Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); };
       const colTy = (f.type === "number" || f.type === "currency" || f.type === "rating" || f.type === "duration") ? "number" : f.type === "date" ? "date" : "text";
+      if (f.type === "line_items") {
+        const summary = (r) => App.fields.lineItemsSummary(get(r));
+        cols.push({ key: f.key, label: f.label, type: "number", get: (r) => App.fields.lineItemsTotal(get(r)), text: summary, render: (r) => { const s = summary(r); return s ? esc(s) : `<span class="cell-muted">—</span>`; } });
+        return;
+      }
       let render;
       if (f.type === "image") render = (r) => { const v = get(r); return v && /^data:image\//i.test(String(v)) ? `<img class="cell-thumb" src="${esc(String(v))}" alt="" />` : `<span class="cell-muted">—</span>`; };
       else if (f.type === "file") render = (r) => { const v = get(r); const href = v && (v.data || (typeof v === "string" ? v : "")); const name = (v && v.name) || "file"; return href ? `<a class="cell-link" href="${esc(String(href))}" target="_blank" rel="noopener" download="${esc(name)}">${esc(name)}</a>` : `<span class="cell-muted">—</span>`; };

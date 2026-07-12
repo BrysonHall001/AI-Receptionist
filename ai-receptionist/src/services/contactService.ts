@@ -463,6 +463,7 @@ export function randomValueForField(f: any): any {
     case "rating": return rndInt(1, 5);
     case "duration": return rndInt(1, 16) * 15;
     case "address": return { street: `${rndInt(10, 9999)} Main St`, city: "Springfield", state: "CA", postal: String(rndInt(10000, 99999)), country: "USA" };
+    case "line_items": return [{ description: "Service", quantity: rndInt(1, 4), unitPrice: rndInt(20, 400) }, { description: "Parts", quantity: rndInt(1, 3), unitPrice: rndInt(10, 200) }];
     case "date": { const d = new Date(Date.now() - rndInt(0, 365) * 86400000); return d.toISOString().slice(0, 10); }
     case "select": return opts.length ? rnd(opts) : `${rnd(D_WORDS)}-${rndToken(3)}`;
     case "multi_select": { if (!opts.length) return []; const n = rndInt(1, Math.min(3, opts.length)); const shuffled = [...opts].sort(() => Math.random() - 0.5); return shuffled.slice(0, n); }

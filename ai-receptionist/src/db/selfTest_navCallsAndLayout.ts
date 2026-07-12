@@ -80,7 +80,7 @@ console.log("\n(3) editors present (fields.js):");
 check(/def\.type === "rating"/.test(fieldsSrc) && /form-star/.test(fieldsSrc), "rating star editor");
 check(/def\.type === "duration"/.test(fieldsSrc) && /form-duration/.test(fieldsSrc), "duration h/m editor");
 check(/def\.type === "address"/.test(fieldsSrc) && /form-address-part/.test(fieldsSrc), "address multi-part editor");
-check(/def\.type === "address" \|\| def\.type === "formula"/.test(fieldsSrc), "address is a wide field row");
+check(/def\.type === "address" \|\| def\.type === "line_items" \|\| def\.type === "formula"/.test(fieldsSrc), "address is a wide field row");
 
 console.log("\n(4) layout fixes (source + CSS):");
 // Item 2: collapse toggle centered.
