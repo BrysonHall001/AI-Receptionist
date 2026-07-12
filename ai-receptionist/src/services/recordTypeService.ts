@@ -72,6 +72,82 @@ export async function ensureInvoiceDefaultFields(tenantId: string, recordTypeId:
   });
 }
 
+// ---- Batch: five pre-built industry modules (Vehicles, Properties, Products & Services,
+// Estimates, Tasks). Each seeds ordinary editable/removable custom fields via onCreate, in
+// exactly the same idempotent (skipDuplicates) way as Equipment/Invoices. Products & Tasks
+// deliberately have NO "name"/"title" field — the record's built-in Title is their name,
+// matching the Equipment precedent (avoids a duplicate). Estimates' "total" is a currency
+// field keyed "total" so it auto-computes from the line_items rows (same as Invoices).
+type SeedField = { key: string; label: string; type: string; order: number; options?: string[]; required?: boolean };
+
+/** Shared idempotent seeder used by the pre-built modules' onCreate hooks. */
+async function seedDefaultFields(tenantId: string, recordTypeId: string, defs: SeedField[]): Promise<void> {
+  const existing = await db.fieldDef.findMany({ where: { tenantId, recordTypeId }, select: { key: true } });
+  const have = new Set(existing.map((e: any) => e.key));
+  const toCreate = defs.filter((f) => !have.has(f.key));
+  if (!toCreate.length) return;
+  await db.fieldDef.createMany({
+    data: toCreate.map((f) => ({ tenantId, recordTypeId, scope: "record", key: f.key, label: f.label, type: f.type, required: !!f.required, options: f.options || [], order: f.order, system: false })) as any,
+    skipDuplicates: true,
+  });
+}
+
+const DEFAULT_VEHICLE_FIELDS: SeedField[] = [
+  { key: "make", label: "Make", type: "text", order: 0 },
+  { key: "model", label: "Model", type: "text", order: 1 },
+  { key: "year", label: "Year", type: "number", order: 2 },
+  { key: "vin", label: "VIN", type: "text", order: 3 },
+  { key: "license_plate", label: "License plate", type: "text", order: 4 },
+  { key: "mileage", label: "Mileage", type: "number", order: 5 },
+  { key: "color", label: "Color", type: "text", order: 6 },
+  { key: "vehicle_type", label: "Vehicle type", type: "single_select", order: 7, options: ["Car", "Truck", "SUV", "Van", "Motorcycle", "Other"] },
+  { key: "status", label: "Status", type: "single_select", order: 8, options: ["Active", "In service", "Retired"] },
+  { key: "notes", label: "Notes", type: "textarea", order: 9 },
+];
+const DEFAULT_PROPERTY_FIELDS: SeedField[] = [
+  { key: "property_address", label: "Property address", type: "address", order: 0 },
+  { key: "property_type", label: "Property type", type: "single_select", order: 1, options: ["Single-family", "Multi-family", "Condo", "Commercial", "Land", "Other"] },
+  { key: "beds", label: "Beds", type: "number", order: 2 },
+  { key: "baths", label: "Baths", type: "number", order: 3 },
+  { key: "size_sqft", label: "Size (sq ft)", type: "number", order: 4 },
+  { key: "year_built", label: "Year built", type: "number", order: 5 },
+  { key: "status", label: "Status", type: "single_select", order: 6, options: ["Active", "Vacant", "Under maintenance", "Inactive"] },
+  { key: "notes", label: "Notes", type: "textarea", order: 7 },
+];
+const DEFAULT_PRODUCT_FIELDS: SeedField[] = [
+  // The catalog item's name is the record's built-in Title (no duplicate "name" field).
+  { key: "sku", label: "SKU", type: "text", order: 0 },
+  { key: "description", label: "Description", type: "textarea", order: 1 },
+  { key: "price", label: "Price", type: "currency", order: 2 },
+  { key: "unit", label: "Unit", type: "single_select", order: 3, options: ["Each", "Hour", "Day", "Job", "Unit"] },
+  { key: "category", label: "Category", type: "single_select", order: 4, options: ["Part", "Labor", "Material", "Service", "Other"] },
+  { key: "taxable", label: "Taxable", type: "checkbox", order: 5 },
+  { key: "notes", label: "Notes", type: "textarea", order: 6 },
+];
+const DEFAULT_ESTIMATE_FIELDS: SeedField[] = [
+  { key: "estimate_number", label: "Estimate #", type: "text", order: 0 },
+  { key: "status", label: "Status", type: "single_select", order: 1, options: ["Draft", "Sent", "Accepted", "Declined", "Expired"] },
+  { key: "estimate_date", label: "Estimate date", type: "date", order: 2 },
+  { key: "valid_until", label: "Valid until", type: "date", order: 3 },
+  { key: "line_items", label: "Line items", type: "line_items", order: 4 },
+  { key: "total", label: "Total", type: "currency", order: 5 }, // auto-computed from line_items
+  { key: "notes", label: "Notes", type: "textarea", order: 6 },
+];
+const DEFAULT_TASK_FIELDS: SeedField[] = [
+  // The task's name is the record's built-in Title (no duplicate "title" field).
+  { key: "due_date", label: "Due date", type: "date", order: 0 },
+  { key: "priority", label: "Priority", type: "single_select", order: 1, options: ["Low", "Medium", "High", "Urgent"] },
+  { key: "status", label: "Status", type: "single_select", order: 2, options: ["To do", "In progress", "Done", "Blocked"] },
+  { key: "assignee", label: "Assignee", type: "text", order: 3 },
+  { key: "notes", label: "Notes", type: "textarea", order: 4 },
+];
+
+export async function ensureVehicleDefaultFields(tenantId: string, recordTypeId: string): Promise<void> { return seedDefaultFields(tenantId, recordTypeId, DEFAULT_VEHICLE_FIELDS); }
+export async function ensurePropertyDefaultFields(tenantId: string, recordTypeId: string): Promise<void> { return seedDefaultFields(tenantId, recordTypeId, DEFAULT_PROPERTY_FIELDS); }
+export async function ensureProductDefaultFields(tenantId: string, recordTypeId: string): Promise<void> { return seedDefaultFields(tenantId, recordTypeId, DEFAULT_PRODUCT_FIELDS); }
+export async function ensureEstimateDefaultFields(tenantId: string, recordTypeId: string): Promise<void> { return seedDefaultFields(tenantId, recordTypeId, DEFAULT_ESTIMATE_FIELDS); }
+export async function ensureTaskDefaultFields(tenantId: string, recordTypeId: string): Promise<void> { return seedDefaultFields(tenantId, recordTypeId, DEFAULT_TASK_FIELDS); }
+
 // Booking lifecycle statuses (Record.stageKey) — the exact pipeline requested:
 // Requested -> Confirmed -> Completed -> No-show. Keys are stable; labels are
 // freely editable/reorderable on the Fields page like any other record status.
@@ -181,7 +257,7 @@ async function ensureRecordType(tenantId: string, key: string, data: Record<stri
 // create payload (minus tenantId) used before this refactor, so the seeded data
 // for contact/job/booking is byte-for-byte identical.
 // ---------------------------------------------------------------------------
-export interface SystemRecordTypeDef { key: string; defaults: Record<string, unknown>; onCreate?: (tenantId: string, recordTypeId: string) => Promise<void>; }
+export interface SystemRecordTypeDef { key: string; defaults: Record<string, unknown>; onCreate?: (tenantId: string, recordTypeId: string) => Promise<void>; defaultHidden?: boolean; }
 
 export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
   { key: CONTACT_RECORD_TYPE_KEY, defaults: {
@@ -210,6 +286,31 @@ export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
     key: INVOICE_RECORD_TYPE_KEY, label: "Invoice", labelPlural: "Invoices", system: false,
     stages: [], recordStages: [], subtypes: [], order: 4,
   }, onCreate: ensureInvoiceDefaultFields },
+  // Five pre-built INDUSTRY modules (Field Services / Auto Repair / Property Management).
+  // Seeded in every portal like Equipment, but default-HIDDEN in the create-tenant Modules
+  // picker (defaultHidden) so they exist without cluttering until an owner opts in. Flat
+  // catalogs (status via a single_select FIELD, not pipeline stages). Orders 5..9 (invoice
+  // already occupies 4).
+  { key: "vehicle", defaults: {
+    key: "vehicle", label: "Vehicle", labelPlural: "Vehicles", system: false,
+    stages: [], recordStages: [], subtypes: [], order: 5,
+  }, onCreate: ensureVehicleDefaultFields, defaultHidden: true },
+  { key: "property", defaults: {
+    key: "property", label: "Property", labelPlural: "Properties", system: false,
+    stages: [], recordStages: [], subtypes: [], order: 6,
+  }, onCreate: ensurePropertyDefaultFields, defaultHidden: true },
+  { key: "product", defaults: {
+    key: "product", label: "Product", labelPlural: "Products", system: false,
+    stages: [], recordStages: [], subtypes: [], order: 7,
+  }, onCreate: ensureProductDefaultFields, defaultHidden: true },
+  { key: "estimate", defaults: {
+    key: "estimate", label: "Estimate", labelPlural: "Estimates", system: false,
+    stages: [], recordStages: [], subtypes: [], order: 8,
+  }, onCreate: ensureEstimateDefaultFields, defaultHidden: true },
+  { key: "task", defaults: {
+    key: "task", label: "Task", labelPlural: "Tasks", system: false,
+    stages: [], recordStages: [], subtypes: [], order: 9,
+  }, onCreate: ensureTaskDefaultFields, defaultHidden: true },
 ];
 
 /** Keys of the built-in system record types, in registry order. Derived (not a
@@ -231,6 +332,7 @@ export function systemRecordTypeOptions() {
     labelPlural: String((d.defaults as any).labelPlural ?? (d.defaults as any).label ?? d.key),
     href: recordTypeHref(d.key),
     togglable: d.key !== CONTACT_RECORD_TYPE_KEY,
+    defaultHidden: !!d.defaultHidden, // pre-built industry modules start unchecked in the picker
   }));
 }
 // The record-type keys that MAY be hidden at creation (everything except contact).

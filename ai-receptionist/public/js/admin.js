@@ -694,6 +694,11 @@
           cb.disabled = true; row.style.cursor = "default";
           row.appendChild(cb); row.appendChild(document.createTextNode(" " + name + " (always on)"));
         } else {
+          // Pre-built industry modules ship default-OFF: start unchecked and pre-hidden so
+          // they don't clutter a new portal until the owner opts in (here or in Settings).
+          const startHidden = !!opt.defaultHidden;
+          cb.checked = !startHidden;
+          if (startHidden) { const set = new Set(draft.hiddenRecordTypes); set.add(opt.key); draft.hiddenRecordTypes = Array.from(set); }
           cb.onchange = () => {
             const set = new Set(draft.hiddenRecordTypes);
             if (cb.checked) set.delete(opt.key); else set.add(opt.key);
