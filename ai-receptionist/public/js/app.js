@@ -641,10 +641,13 @@
     if (isAdmin && !(me.role === "OWNER" || me.role === "SUPER_ADMIN")) {
       items = items.filter(function (it) { return it[0] !== "#/admin/email" && it[0] !== "#/admin/usage"; });
     }
-    // Hide the Calls nav item when this portal has the AI Receptionist turned off.
-    if (!isAdmin && App.state.receptionistEnabled === false) {
-      items = items.filter(function (it) { return it[0] !== "#/calls"; });
-    }
+    // NOTE (Calls-missing diagnosis): Calls used to be REMOVED from the pages row whenever
+    // the AI Receptionist read as "off" for the portal. That feature-flag gate — not the
+    // menu order or the on/off flag derivation — is why Calls kept disappearing: it deleted
+    // the item before it was ever placed. Calls is a normal page (call history) that should
+    // always be reachable; the Calls PAGE itself shows a friendly "receptionist is off" note
+    // when appropriate, and the server still guards /api/calls. So the nav item is no longer
+    // gated on the receptionist here.
     // Portal: split into MODULES (record types -> left column) and PAGES (the rest
     // -> horizontal top row). Derived from the registry, so a future record type
     // lands in the left column automatically. Admin: everything stays in the sidebar.

@@ -2766,19 +2766,14 @@
     const canEdit = App.state.me.role !== "CLIENT_USER";
     const wrap = el("div", refresh ? "" : "fade-in"); // don't replay the fade-in animation on in-place refreshes
 
-    // Column header — the selected module's fields. The module is chosen in the
-    // Modules column (highlighted there), so the old "Editing fields for" dropdown
-    // is gone. Heading is just "Fields".
+    // Column header — the selected module's fields, with "+ Add section" aligned on the
+    // same row. Field creation is drag-from-library now, so there's no "+ Add field".
     const col3Head = el("div", "mf-fields-head");
-    col3Head.appendChild(el("div", "mf-col-title", "Fields"));
-    col3Head.appendChild(el("div", "mf-fields-module", esc(selectedType ? (selectedType.labelPlural || selectedType.label || "") : "")));
-    wrap.appendChild(col3Head);
-
-    const bar = el("div", "page-actions");
+    const headLeft = el("div", "mf-fields-head-left");
+    headLeft.appendChild(el("div", "mf-col-title", "Fields"));
+    headLeft.appendChild(el("div", "mf-fields-module", esc(selectedType ? (selectedType.labelPlural || selectedType.label || "") : "")));
+    col3Head.appendChild(headLeft);
     if (canEdit) {
-      const add = el("button", "btn btn-primary btn-sm", "+ Add field");
-      add.onclick = () => openFieldModal(null, selectedKey);
-      bar.appendChild(add);
       const addSec = el("button", "btn btn-ghost btn-sm", "+ Add section");
       addSec.onclick = async () => {
         const name = await promptModal({ title: "Add a section", label: "Section name", placeholder: "e.g. Contact details, Pipeline", okText: "Add" });
@@ -2786,15 +2781,14 @@
         try { await App.portalApi("/api/field-sections", { method: "POST", body: JSON.stringify({ recordType: selectedKey, label: name.trim() }) }); App.util.toast("Section added"); renderFields(true); }
         catch (e) { App.util.toast(e.message, true); }
       };
-      bar.appendChild(addSec);
+      col3Head.appendChild(addSec);
     }
-    wrap.appendChild(bar);
+    wrap.appendChild(col3Head);
 
     const typeWord = (selectedType && (selectedType.label || "").toLowerCase()) || App.label("record","one").toLowerCase();
-    const intro = el("p", "muted");
-    intro.style.margin = "0 0 14px";
+    const intro = el("p", "muted mf-fields-intro");
     intro.textContent = canEdit
-      ? `These fields appear on every ${typeWord} in this portal. Add sections to group them; drag fields to reorder within a section; use “Move to” to reassign a field. Order and grouping are how they show on a ${typeWord}'s profile — field keys and saved data never change.`
+      ? `These fields appear on every ${typeWord} in this portal. Add sections to group them; drag a field type from the library to add one; drag fields to reorder within a section; use “Move to” to reassign a field. Order and grouping are how they show on a ${typeWord}'s profile — field keys and saved data never change.`
       : `These are the fields on every ${typeWord} in this portal. Ask an admin to change them.`;
     wrap.appendChild(intro);
 
@@ -2913,7 +2907,7 @@
       head.appendChild(el("div", "fields-section-name", sorted.length ? "Ungrouped" : "All fields"));
       card.appendChild(head);
       const list = attachDropList("");
-      if (!groupFields.length) list.appendChild(el("div", "cell-muted", "No fields here yet — drag a field type in, or use “+ Add field”."));
+      if (!groupFields.length) list.appendChild(el("div", "cell-muted", "No fields here yet — drag a field type in from the library."));
       sortByOrder(groupFields).forEach((f) => list.appendChild(fieldRow(f, canEdit, fields, selectedKey, sorted, "")));
       card.appendChild(list);
       return card;
@@ -3778,11 +3772,8 @@
       // Modules & Fields tab, so they're excluded here — this tab lists the fixed
       // pages of the left-hand/top nav only.
       let NAV = (App.PORTAL_NAV || []).slice().filter(function (it) { return !it[2]; });
-      // When the AI Receptionist is off for this portal, the Calls page doesn't
-      // exist for them — so don't list it in the relabel/reorder editor either.
-      if (App.state.receptionistEnabled === false) {
-        NAV = NAV.filter(function (it) { return it[0] !== "#/calls"; });
-      }
+      // Calls is always a listed page now (its nav item is no longer receptionist-gated),
+      // so it appears here in the rename/reorder/hide editor like any other page.
       // Owner page-lock: a locked page must not be renameable / reorderable / "Show"-able
       // by a Portal Admin — the Owner controls it from the master hub. Exclude locked pages
       // from this editor entirely (me.lockedPages is empty on the master hub).
@@ -3884,7 +3875,7 @@
   // types are exactly those the Add-field flow supports (App.fields.TYPE_LABELS).
   function buildFieldLibrary(col) {
     col.appendChild(el("div", "mf-col-title", "Field library"));
-    col.appendChild(el("p", "mf-col-hint", "Drag a field type onto a section to add it, or open a module and use “+ Add field”."));
+    col.appendChild(el("p", "mf-col-hint", "Drag a field type onto a section to add it."));
     const list = el("div", "mf-lib-list");
     const canEdit = App.state.me.role !== "CLIENT_USER";
     Object.keys(App.fields.TYPE_LABELS).forEach(function (t) {
@@ -4029,6 +4020,51 @@
       rowEl.appendChild(tab);
     });
     if (!ordered.length) rowEl.appendChild(el("div", "cell-muted", "No modules yet."));
+    // "+ Add module" — to the RIGHT of the last-ordered module. Portal-admin and above
+    // (same gate as field/module management). Creates a record type ordered after the last.
+    if (App.state.me && App.state.me.role !== "CLIENT_USER") {
+      const add = el("button", "mf-mod-add", "+ Add module");
+      add.title = "Create a new module";
+      add.onclick = function () { addModuleModal(); };
+      rowEl.appendChild(add);
+    }
+  }
+
+  // Create a NEW user-defined module (record type). Singular name + auto/editable plural,
+  // exactly like Rename. On save: POST /api/record-types (ordered after the last module,
+  // seeded with a "Name" field), then refresh so it appears in the nav + modules row and
+  // becomes the selected module.
+  function addModuleModal() {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Add module</h2><button class="icon-btn" id="am-close">&times;</button></div>
+      <div class="modal-body">
+        <label class="field-label">Singular *</label>
+        <input id="am-one" class="input" placeholder="e.g. Vehicle" />
+        <label class="field-label">Plural (auto — editable)</label>
+        <input id="am-many" class="input" placeholder="e.g. Vehicles" />
+        <p class="muted" style="margin:-4px 0 12px">A new module gets its own page, fields, permissions, analytics, automations, import/export and recycle bin. It starts with one “Name” field — add more by dragging field types in.</p>
+        <button id="am-save" class="btn btn-primary btn-block" style="margin-top:8px">Create module</button>
+      </div>`;
+    const overlay = modal(inner);
+    const oneEl = inner.querySelector("#am-one");
+    const manyEl = inner.querySelector("#am-many");
+    let touched = false;
+    oneEl.addEventListener("input", function () { if (!touched) manyEl.value = App.pluralize(oneEl.value); });
+    manyEl.addEventListener("input", function () { touched = true; });
+    inner.querySelector("#am-close").onclick = function () { overlay.remove(); };
+    inner.querySelector("#am-save").onclick = async function () {
+      const one = oneEl.value.trim(); let many = manyEl.value.trim();
+      if (!one) { App.util.toast("Singular name is required", true); return; }
+      if (!many) many = App.pluralize(one);
+      try {
+        const created = await App.portalApi("/api/record-types", { method: "POST", body: JSON.stringify({ label: one, labelPlural: many }) });
+        overlay.remove();
+        App.state.fieldsType = created.key;   // select the new module
+        await App.loadLabels();               // refresh nav labels/order so it appears in the nav
+        App.util.toast("Module added");
+        if (App._route) App._route();          // repaint Settings (modules row) + the sidebar nav
+      } catch (e) { App.util.toast(e.message || "Could not create the module", true); }
+    };
   }
 
   // Which generic Terms apply to a module. "Record" is universal; "Stage" applies to
@@ -4974,7 +5010,7 @@
     // selected module's sections & fields. Module selection replaces the old dropdown.
     async function secFields(panel) {
       panel.innerHTML = `<h2 class="settings-h">Modules &amp; Fields</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Your modules, what their records are called, and the fields on each. Drag a field type onto a section to add it, or use “+ Add field”.</p>`;
+        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Your modules, what their records are called, and the fields on each. Drag a field type onto a section to add it.</p>`;
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
       const visible = (types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort((a, b) => (a.order || 0) - (b.order || 0));

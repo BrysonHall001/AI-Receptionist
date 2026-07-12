@@ -226,6 +226,56 @@ export async function ensureBookingRecordType(tenantId: string): Promise<string>
   return ensureSystemRecordType(tenantId, systemDef(BOOKING_RECORD_TYPE_KEY)!);
 }
 
+// Keys we must never let a user-created module take: the system record types plus the
+// fixed page/route words, so a new module can't collide with a nav page or a bespoke href.
+const RESERVED_RT_KEYS = new Set<string>([
+  CONTACT_RECORD_TYPE_KEY, JOB_RECORD_TYPE_KEY, BOOKING_RECORD_TYPE_KEY, EQUIPMENT_RECORD_TYPE_KEY,
+  "record", "records", "dashboard", "calls", "reports", "analytics", "automations",
+  "communication", "learn", "feedback", "settings", "admin", "contacts", "jobs", "bookings",
+]);
+
+function slugifyRecordTypeKey(label: string): string {
+  const base = (label || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+  return base || "module";
+}
+
+/**
+ * Create a USER-DEFINED module (record type). system:false, ordered AFTER the current
+ * last module, seeded with a single "Name" text field so it isn't empty. Everything else
+ * (nav item, list page, permissions "records" area, analytics source, automations subject,
+ * import/export, backup, recycle bin, portal-creation picker, AI knowledge list) is
+ * registry-driven off listRecordTypes, so it propagates with no per-surface code.
+ */
+export async function createRecordType(tenantId: string, label: string, labelPlural?: string): Promise<any> {
+  const l = (label || "").trim();
+  if (!l) throw new Error("Module name is required");
+  if (l.length > 40) throw new Error("Module name is too long");
+  const lp = (labelPlural || "").trim() || l;
+
+  // Make sure the system types (and their orders) exist first, so "after last" is right.
+  await ensureAllSystemRecordTypes(tenantId);
+
+  // Unique, safe key.
+  let base = slugifyRecordTypeKey(l);
+  if (RESERVED_RT_KEYS.has(base)) base = base + "_module";
+  let key = base;
+  let n = 2;
+  while (await db.recordType.findFirst({ where: { tenantId, key } })) { key = `${base}_${n}`; n++; }
+
+  // Order AFTER the current last module.
+  const max = await db.recordType.aggregate({ where: { tenantId }, _max: { order: true } });
+  const order = (max._max.order ?? -1) + 1;
+
+  const created = await db.recordType.create({
+    data: { tenantId, key, label: l, labelPlural: lp, system: false, stages: [], recordStages: [], subtypes: [], order },
+  });
+  // Seed ONE default "Name" text field so the new module isn't empty.
+  await db.fieldDef.create({
+    data: { tenantId, recordTypeId: created.id, scope: "record", key: "name", label: "Name", type: "text", required: false, options: [], order: 0, system: false } as any,
+  });
+  return serializeRecordType(created);
+}
+
 export function serializeRecordType(rt: any) {
   return {
     id: rt.id,

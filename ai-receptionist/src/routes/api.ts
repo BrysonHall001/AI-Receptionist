@@ -12,7 +12,7 @@ import { listResources, createResource, updateResource, deleteResource } from ".
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
-import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels } from "../services/recordTypeService";
+import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType } from "../services/recordTypeService";
 import { addRecordStatus, renameRecordStatus, reorderRecordStatuses, deleteRecordStatus } from "../services/recordTypeService";
 import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, listDeletedRecords, restoreRecords, purgeExpiredRecords } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
@@ -1093,6 +1093,24 @@ apiRouter.get("/record-types", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await listRecordTypes(tenantId));
+});
+
+// Create a user-defined module (record type). Same guard as field/module management
+// (portal-admin and above — CLIENT_USER is rejected). The service generates a safe
+// unique key, orders it after the last module, and seeds a default "Name" field.
+apiRouter.post("/record-types", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  const label = String((req.body?.label ?? "")).trim();
+  const labelPlural = String((req.body?.labelPlural ?? "")).trim();
+  if (!label) { res.status(400).json({ error: "Module name is required" }); return; }
+  try {
+    const created = await createRecordType(tenantId, label, labelPlural || undefined);
+    res.status(201).json(created);
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || "Could not create the module" });
+  }
 });
 
 // ---- Per-portal display labels (the naming layer) -------------------------
