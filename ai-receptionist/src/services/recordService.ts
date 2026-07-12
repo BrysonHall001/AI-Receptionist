@@ -16,7 +16,8 @@ import { EventActor, deletedByFromActor } from "../events/types";
 // (reads the UTC-slot digits verbatim, never zone-converts). Reused here so the
 // reschedule event's old/new values are wall-clock, per the wall-clock rule.
 import { fmtApptWall } from "../automation/scheduler";
-import { markRecordGeoStale } from "./geocodingService";
+import { markRecordGeoStale, scheduleGeocodeSweep } from "./geocodingService";
+import { geocodingEnabled } from "../config/env";
 import { logger } from "../utils/logger";
 
 const db = prisma as any;
@@ -280,6 +281,9 @@ function addressDisplay(value: any): string {
 }
 
 export async function getModuleMapData(tenantId: string, recordType: string) {
+  // Same server truth the Mapbox integration tile reads (/api/settings sources the identical
+  // geocodingEnabled() gate) — no duplicated logic, so the two can never disagree.
+  const enabled = geocodingEnabled();
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
   // Primary address field = the first address-type field by order (stable, matches the UI).
   const addrDefs = await db.fieldDef.findMany({
@@ -287,7 +291,7 @@ export async function getModuleMapData(tenantId: string, recordType: string) {
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
   });
   const primary = addrDefs[0];
-  if (!primary) return { addressFieldKey: null as string | null, records: [] as any[] };
+  if (!primary) return { addressFieldKey: null as string | null, geocodingEnabled: enabled, records: [] as any[] };
 
   const rows = await db.record.findMany({
     where: { tenantId, recordTypeId, deletedAt: null },
@@ -315,7 +319,7 @@ export async function getModuleMapData(tenantId: string, recordType: string) {
     };
   });
 
-  return { addressFieldKey: primary.key as string | null, records };
+  return { addressFieldKey: primary.key as string | null, geocodingEnabled: enabled, records };
 }
 
 export async function getRecord(tenantId: string, id: string, opts: { includeDeleted?: boolean } = {}) {
@@ -373,6 +377,11 @@ async function markGeoSafe(tenantId: string, record: { id: string; recordTypeId:
     const addressDefs = await db.fieldDef.findMany({ where: { tenantId, recordTypeId: record.recordTypeId, type: "address" } });
     if (!addressDefs.length) return; // no-op for modules without an address field
     await markRecordGeoStale(tenantId, record, addressDefs);
+    // Prompt geocoding (fix): kick a debounced, coalesced, fire-and-forget sweep so pins appear
+    // within seconds of a save instead of waiting for the next heartbeat tick. NOT awaited — the
+    // save's response time and success are completely unaffected; it no-ops when geocoding is
+    // disabled. The 2-minute heartbeat sweep remains the catch-all for anything missed.
+    scheduleGeocodeSweep();
   } catch (e) {
     logger.error(`[geocode] on-save hook failed for record ${record.id}: ${(e as Error).message}`);
   }

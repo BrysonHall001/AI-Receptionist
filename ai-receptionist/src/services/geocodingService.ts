@@ -145,9 +145,68 @@ export const mapboxGeocoder: GeocoderFn = async (addressStr: string): Promise<Ge
 
 /** Geocode ONE address string. The HTTP call is injectable so tests pass a stub (no network/
  *  token needed). Returns {lat,lng} or null. */
-export async function geocodeAddress(addressStr: string, geocoderFn: GeocoderFn = mapboxGeocoder): Promise<GeoResult> {
+export async function geocodeAddress(addressStr: string, geocoderFn: GeocoderFn = defaultGeocoder): Promise<GeoResult> {
   if (!addressStr) return null;
   return geocoderFn(addressStr);
+}
+
+// The geocoder used when callers don't pass one explicitly (the post-save trigger and the
+// periodic sweep). Overridable via setDefaultGeocoder — a small DI seam so self-tests can run
+// the REAL trigger/sweep code paths against a stub, with no network and no token.
+let defaultGeocoder: GeocoderFn = mapboxGeocoder;
+export function setDefaultGeocoder(fn?: GeocoderFn | null): void { defaultGeocoder = fn || mapboxGeocoder; }
+
+// ---------------------------------------------------------------------------
+// Post-save trigger: a debounced, coalesced, fire-and-forget sweep
+// ---------------------------------------------------------------------------
+// Called (best-effort) right after a save marks rows pending, so pins appear promptly instead
+// of waiting for the next heartbeat tick. Guarantees:
+//  - NEVER blocks or affects the save: no await in the caller, everything caught internally.
+//  - Debounced + coalesced: a burst of saves collapses into ONE queued run; at most one sweep
+//    runs at a time ("one run queued at a time"); a request landing mid-run flags ONE re-run.
+//  - No-ops instantly when geocodingEnabled() is false (same gate as geocodePending).
+// The 2-minute heartbeat sweep (processDueJobs -> geocodePending) remains the catch-all.
+let sweepDebounceTimer: any = null;
+let sweepRunning = false;
+let sweepRerun = false;
+
+export function scheduleGeocodeSweep(debounceMs = 400): void {
+  if (!geocodingEnabled()) return; // inert without a token — rows just stay pending
+  if (sweepRunning) { sweepRerun = true; return; } // a run is active — queue exactly one re-run
+  if (sweepDebounceTimer) return;                  // already queued — coalesce the burst
+  sweepDebounceTimer = setTimeout(() => {
+    sweepDebounceTimer = null;
+    void runTriggeredSweep();
+  }, Math.max(0, debounceMs));
+  if (sweepDebounceTimer && typeof sweepDebounceTimer.unref === "function") sweepDebounceTimer.unref();
+}
+
+async function runTriggeredSweep(): Promise<void> {
+  if (sweepRunning) { sweepRerun = true; return; }
+  sweepRunning = true;
+  try {
+    // Drain in bounded passes so a large backlog still clears without an unbounded loop.
+    for (let pass = 0; pass < 40; pass++) {
+      const r = await geocodePending({ limit: 25 }, defaultGeocoder);
+      if (r.skipped || r.processed === 0) break;
+    }
+  } catch (e) {
+    logger.error(`[geocode] triggered sweep failed: ${(e as Error).message}`);
+  } finally {
+    sweepRunning = false;
+    if (sweepRerun) { sweepRerun = false; scheduleGeocodeSweep(50); } // rows arrived mid-run — one follow-up
+  }
+}
+
+/** Test helper: resolves true once no sweep is queued or running (polls; false on timeout).
+ *  Lets self-tests await the fire-and-forget trigger without exposing internals. */
+export async function geocodeSweepSettled(timeoutMs = 10000): Promise<boolean> {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    if (!sweepDebounceTimer && !sweepRunning && !sweepRerun) return true;
+    await sleep(25);
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +228,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  *  failed+lastError. Processes gently with a short delay between calls. Returns a small summary. */
 export async function geocodePending(
   opts: GeocodeSweepOpts = {},
-  geocoderFn: GeocoderFn = mapboxGeocoder,
+  geocoderFn: GeocoderFn = defaultGeocoder,
 ): Promise<{ processed: number; ok: number; failed: number; skipped: boolean }> {
   if (!geocodingEnabled()) return { processed: 0, ok: 0, failed: 0, skipped: true }; // inert without a token
 

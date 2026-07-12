@@ -3169,6 +3169,15 @@
     fieldsView().innerHTML = "";
     fieldsView().appendChild(wrap);
 
+    // Views-panel liveness (fix): every Fields-column repaint also re-evaluates the Views panel,
+    // so tile AVAILABILITY reacts to field changes — adding/editing/deleting a date or datetime
+    // field lights up (or greys out) the Calendar tile immediately, an address field does the
+    // same for Map, with no manual reload. Mirrors the Board fix (the pipeline toggle already
+    // calls mfViewsRepaint with the fresh type); buildViewsSection re-fetches the module's
+    // CURRENT field defs on every run, so availability is never computed from a stale list.
+    // No-op outside the Modules & Fields settings panel (mfViewsRepaint is null there).
+    if (refresh && mfViewsRepaint) { try { mfViewsRepaint(); } catch (e) {} }
+
     if (typeof window !== "undefined" && window.requestAnimationFrame) {
       window.requestAnimationFrame(sizeMfFieldsScroll);
       if (!mfScrollResizeBound) { mfScrollResizeBound = true; window.addEventListener("resize", sizeMfFieldsScroll); }
@@ -6252,11 +6261,18 @@
       const all = (data && data.records) || [];
       const located = all.filter((r) => r.lat != null && r.lng != null);
       const notLocated = all.length - located.length;
+      // Honest wording (fix): "waiting to be geocoded" implies it WILL happen. When geocoding
+      // isn't configured on this server (no Mapbox key), say so instead — muted, non-alarming.
+      // The flag comes from the map response, sourced from the SAME server gate the Mapbox
+      // integration tile reads, so the two always agree.
+      const geoOn = !(data && data.geocodingEnabled === false);
 
       if (!located.length) {
         const total = all.length;
         friendly(total
-          ? `No records are located yet. ${total} ${total === 1 ? "address is" : "addresses are"} waiting to be geocoded.`
+          ? (geoOn
+              ? `No records are located yet. ${total} ${total === 1 ? "address is" : "addresses are"} waiting to be geocoded.`
+              : "No records are located yet. Map geocoding isn’t set up on this server.")
           : "No records with an address yet. Add an address to a record to see it on the map.");
         return;
       }
@@ -6267,7 +6283,9 @@
       const statusLine = el("div", "map-status");
       statusLine.appendChild(el("span", "map-status-count", `${located.length} of ${all.length} located`));
       if (notLocated > 0) {
-        statusLine.appendChild(el("span", "map-status-note", `${notLocated} ${notLocated === 1 ? "address" : "addresses"} not yet located`));
+        statusLine.appendChild(el("span", "map-status-note", geoOn
+          ? `${notLocated} ${notLocated === 1 ? "address" : "addresses"} not yet located`
+          : `${notLocated} ${notLocated === 1 ? "address" : "addresses"} can’t be located — geocoding isn’t set up on this server`));
       }
       card.appendChild(statusLine);
       const canvas = el("div", "map-canvas");
