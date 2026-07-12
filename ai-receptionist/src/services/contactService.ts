@@ -3,6 +3,28 @@ import { Extracted } from "../ai/schema";
 import { log as logActivity } from "./activityService";
 import { emitEvent } from "../events/bus";
 import { EVENT_TYPES, deletedByFromActor, ActorLike } from "../events/types";
+import { markContactGeoStale, scheduleGeocodeSweep } from "./geocodingService";
+import { ensureContactRecordType } from "./recordTypeService";
+import { geocodingEnabled } from "../config/env";
+import { logger } from "../utils/logger";
+
+/** GEOCODE ON-SAVE HOOK for contacts (contacts-on-the-map): keep each address field's
+ *  ContactGeo cache row in sync with the just-written contact, then kick the shared debounced
+ *  fire-and-forget sweep so pins appear promptly. The exact mirror of recordService's
+ *  markGeoSafe: best-effort, fully swallowed — it must NEVER throw into a contact save, and it
+ *  no-ops when Contacts has no address field. `contact` is the freshly written row. */
+async function markContactGeoSafe(tenantId: string, contact: { id: string; customFields?: any } | null | undefined): Promise<void> {
+  try {
+    if (!contact || !contact.id) return;
+    const recordTypeId = await ensureContactRecordType(tenantId);
+    const addressDefs = await (prisma as any).fieldDef.findMany({ where: { tenantId, recordTypeId, type: "address" } });
+    if (!addressDefs.length) return; // no-op when Contacts has no address field
+    await markContactGeoStale(tenantId, contact, addressDefs);
+    scheduleGeocodeSweep(); // shared trigger — same debounce/guard the record path uses
+  } catch (e) {
+    logger.error(`[geocode] contact on-save hook failed for ${contact && contact.id}: ${(e as Error).message}`);
+  }
+}
 
 export interface ContactInput {
   tenantId: string;
@@ -72,6 +94,7 @@ export async function createOrUpdateContact(input: ContactInput, actor?: Mutatio
   } catch {
     /* emitting is non-critical */
   }
+  await markContactGeoSafe(input.tenantId, contact); // contacts-on-the-map: queue geocoding (best-effort)
   return contact;
 }
 
@@ -171,6 +194,7 @@ export async function updateContact(
     /* emitting is non-critical */
   }
 
+  await markContactGeoSafe(tenantId, updated); // contacts-on-the-map: re-queue geocoding if the address changed
   return updated;
 }
 
@@ -226,6 +250,7 @@ export async function importContacts(
       // Email-only: create a new contact with no phone.
       const c = await prisma.contact.create({ data: { tenantId, phone: null, name: row.name?.trim() || null, email, intent: row.intent?.trim() || null, source: "import" } as any });
       try { await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: c.id }, payload: { name: c.name, email: c.email, source: "import" } }); } catch { /* non-critical */ }
+      await markContactGeoSafe(tenantId, c); // contacts-on-the-map (per imported contact; hook is cheap + debounced)
     }
     imported++;
   }
@@ -351,6 +376,7 @@ export async function createContact(
     await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: contact.id }, payload: { name: contact.name, phone: contact.phone, email: contact.email, source: (contact as any).source } });
     await logActivity({ tenantId, contactId: contact.id, type: "created", summary: "Contact created", actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
   } catch { /* non-critical */ }
+  await markContactGeoSafe(tenantId, contact); // contacts-on-the-map: queue geocoding (best-effort)
   return contact;
 }
 
@@ -373,6 +399,7 @@ export async function bulkUpdateField(tenantId: string, ids: string[], field: st
     const cf = { ...((c.customFields as any) || {}) };
     cf[field] = value;
     await prisma.contact.update({ where: { id: c.id }, data: { customFields: cf } });
+    await markContactGeoSafe(tenantId, { id: c.id, customFields: cf }); // contacts-on-the-map (custom-field branch only — the top-level branch can't touch addresses)
     count++;
   }
   return count;
@@ -426,7 +453,9 @@ export async function mergeContacts(
     await logActivity({ tenantId, contactId: survivorId, type: "field_update", summary: `Merged ${losers.length} contact${losers.length > 1 ? "s" : ""} into this one`, detail: { merged: losers.map((l: any) => ({ id: l.id, name: l.name, phone: l.phone, email: l.email })) }, actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
     await emitEvent({ tenantId, type: EVENT_TYPES.ContactUpdated, actor: actorOf(actor), subject: { type: "contact", id: survivorId }, payload: { merged: loserIds.length } });
   } catch { /* non-critical */ }
-  return prisma.contact.findUnique({ where: { id: survivorId } });
+  const merged = await prisma.contact.findUnique({ where: { id: survivorId } });
+  await markContactGeoSafe(tenantId, merged as any); // contacts-on-the-map: the SURVIVOR reflects the merged address
+  return merged;
 }
 
 // ---- Dummy contact generator (testing aid; ~80% unique values) ----
@@ -494,5 +523,63 @@ export async function generateDummyContact(tenantId: string, actor?: MutationAct
     await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: contact.id }, payload: { name, phone, email, source: "dummy", dummy: true } });
     await logActivity({ tenantId, contactId: contact.id, type: "created", summary: "Dummy contact created", actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
   } catch { /* non-critical */ }
+  await markContactGeoSafe(tenantId, contact); // contacts-on-the-map: queue geocoding (best-effort)
   return contact;
+}
+
+// ---- MAP data for CONTACTS (contacts-on-the-map) -----------------------------
+// The contact twin of recordService.getModuleMapData: joins each live (non-deleted) contact to
+// its ContactGeo row for the PRIMARY address field (the first address-type FieldDef by order on
+// the contact type) and returns cached lat/lng + status. Unresolved contacts carry null coords
+// + their geoStatus so the UI can report them; a portal whose Contacts has no address field
+// gets { addressFieldKey: null, records: [] }. geocodingEnabled comes from the SAME server gate
+// every other map surface reads, so they always agree. Read-only + tenant-scoped.
+function contactAddressDisplay(value: any): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object") {
+    return [value.street, value.city, value.state, value.postal, value.country]
+      .map((x: any) => (x == null ? "" : String(x)).trim())
+      .filter(Boolean)
+      .join(", ");
+  }
+  return String(value);
+}
+
+export async function getContactsMapData(tenantId: string) {
+  const enabled = geocodingEnabled();
+  const recordTypeId = await ensureContactRecordType(tenantId);
+  const addrDefs = await (prisma as any).fieldDef.findMany({
+    where: { tenantId, recordTypeId, type: "address" },
+    orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+  });
+  const primary = addrDefs[0];
+  if (!primary) return { addressFieldKey: null as string | null, geocodingEnabled: enabled, records: [] as any[] };
+
+  const rows = await prisma.contact.findMany({
+    where: { tenantId, deletedAt: null } as any,
+    orderBy: { createdAt: "desc" },
+  });
+  const ids = rows.map((c: any) => c.id);
+  const geos = ids.length
+    ? await (prisma as any).contactGeo.findMany({ where: { tenantId, contactId: { in: ids }, fieldKey: primary.key } })
+    : [];
+  const geoByContact: Record<string, any> = {};
+  geos.forEach((g: any) => { geoByContact[g.contactId] = g; });
+
+  const records = rows.map((c: any) => {
+    const g = geoByContact[c.id];
+    const ok = g && g.status === "ok" && g.lat != null && g.lng != null;
+    return {
+      id: c.id,
+      name: c.name || "Unnamed contact",
+      addressText: contactAddressDisplay((c.customFields || {})[primary.key]),
+      lat: ok ? g.lat : null,
+      lng: ok ? g.lng : null,
+      // No geo row yet (e.g. created before this feature / awaiting the sweep) -> "pending".
+      geoStatus: g ? g.status : "pending",
+    };
+  });
+
+  return { addressFieldKey: primary.key as string | null, geocodingEnabled: enabled, records };
 }

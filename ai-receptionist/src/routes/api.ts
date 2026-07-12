@@ -9,7 +9,7 @@ import { runSimulatedCall } from "../services/simulationService";
 import { findOpenSlots, getCalendarData } from "../services/availabilityService";
 import { loadBookingConfig, saveBookingConfig } from "../services/bookingConfig";
 import { listResources, createResource, updateResource, deleteResource } from "../services/resourceService";
-import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
+import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact, getContactsMapData } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
 import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType, setPipelineEnabled, setModuleViews } from "../services/recordTypeService";
@@ -281,6 +281,16 @@ apiRouter.get("/contacts", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   res.json(await listContacts(tenantId));
+});
+
+// ---- Map data for contacts (contacts-on-the-map): plot contacts via the cached ContactGeo
+// coordinates. MUST be registered before "/contacts/:id" so "map" isn't read as an id
+// (exactly like /contacts/deleted below). ----
+apiRouter.get("/contacts/map", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try { res.json(await getContactsMapData(tenantId)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
 // ---- Recycle bin (soft-deleted contacts) ----

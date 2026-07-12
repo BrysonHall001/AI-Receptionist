@@ -258,10 +258,37 @@ model Contact {
   deletedByType String?
   callSessions CallSession[]
   activity     ActivityLog[]
+  geo          ContactGeo[]
 
   @@unique([tenantId, phone])
   @@index([tenantId])
   @@index([tenantId, deletedAt])
+}
+
+// GEOCODE CACHE for CONTACTS (contacts-on-the-map). The exact mirror of RecordGeo, but for the
+// dedicated Contact model (contacts live outside the Record system, so they need their own
+// cache table — kept SEPARATE by design; RecordGeo is untouched). One row per (contact,
+// address-field): cached lat/lng, a hash of the normalized address for change detection, and a
+// status the shared sweep advances (pending | ok | failed | empty). Optional + non-blocking:
+// with no provider token, rows stay "pending" and every contact save still succeeds.
+// Cascade-deletes with its contact (covers recycle-bin purge).
+model ContactGeo {
+  id          String    @id @default(cuid())
+  tenantId    String
+  contactId   String
+  contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  fieldKey    String    // which address FieldDef this row caches (a portal can add several)
+  addressHash String    // hash of the normalized address string, for change detection
+  lat         Float?
+  lng         Float?
+  status      String    @default("pending") // pending | ok | failed | empty
+  lastError   String?
+  geocodedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, contactId, fieldKey])
+  @@index([tenantId, status]) // the shared sweep: find pending rows
 }
 
 model CallSession {

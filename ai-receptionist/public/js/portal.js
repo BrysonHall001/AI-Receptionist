@@ -1955,6 +1955,26 @@
     bar.appendChild(importBtn);
     bar.appendChild(exportBtn);
     container.appendChild(bar);
+
+    // ---- Map view (contacts-on-the-map) — plots contacts with a geocoded address, using the
+    // SAME shared map component the record Map view uses (mountGeoMap; no duplicated Leaflet
+    // block) and the same inline gated pattern: shown only when the Contacts module's Map view
+    // is turned on in its Views panel. Table mode below (saved filters, bulk actions, toolbar)
+    // is completely untouched. ----
+    const contactType = ((App.state.recordTypes || []).find(function (t) { return t.key === "contact"; })) || null;
+    if (contactType && moduleMapEnabled(contactType)) {
+      const mapHost = el("div");
+      container.appendChild(mapHost);
+      mountGeoMap(mapHost, {
+        url: "/api/contacts/map",
+        nounOne: "contact", nounMany: "contacts",
+        emptyNoRows: "No contacts with an address yet. Add an address to a contact to see it on the map.",
+        titleOf: function (r) { return r.name || "Unnamed contact"; },
+        linkText: "Open contact →",
+        linkHref: function (r) { return "#/contact/" + r.id; },
+      });
+    }
+
     const tableHost = el("div");
     container.appendChild(tableHost);
     view().appendChild(container);
@@ -4352,7 +4372,10 @@
   // "Coming soon" (future batches). Guarded by the module-management permission. ----
   function buildViewsSection(col, selectedType) {
     const prev = col.querySelector(".mf-views"); if (prev) prev.remove(); // avoid dupes on re-render
-    if (!selectedType || selectedType.key === "contact") return; // Contacts have no optional views
+    if (!selectedType) return;
+    // Contacts now get a Views panel too (contacts-on-the-map) — but ONLY the Map tile:
+    // Board/Calendar/Gallery remain record-module concepts and are not offered on Contacts.
+    const isContact = selectedType.key === "contact";
     const canEdit = App.state.me.role !== "CLIENT_USER";
     const modName = selectedType.labelPlural || selectedType.label || "these records";
 
@@ -4411,50 +4434,52 @@
           return { cb, row };
         }
 
-        // BOARD — available only with a pipeline.
-        const board = viewRow({
-          name: "Board", available: hasPipeline, on: moduleViewOn(selectedType, "board"),
-          hint: hasPipeline ? "A kanban of records grouped by pipeline stage." : "Turn on a pipeline to enable the Board view.",
-        });
-        board.cb.onchange = function () {
-          board.cb.disabled = true;
-          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "board"; });
-          if (board.cb.checked) next.push("board");
-          persist(next).then(function (rt) { afterSave(rt, board.cb.checked ? "Board view on" : "Board view off"); })
-            .catch(function (e) { board.cb.checked = !board.cb.checked; board.cb.disabled = false; App.util.toast(e.message, true); });
-        };
-
-        // CALENDAR — available only when the module has at least one date/datetime field.
-        const calAvailable = dateFields.length > 0;
-        const cal = viewRow({
-          name: "Calendar", available: calAvailable, on: moduleViewOn(selectedType, "calendar"),
-          hint: calAvailable ? "A month/week/day grid of records laid out by a date field." : "Add a date field to enable the Calendar view.",
-        });
-        cal.cb.onchange = function () {
-          cal.cb.disabled = true;
-          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "calendar"; });
-          if (cal.cb.checked) next.push("calendar");
-          persist(next).then(function (rt) { afterSave(rt, cal.cb.checked ? "Calendar view on" : "Calendar view off"); })
-            .catch(function (e) { cal.cb.checked = !cal.cb.checked; cal.cb.disabled = false; App.util.toast(e.message, true); });
-        };
-
-        // When Calendar is ON and the module has MORE THAN ONE date field, let the user pick
-        // which one the calendar uses. Bookings map to their existing field, so unchanged.
-        if (calAvailable && moduleViewOn(selectedType, "calendar") && dateFields.length > 1) {
-          const pick = el("div", "mf-view-pick");
-          pick.appendChild(el("label", "mf-view-pick-lbl", "Calendar date field"));
-          const sel = el("select", "input");
-          const chosen = moduleCalendarField(selectedType, fields);
-          dateFields.forEach(function (f) { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === chosen) o.selected = true; sel.appendChild(o); });
-          sel.disabled = !canEdit;
-          sel.onchange = function () {
-            sel.disabled = true;
-            persist(moduleEnabledViews(selectedType), sel.value)
-              .then(function (rt) { afterSave(rt, "Calendar date field updated"); })
-              .catch(function (e) { sel.disabled = false; App.util.toast(e.message, true); });
+        if (!isContact) {
+          // BOARD — available only with a pipeline.
+          const board = viewRow({
+            name: "Board", available: hasPipeline, on: moduleViewOn(selectedType, "board"),
+            hint: hasPipeline ? "A kanban of records grouped by pipeline stage." : "Turn on a pipeline to enable the Board view.",
+          });
+          board.cb.onchange = function () {
+            board.cb.disabled = true;
+            const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "board"; });
+            if (board.cb.checked) next.push("board");
+            persist(next).then(function (rt) { afterSave(rt, board.cb.checked ? "Board view on" : "Board view off"); })
+              .catch(function (e) { board.cb.checked = !board.cb.checked; board.cb.disabled = false; App.util.toast(e.message, true); });
           };
-          pick.appendChild(sel);
-          cal.row.appendChild(pick);
+
+          // CALENDAR — available only when the module has at least one date/datetime field.
+          const calAvailable = dateFields.length > 0;
+          const cal = viewRow({
+            name: "Calendar", available: calAvailable, on: moduleViewOn(selectedType, "calendar"),
+            hint: calAvailable ? "A month/week/day grid of records laid out by a date field." : "Add a date field to enable the Calendar view.",
+          });
+          cal.cb.onchange = function () {
+            cal.cb.disabled = true;
+            const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "calendar"; });
+            if (cal.cb.checked) next.push("calendar");
+            persist(next).then(function (rt) { afterSave(rt, cal.cb.checked ? "Calendar view on" : "Calendar view off"); })
+              .catch(function (e) { cal.cb.checked = !cal.cb.checked; cal.cb.disabled = false; App.util.toast(e.message, true); });
+          };
+
+          // When Calendar is ON and the module has MORE THAN ONE date field, let the user pick
+          // which one the calendar uses. Bookings map to their existing field, so unchanged.
+          if (calAvailable && moduleViewOn(selectedType, "calendar") && dateFields.length > 1) {
+            const pick = el("div", "mf-view-pick");
+            pick.appendChild(el("label", "mf-view-pick-lbl", "Calendar date field"));
+            const sel = el("select", "input");
+            const chosen = moduleCalendarField(selectedType, fields);
+            dateFields.forEach(function (f) { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === chosen) o.selected = true; sel.appendChild(o); });
+            sel.disabled = !canEdit;
+            sel.onchange = function () {
+              sel.disabled = true;
+              persist(moduleEnabledViews(selectedType), sel.value)
+                .then(function (rt) { afterSave(rt, "Calendar date field updated"); })
+                .catch(function (e) { sel.disabled = false; App.util.toast(e.message, true); });
+            };
+            pick.appendChild(sel);
+            cal.row.appendChild(pick);
+          }
         }
 
         // MAP — available only when the module has at least one address field (mirrors the
@@ -4473,22 +4498,24 @@
             .catch(function (e) { map.cb.checked = !map.cb.checked; map.cb.disabled = false; App.util.toast(e.message, true); });
         };
 
-        // GALLERY — available only when the module has at least one image field (mirrors the
-        // Calendar/Map field rules; the renderFields liveness hook re-evaluates this live on
-        // field add/edit/delete). Toggling it on shows the Gallery view on the list page.
-        const imgFields = moduleImageFields(selectedType, fields);
-        const galAvailable = imgFields.length > 0;
-        const gal = viewRow({
-          name: "Gallery", available: galAvailable, on: moduleViewOn(selectedType, "gallery"),
-          hint: galAvailable ? "A visual card grid of records." : "Add an image field to enable the Gallery view.",
-        });
-        gal.cb.onchange = function () {
-          gal.cb.disabled = true;
-          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "gallery"; });
-          if (gal.cb.checked) next.push("gallery");
-          persist(next).then(function (rt) { afterSave(rt, gal.cb.checked ? "Gallery view on" : "Gallery view off"); })
-            .catch(function (e) { gal.cb.checked = !gal.cb.checked; gal.cb.disabled = false; App.util.toast(e.message, true); });
-        };
+        if (!isContact) {
+          // GALLERY — available only when the module has at least one image field (mirrors the
+          // Calendar/Map field rules; the renderFields liveness hook re-evaluates this live on
+          // field add/edit/delete). Toggling it on shows the Gallery view on the list page.
+          const imgFields = moduleImageFields(selectedType, fields);
+          const galAvailable = imgFields.length > 0;
+          const gal = viewRow({
+            name: "Gallery", available: galAvailable, on: moduleViewOn(selectedType, "gallery"),
+            hint: galAvailable ? "A visual card grid of records." : "Add an image field to enable the Gallery view.",
+          });
+          gal.cb.onchange = function () {
+            gal.cb.disabled = true;
+            const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "gallery"; });
+            if (gal.cb.checked) next.push("gallery");
+            persist(next).then(function (rt) { afterSave(rt, gal.cb.checked ? "Gallery view on" : "Gallery view off"); })
+              .catch(function (e) { gal.cb.checked = !gal.cb.checked; gal.cb.disabled = false; App.util.toast(e.message, true); });
+          };
+        }
       });
   }
 
@@ -6284,6 +6311,28 @@
   // records, or the fetch fails, it shows a friendly message — never a broken gray box or a
   // thrown error that would break the list page. Read-only sibling of renderBookingCalendar. ----
   function renderRecordMap(host, type, fields) {
+    // Thin wrapper over the SHARED map component below: the record flavor supplies its data
+    // URL, nouns, title, and detail-link target ("#/record/" + r.id). Contacts reuse the same
+    // component with their own config (mountGeoMap) — no duplicated Leaflet block anywhere.
+    mountGeoMap(host, {
+      url: "/api/records/map?type=" + encodeURIComponent(type.key),
+      nounOne: "record", nounMany: "records",
+      emptyNoRows: "No records with an address yet. Add an address to a record to see it on the map.",
+      titleOf: function (r) { return r.title || "Untitled"; },
+      linkText: "Open record →",
+      linkHref: function (r) { return "#/record/" + r.id; },
+    });
+  }
+
+  // ---- SHARED map component (records + contacts) — plots one dataset's rows on an
+  // OpenStreetMap/Leaflet map from cached geocode coordinates. cfg: { url, nounOne, nounMany,
+  // emptyNoRows, titleOf(r), linkText, linkHref(r) }. Leaflet is self-hosted
+  // (/js/vendor/leaflet). Degrades cleanly: if Leaflet didn't load, there are no located rows,
+  // or the fetch fails, it shows a friendly message — never a broken gray box or a thrown error
+  // that would break the page. Includes the honest banner: when the server reports
+  // geocodingEnabled:false, unlocated rows read "isn't set up on this server", never
+  // "waiting". ----
+  function mountGeoMap(host, cfg) {
     host.innerHTML = `<div class="card map-card"><div class="map-empty">Loading map…</div></div>`;
     const OSM_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
     const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
@@ -6297,7 +6346,7 @@
 
     (async function () {
       let data;
-      try { data = await App.portalApi("/api/records/map?type=" + encodeURIComponent(type.key)); }
+      try { data = await App.portalApi(cfg.url); }
       catch (e) { friendly((e && e.message) || "Could not load the map."); return; }
 
       const all = (data && data.records) || [];
@@ -6313,9 +6362,9 @@
         const total = all.length;
         friendly(total
           ? (geoOn
-              ? `No records are located yet. ${total} ${total === 1 ? "address is" : "addresses are"} waiting to be geocoded.`
-              : "No records are located yet. Map geocoding isn’t set up on this server.")
-          : "No records with an address yet. Add an address to a record to see it on the map.");
+              ? `No ${cfg.nounMany} are located yet. ${total} ${total === 1 ? "address is" : "addresses are"} waiting to be geocoded.`
+              : `No ${cfg.nounMany} are located yet. Map geocoding isn’t set up on this server.`)
+          : cfg.emptyNoRows);
         return;
       }
 
@@ -6350,14 +6399,15 @@
         const latlngs = [];
         located.forEach((r) => {
           const m = L.marker([r.lat, r.lng], { icon }).addTo(map);
-          const title = esc(r.title || "Untitled");
+          const title = esc(cfg.titleOf(r));
           const addr = r.addressText ? `<div class="map-pop-addr">${esc(r.addressText)}</div>` : "";
-          // Popup: title + address + a link to the record's detail page (existing route).
+          // Popup: title + address + a link to the row's detail page (existing route).
           const popup = el("div", "map-pop");
           popup.innerHTML = `<div class="map-pop-title">${title}</div>${addr}`;
-          const link = el("a", "map-pop-link", "Open record →");
-          link.href = "#/record/" + r.id;
-          link.onclick = function (e) { e.preventDefault(); App.go("#/record/" + r.id); };
+          const link = el("a", "map-pop-link", cfg.linkText);
+          const href = cfg.linkHref(r);
+          link.href = href;
+          link.onclick = function (e) { e.preventDefault(); App.go(href); };
           popup.appendChild(link);
           m.bindPopup(popup);
           latlngs.push([r.lat, r.lng]);

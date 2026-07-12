@@ -11,7 +11,7 @@
 // Non-blocking by design: if MAPBOX_TOKEN isn't set, rows are still marked (pending/empty) but
 // the sweep is a no-op — nothing is sent anywhere and the script still completes cleanly.
 import { prisma, disconnectDb } from "./client";
-import { markRecordGeoStale, geocodePending } from "../services/geocodingService";
+import { markRecordGeoStale, markContactGeoStale, geocodePending } from "../services/geocodingService";
 import { geocodingEnabled } from "../config/env";
 
 const db = prisma as any;
@@ -29,8 +29,15 @@ async function main(): Promise<void> {
     (byType[k] || (byType[k] = { tenantId: d.tenantId, recordTypeId: d.recordTypeId, defs: [] })).defs.push({ key: d.key, type: "address" });
   }
 
+  // Contact record types are handled by the CONTACTS pass below (contacts aren't Records);
+  // everything else goes through the record pass. Both idempotent (unchanged addresses are
+  // cache hits and never re-queued).
+  const contactTypes = await db.recordType.findMany({ where: { key: "contact" }, select: { id: true } });
+  const contactTypeIds = new Set(contactTypes.map((t: any) => t.id));
+
   let marked = 0;
   for (const grp of Object.values(byType)) {
+    if (contactTypeIds.has(grp.recordTypeId)) continue; // contacts handled below
     const records = await db.record.findMany({
       where: { tenantId: grp.tenantId, recordTypeId: grp.recordTypeId, deletedAt: null },
       select: { id: true, recordTypeId: true, customFields: true },
@@ -41,6 +48,23 @@ async function main(): Promise<void> {
     }
   }
   console.log(`Marked geocode rows for ${marked} record(s) across ${Object.keys(byType).length} module(s).`);
+
+  // CONTACTS pass (contacts-on-the-map): mark every live contact stale for the contact type's
+  // address fields, mirroring the record pass. Idempotent and re-runnable for the same reason.
+  let cMarked = 0, cTenants = 0;
+  for (const grp of Object.values(byType)) {
+    if (!contactTypeIds.has(grp.recordTypeId)) continue;
+    cTenants++;
+    const contacts = await db.contact.findMany({
+      where: { tenantId: grp.tenantId, deletedAt: null },
+      select: { id: true, customFields: true },
+    });
+    for (const c of contacts) {
+      await markContactGeoStale(grp.tenantId, c, grp.defs);
+      cMarked++;
+    }
+  }
+  console.log(`Marked geocode rows for ${cMarked} contact(s) across ${cTenants} portal(s).`);
 
   if (!geocodingEnabled()) {
     console.log("MAPBOX_TOKEN not configured — rows left pending; skipping the geocoding sweep (no-op).");

@@ -108,6 +108,64 @@ async function upsertGeo(
 }
 
 // ---------------------------------------------------------------------------
+// CONTACT mirror (contacts-on-the-map): the same on-save semantics for the dedicated Contact
+// model, writing ContactGeo rows. Shares normalizeAddress/hashAddress/the geocoder with the
+// record path — only the table and key differ. The RECORD path above is untouched.
+// ---------------------------------------------------------------------------
+
+/** The contact twin of markRecordGeoStale, with the EXACT same rules per address field:
+ *  blank → "empty"; new/changed hash → "pending" (null coords); unchanged hash → left alone
+ *  (cache hit, never re-geocoded); no address fields on the contact type → no-op. Per-field
+ *  defensive; callers additionally wrap it so it can never throw into a contact save. */
+export async function markContactGeoStale(
+  tenantId: string,
+  contact: { id: string; customFields?: any },
+  fieldDefs: FieldDefLike[],
+): Promise<void> {
+  const addressFields = (fieldDefs || []).filter((f) => f && f.type === "address");
+  if (!addressFields.length) return; // no-op when Contacts has no address field
+
+  const cf = (contact && contact.customFields) || {};
+  for (const f of addressFields) {
+    try {
+      const normalized = normalizeAddress(cf[f.key]);
+      const isEmpty = normalized === "";
+      const hash = hashAddress(normalized);
+      const existing = await db.contactGeo.findUnique({
+        where: { tenantId_contactId_fieldKey: { tenantId, contactId: contact.id, fieldKey: f.key } },
+      });
+
+      if (isEmpty) {
+        if (existing && existing.status === "empty" && existing.addressHash === hash) continue;
+        await upsertContactGeo(tenantId, contact.id, f.key, { addressHash: hash, status: "empty", lat: null, lng: null, lastError: null, geocodedAt: null });
+        continue;
+      }
+
+      // Unchanged address that's already resolved/queued → cache hit, leave it alone.
+      if (existing && existing.addressHash === hash && existing.status !== "empty") continue;
+
+      // New or changed address → queue for (re)geocoding.
+      await upsertContactGeo(tenantId, contact.id, f.key, { addressHash: hash, status: "pending", lat: null, lng: null, lastError: null, geocodedAt: null });
+    } catch (e) {
+      logger.error(`[geocode] markContactGeoStale failed for ${contact.id}/${f.key}: ${(e as Error).message}`);
+    }
+  }
+}
+
+async function upsertContactGeo(
+  tenantId: string,
+  contactId: string,
+  fieldKey: string,
+  patch: { addressHash: string; status: string; lat: number | null; lng: number | null; lastError: string | null; geocodedAt: Date | null },
+): Promise<void> {
+  await db.contactGeo.upsert({
+    where: { tenantId_contactId_fieldKey: { tenantId, contactId, fieldKey } },
+    create: { tenantId, contactId, fieldKey, ...patch },
+    update: { ...patch },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Mapbox forward geocoding (one address) — HTTP isolated behind an injectable fn
 // ---------------------------------------------------------------------------
 
@@ -237,34 +295,55 @@ export async function geocodePending(
   const where: any = { status: "pending" };
   if (opts.tenantId) where.tenantId = opts.tenantId;
 
-  const rows = await db.recordGeo.findMany({ where, orderBy: { updatedAt: "asc" }, take: limit });
-  let ok = 0, failed = 0, processed = 0;
+  // ONE sweep, TWO tables (contacts-on-the-map): the record cache and the contact cache are
+  // processed under the same gate, batching, delay, post-save trigger, and heartbeat. Each
+  // source knows its table and how to load its owner's CURRENT address (re-normalized live, so
+  // a row queued for a since-changed address geocodes the latest text; a vanished/emptied
+  // owner -> "empty"). The record source's behavior is byte-identical to before.
+  const sources = [
+    {
+      table: db.recordGeo,
+      loadAddress: async (row: any) => {
+        const rec = await db.record.findFirst({ where: { id: row.recordId, tenantId: row.tenantId, deletedAt: null } });
+        return rec ? normalizeAddress((rec.customFields || {})[row.fieldKey]) : "";
+      },
+    },
+    {
+      table: db.contactGeo,
+      loadAddress: async (row: any) => {
+        const c = await db.contact.findFirst({ where: { id: row.contactId, tenantId: row.tenantId, deletedAt: null } });
+        return c ? normalizeAddress((c.customFields || {})[row.fieldKey]) : "";
+      },
+    },
+  ];
 
-  for (const row of rows) {
-    processed++;
-    try {
-      // Resolve from the record's CURRENT address (its customFields may have moved on since the
-      // row was queued). If the record or field vanished/emptied, mark empty and move on.
-      const rec = await db.record.findFirst({ where: { id: row.recordId, tenantId: row.tenantId, deletedAt: null } });
-      const addressStr = rec ? normalizeAddress((rec.customFields || {})[row.fieldKey]) : "";
-      if (!addressStr) {
-        await db.recordGeo.update({ where: { id: row.id }, data: { status: "empty", lat: null, lng: null, addressHash: hashAddress(""), lastError: null, geocodedAt: null } });
-        continue;
-      }
-      const res = await geocodeAddress(addressStr, geocoderFn);
-      if (res) {
-        await db.recordGeo.update({ where: { id: row.id }, data: { status: "ok", lat: res.lat, lng: res.lng, addressHash: hashAddress(addressStr), lastError: null, geocodedAt: new Date() } });
-        ok++;
-      } else {
-        await db.recordGeo.update({ where: { id: row.id }, data: { status: "failed", lastError: "No geocoding result", geocodedAt: new Date() } });
+  let ok = 0, failed = 0, processed = 0;
+  for (const src of sources) {
+    const rows = await src.table.findMany({ where, orderBy: { updatedAt: "asc" }, take: limit });
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      processed++;
+      try {
+        const addressStr = await src.loadAddress(row);
+        if (!addressStr) {
+          await src.table.update({ where: { id: row.id }, data: { status: "empty", lat: null, lng: null, addressHash: hashAddress(""), lastError: null, geocodedAt: null } });
+          continue;
+        }
+        const res = await geocodeAddress(addressStr, geocoderFn);
+        if (res) {
+          await src.table.update({ where: { id: row.id }, data: { status: "ok", lat: res.lat, lng: res.lng, addressHash: hashAddress(addressStr), lastError: null, geocodedAt: new Date() } });
+          ok++;
+        } else {
+          await src.table.update({ where: { id: row.id }, data: { status: "failed", lastError: "No geocoding result", geocodedAt: new Date() } });
+          failed++;
+        }
+      } catch (e) {
         failed++;
+        try { await src.table.update({ where: { id: row.id }, data: { status: "failed", lastError: String((e as Error).message).slice(0, 500), geocodedAt: new Date() } }); }
+        catch (e2) { logger.error(`[geocode] could not mark row ${row.id} failed: ${(e2 as Error).message}`); }
       }
-    } catch (e) {
-      failed++;
-      try { await db.recordGeo.update({ where: { id: row.id }, data: { status: "failed", lastError: String((e as Error).message).slice(0, 500), geocodedAt: new Date() } }); }
-      catch (e2) { logger.error(`[geocode] could not mark row ${row.id} failed: ${(e2 as Error).message}`); }
+      if (delayMs && i < rows.length - 1) await sleep(delayMs);
     }
-    if (delayMs && processed < rows.length) await sleep(delayMs);
   }
 
   if (processed) logger.info(`[geocode] sweep (scope=${opts.tenantId || "all"}): processed ${processed}, ok ${ok}, failed ${failed}`);
