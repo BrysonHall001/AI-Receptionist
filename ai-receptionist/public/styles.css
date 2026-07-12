@@ -1957,6 +1957,22 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .ext-readonly-banner { display:flex; gap:8px; align-items:flex-start; padding:10px 12px; margin:0 0 12px; border-radius:8px; background:#f1f5f9; border:1px solid #e2e8f0; color:#475569; font-size:13px; line-height:1.4; }
 .cal-empty { padding: 20px; text-align: center; color: var(--ink-faint); }
 
+/* Map view (Map B) — Leaflet/OSM card, status line, and pin popup. Themed via tokens. */
+.map-card { padding: 0; overflow: hidden; margin-bottom: 14px; }
+.map-empty { padding: 28px 20px; text-align: center; color: var(--ink-faint); }
+.map-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.map-status-count { font-weight: 700; color: var(--ink); }
+.map-status-note { color: var(--ink-faint); }
+.map-status-note::before { content: "•"; margin-right: 8px; color: var(--line-strong); }
+.map-canvas { height: 460px; width: 100%; background: var(--panel-2); }
+/* Keep Leaflet's own controls/tiles above the card; popup content uses app tokens. */
+.map-canvas .leaflet-container { font: inherit; background: var(--panel-2); }
+.map-pop-title { font-weight: 700; margin-bottom: 2px; }
+.map-pop-addr { color: var(--ink-soft); font-size: 12.5px; margin-bottom: 6px; }
+.map-pop-link { font-weight: 600; color: var(--accent); text-decoration: none; }
+.map-pop-link:hover { text-decoration: underline; }
+@media (max-width: 640px) { .map-canvas { height: 360px; } }
+
 /* calendar polish: legend, status glyph, now-line, closed-day label */
 .cal-legend { display: grid; grid-template-columns: auto auto; column-gap: 14px; row-gap: 5px; align-items: center; }
 .cal-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); }

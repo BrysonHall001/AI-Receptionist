@@ -4211,6 +4211,13 @@
   // Calendar is offered when the Calendar view is turned on (the editor only lets it be
   // turned on for modules that actually have a date field).
   function moduleCalendarEnabled(t) { return moduleViewOn(t, "calendar"); }
+  // The address fields a module can plot on a map (any address-type field, by order).
+  function moduleAddressFields(t, fields) {
+    return (fields || []).filter(function (f) { return f.type === "address"; });
+  }
+  // Map is offered when the Map view is turned on (the editor only lets it be turned on for
+  // modules that actually have an address field).
+  function moduleMapEnabled(t) { return moduleViewOn(t, "map"); }
   // Which date field the calendar uses: the module's chosen field if still valid, else the first.
   function moduleCalendarField(t, fields) {
     var df = moduleDateFields(t, fields);
@@ -4389,8 +4396,23 @@
           cal.row.appendChild(pick);
         }
 
-        // MAP + GALLERY — future batches; shown disabled so the roadmap is visible.
-        viewRow({ name: "Map", comingSoon: true, available: false, hint: "Plot records that have an address on a map." });
+        // MAP — available only when the module has at least one address field (mirrors the
+        // Calendar tile's date-field rule). Toggling it on shows the Map view on the list page.
+        const addrFields = moduleAddressFields(selectedType, fields);
+        const mapAvailable = addrFields.length > 0;
+        const map = viewRow({
+          name: "Map", available: mapAvailable, on: moduleViewOn(selectedType, "map"),
+          hint: mapAvailable ? "Plot records with an address on a map." : "Add an address field to enable the Map view.",
+        });
+        map.cb.onchange = function () {
+          map.cb.disabled = true;
+          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "map"; });
+          if (map.cb.checked) next.push("map");
+          persist(next).then(function (rt) { afterSave(rt, map.cb.checked ? "Map view on" : "Map view off"); })
+            .catch(function (e) { map.cb.checked = !map.cb.checked; map.cb.disabled = false; App.util.toast(e.message, true); });
+        };
+
+        // GALLERY — future batch; shown disabled so the roadmap is visible.
         viewRow({ name: "Gallery", comingSoon: true, available: false, hint: "A visual card grid of records." });
       });
   }
@@ -6181,6 +6203,96 @@
     }
   }
 
+  // ---- Map view (Map B) — plots a module's address records on an OpenStreetMap/Leaflet map,
+  // using the cached RecordGeo coordinates from /api/records/map. Leaflet is self-hosted
+  // (/js/vendor/leaflet). Degrades cleanly: if Leaflet didn't load, there are no located
+  // records, or the fetch fails, it shows a friendly message — never a broken gray box or a
+  // thrown error that would break the list page. Read-only sibling of renderBookingCalendar. ----
+  function renderRecordMap(host, type, fields) {
+    host.innerHTML = `<div class="card map-card"><div class="map-empty">Loading map…</div></div>`;
+    const OSM_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+    const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+    function friendly(msg) { host.innerHTML = `<div class="card map-card"><div class="map-empty">${esc(msg)}</div></div>`; }
+
+    // Leaflet is loaded via a self-hosted <script> in index.html. If it somehow isn't present
+    // (blocked/failed), don't throw — just show a message and leave the table below intact.
+    const L = window.L;
+    if (!L || typeof L.map !== "function") { friendly("Map couldn’t load. The list below still works."); return; }
+
+    (async function () {
+      let data;
+      try { data = await App.portalApi("/api/records/map?type=" + encodeURIComponent(type.key)); }
+      catch (e) { friendly((e && e.message) || "Could not load the map."); return; }
+
+      const all = (data && data.records) || [];
+      const located = all.filter((r) => r.lat != null && r.lng != null);
+      const notLocated = all.length - located.length;
+
+      if (!located.length) {
+        const total = all.length;
+        friendly(total
+          ? `No records are located yet. ${total} ${total === 1 ? "address is" : "addresses are"} waiting to be geocoded.`
+          : "No records with an address yet. Add an address to a record to see it on the map.");
+        return;
+      }
+
+      // Build the card: a status line + the map canvas.
+      host.innerHTML = "";
+      const card = el("div", "card map-card");
+      const statusLine = el("div", "map-status");
+      statusLine.appendChild(el("span", "map-status-count", `${located.length} of ${all.length} located`));
+      if (notLocated > 0) {
+        statusLine.appendChild(el("span", "map-status-note", `${notLocated} ${notLocated === 1 ? "address" : "addresses"} not yet located`));
+      }
+      card.appendChild(statusLine);
+      const canvas = el("div", "map-canvas");
+      card.appendChild(canvas);
+      host.appendChild(card);
+
+      // Explicit marker icon pointing at the vendored images (Leaflet can't auto-detect the
+      // path when loaded via a plain <script>, so pins would otherwise be invisible).
+      const icon = L.icon({
+        iconUrl: "/js/vendor/leaflet/images/marker-icon.png",
+        iconRetinaUrl: "/js/vendor/leaflet/images/marker-icon-2x.png",
+        shadowUrl: "/js/vendor/leaflet/images/marker-shadow.png",
+        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
+      });
+
+      try {
+        const map = L.map(canvas, { scrollWheelZoom: false });
+        L.tileLayer(OSM_URL, { attribution: OSM_ATTR, maxZoom: 19 }).addTo(map);
+
+        const latlngs = [];
+        located.forEach((r) => {
+          const m = L.marker([r.lat, r.lng], { icon }).addTo(map);
+          const title = esc(r.title || "Untitled");
+          const addr = r.addressText ? `<div class="map-pop-addr">${esc(r.addressText)}</div>` : "";
+          // Popup: title + address + a link to the record's detail page (existing route).
+          const popup = el("div", "map-pop");
+          popup.innerHTML = `<div class="map-pop-title">${title}</div>${addr}`;
+          const link = el("a", "map-pop-link", "Open record →");
+          link.href = "#/record/" + r.id;
+          link.onclick = function (e) { e.preventDefault(); App.go("#/record/" + r.id); };
+          popup.appendChild(link);
+          m.bindPopup(popup);
+          latlngs.push([r.lat, r.lng]);
+        });
+
+        // Fit to the pins. Single pin → a sensible zoom; multiple → bounds with padding.
+        if (latlngs.length === 1) map.setView(latlngs[0], 13);
+        else map.fitBounds(latlngs, { padding: [30, 30] });
+
+        // The canvas is created hidden-then-shown inside the list flow; nudge Leaflet to
+        // recompute its size once laid out so tiles fill the container.
+        if (window.requestAnimationFrame) window.requestAnimationFrame(function () { try { map.invalidateSize(); } catch (e) {} });
+        else setTimeout(function () { try { map.invalidateSize(); } catch (e) {} }, 80);
+      } catch (e) {
+        friendly("Map couldn’t render. The list below still works.");
+      }
+    })();
+  }
+
   function recordColumnDefs(fields, type, resById) {
     resById = resById || {};
     const cols = [];
@@ -6291,6 +6403,19 @@
       // renderBookingCalendar internally uses the booking-specific path for the bookings
       // module and the generic records-calendar path for everything else.
       renderBookingCalendar(calArea, type, fields, { dateField: moduleCalendarField(type, fields) });
+    }
+
+    // ---- Map view — plot this module's address records as pins (OSM tiles via Leaflet),
+    // reading the coordinates the geocoding foundation caches. Shown when the module's Map view
+    // is turned on (which requires an address field). Sibling of the Calendar block above:
+    // same inline .table-layout wrapper, additive, never touches the table below. ----
+    if (moduleMapEnabled(type)) {
+      const mapLayout = el("div", "table-layout");
+      mapLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
+      const mapArea = el("div", "table-area");
+      mapLayout.appendChild(mapArea);
+      container.appendChild(mapLayout);
+      renderRecordMap(mapArea, type, fields);
     }
 
     const tableHost = el("div");

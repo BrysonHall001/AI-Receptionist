@@ -14,7 +14,7 @@ import { listFields, createField, updateField, deleteField, reorderFields, setFi
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
 import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType, setPipelineEnabled, setModuleViews } from "../services/recordTypeService";
 import { addRecordStatus, renameRecordStatus, reorderRecordStatuses, deleteRecordStatus } from "../services/recordTypeService";
-import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, listDeletedRecords, restoreRecords, purgeExpiredRecords, getModuleCalendarData } from "../services/recordService";
+import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, listDeletedRecords, restoreRecords, purgeExpiredRecords, getModuleCalendarData, getModuleMapData } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
@@ -1463,6 +1463,18 @@ apiRouter.post("/records/restore", async (req: Request, res: Response) => {
   const ids = (req.body ?? {}).ids;
   const count = await restoreRecords(tenantId, Array.isArray(ids) ? ids : [], actorOf(req));
   res.json({ ok: true, count });
+});
+
+// ---- Map data (Map view): plot records via the cached RecordGeo coordinates. MUST be
+// registered before "/records/:id" so "map" isn't read as an id (like /records/deleted). ----
+apiRouter.get("/records/map", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const type = req.query.type ? String(req.query.type) : null;
+    if (!type) { res.status(400).json({ error: "type is required" }); return; }
+    res.json(await getModuleMapData(tenantId, type));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
 apiRouter.get("/records/:id", async (req: Request, res: Response) => {

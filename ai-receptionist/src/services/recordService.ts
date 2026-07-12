@@ -261,6 +261,63 @@ export async function getModuleCalendarData(
   return { from: fromDate, to: toDate, hours: {}, bookings, resources: [] as any[] };
 }
 
+// ---- MAP data (Map view) ----------------------------------------------------
+// Plot a module's records on a map using the coordinates the geocoding foundation caches in
+// RecordGeo. Read-only: this joins each live record to its RecordGeo row for the module's PRIMARY
+// address field (the first address-type FieldDef by order) and returns the cached lat/lng + status.
+// Records that aren't resolved yet carry null coords + their geoStatus so the UI can report them
+// ("3 addresses not yet located"). A module with no address field returns an empty result.
+function addressDisplay(value: any): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object") {
+    return [value.street, value.city, value.state, value.postal, value.country]
+      .map((x) => (x == null ? "" : String(x)).trim())
+      .filter(Boolean)
+      .join(", ");
+  }
+  return String(value);
+}
+
+export async function getModuleMapData(tenantId: string, recordType: string) {
+  const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
+  // Primary address field = the first address-type field by order (stable, matches the UI).
+  const addrDefs = await db.fieldDef.findMany({
+    where: { tenantId, recordTypeId, type: "address" },
+    orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+  });
+  const primary = addrDefs[0];
+  if (!primary) return { addressFieldKey: null as string | null, records: [] as any[] };
+
+  const rows = await db.record.findMany({
+    where: { tenantId, recordTypeId, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+  });
+  const ids = rows.map((r: any) => r.id);
+  const geos = ids.length
+    ? await db.recordGeo.findMany({ where: { tenantId, recordId: { in: ids }, fieldKey: primary.key } })
+    : [];
+  const geoByRecord: Record<string, any> = {};
+  geos.forEach((g: any) => { geoByRecord[g.recordId] = g; });
+
+  const records = rows.map((r: any) => {
+    const g = geoByRecord[r.id];
+    const ok = g && g.status === "ok" && g.lat != null && g.lng != null;
+    return {
+      id: r.id,
+      title: r.title || "Untitled",
+      addressText: addressDisplay((r.customFields || {})[primary.key]),
+      lat: ok ? g.lat : null,
+      lng: ok ? g.lng : null,
+      // If no geo row exists yet (e.g. created before the geocoding foundation / awaiting the
+      // next sweep), report it as "pending" so the UI counts it as not-yet-located.
+      geoStatus: g ? g.status : "pending",
+    };
+  });
+
+  return { addressFieldKey: primary.key as string | null, records };
+}
+
 export async function getRecord(tenantId: string, id: string, opts: { includeDeleted?: boolean } = {}) {
   const where: any = { id, tenantId };
   if (!opts.includeDeleted) where.deletedAt = null; // live page excludes deleted; the bin preview includes it

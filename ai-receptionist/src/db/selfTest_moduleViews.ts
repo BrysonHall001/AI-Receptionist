@@ -66,7 +66,7 @@ check(/function buildViewsSection\(col, selectedType\)/.test(portal), "buildView
 check(/buildTermsSection\(colTerms, currentType\(\), generic\); buildViewsSection\(colTerms, currentType\(\)\);/.test(portal), "the Views section is rendered beneath Terms (same column)");
 check(/Turn on a pipeline to enable the Board view\./.test(portal), "Board shows the pipeline-required hint when unavailable");
 check(/Add a date field to enable the Calendar view\./.test(portal), "Calendar shows the date-field-required hint when unavailable");
-check(/name: "Map", comingSoon: true/.test(portal) && /name: "Gallery", comingSoon: true/.test(portal), "Map + Gallery are shown as coming soon (not built)");
+check(/name: "Map", available: mapAvailable/.test(portal) && /name: "Gallery", comingSoon: true/.test(portal), "Map is now built (availability-driven); Gallery remains coming soon");
 check(/Calendar date field/.test(portal) && /dateFields\.length > 1/.test(portal), "a date-field picker appears when Calendar is on and there are multiple date fields");
 check(/"\/api\/record-types\/views", \{ method: "POST"/.test(portal), "toggles persist to POST /api/record-types/views");
 check(/App\.state\.me\.role !== "CLIENT_USER"/.test(portal.slice(portal.indexOf("function buildViewsSection"), portal.indexOf("function buildViewsSection") + 1200)), "the Views editor is guarded by the module-management permission");
