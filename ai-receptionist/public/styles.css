@@ -1536,6 +1536,17 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .link-ptype { font-weight: 400; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
 .link-stage { width: auto; margin-bottom: 0; flex: 0 0 auto; }
 .link-add { position: relative; }
+/* Related area (per-module tabs). Reuses .tabs/.tab and the kanban/link styles. */
+.related-card .drawer-section-title { margin-bottom: 10px; }
+.related-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 14px; }
+.related-tabs .tab { white-space: nowrap; flex: 0 0 auto; }
+.related-tab-body { min-height: 40px; }
+.related-pane-head { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.related-pane-head:empty { display: none; }
+.related-pane .link-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.related-pane .link-add .link-search { flex: 1 1 220px; min-width: 0; }
+.related-create-btn { flex: 0 0 auto; }
+@media (max-width: 640px) { .related-pane .link-add .link-search { flex-basis: 100%; } }
 .link-search { margin-bottom: 0; }
 .link-results { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); margin-top: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 240px; overflow: auto; }
 .link-result { display: block; width: 100%; text-align: left; padding: 9px 12px; background: none; border: none; color: var(--ink); cursor: pointer; font-size: 14px; }

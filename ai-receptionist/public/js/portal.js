@@ -3327,277 +3327,21 @@
     wrap.appendChild(tabsBar);
     wrap.appendChild(tabBody);
 
-    // ---- Linked Jobs section: list linked jobs, manage stage/unlink, and link a job ----
-    const jobsCard = el("div", "card linked-jobs-card");
-    const jobsHead = el("div", "cand-head");
-    jobsHead.appendChild(el("div", "drawer-section-title", App.label("job","many")));
-    const jobsToggle = el("div", "seg-toggle");
-    const jobsListBtn = el("button", "seg-btn seg-on", "List");
-    const jobsBoardBtn = el("button", "seg-btn", "Board");
-    jobsToggle.appendChild(jobsListBtn); jobsToggle.appendChild(jobsBoardBtn);
-    jobsHead.appendChild(jobsToggle);
-    jobsCard.appendChild(jobsHead);
-    const jobsBody = el("div"); // holds either the list or the swimlane board
-    jobsCard.appendChild(jobsBody);
-    const jobAddRow = el("div", "link-add");
-    jobsCard.appendChild(jobAddRow);
-    if (!ro) wrap.appendChild(jobsCard); // linked-jobs management is hidden in the read-only preview
-
-    // ---- Equipment panel: units linked to THIS contact. Same shape as the linked-
-    // records pattern (a Record of type "equipment" + a RecordLink parentType
-    // "contact"), but flat — equipment has no pipeline, so no stage dropdown. Add
-    // creates + links in one step and refreshes in place; Unlink detaches the unit
-    // without deleting it. Empty state keeps it unobtrusive for portals that ignore
-    // equipment. Nav/permissions/import/automations/analytics arrive in later batches.
+    // ---- Related area: generic per-module TABS (replaces the old stacked Jobs/Equipment
+    // cards). One tab per related module — every visible non-contact record type, in nav
+    // order, so a NEW/user-created module gets its own tab with no per-module code. Each tab
+    // has the same link bar (search existing + create new) and, only for modules WITH a
+    // pipeline, a List | Board (kanban) toggle. Hidden in the read-only Recycle Bin preview.
     if (!ro) {
-      const eqCard = el("div", "card linked-equipment-card");
-      const eqHead = el("div", "cand-head");
-      const eqTitle = el("div", "drawer-section-title", "Equipment");
-      eqHead.appendChild(eqTitle);
-      eqCard.appendChild(eqHead);
-      const eqBody = el("div");
-      eqCard.appendChild(eqBody);
-      const eqAddRow = el("div", "link-add");
-      const eqAddBtn = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#43;</span> Add equipment`);
-      eqAddRow.appendChild(eqAddBtn);
-      eqCard.appendChild(eqAddRow);
-      wrap.appendChild(eqCard);
-
-      let eqType = null, eqFields = [];
-      const eqFmt = (v) => (v == null || v === "") ? "" : String(v);
-      async function ensureEqMeta() {
-        if (eqType) return;
-        const [types, fields] = await Promise.all([
-          App.portalApi("/api/record-types").catch(() => []),
-          App.portalApi("/api/fields?recordType=equipment").catch(() => []),
-        ]);
-        eqType = (types || []).find((t) => t.key === "equipment") || { key: "equipment", label: "Equipment", labelPlural: "Equipment", stages: [], recordStages: [], subtypes: [] };
-        eqFields = Array.isArray(fields) ? fields : [];
-        eqTitle.textContent = eqType.labelPlural || eqType.label || "Equipment";
-      }
-      eqAddBtn.onclick = async () => {
-        await ensureEqMeta();
-        openCreateRecord("equipment", eqFields, eqType, { linkContactId: id, onCreated: () => loadLinkedEquipment() });
-      };
-      async function loadLinkedEquipment() {
-        eqBody.innerHTML = `<div class="cell-muted">Loading…</div>`;
-        await ensureEqMeta();
-        let links;
-        try { links = await App.portalApi(`/api/contacts/${id}/links?type=equipment`); }
-        catch (e) { eqBody.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
-        if (!Array.isArray(links)) links = [];
-        eqBody.innerHTML = "";
-        if (!links.length) {
-          eqBody.appendChild(el("div", "cell-muted", "No equipment on this " + App.label("contact", "one").toLowerCase() + " yet."));
-          return;
-        }
-        const list = el("div", "link-list");
-        links.forEach((lk) => {
-          const rec = lk.record || {};
-          const cf = rec.customFields || {};
-          const row = el("div", "link-row");
-          const title = rec.title || "Untitled";
-          const meta = [eqFmt(cf.equipment_type), eqFmt(cf.status), cf.next_service_due ? ("next service " + eqFmt(cf.next_service_due)) : ""].filter(Boolean).join(" · ");
-          const nameEl = el("div", "link-name");
-          nameEl.innerHTML = `${esc(title)}${meta ? ` <span class="cell-muted link-ptype">${esc(meta)}</span>` : ""}`;
-          nameEl.style.cursor = "pointer";
-          nameEl.onclick = () => App.go("#/record/" + rec.id);
-          row.appendChild(nameEl);
-          const unlink = el("button", "link-danger", "Unlink");
-          unlink.onclick = async () => {
-            if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return;
-            try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedEquipment(); }
-            catch (e) { toast(e.message, true); }
-          };
-          row.appendChild(unlink);
-          list.appendChild(row);
-        });
-        eqBody.appendChild(list);
-      }
-      loadLinkedEquipment();
+      const relatedCard = el("div", "card related-card");
+      relatedCard.appendChild(el("div", "drawer-section-title", "Related"));
+      const relTabsBar = el("div", "tabs related-tabs");
+      const relBody = el("div", "related-tab-body");
+      relatedCard.appendChild(relTabsBar);
+      relatedCard.appendChild(relBody);
+      wrap.appendChild(relatedCard);
+      mountContactRelated(relTabsBar, relBody, id, c);
     }
-    let jobLinks = [];
-    let jobsView = "list"; // List is the default; Board is the toggle
-    jobsListBtn.onclick = () => { if (jobsView === "list") return; jobsView = "list"; jobsListBtn.classList.add("seg-on"); jobsBoardBtn.classList.remove("seg-on"); renderJobs(); };
-    jobsBoardBtn.onclick = () => { if (jobsView === "board") return; jobsView = "board"; jobsBoardBtn.classList.add("seg-on"); jobsListBtn.classList.remove("seg-on"); renderJobs(); };
-
-    let jobType = null;
-    async function ensureJobMeta() {
-      if (jobType) return jobType;
-      const types = await App.portalApi("/api/record-types").catch(() => []);
-      jobType = (types || []).find((t) => t.key === "job") || { stages: [], recordStages: [] };
-      return jobType;
-    }
-    const jobStatusLabel = (k) => { const s = ((jobType && jobType.recordStages) || []).find((x) => x.key === k); return s ? s.label : (k || ""); };
-    const jobSubtypeLabel = (k) => { const s = ((jobType && jobType.subtypes) || []).find((x) => x.key === k); return s ? s.label : (k || ""); };
-    const stagesForJob = (k) => { const st = ((jobType && jobType.subtypes) || []).find((x) => x.key === k); return st ? (st.stages || []) : ((jobType && jobType.stages) || []); };
-
-    async function loadLinkedJobs() {
-      jobsBody.innerHTML = `<div class="cell-muted">Loading…</div>`;
-      await ensureJobMeta();
-      try { jobLinks = await App.portalApi(`/api/contacts/${id}/links?type=job`); }
-      catch (e) { jobsBody.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
-      if (!Array.isArray(jobLinks)) jobLinks = [];
-      renderJobs();
-    }
-
-    function renderJobs() { if (jobsView === "board") renderJobsBoard(); else renderJobsList(); }
-
-    // List view — the original per-link rows (title + Stage dropdown + Unlink).
-    // The dropdown writes the SAME RecordLink.stageKey and updates the in-memory
-    // link so the Board view reflects it without a refetch.
-    function renderJobsList() {
-      jobsBody.innerHTML = "";
-      const jobsList = el("div", "link-list");
-      if (!jobLinks.length) { jobsList.appendChild(el("div", "cell-muted", ("Not linked to any " + App.label("job","many").toLowerCase() + " yet."))); jobsBody.appendChild(jobsList); return; }
-      jobLinks.forEach((lk) => {
-        const row = el("div", "link-row");
-        const subKey = lk.record ? lk.record.subtypeKey : null;
-        const title = lk.record ? (lk.record.title || ("Untitled " + App.label("job","one").toLowerCase())) : App.label("job","one");
-        const nameEl = el("div", "link-name"); nameEl.innerHTML = `${esc(title)}${subKey ? ` <span class="cell-muted link-ptype">${esc(jobSubtypeLabel(subKey))}</span>` : ""}`;
-        if (lk.record) { nameEl.style.cursor = "pointer"; nameEl.onclick = () => App.go("#/record/" + lk.record.id); }
-        row.appendChild(nameEl);
-        const stageSel = el("select", "input link-stage");
-        stageSel.appendChild(el("option", null, ("— " + App.label("stage","one").toLowerCase() + " —")));
-        let known = false;
-        stagesForJob(subKey).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) { o.selected = true; known = true; } stageSel.appendChild(o); });
-        if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSel.appendChild(o); }
-        stageSel.onchange = async () => { const v = stageSel.value || null; try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: v }) }); lk.stageKey = v; toast(App.label("stage","one") + " updated"); } catch (e) { toast(e.message, true); } };
-        row.appendChild(stageSel);
-        const unlink = el("button", "link-danger", "Unlink");
-        unlink.onclick = async () => { if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedJobs(); } catch (e) { toast(e.message, true); } };
-        row.appendChild(unlink);
-        jobsList.appendChild(row);
-      });
-      jobsBody.appendChild(jobsList);
-    }
-
-    // Board view — SWIMLANES. A contact can be on many policies, each with its
-    // OWN pipeline, so there's no single set of columns. We render one lane per
-    // linked policy; each lane shows THAT policy's stages as columns (in pipeline
-    // order) with the contact as a single card in its current stage. Dragging the
-    // card within its lane changes the contact's stage on that policy via the SAME
-    // PATCH /api/record-links/:id the policy board and the list dropdown use.
-    function renderJobsBoard() {
-      jobsBody.innerHTML = "";
-      if (!jobLinks.length) {
-        const empty = el("div", "cell-muted"); empty.style.cssText = "padding:10px 2px;";
-        empty.textContent = "Not linked to any " + App.label("job","many").toLowerCase() + " yet — link one below to start the board.";
-        jobsBody.appendChild(empty);
-        return;
-      }
-      const lanes = el("div", "swimlanes");
-      jobLinks.forEach((lk) => lanes.appendChild(buildJobLane(lk)));
-      jobsBody.appendChild(lanes);
-    }
-
-    function buildJobLane(lk) {
-      const lane = el("div", "swimlane");
-      const subKey = lk.record ? lk.record.subtypeKey : null;
-      const title = lk.record ? (lk.record.title || ("Untitled " + App.label("job","one").toLowerCase())) : App.label("job","one");
-      const head = el("div", "swimlane-head");
-      const titleEl = el("span", "swimlane-title", esc(title));
-      if (lk.record) { titleEl.style.cursor = "pointer"; titleEl.onclick = () => App.go("#/record/" + lk.record.id); }
-      head.appendChild(titleEl);
-      if (subKey) head.appendChild(el("span", "swimlane-type pill", esc(jobSubtypeLabel(subKey))));
-      lane.appendChild(head);
-
-      const stages = stagesForJob(subKey);
-      const known = new Set(stages.map((s) => s.key));
-      const board = el("div", "kanban");
-      let laneDragHandled = false;
-
-      function highlightCurrent() {
-        board.querySelectorAll(".kanban-col").forEach((col) => col.classList.toggle("kanban-col--current", !!col.querySelector(".kanban-card")));
-      }
-      function makeCard() {
-        const card = el("div", "kanban-card");
-        card.draggable = true; card.dataset.linkId = lk.id;
-        card.appendChild(el("div", "kanban-card-name", esc(c.name || c.phone || App.label("contact","one"))));
-        const x = el("button", "kanban-card-x", "×"); x.title = "Unlink";
-        x.onclick = async (e) => { e.stopPropagation(); if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinkedJobs(); } catch (err) { toast(err.message, true); } };
-        card.appendChild(x);
-        card.addEventListener("dragstart", () => { laneDragHandled = false; card.classList.add("dragging"); });
-        card.addEventListener("dragend", () => { card.classList.remove("dragging"); board.querySelectorAll(".kanban-col--over").forEach((cc) => cc.classList.remove("kanban-col--over")); if (!laneDragHandled) renderJobsBoard(); });
-        return card;
-      }
-      const card = makeCard();
-
-      function makeCol(key, label, isReview) {
-        const col = el("div", "kanban-col" + (isReview ? " kanban-col--review" : ""));
-        col.dataset.stage = key == null ? "" : key;
-        const h = el("div", "kanban-col-head");
-        h.appendChild(el("span", "kanban-col-name", label));
-        col.appendChild(h);
-        const cards = el("div", "kanban-cards"); col.appendChild(cards);
-        // Scoped to THIS lane's board: another lane's card can't be dropped here.
-        col.addEventListener("dragover", (e) => { const d = board.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault(); col.classList.add("kanban-col--over"); cards.appendChild(d); });
-        col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("kanban-col--over"); });
-        col.addEventListener("drop", async (e) => {
-          const d = board.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault();
-          col.classList.remove("kanban-col--over"); laneDragHandled = true;
-          cards.appendChild(d); highlightCurrent();
-          const newStage = isReview ? null : key;
-          if (newStage === (lk.stageKey ?? null)) return; // dropped back where it was
-          try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: newStage }) }); lk.stageKey = newStage; toast(App.label("stage","one") + " updated"); }
-          catch (err) { toast(err.message, true); renderJobsBoard(); }
-        });
-        return { col, cards, key, isReview };
-      }
-
-      const cols = [];
-      const inPipeline = !!(lk.stageKey && known.has(lk.stageKey));
-      if (!inPipeline) cols.push(makeCol(null, "Needs review", true)); // unset or off-pipeline stage
-      stages.forEach((s) => cols.push(makeCol(s.key, s.label, false)));
-      cols.forEach((m) => board.appendChild(m.col));
-      // Drop the single card into its current stage column (or Needs review).
-      const target = inPipeline ? cols.find((m) => m.key === lk.stageKey) : cols.find((m) => m.isReview);
-      (target || cols[0]).cards.appendChild(card);
-      highlightCurrent();
-      lane.appendChild(board);
-      return lane;
-    }
-
-    // Link-a-job search box (in-flow results; reuses the SAME RecordLink endpoint,
-    // initiated from the contact side: POST /api/records/:jobId/links with this contact).
-    const jobInput = el("input", "input link-search"); jobInput.placeholder = ("Link a " + App.label("job","one").toLowerCase() + " — type a title…");
-    jobAddRow.appendChild(jobInput);
-    const jobResults = el("div"); jobResults.style.cssText = "margin-top:8px; display:none;";
-    jobAddRow.appendChild(jobResults);
-    let allJobs = null;
-    async function ensureJobs() { if (allJobs) return allJobs; try { const raw = await App.portalApi("/api/records?type=job"); allJobs = Array.isArray(raw) ? raw : []; } catch (e) { allJobs = []; } return allJobs; }
-    function showJobResults(nodes) { jobResults.innerHTML = ""; const box = el("div"); box.style.cssText = "border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; max-height:260px; overflow-y:auto; background:var(--panel);"; nodes.forEach((n) => box.appendChild(n)); jobResults.appendChild(box); jobResults.style.display = "block"; }
-    function hideJobResults() { jobResults.style.display = "none"; jobResults.innerHTML = ""; }
-    function jobMsg(t) { const d = el("div", "cell-muted", esc(t)); d.style.cssText = "padding:9px 12px;"; return d; }
-    function jobButton(j) {
-      const b = el("button", "link-result"); b.style.cssText = "line-height:1.35;";
-      const bits = [];
-      if (j.subtypeKey) bits.push(jobSubtypeLabel(j.subtypeKey));
-      if (j.stageKey) bits.push(jobStatusLabel(j.stageKey));
-      b.innerHTML = `<div style="font-weight:600;">${esc(j.title || ("Untitled " + App.label("job","one").toLowerCase()))}</div>` + (bits.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(bits.join(" · "))}</div>` : "");
-      b.onclick = async () => {
-        try {
-          const firstStage = (stagesForJob(j.subtypeKey))[0];
-          await App.portalApi("/api/records/" + j.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: id, stageKey: firstStage ? firstStage.key : null }) });
-          toast("Linked"); jobInput.value = ""; hideJobResults(); loadLinkedJobs();
-        } catch (e) { toast(e.message, true); }
-      };
-      return b;
-    }
-    async function runJobSearch() {
-      await ensureJobMeta();
-      const list = await ensureJobs();
-      if (!list.length) { showJobResults([jobMsg(("No " + App.label("job","many").toLowerCase() + " yet — create one on the " + App.label("job","many") + " page first."))]); return; }
-      const q = jobInput.value.trim().toLowerCase();
-      const matches = !q ? list.slice(0, 8) : list.filter((j) => (j.title || "").toLowerCase().includes(q)).slice(0, 8);
-      if (!matches.length) { showJobResults([jobMsg(`No ${App.label("job","many").toLowerCase()} match “${jobInput.value.trim()}”.`)]); return; }
-      showJobResults(matches.map(jobButton));
-    }
-    jobInput.oninput = App.util.debounce(runJobSearch, 200);
-    jobInput.onfocus = runJobSearch;
-    jobInput.onblur = () => setTimeout(hideJobResults, 200);
-
-    if (!ro) loadLinkedJobs();
 
     view().innerHTML = "";
     view().appendChild(wrap);
@@ -4073,6 +3817,216 @@
   // "Resource" is a Bookings concept. Driven off the module's own config where
   // possible (stages/subtypes), keying off the known booking/contact system keys only
   // where the config can't express it.
+  // ============ Contact "Related" area — generic per-module tabs ============
+  // One tab per related module (every visible non-contact record type, in nav order — so a
+  // NEW/user-created module gets its own tab with NO per-module code). Each tab lists this
+  // contact's linked records of that module, with a universal link bar (search existing +
+  // create new) and — ONLY when the module has stages — a List | Board kanban toggle. All
+  // reads/writes use the SAME endpoints the old hardcoded Jobs/Equipment cards used, so
+  // stage moves / unlink / link / create+link behave exactly as before.
+  async function mountContactRelated(tabsBar, body, contactId, contactObj) {
+    tabsBar.innerHTML = ""; body.innerHTML = `<div class="cell-muted">Loading…</div>`;
+    let types = [];
+    try { types = await App.portalApi("/api/record-types"); } catch (e) {}
+    const navPos = {}; (App.fullNavOrder() || []).forEach(function (h, i) { navPos[h] = i; });
+    const modules = (types || [])
+      .filter(function (t) { return t.key !== "contact" && !App.isRecordTypeLocked(t.key) && !App.isNavHidden(App.recordTypeHref(t.key)); })
+      .sort(function (a, b) { return (navPos[App.recordTypeHref(a.key)] == null ? 1e9 : navPos[App.recordTypeHref(a.key)]) - (navPos[App.recordTypeHref(b.key)] == null ? 1e9 : navPos[App.recordTypeHref(b.key)]); });
+    body.innerHTML = "";
+    if (!modules.length) { body.appendChild(el("div", "cell-muted", "No related modules yet.")); return; }
+    const panes = {};
+    function selectTab(key) {
+      App.util.$$(".tab", tabsBar).forEach(function (t) { t.classList.toggle("active", t.dataset.k === key); });
+      Object.keys(panes).forEach(function (k) { panes[k].el.style.display = k === key ? "" : "none"; });
+      const p = panes[key]; if (p && !p.loaded) { p.loaded = true; p.render(); }
+    }
+    modules.forEach(function (type, i) {
+      const tb = el("button", "tab" + (i === 0 ? " active" : ""), esc(type.labelPlural || type.label || type.key));
+      tb.dataset.k = type.key; tb.onclick = function () { selectTab(type.key); };
+      tabsBar.appendChild(tb);
+      const pane = el("div", "related-pane"); pane.style.display = i === 0 ? "" : "none";
+      body.appendChild(pane);
+      panes[type.key] = { el: pane, loaded: false, render: function () { buildContactRelatedPane(pane, type, contactId, contactObj); } };
+    });
+    const first = modules[0].key; panes[first].loaded = true; panes[first].render();
+  }
+
+  function buildContactRelatedPane(pane, type, contactId, contactObj) {
+    pane.innerHTML = "";
+    const hasStages = moduleHasStages(type);
+    const oneWord = type.label || App.label("record", "one");
+    const manyWord = type.labelPlural || type.label || App.label("record", "many");
+    const subtypeLabel = function (k) { const s = ((type.subtypes) || []).find(function (x) { return x.key === k; }); return s ? s.label : (k || ""); };
+    const stagesFor = function (subKey) { const st = ((type.subtypes) || []).find(function (x) { return x.key === subKey; }); return st ? (st.stages || []) : (type.stages || []); };
+
+    let view = "list";
+    let links = [];
+    let fieldsCache = null, allRecs = null;
+
+    const head = el("div", "related-pane-head");
+    let listBtn = null, boardBtn = null;
+    if (hasStages) {
+      const toggle = el("div", "seg-toggle");
+      listBtn = el("button", "seg-btn seg-on", "List");
+      boardBtn = el("button", "seg-btn", "Board");
+      toggle.appendChild(listBtn); toggle.appendChild(boardBtn);
+      head.appendChild(toggle);
+      listBtn.onclick = function () { if (view === "list") return; view = "list"; listBtn.classList.add("seg-on"); boardBtn.classList.remove("seg-on"); renderView(); };
+      boardBtn.onclick = function () { if (view === "board") return; view = "board"; boardBtn.classList.add("seg-on"); listBtn.classList.remove("seg-on"); renderView(); };
+    }
+    pane.appendChild(head);
+    const listHost = el("div"); pane.appendChild(listHost);
+    const addRow = el("div", "link-add"); pane.appendChild(addRow);
+
+    async function ensureFields() { if (fieldsCache) return fieldsCache; try { const f = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)); fieldsCache = Array.isArray(f) ? f : []; } catch (e) { fieldsCache = []; } return fieldsCache; }
+    async function ensureRecs() { if (allRecs) return allRecs; try { const raw = await App.portalApi("/api/records?type=" + encodeURIComponent(type.key)); allRecs = Array.isArray(raw) ? raw : []; } catch (e) { allRecs = []; } return allRecs; }
+
+    async function load() {
+      listHost.innerHTML = `<div class="cell-muted">Loading…</div>`;
+      try { links = await App.portalApi("/api/contacts/" + contactId + "/links?type=" + encodeURIComponent(type.key)); }
+      catch (e) { listHost.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
+      if (!Array.isArray(links)) links = [];
+      allRecs = null; // linked set changed — refresh search source on next open
+      renderView();
+    }
+    function renderView() { if (hasStages && view === "board") renderBoard(); else renderList(); }
+
+    // ---- List view: title + (stage dropdown, if staged) + Unlink ----
+    function renderList() {
+      listHost.innerHTML = "";
+      const list = el("div", "link-list");
+      if (!links.length) { list.appendChild(el("div", "cell-muted", "No " + manyWord.toLowerCase() + " linked yet.")); listHost.appendChild(list); return; }
+      links.forEach(function (lk) {
+        const rec = lk.record || {};
+        const subKey = rec.subtypeKey || null;
+        const title = rec.title || ("Untitled " + oneWord.toLowerCase());
+        const row = el("div", "link-row");
+        const nameEl = el("div", "link-name");
+        nameEl.innerHTML = `${esc(title)}${subKey ? ` <span class="cell-muted link-ptype">${esc(subtypeLabel(subKey))}</span>` : ""}`;
+        if (rec.id) { nameEl.style.cursor = "pointer"; nameEl.onclick = function () { App.go("#/record/" + rec.id); }; }
+        row.appendChild(nameEl);
+        if (hasStages) {
+          const stageSel = el("select", "input link-stage");
+          stageSel.appendChild(el("option", null, "— " + App.label("stage", "one").toLowerCase() + " —"));
+          let known = false;
+          stagesFor(subKey).forEach(function (s) { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) { o.selected = true; known = true; } stageSel.appendChild(o); });
+          if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSel.appendChild(o); }
+          stageSel.onchange = async function () { const v = stageSel.value || null; try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: v }) }); lk.stageKey = v; toast(App.label("stage", "one") + " updated"); } catch (e) { toast(e.message, true); } };
+          row.appendChild(stageSel);
+        }
+        const unlink = el("button", "link-danger", "Unlink");
+        unlink.onclick = async function () { if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); load(); } catch (e) { toast(e.message, true); } };
+        row.appendChild(unlink);
+        list.appendChild(row);
+      });
+      listHost.appendChild(list);
+    }
+
+    // ---- Board view: swimlanes (one lane per linked record) — exactly the Jobs kanban ----
+    function renderBoard() {
+      listHost.innerHTML = "";
+      if (!links.length) { const empty = el("div", "cell-muted"); empty.style.cssText = "padding:10px 2px;"; empty.textContent = "No " + manyWord.toLowerCase() + " linked yet — link one below to start the board."; listHost.appendChild(empty); return; }
+      const lanes = el("div", "swimlanes");
+      links.forEach(function (lk) { lanes.appendChild(buildLane(lk)); });
+      listHost.appendChild(lanes);
+    }
+    function buildLane(lk) {
+      const lane = el("div", "swimlane");
+      const rec = lk.record || {};
+      const subKey = rec.subtypeKey || null;
+      const title = rec.title || ("Untitled " + oneWord.toLowerCase());
+      const laneHead = el("div", "swimlane-head");
+      const titleEl = el("span", "swimlane-title", esc(title));
+      if (rec.id) { titleEl.style.cursor = "pointer"; titleEl.onclick = function () { App.go("#/record/" + rec.id); }; }
+      laneHead.appendChild(titleEl);
+      if (subKey) laneHead.appendChild(el("span", "swimlane-type pill", esc(subtypeLabel(subKey))));
+      lane.appendChild(laneHead);
+      const stages = stagesFor(subKey);
+      const known = new Set(stages.map(function (s) { return s.key; }));
+      const board = el("div", "kanban");
+      let laneDragHandled = false;
+      function highlightCurrent() { board.querySelectorAll(".kanban-col").forEach(function (col) { col.classList.toggle("kanban-col--current", !!col.querySelector(".kanban-card")); }); }
+      const card = (function () {
+        const cd = el("div", "kanban-card"); cd.draggable = true; cd.dataset.linkId = lk.id;
+        cd.appendChild(el("div", "kanban-card-name", esc(contactObj.name || contactObj.phone || App.label("contact", "one"))));
+        const x = el("button", "kanban-card-x", "×"); x.title = "Unlink";
+        x.onclick = async function (e) { e.stopPropagation(); if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); load(); } catch (err) { toast(err.message, true); } };
+        cd.appendChild(x);
+        cd.addEventListener("dragstart", function () { laneDragHandled = false; cd.classList.add("dragging"); });
+        cd.addEventListener("dragend", function () { cd.classList.remove("dragging"); board.querySelectorAll(".kanban-col--over").forEach(function (cc) { cc.classList.remove("kanban-col--over"); }); if (!laneDragHandled) renderBoard(); });
+        return cd;
+      })();
+      function makeCol(key, label, isReview) {
+        const col = el("div", "kanban-col" + (isReview ? " kanban-col--review" : ""));
+        col.dataset.stage = key == null ? "" : key;
+        const h = el("div", "kanban-col-head"); h.appendChild(el("span", "kanban-col-name", label)); col.appendChild(h);
+        const cards = el("div", "kanban-cards"); col.appendChild(cards);
+        col.addEventListener("dragover", function (e) { const d = board.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault(); col.classList.add("kanban-col--over"); cards.appendChild(d); });
+        col.addEventListener("dragleave", function (e) { if (!col.contains(e.relatedTarget)) col.classList.remove("kanban-col--over"); });
+        col.addEventListener("drop", async function (e) {
+          const d = board.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault();
+          col.classList.remove("kanban-col--over"); laneDragHandled = true; cards.appendChild(d); highlightCurrent();
+          const newStage = isReview ? null : key;
+          if (newStage === (lk.stageKey == null ? null : lk.stageKey)) return;
+          try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: newStage }) }); lk.stageKey = newStage; toast(App.label("stage", "one") + " updated"); }
+          catch (err) { toast(err.message, true); renderBoard(); }
+        });
+        return { col: col, cards: cards, key: key, isReview: isReview };
+      }
+      const cols = [];
+      const inPipeline = !!(lk.stageKey && known.has(lk.stageKey));
+      if (!inPipeline) cols.push(makeCol(null, "Needs review", true));
+      stages.forEach(function (s) { cols.push(makeCol(s.key, s.label, false)); });
+      cols.forEach(function (m) { board.appendChild(m.col); });
+      const target = inPipeline ? cols.find(function (m) { return m.key === lk.stageKey; }) : cols.find(function (m) { return m.isReview; });
+      (target || cols[0]).cards.appendChild(card);
+      highlightCurrent();
+      lane.appendChild(board);
+      return lane;
+    }
+
+    // ---- Universal link bar: search-existing-and-link + create-new-and-link ----
+    const searchInput = el("input", "input link-search"); searchInput.placeholder = "Link a " + oneWord.toLowerCase() + " — type a title/name…";
+    addRow.appendChild(searchInput);
+    const createBtn = el("button", "btn btn-ghost btn-sm related-create-btn"); createBtn.innerHTML = `<span class="btn-icon">&#43;</span> New ${esc(oneWord.toLowerCase())}`;
+    createBtn.onclick = async function () { const f = await ensureFields(); openCreateRecord(type.key, f, type, { linkContactId: contactId, onCreated: function () { load(); } }); };
+    addRow.appendChild(createBtn);
+    const results = el("div"); results.style.cssText = "margin-top:8px; display:none; flex-basis:100%;"; addRow.appendChild(results);
+
+    function hideResults() { results.style.display = "none"; results.innerHTML = ""; }
+    function showResults(nodes) { results.innerHTML = ""; const box = el("div"); box.style.cssText = "border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; max-height:260px; overflow-y:auto; background:var(--panel);"; nodes.forEach(function (n) { box.appendChild(n); }); results.appendChild(box); results.style.display = "block"; }
+    function msg(t) { const d = el("div", "cell-muted", esc(t)); d.style.cssText = "padding:9px 12px;"; return d; }
+    function resultButton(r) {
+      const b = el("button", "link-result"); b.style.cssText = "line-height:1.35;";
+      const bits = [];
+      if (r.subtypeKey) bits.push(subtypeLabel(r.subtypeKey));
+      b.innerHTML = `<div style="font-weight:600;">${esc(r.title || ("Untitled " + oneWord.toLowerCase()))}</div>` + (bits.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(bits.join(" · "))}</div>` : "");
+      b.onclick = async function () {
+        try {
+          const firstStage = hasStages ? stagesFor(r.subtypeKey)[0] : null;
+          await App.portalApi("/api/records/" + r.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: contactId, stageKey: firstStage ? firstStage.key : null }) });
+          toast("Linked"); searchInput.value = ""; hideResults(); load();
+        } catch (e) { toast(e.message, true); }
+      };
+      return b;
+    }
+    async function runSearch() {
+      const listAll = await ensureRecs();
+      const linkedIds = new Set(links.map(function (l) { return l.record && l.record.id; }).filter(Boolean));
+      const available = listAll.filter(function (r) { return !linkedIds.has(r.id); });
+      if (!available.length) { showResults([msg("No " + manyWord.toLowerCase() + " to link — use “New " + oneWord.toLowerCase() + "”.")]); return; }
+      const q = searchInput.value.trim().toLowerCase();
+      const matches = (!q ? available.slice(0, 8) : available.filter(function (r) { return (r.title || "").toLowerCase().includes(q); }).slice(0, 8));
+      if (!matches.length) { showResults([msg(`No ${manyWord.toLowerCase()} match “${searchInput.value.trim()}”.`)]); return; }
+      showResults(matches.map(resultButton));
+    }
+    searchInput.oninput = App.util.debounce(runSearch, 200);
+    searchInput.onfocus = runSearch;
+    searchInput.onblur = function () { setTimeout(hideResults, 200); };
+
+    load();
+  }
+
   function moduleHasStages(t) {
     if (!t) return false;
     if (Array.isArray(t.stages) && t.stages.length) return true;
