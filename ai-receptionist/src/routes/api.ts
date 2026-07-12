@@ -12,9 +12,9 @@ import { listResources, createResource, updateResource, deleteResource } from ".
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
-import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType, setPipelineEnabled } from "../services/recordTypeService";
+import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType, setPipelineEnabled, setModuleViews } from "../services/recordTypeService";
 import { addRecordStatus, renameRecordStatus, reorderRecordStatuses, deleteRecordStatus } from "../services/recordTypeService";
-import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, listDeletedRecords, restoreRecords, purgeExpiredRecords } from "../services/recordService";
+import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, listDeletedRecords, restoreRecords, purgeExpiredRecords, getModuleCalendarData } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
@@ -1311,6 +1311,19 @@ apiRouter.post("/record-types/pipeline", async (req: Request, res: Response) => 
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
+// ---- Per-module VIEWS config (which optional views the module offers on its list page).
+// Availability is validated server-side from real data (Board needs a pipeline; Calendar
+// needs a date field); the chosen calendar date field is resolved to a real field. Admin-gated.
+apiRouter.post("/record-types/views", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try {
+    const { recordType, enabledViews, calendarDateField } = (req.body ?? {}) as any;
+    res.json(await setModuleViews(tenantId, recordType, { enabledViews, calendarDateField }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // ---- Record-level STATUS editor (RecordType.recordStages). Distinct from the
 // pipeline /record-stages routes above (those take a subtypeKey). Admin-gated.
 // Delete runs the dual guard in the service and, when blocked, returns 409 with
@@ -1584,6 +1597,26 @@ apiRouter.get("/bookings/calendar", async (req: Request, res: Response) => {
       return;
     }
     res.json(await getCalendarData(tenantId, from, to));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// ---- Generic module calendar: lay ANY module's records on the calendar grid by its
+// chosen date field. Same response shape as /bookings/calendar (so one renderer draws
+// both), but with empty hours + no resources. Bookings keep /bookings/calendar above. ----
+apiRouter.get("/records/calendar", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const type = String(req.query.type ?? "");
+    const field = String(req.query.field ?? "");
+    const from = String(req.query.from ?? "");
+    const to = String(req.query.to ?? "");
+    if (!type) { res.status(400).json({ error: "type is required" }); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      res.status(400).json({ error: "from and to must be YYYY-MM-DD" });
+      return;
+    }
+    res.json(await getModuleCalendarData(tenantId, type, field, from, to));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

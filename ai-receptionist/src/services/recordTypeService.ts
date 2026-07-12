@@ -265,11 +265,17 @@ export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
   } },
   { key: JOB_RECORD_TYPE_KEY, defaults: {
     key: JOB_RECORD_TYPE_KEY, label: "Job", labelPlural: "Jobs", system: false,
-    stages: DEFAULT_JOB_STAGES, recordStages: DEFAULT_JOB_RECORD_STAGES, subtypes: DEFAULT_JOB_SUBTYPES, pipelineEnabled: true, order: 1,
+    stages: DEFAULT_JOB_STAGES, recordStages: DEFAULT_JOB_RECORD_STAGES, subtypes: DEFAULT_JOB_SUBTYPES, pipelineEnabled: true,
+    // Board view ON (it has a pipeline) — mirrors the migration backfill so NEW portals match today.
+    enabledViews: ["board"], order: 1,
   } },
   { key: BOOKING_RECORD_TYPE_KEY, defaults: {
     key: BOOKING_RECORD_TYPE_KEY, label: "Booking", labelPlural: "Bookings", system: false,
-    stages: [], recordStages: DEFAULT_BOOKING_RECORD_STAGES, subtypes: DEFAULT_BOOKING_SUBTYPES, pipelineEnabled: true, order: 2,
+    stages: [], recordStages: DEFAULT_BOOKING_RECORD_STAGES, subtypes: DEFAULT_BOOKING_SUBTYPES, pipelineEnabled: true,
+    // Board (it has a pipeline) + Calendar (mapped to its typed date column) — mirrors the
+    // migration backfill so NEW portals match today. Bookings render no kanban (their pipeline
+    // is record statuses, not stages), so the Board flag is inert there — exactly as today.
+    enabledViews: ["board", "calendar"], calendarDateField: "appointmentAt", order: 2,
   } },
   // First data-driven system type: a flat catalog (no pipeline/subtypes). Its default
   // fields are seeded once via onCreate. Nav item + list page + permissions come for
@@ -418,6 +424,20 @@ export function serializeRecordType(rt: any) {
   // relationship stages. Used as the fallback when pipelineEnabled is absent (pre-migration
   // rows / partial objects) so behaviour matches today until the column is backfilled.
   const hasPipeline = ((rt.subtypes && rt.subtypes.length) || (rt.recordStages && rt.recordStages.length) || (rt.stages && rt.stages.length)) ? true : false;
+  const pipelineEnabled = typeof rt.pipelineEnabled === "boolean" ? rt.pipelineEnabled : hasPipeline;
+  // enabledViews: the OPTIONAL views (board/calendar) this module offers, on top of the
+  // always-on table/list. When the column is present, use it. When absent (pre-migration
+  // rows / partial objects), fall back to today's reality — board for pipeline modules,
+  // calendar for Bookings — so behaviour matches until the backfill lands.
+  let enabledViews: string[];
+  if (Array.isArray(rt.enabledViews)) {
+    enabledViews = rt.enabledViews.map((v: any) => String(v));
+  } else {
+    enabledViews = [];
+    if (pipelineEnabled || hasPipeline) enabledViews.push("board");
+    if (rt.key === "booking") enabledViews.push("calendar");
+  }
+  const calendarDateField = rt.calendarDateField ?? (rt.key === "booking" ? "appointmentAt" : null);
   return {
     id: rt.id,
     key: rt.key,
@@ -427,7 +447,9 @@ export function serializeRecordType(rt: any) {
     stages: rt.stages ?? [],
     recordStages: rt.recordStages ?? [],
     subtypes: rt.subtypes ?? [],
-    pipelineEnabled: typeof rt.pipelineEnabled === "boolean" ? rt.pipelineEnabled : hasPipeline,
+    pipelineEnabled,
+    enabledViews,
+    calendarDateField,
     order: rt.order ?? 0,
   };
 }
@@ -515,6 +537,65 @@ export async function setRecordTypeLabels(tenantId: string, key: string, label: 
 export async function setPipelineEnabled(tenantId: string, recordType: string, enabled: boolean): Promise<any> {
   const row = await loadTypeRow(tenantId, recordType);
   const updated = await db.recordType.update({ where: { id: row.id }, data: { pipelineEnabled: !!enabled } });
+  return serializeRecordType(updated);
+}
+
+// ---- VIEWS config -----------------------------------------------------------
+// A module's OPTIONAL views (beyond the always-on table/list). Availability is derived
+// from real data — Board requires a pipeline, Calendar requires a date/datetime field —
+// so we VALIDATE the requested set against that reality and drop (never silently keep)
+// anything that isn't actually available. Guarded at the route by the module-management
+// permission. Non-destructive: turning a view off just hides it on the list page.
+const KNOWN_VIEWS = ["board", "calendar"]; // Map/Gallery are future batches — not accepted here.
+
+/** The date-ish fields a module can lay a calendar out by: any date/datetime FieldDef,
+ *  plus the typed "appointmentAt" column for Bookings (which is not a FieldDef). */
+export async function calendarDateFieldKeys(tenantId: string, recordTypeId: string, typeKey: string): Promise<string[]> {
+  const defs = await db.fieldDef.findMany({ where: { tenantId, recordTypeId }, select: { key: true, type: true } });
+  const keys = defs.filter((f: any) => f.type === "date" || f.type === "datetime").map((f: any) => f.key);
+  if (typeKey === "booking") keys.unshift("appointmentAt");
+  return keys;
+}
+
+/** Turn the module's optional views on/off. Validates availability from real data and
+ *  resolves calendarDateField to an actual date field (or the first available one). */
+export async function setModuleViews(
+  tenantId: string,
+  recordType: string,
+  input: { enabledViews?: any; calendarDateField?: any },
+): Promise<any> {
+  const row = await loadTypeRow(tenantId, recordType);
+  const hasPipeline =
+    row.pipelineEnabled === true ||
+    (Array.isArray(row.subtypes) && row.subtypes.length > 0) ||
+    (Array.isArray(row.recordStages) && row.recordStages.length > 0) ||
+    (Array.isArray(row.stages) && row.stages.length > 0);
+  const dateKeys = await calendarDateFieldKeys(tenantId, row.id, row.key);
+
+  const requested = Array.isArray(input.enabledViews) ? input.enabledViews.map((v: any) => String(v)) : [];
+  const next: string[] = [];
+  for (const v of KNOWN_VIEWS) {
+    if (!requested.includes(v)) continue;
+    if (v === "board" && !hasPipeline) throw new Error("Turn on a pipeline to enable the Board view.");
+    if (v === "calendar" && dateKeys.length === 0) throw new Error("Add a date field to enable the Calendar view.");
+    if (!next.includes(v)) next.push(v);
+  }
+
+  // Resolve the calendar's date field: keep the requested one if it's a real date field,
+  // else keep the existing one if still valid, else default to the first available field.
+  let calField: string | null = row.calendarDateField ?? null;
+  if (input.calendarDateField !== undefined) {
+    const req = input.calendarDateField == null ? null : String(input.calendarDateField);
+    calField = req && dateKeys.includes(req) ? req : calField;
+  }
+  if (next.includes("calendar")) {
+    if (!calField || !dateKeys.includes(calField)) calField = dateKeys[0] ?? null;
+  }
+
+  const updated = await db.recordType.update({
+    where: { id: row.id },
+    data: { enabledViews: next as any, calendarDateField: calField },
+  });
   return serializeRecordType(updated);
 }
 export async function addSubtype(tenantId: string, recordType: string, label: string) {

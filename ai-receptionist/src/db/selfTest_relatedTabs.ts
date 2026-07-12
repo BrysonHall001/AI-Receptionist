@@ -9,8 +9,10 @@ function check(cond: boolean, label: string) { console.log(`  ${cond ? "\u2713" 
 
 const portal = readFileSync(resolve(__dirname, "../../public/js/portal.js"), "utf8");
 const css = readFileSync(resolve(__dirname, "../../public/styles.css"), "utf8");
-// Scope most checks to the Related-area function so we're asserting the new code.
-const relStart = portal.indexOf("async function mountContactRelated");
+// Scope most checks to the Related-area function so we're asserting the new code. The Related
+// area was generalized (contact-specific → anchor-based) in an earlier batch: the entry point is
+// now mountRelatedTabs(...) and each tab renders buildRelatedPane(pane, type, anchor).
+const relStart = portal.indexOf("async function mountRelatedTabs");
 const relEnd = portal.indexOf("function moduleHasStages(t)");
 const REL = portal.slice(relStart, relEnd);
 
@@ -24,24 +26,28 @@ check(/el\("div", "card related-card"\)/.test(portal) && /mountContactRelated\(r
 
 console.log("\n(A2) tabs are GENERIC (one per module, not hardcoded Jobs/Equipment):");
 check(/await App\.portalApi\("\/api\/record-types"\)/.test(REL), "tabs are derived from /api/record-types");
-check(/t\.key !== "contact" && !App\.isRecordTypeLocked\(t\.key\) && !App\.isNavHidden/.test(REL), "every visible non-contact module gets a tab (filter, not a hardcoded key list)");
+check(/!App\.isRecordTypeLocked\(t\.key\) && !App\.isNavHidden\(App\.recordTypeHref\(t\.key\)\)/.test(REL), "every visible non-contact module gets a tab (filter, not a hardcoded key list)");
 check(!/=== "job"|=== "equipment"/.test(REL), "no hardcoded job/equipment special-casing in the tab builder");
 check(/navPos\[App\.recordTypeHref\(a\.key\)\]/.test(REL), "tabs are ordered by nav order (so a new module slots in)");
-check(/buildContactRelatedPane\(pane, type, contactId, contactObj\)/.test(REL), "each tab renders a generic module pane");
+check(/buildRelatedPane\(pane, type, anchor\)/.test(REL), "each tab renders a generic module pane");
 
 console.log("\n(B) universal link bar on EVERY tab (search existing + create new):");
 check(/el\("input", "input link-search"\)/.test(REL), "every pane has a search-to-link input");
-check(/related-create-btn/.test(REL) && /openCreateRecord\(type\.key, f, type, \{ linkContactId: contactId/.test(REL), "every pane has a create-new-and-link button");
-check(/"\/api\/records\/" \+ r\.id \+ "\/links"[\s\S]{0,160}parentType: "contact", parentId: contactId/.test(REL), "search result links the existing record to this contact (symmetric link endpoint)");
+check(/related-create-btn/.test(REL) && /openCreateRecord\(type\.key, f, type, Object\.assign\(linkOpts/.test(REL) && /linkContactId: anchor\.id/.test(REL), "every pane has a create-new-and-link button");
+check(/"\/api\/records\/" \+ target\.id \+ "\/links"[\s\S]{0,160}parentType: "contact", parentId: anchor\.id/.test(REL), "search result links the existing record to the anchor (symmetric link endpoint)");
 check(/allRecs = await App\.portalApi\("\/api\/records\?type=" \+ encodeURIComponent\(type\.key\)\)/.test(REL) || /"\/api\/records\?type=" \+ encodeURIComponent\(type\.key\)/.test(REL), "search source is the module's own records list (generic)");
 
-console.log("\n(C) List/Board toggle ONLY when the module has stages (config-driven):");
-check(/const hasStages = moduleHasStages\(type\)/.test(REL), "board availability is decided by moduleHasStages(type)");
-check(/if \(hasStages\) \{[\s\S]{0,400}?seg-btn seg-on", "List"[\s\S]{0,200}?"Board"/.test(REL), "the List|Board toggle is only built when hasStages");
-check(/function renderView\(\) \{ if \(hasStages && view === "board"\) renderBoard\(\); else renderList\(\); \}/.test(REL), "board view is unreachable without stages (List only otherwise)");
+console.log("\n(C) List/Board toggle ONLY when the module has stages AND Board view is on (config-driven):");
+// Stage availability is still config-driven (moduleHasStages); the List|Board TOGGLE is now
+// additionally gated by the module's Board view being turned on (Batch 2 generalization).
+// For pipeline modules Board defaults ON, so Jobs is unchanged (boardEnabled === hasStages).
+check(/const hasStages = moduleHasStages\(type\)/.test(REL), "stage availability is decided by moduleHasStages(type)");
+check(/const boardEnabled = moduleBoardEnabled\(type\)/.test(REL), "the List|Board toggle is gated by moduleBoardEnabled(type) (pipeline + Board view on)");
+check(/if \(boardEnabled\) \{[\s\S]{0,400}?seg-btn seg-on", "List"[\s\S]{0,200}?"Board"/.test(REL), "the List|Board toggle is only built when boardEnabled");
+check(/function renderView\(\) \{ if \(boardEnabled && view === "board"\) renderBoard\(\); else renderList\(\); \}/.test(REL), "board view is unreachable when Board view is off (List only otherwise)");
 check(/if \(hasStages\) \{\s*const stageSel/.test(REL), "the per-row stage dropdown only shows for staged modules");
 // moduleHasStages itself is config-driven (stages / subtypes[].stages), not hardcoded keys.
-const mhs = portal.slice(portal.indexOf("function moduleHasStages(t)"), portal.indexOf("function moduleHasStages(t)") + 260);
+const mhs = portal.slice(portal.indexOf("function moduleHasStages(t)"), portal.indexOf("function moduleHasStages(t)") + 400);
 check(/Array\.isArray\(t\.stages\) && t\.stages\.length/.test(mhs) && /st\.stages/.test(mhs) && !/=== "job"/.test(mhs), "moduleHasStages reads pipeline config (stages / subtypes[].stages), not hardcoded keys");
 
 console.log("\n(D) kanban stage movement preserved (same endpoints):");

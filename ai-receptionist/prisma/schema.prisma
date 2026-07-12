@@ -463,6 +463,16 @@ model RecordType {
   // (board behavior); when false it's a flat catalog. Backfilled to match existing reality
   // (true where the module already had subtypes/recordStages/stages) so nothing regresses.
   pipelineEnabled Boolean   @default(false)
+  // Which OPTIONAL views this module offers on its list page, on top of the always-on
+  // table/list. String keys like ["board","calendar"]. Availability is still derived from
+  // real data (Board needs a pipeline; Calendar needs a date field) — this flag records
+  // which of the available views are turned ON. Backfilled to match today's reality
+  // (pipeline modules -> board; Bookings -> calendar) so nothing changes for existing portals.
+  enabledViews Json         @default("[]")
+  // When the Calendar view is on, WHICH date/datetime field it lays records out by. For
+  // Bookings this is the sentinel "appointmentAt" (the typed booking column) so its calendar
+  // is unchanged; for other modules it's a FieldDef key. Null = fall back to the first date field.
+  calendarDateField String?
   order        Int          @default(0)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

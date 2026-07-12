@@ -184,6 +184,81 @@ export async function listRecords(tenantId: string, recordType?: string | null) 
   return rows.map(serializeRecord);
 }
 
+// ---- Generic MODULE calendar data -------------------------------------------
+// Lays ANY module's records onto the same calendar grid the bookings calendar uses,
+// by the module's chosen date/datetime field. Returns the SAME shape as the bookings
+// calendar (getCalendarData) so the one front-end renderer can draw either — but with
+// empty hours + no resources (those are booking-only), and a default 60-min block for
+// each record. Bookings themselves DON'T use this path (they keep getCalendarData), so
+// the bookings calendar is untouched. Read-only: click a block to open the record.
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** Turn a stored date/datetime value into a zoneless wall-clock "YYYY-MM-DDT HH:mm" string,
+ *  or null if it can't be parsed. Date-only values get a default 9:00 AM slot so they show
+ *  as a visible block rather than at midnight. */
+function valueToWall(v: any): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  // Full date+time (picker sends "YYYY-MM-DDTHH:mm", tolerate a space and optional seconds).
+  let m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(s);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}`;
+  // Date only.
+  m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}T09:00`;
+  // ISO instant (e.g. appointmentAt): read the UTC-slot digits verbatim (wall-clock rule).
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+  }
+  return null;
+}
+
+export async function getModuleCalendarData(
+  tenantId: string,
+  recordType: string,
+  field: string,
+  fromDate: string,
+  toDate: string,
+) {
+  const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
+  const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
+  const recStages: any[] = (rt && rt.recordStages) || [];
+  const stageLabel = (k: string | null) => { const s = recStages.find((x) => x.key === k); return s ? s.label : (k || ""); };
+  const fieldKey = String(field || "").trim() || "appointmentAt";
+
+  const rows = await db.record.findMany({
+    where: { tenantId, recordTypeId, deletedAt: null },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const bookings = rows
+    .map((r: any) => {
+      const raw = fieldKey === "appointmentAt" ? r.appointmentAt : (r.customFields || {})[fieldKey];
+      const start = valueToWall(raw);
+      if (!start) return null;
+      const ymd = start.slice(0, 10);
+      if (ymd < fromDate || ymd >= toDate) return null; // half-open [from, to)
+      return {
+        id: r.id,
+        title: r.title || "Untitled",
+        start,
+        end: start, // duration drives the block height; end kept for shape parity
+        durationMin: 60,
+        serviceKey: r.subtypeKey || null,
+        serviceLabel: "",
+        stageKey: r.stageKey || null,
+        stageLabel: stageLabel(r.stageKey || null),
+        contactName: null,
+        resourceId: null,
+        externalSource: null,
+      };
+    })
+    .filter((b: any): b is any => b != null);
+
+  return { from: fromDate, to: toDate, hours: {}, bookings, resources: [] as any[] };
+}
+
 export async function getRecord(tenantId: string, id: string, opts: { includeDeleted?: boolean } = {}) {
   const where: any = { id, tenantId };
   if (!opts.includeDeleted) where.deletedAt = null; // live page excludes deleted; the bin preview includes it

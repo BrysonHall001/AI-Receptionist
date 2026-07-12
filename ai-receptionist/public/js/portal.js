@@ -3938,7 +3938,8 @@
   function buildRelatedPane(pane, type, anchor) {
     pane.innerHTML = "";
     const isContactTab = type.key === "contact";
-    const hasStages = moduleHasStages(type);
+    const hasStages = moduleHasStages(type);           // pipeline present → stage dropdowns / board available
+    const boardEnabled = moduleBoardEnabled(type);     // pipeline present AND Board view turned on → show List|Board
     const oneWord = type.label || App.label("record", "one");
     const manyWord = type.labelPlural || type.label || App.label("record", "many");
     const subtypeLabel = function (k) { const s = ((type.subtypes) || []).find(function (x) { return x.key === k; }); return s ? s.label : (k || ""); };
@@ -3966,7 +3967,7 @@
 
     const head = el("div", "related-pane-head");
     let listBtn = null, boardBtn = null;
-    if (hasStages) {
+    if (boardEnabled) {
       const toggle = el("div", "seg-toggle");
       listBtn = el("button", "seg-btn seg-on", "List");
       boardBtn = el("button", "seg-btn", "Board");
@@ -4005,7 +4006,7 @@
       allRecs = null; allContacts = null; // linked set changed — refresh search source on next open
       renderView();
     }
-    function renderView() { if (hasStages && view === "board") renderBoard(); else renderList(); }
+    function renderView() { if (boardEnabled && view === "board") renderBoard(); else renderList(); }
 
     // ---- List view: title + (stage dropdown, if staged) + Unlink ----
     function renderList() {
@@ -4177,6 +4178,35 @@
     if (Array.isArray(t.stages) && t.stages.length) return true;
     return (Array.isArray(t.subtypes) ? t.subtypes : []).some(function (st) { return Array.isArray(st.stages) && st.stages.length; });
   }
+
+  // ---- Per-module VIEWS helpers (Batch 2) -------------------------------------
+  // enabledViews is the set of OPTIONAL views a module offers on its list page, on top of
+  // the always-on table/list. Availability is derived from real data: Board needs a pipeline;
+  // Calendar needs a date/datetime field. These helpers are the single source of truth used
+  // by both the Views editor and the list page so they never disagree.
+  function moduleEnabledViews(t) { return (t && Array.isArray(t.enabledViews)) ? t.enabledViews : []; }
+  function moduleViewOn(t, v) { return moduleEnabledViews(t).indexOf(v) !== -1; }
+  // The date/datetime fields a module can lay a calendar out by. Bookings also expose the
+  // typed "appointmentAt" column (not a FieldDef) so its calendar maps to what it uses today.
+  function moduleDateFields(t, fields) {
+    var out = [];
+    if (t && t.key === "booking") out.push({ key: "appointmentAt", label: "Appointment" });
+    (fields || []).forEach(function (f) { if (f.type === "date" || f.type === "datetime") out.push({ key: f.key, label: f.label }); });
+    return out;
+  }
+  // Board is offered only when the module has a pipeline AND the Board view is turned on.
+  function moduleBoardEnabled(t) { return moduleHasStages(t) && moduleViewOn(t, "board"); }
+  // Calendar is offered when the Calendar view is turned on (the editor only lets it be
+  // turned on for modules that actually have a date field).
+  function moduleCalendarEnabled(t) { return moduleViewOn(t, "calendar"); }
+  // Which date field the calendar uses: the module's chosen field if still valid, else the first.
+  function moduleCalendarField(t, fields) {
+    var df = moduleDateFields(t, fields);
+    if (!df.length) return null;
+    var chosen = t && t.calendarDateField;
+    if (chosen && df.some(function (x) { return x.key === chosen; })) return chosen;
+    return df[0].key;
+  }
   function termAppliesToModule(termKey, t) {
     if (termKey === "record") return true;
     if (termKey === "stage") return moduleHasStages(t) || !!(t && t.key === "contact");
@@ -4233,6 +4263,124 @@
       catch (err) { App.util.toast(err.message, true); }
     };
     col.appendChild(save);
+  }
+
+  // ---- VIEWS section (beneath Terms) — the module's OPTIONAL views. Board (kanban) is
+  // available only for modules with a pipeline; Calendar only for modules with a date field.
+  // Each shows an ON/OFF toggle (with an availability hint when it can't be turned on) that
+  // controls whether the view appears on the module's list page. Map/Gallery are shown as
+  // "Coming soon" (future batches). Guarded by the module-management permission. ----
+  function buildViewsSection(col, selectedType) {
+    const prev = col.querySelector(".mf-views"); if (prev) prev.remove(); // avoid dupes on re-render
+    if (!selectedType || selectedType.key === "contact") return; // Contacts have no optional views
+    const canEdit = App.state.me.role !== "CLIENT_USER";
+    const modName = selectedType.labelPlural || selectedType.label || "these records";
+
+    const sec = el("div", "mf-views");
+    const head = el("div", "mf-terms-head");
+    head.appendChild(el("span", "mf-col-title", "Views"));
+    head.appendChild(el("span", "mf-terms-for", "for " + esc(modName)));
+    sec.appendChild(head);
+    sec.appendChild(el("p", "mf-col-hint", "Extra ways to see " + esc(modName) + " on its list page. The table/list view is always on."));
+    const body = el("div", "mf-views-body");
+    body.innerHTML = `<div class="cell-muted">Loading…</div>`;
+    sec.appendChild(body);
+    col.appendChild(sec);
+
+    App.portalApi("/api/fields?recordType=" + encodeURIComponent(selectedType.key))
+      .catch(function () { return []; })
+      .then(function (fields) {
+        body.innerHTML = "";
+        const dateFields = moduleDateFields(selectedType, fields);
+        // Board is available when the module has a pipeline (the explicit flag OR real stages) —
+        // matching the pipeline switch. The kanban itself only renders once stages exist; a
+        // pipeline-on-but-stageless module (e.g. Bookings, which uses statuses) shows Board as
+        // available/on but simply has no board to draw, exactly as today.
+        const hasPipeline = selectedType.pipelineEnabled === true || moduleHasStages(selectedType);
+
+        function persist(nextViews, calField) {
+          const payload = { recordType: selectedType.key, enabledViews: nextViews };
+          if (calField !== undefined) payload.calendarDateField = calField;
+          return App.portalApi("/api/record-types/views", { method: "POST", body: JSON.stringify(payload) });
+        }
+        function afterSave(rt, msg) {
+          // Merge the server's authoritative view state back onto the in-memory module so the
+          // rest of the page (and a full re-route) reflect it, then repaint this section.
+          if (rt) { selectedType.enabledViews = rt.enabledViews; selectedType.calendarDateField = rt.calendarDateField; }
+          App.util.toast(msg);
+          buildViewsSection(col, selectedType); // repaint (updates hints, picker visibility)
+          if (App._route) App._route();
+        }
+
+        // One row: toggle + name (+ badge) + hint. Returns the checkbox for wiring.
+        function viewRow(o) {
+          const row = el("div", "card mf-view-row" + (o.comingSoon || !o.available ? " mf-view-row-off" : ""));
+          const toggle = el("label", "switch");
+          const cb = el("input"); cb.type = "checkbox"; cb.checked = !!o.on;
+          cb.disabled = !!o.comingSoon || !o.available || !canEdit;
+          toggle.appendChild(cb); toggle.appendChild(el("span", "switch-track"));
+          const txt = el("div", "mf-view-text");
+          const nameRow = el("div", "mf-view-name-row");
+          nameRow.appendChild(el("span", "mf-view-name", o.name));
+          if (o.comingSoon) nameRow.appendChild(el("span", "mf-view-badge", "Coming soon"));
+          else if (!o.available) nameRow.appendChild(el("span", "mf-view-badge mf-view-badge-off", "Unavailable"));
+          txt.appendChild(nameRow);
+          if (o.hint) txt.appendChild(el("div", "cell-muted mf-view-hint", o.hint));
+          row.appendChild(toggle); row.appendChild(txt);
+          body.appendChild(row);
+          return { cb, row };
+        }
+
+        // BOARD — available only with a pipeline.
+        const board = viewRow({
+          name: "Board", available: hasPipeline, on: moduleViewOn(selectedType, "board"),
+          hint: hasPipeline ? "A kanban of records grouped by pipeline stage." : "Turn on a pipeline to enable the Board view.",
+        });
+        board.cb.onchange = function () {
+          board.cb.disabled = true;
+          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "board"; });
+          if (board.cb.checked) next.push("board");
+          persist(next).then(function (rt) { afterSave(rt, board.cb.checked ? "Board view on" : "Board view off"); })
+            .catch(function (e) { board.cb.checked = !board.cb.checked; board.cb.disabled = false; App.util.toast(e.message, true); });
+        };
+
+        // CALENDAR — available only when the module has at least one date/datetime field.
+        const calAvailable = dateFields.length > 0;
+        const cal = viewRow({
+          name: "Calendar", available: calAvailable, on: moduleViewOn(selectedType, "calendar"),
+          hint: calAvailable ? "A month/week/day grid of records laid out by a date field." : "Add a date field to enable the Calendar view.",
+        });
+        cal.cb.onchange = function () {
+          cal.cb.disabled = true;
+          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "calendar"; });
+          if (cal.cb.checked) next.push("calendar");
+          persist(next).then(function (rt) { afterSave(rt, cal.cb.checked ? "Calendar view on" : "Calendar view off"); })
+            .catch(function (e) { cal.cb.checked = !cal.cb.checked; cal.cb.disabled = false; App.util.toast(e.message, true); });
+        };
+
+        // When Calendar is ON and the module has MORE THAN ONE date field, let the user pick
+        // which one the calendar uses. Bookings map to their existing field, so unchanged.
+        if (calAvailable && moduleViewOn(selectedType, "calendar") && dateFields.length > 1) {
+          const pick = el("div", "mf-view-pick");
+          pick.appendChild(el("label", "mf-view-pick-lbl", "Calendar date field"));
+          const sel = el("select", "input");
+          const chosen = moduleCalendarField(selectedType, fields);
+          dateFields.forEach(function (f) { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === chosen) o.selected = true; sel.appendChild(o); });
+          sel.disabled = !canEdit;
+          sel.onchange = function () {
+            sel.disabled = true;
+            persist(moduleEnabledViews(selectedType), sel.value)
+              .then(function (rt) { afterSave(rt, "Calendar date field updated"); })
+              .catch(function (e) { sel.disabled = false; App.util.toast(e.message, true); });
+          };
+          pick.appendChild(sel);
+          cal.row.appendChild(pick);
+        }
+
+        // MAP + GALLERY — future batches; shown disabled so the roadmap is visible.
+        viewRow({ name: "Map", comingSoon: true, available: false, hint: "Plot records that have an address on a map." });
+        viewRow({ name: "Gallery", comingSoon: true, available: false, hint: "A visual card grid of records." });
+      });
   }
 
   async function renderSettings(sub) {
@@ -5133,7 +5281,7 @@
       panel.appendChild(grid);
 
       const currentType = function () { return visible.find(function (t) { return t.key === App.state.fieldsType; }) || visible[0]; };
-      const renderTerms = function () { buildTermsSection(colTerms, currentType(), generic); };
+      const renderTerms = function () { buildTermsSection(colTerms, currentType(), generic); buildViewsSection(colTerms, currentType()); };
       function selectModule(key) {
         App.state.fieldsType = key;
         Array.prototype.forEach.call(modulesRow.querySelectorAll(".mf-mod-tab"), function (r) { r.classList.toggle("active", r.dataset.key === key); });
@@ -5545,7 +5693,14 @@
   // positioned by their WALL-CLOCK time (UTC components, never local conversion),
   // with open hours shaded from bookingConfig. Click a booking to open it. No
   // create-from-empty-slot and no write-lock in this batch.
-  function renderBookingCalendar(host, type, fields) {
+  // The calendar renderer. Bookings (isBooking) use the specialized /bookings/calendar path
+  // (resources, business hours, Google sync, click-to-create) and are byte-for-byte unchanged.
+  // Any OTHER module with the Calendar view on renders through the generic /records/calendar
+  // path: its records laid out by the chosen date field, read-only, without hours/resources/sync.
+  function renderBookingCalendar(host, type, fields, opts) {
+    opts = opts || {};
+    const isBooking = !!(type && type.key === "booking");
+    const dateField = opts.dateField || (isBooking ? "appointmentAt" : moduleCalendarField(type, fields));
     const HOUR_H = 44; // px per hour
     // Status styling reuses the app's theme tokens, plus a SECOND, color-independent
     // signal so status is readable when color is washed out or for colorblind users:
@@ -5599,8 +5754,11 @@
       const dates = visibleDates();
       const from = dates[0];
       const to = addDays(dates[dates.length - 1], 1);
+      const url = isBooking
+        ? `/api/bookings/calendar?from=${from}&to=${to}`
+        : `/api/records/calendar?type=${encodeURIComponent(type.key)}&field=${encodeURIComponent(dateField || "")}&from=${from}&to=${to}`;
       let data;
-      try { data = await App.portalApi(`/api/bookings/calendar?from=${from}&to=${to}`); }
+      try { data = await App.portalApi(url); }
       catch (e) { host.innerHTML = `<div class="card cal-card"><div class="cal-empty">${esc(e.message || "Could not load calendar.")}</div></div>`; return; }
       render(dates, data);
     }
@@ -5700,30 +5858,34 @@
       // checkbox reflecting the existing Google sync flag (connected && syncEnabled).
       // Built from a list so Outlook/Cal.com tiles can be added later without
       // restructuring. The actual enable/disable lives in Settings › Integrations.
-      const syncCalendars = [];
-      if (gStatus && gStatus.configured) {
-        syncCalendars.push({ name: "Google Calendar", icon: "/img/google-calendar.webp", enabled: !!(gStatus.connected && gStatus.syncEnabled) });
+      // Calendar Sync is a bookings concept (Google two-way sync of appointments); other
+      // modules' calendars are read-only layouts of their own records, so it's omitted there.
+      if (isBooking) {
+        const syncCalendars = [];
+        if (gStatus && gStatus.configured) {
+          syncCalendars.push({ name: "Google Calendar", icon: "/img/google-calendar.webp", enabled: !!(gStatus.connected && gStatus.syncEnabled) });
+        }
+        const calSync = el("div", "cal-sync");
+        calSync.appendChild(el("div", "cal-sync-title", "Calendar Sync"));
+        const syncTiles = el("div", "cal-sync-tiles");
+        if (syncCalendars.length) {
+          syncCalendars.forEach((c) => {
+            const tile = el("div", "cal-sync-tile");
+            tile.title = c.name + (c.enabled ? " — sync on" : " — sync off");
+            const icon = el("img", "cal-sync-icon"); icon.src = c.icon; icon.alt = c.name;
+            const cb = el("input"); cb.type = "checkbox"; cb.checked = c.enabled; cb.disabled = true; // display-only
+            tile.appendChild(icon); tile.appendChild(cb);
+            syncTiles.appendChild(tile);
+          });
+        } else {
+          syncTiles.appendChild(el("span", "cell-muted cal-sync-none", "No calendars connected"));
+        }
+        calSync.appendChild(syncTiles);
+        const syncBlurb = el("div", "cal-sync-blurb cell-muted");
+        syncBlurb.innerHTML = `To enable or disable third-party calendars, go to <a href="#/settings/integrations">Settings &rsaquo; Integrations</a>.`;
+        calSync.appendChild(syncBlurb);
+        tb.appendChild(calSync);
       }
-      const calSync = el("div", "cal-sync");
-      calSync.appendChild(el("div", "cal-sync-title", "Calendar Sync"));
-      const syncTiles = el("div", "cal-sync-tiles");
-      if (syncCalendars.length) {
-        syncCalendars.forEach((c) => {
-          const tile = el("div", "cal-sync-tile");
-          tile.title = c.name + (c.enabled ? " — sync on" : " — sync off");
-          const icon = el("img", "cal-sync-icon"); icon.src = c.icon; icon.alt = c.name;
-          const cb = el("input"); cb.type = "checkbox"; cb.checked = c.enabled; cb.disabled = true; // display-only
-          tile.appendChild(icon); tile.appendChild(cb);
-          syncTiles.appendChild(tile);
-        });
-      } else {
-        syncTiles.appendChild(el("span", "cell-muted cal-sync-none", "No calendars connected"));
-      }
-      calSync.appendChild(syncTiles);
-      const syncBlurb = el("div", "cal-sync-blurb cell-muted");
-      syncBlurb.innerHTML = `To enable or disable third-party calendars, go to <a href="#/settings/integrations">Settings &rsaquo; Integrations</a>.`;
-      calSync.appendChild(syncBlurb);
-      tb.appendChild(calSync);
 
       const controls = el("div", "cal-controls");
 
@@ -5933,16 +6095,20 @@
         // Single click on empty space → SELECT/highlight that slot (snapped to 15
         // min). Creating is a deliberate second action (the "+" or double-click on
         // the highlight). In a resource column, the slot carries that resource.
-        col.style.cursor = "pointer";
-        col.addEventListener("click", (e) => {
-          const rect = col.getBoundingClientRect();
-          const y = e.clientY - rect.top;
-          let mins = rangeStart + Math.round((y / HOUR_H * 60) / 15) * 15;
-          mins = Math.max(0, Math.min(1439, mins));
-          const hh = Math.floor(mins / 60), mm = mins % 60;
-          const at = `${d}T${pad(hh)}:${pad(mm)}`;
-          placeSelection(col, mins, at, c.slotResourceId || null);
-        });
+        // Click-to-create is a bookings feature (it opens the booking create flow with
+        // a resource + appointment time); other-module calendars are read-only here.
+        if (isBooking) {
+          col.style.cursor = "pointer";
+          col.addEventListener("click", (e) => {
+            const rect = col.getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            let mins = rangeStart + Math.round((y / HOUR_H * 60) / 15) * 15;
+            mins = Math.max(0, Math.min(1439, mins));
+            const hh = Math.floor(mins / 60), mm = mins % 60;
+            const at = `${d}T${pad(hh)}:${pad(mm)}`;
+            placeSelection(col, mins, at, c.slotResourceId || null);
+          });
+        }
         body.appendChild(col);
       }
 
@@ -5980,14 +6146,17 @@
     // Fetch header side-data ONCE (business timezone + Google sync status), then
     // repaint so the relocated timezone dropdown and Calendar Sync block appear.
     // Cached for later navigations (prev/next/today/week/day) — no refetch per move.
+    // Booking-only: those blocks aren't shown for other modules' calendars.
     load();
-    Promise.all([
-      App.portalApi("/api/booking-config").catch(() => null),
-      App.portalApi("/api/google/status").catch(() => null),
-    ]).then(([bc, gs]) => {
-      tzConfig = bc; gStatus = gs;
-      if (lastRender) render(lastRender.dates, lastRender.data);
-    });
+    if (isBooking) {
+      Promise.all([
+        App.portalApi("/api/booking-config").catch(() => null),
+        App.portalApi("/api/google/status").catch(() => null),
+      ]).then(([bc, gs]) => {
+        tzConfig = bc; gStatus = gs;
+        if (lastRender) render(lastRender.dates, lastRender.data);
+      });
+    }
   }
 
   function recordColumnDefs(fields, type, resById) {
@@ -6085,18 +6254,21 @@
     bar.appendChild(exportBtn);
     container.appendChild(bar);
 
-    // ---- Bookings calendar (replaces the old read-only preview). Week/day grid
-    // of existing bookings + open-hours shading. Wrapped in the table's own layout
-    // wrapper so its edges line up with the list below. Read-only in this batch:
-    // click a booking to open it; creating from an empty slot + the double-booking
-    // lock come in the next batch. ----
-    if (type.key === "booking") {
+    // ---- Calendar view — a month/week/day grid of this module's records. Shown when the
+    // module's Calendar view is turned on (Batch 2 generalized the old bookings-only gate).
+    // Bookings render through the identical booking path (resources, hours, sync) so their
+    // calendar is byte-for-byte unchanged; other modules lay records out by their chosen date
+    // field with a read-only grid. Wrapped in the table's own layout wrapper so its edges line
+    // up with the list below. ----
+    if (moduleCalendarEnabled(type)) {
       const calLayout = el("div", "table-layout");
       calLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
       const calArea = el("div", "table-area");
       calLayout.appendChild(calArea);
       container.appendChild(calLayout);
-      renderBookingCalendar(calArea, type, fields);
+      // renderBookingCalendar internally uses the booking-specific path for the bookings
+      // module and the generic records-calendar path for everything else.
+      renderBookingCalendar(calArea, type, fields, { dateField: moduleCalendarField(type, fields) });
     }
 
     const tableHost = el("div");
