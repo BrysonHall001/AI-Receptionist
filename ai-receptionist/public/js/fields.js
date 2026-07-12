@@ -24,6 +24,9 @@
     rating: "Rating",
     duration: "Duration",
     line_items: "Line items",
+    autonumber: "Auto-number",
+    color: "Color",
+    progress: "Progress",
   };
   const TYPES_WITH_OPTIONS = ["single_select", "multi_select"];
   const SYSTEM_KEYS = ["name", "phone", "email", "intent"];
@@ -115,6 +118,8 @@
     if (def.type === "duration") return value === "" || value == null ? "" : fmtDuration(value);
     if (def.type === "time") return fmtTime(value);
     if (def.type === "datetime") return fmtDateTime(value);
+    if (def.type === "progress") { if (value === "" || value == null) return ""; const n = Math.max(0, Math.min(100, Math.round(Number(value)))); return isFinite(n) ? n + "%" : ""; }
+    if (def.type === "color") return value ? String(value) : "";
     if (def.type === "address") return fmtAddress(value);
     if (def.type === "checkbox") return value ? "Yes" : "No";
     if (def.type === "image") return value ? "(image)" : "";
@@ -329,6 +334,32 @@
             node.appendChild(rmBtn);
           }
         }
+      } else if (def.type === "color") {
+        // Swatch + native colour picker; stores a "#rrggbb" hex string.
+        node = el("div", "form-color");
+        const cur = (typeof values[def.key] === "string" && /^#[0-9a-fA-F]{6}$/.test(values[def.key])) ? values[def.key].toLowerCase() : "";
+        const picker = el("input", "form-color-input"); picker.type = "color"; picker.value = cur || "#3366ff"; picker.disabled = readOnly;
+        const hexLbl = el("span", "form-color-hex", cur || "—");
+        picker.oninput = () => { const v = picker.value.toLowerCase(); hexLbl.textContent = v; setVal(v); };
+        node.appendChild(picker); node.appendChild(hexLbl);
+        if (!readOnly) { const clear = el("button", "link-danger form-color-clear", "Clear"); clear.onclick = () => { setVal(""); hexLbl.textContent = "—"; }; node.appendChild(clear); }
+      } else if (def.type === "progress") {
+        // 0–100 slider with a live bar + number; stores an integer 0–100.
+        node = el("div", "form-progress");
+        let n = Math.round(Number(values[def.key])); if (!isFinite(n)) n = 0; n = Math.max(0, Math.min(100, n));
+        const bar = el("div", "form-progress-bar"); const fill = el("div", "form-progress-fill"); bar.appendChild(fill);
+        const num = el("span", "form-progress-num");
+        const range = el("input", "form-progress-range"); range.type = "range"; range.min = "0"; range.max = "100"; range.step = "1"; range.value = String(n); range.disabled = readOnly;
+        const paint = (v) => { fill.style.width = v + "%"; num.textContent = v + "%"; };
+        paint(n);
+        range.oninput = () => { let v = Math.round(Number(range.value)); if (!isFinite(v)) v = 0; v = Math.max(0, Math.min(100, v)); paint(v); setVal(v); };
+        node.appendChild(bar); node.appendChild(range); node.appendChild(num);
+      } else if (def.type === "autonumber") {
+        // Read-only: the server assigns a unique sequential value on save.
+        node = el("div", "form-static form-autonumber");
+        const v = values[def.key];
+        if (v == null || v === "") { node.textContent = "Assigned automatically when saved"; node.classList.add("cell-muted"); }
+        else node.textContent = String(v);
       } else {
         node = el("input", "input");
         node.type = def.type === "number" || def.type === "percent" || def.type === "currency" ? "number"

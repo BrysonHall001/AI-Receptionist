@@ -259,6 +259,34 @@ async function applyInvoiceDefaults(tenantId: string, recordTypeId: string, rtKe
   return cf;
 }
 
+/** Format an auto-number value from its field config: optional prefix + optional zero-pad.
+ *  Config lives on the field's `options` JSON: { prefix?: string, pad?: number }. Defaults to
+ *  a plain incrementing integer. */
+export function formatAutoNumber(fieldDef: any, n: number): string {
+  const cfg = (fieldDef && fieldDef.options && !Array.isArray(fieldDef.options)) ? fieldDef.options : {};
+  const prefix = typeof cfg.prefix === "string" ? cfg.prefix : "";
+  const padRaw = Number(cfg.pad);
+  const pad = Number.isFinite(padRaw) ? Math.max(0, Math.min(12, Math.floor(padRaw))) : 0;
+  const digits = pad > 0 ? String(n).padStart(pad, "0") : String(n);
+  return prefix + digits;
+}
+
+/** AUTO-NUMBER (Part B): assign a unique sequential value to each blank autonumber field on
+ *  create. Sequence is per tenant + module + field (Counter key), race-safe via nextCounter,
+ *  so concurrent creates never skip or duplicate. A value already supplied (e.g. an imported
+ *  back-number) is respected and never overwritten. No-op for modules without autonumber fields. */
+async function applyAutoNumbers(tenantId: string, recordTypeId: string, customFields: any): Promise<any> {
+  const anDefs = await db.fieldDef.findMany({ where: { tenantId, recordTypeId, type: "autonumber" } });
+  if (!anDefs.length) return customFields;
+  const cf = { ...(customFields || {}) };
+  for (const def of anDefs) {
+    if (String(cf[def.key] ?? "").trim()) continue; // respect a provided value (back-number)
+    const n = await nextCounter(tenantId, "autonumber:" + recordTypeId + ":" + def.key);
+    cf[def.key] = formatAutoNumber(def, n);
+  }
+  return cf;
+}
+
 export async function createRecord(
   tenantId: string,
   recordType: string | null | undefined,
@@ -281,6 +309,7 @@ export async function createRecord(
   // Invoices: auto invoice number + Status default (Task 3), then keep the computed Total in
   // sync with the line_items rows (Task 2). Both are no-ops for other record types.
   customFields = await applyInvoiceDefaults(tenantId, recordTypeId, rt?.key, customFields);
+  customFields = await applyAutoNumbers(tenantId, recordTypeId, customFields);
   customFields = await applyComputedTotal(tenantId, recordTypeId, customFields);
   const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields };
 
@@ -761,6 +790,17 @@ function normalizeTimeOfDay(val: any): string {
   return `${pad(H)}:${M}`;
 }
 
+// Normalize a color to a "#rrggbb" hex string. Accepts "#RGB", "#RRGGBB", or the same
+// without the leading "#". Returns "" if it isn't a valid hex color.
+function normalizeHexColor(val: any): string {
+  let s = String(val == null ? "" : val).trim();
+  if (!s) return "";
+  if (s[0] !== "#") s = "#" + s;
+  const short = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(s);
+  if (short) s = "#" + short[1] + short[1] + short[2] + short[2] + short[3] + short[3];
+  return /^#[0-9a-fA-F]{6}$/.test(s) ? s.toLowerCase() : "";
+}
+
 // Coerce one imported cell to a custom field's defined type. { empty } = nothing to
 // store; { error } = uncoercible (the value is dropped + reported, never a crash).
 export function coerceCustomValue(def: any, raw: any): { value?: any; empty?: boolean; error?: string } {
@@ -792,6 +832,16 @@ export function coerceCustomValue(def: any, raw: any): { value?: any; empty?: bo
       const t = normalizeTimeOfDay(s);
       if (!t) return { error: `"${s}" isn't a recognizable time` };
       return { value: t }; // time stores "HH:mm" (24-hour, zoneless)
+    }
+    case "progress": {
+      const n = Math.round(Number(s.replace(/[%\s]/g, "")));
+      if (!isFinite(n)) return { error: `"${s}" isn't a valid progress value (0–100)` };
+      return { value: Math.max(0, Math.min(100, n)) }; // clamp out-of-range to 0–100
+    }
+    case "color": {
+      const hex = normalizeHexColor(s);
+      if (!hex) return { error: `"${s}" isn't a valid color (use a hex value like #3366FF)` };
+      return { value: hex };
     }
     case "checkbox":
       return { value: ["true", "yes", "y", "1", "x", "\u2713", "checked"].indexOf(s.toLowerCase()) >= 0 };
@@ -830,6 +880,7 @@ export async function bulkCreateRecords(tenantId: string, recordType: string | n
   const defByKey = new Map<string, any>();
   fieldDefs.forEach((f) => defByKey.set(f.key, f));
   const requiredFields = fieldDefs.filter((f) => f.required && f.type !== "formula");
+  const autoNumDefs = fieldDefs.filter((f) => f.type === "autonumber");
 
   // Bookings only: resolve a resource NAME (what the file holds) -> its id. Built
   // once, case-insensitive. Unmatched names leave the booking's resource blank and
@@ -893,6 +944,14 @@ export async function bulkCreateRecords(tenantId: string, recordType: string | n
       skipped++;
       skippedRows.push({ row: rowNum, title, reason: "missing required field" + (missing.length > 1 ? "s" : "") + ": " + missing.map((f) => f.label || f.key).join(", ") });
       continue;
+    }
+
+    // Auto-number: fill blank autonumber fields with the next sequential value (a value
+    // supplied in the file is kept as a back-number). Same counter as createRecord.
+    for (const def of autoNumDefs) {
+      if (String(coerced[def.key] ?? "").trim()) continue;
+      const n = await nextCounter(tenantId, "autonumber:" + recordTypeId + ":" + def.key);
+      coerced[def.key] = formatAutoNumber(def, n);
     }
 
     await db.record.create({ data: { tenantId, recordTypeId, title, stageKey: row.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields: coerced } });

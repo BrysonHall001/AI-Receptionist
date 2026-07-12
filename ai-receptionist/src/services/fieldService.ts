@@ -5,6 +5,7 @@ export const FIELD_TYPES = [
   "text", "textarea", "number", "percent", "currency", "date", "time", "datetime", "checkbox",
   "single_select", "multi_select", "phone", "url", "email", "formula", "image", "file",
   "address", "rating", "duration", "line_items",
+  "autonumber", "color", "progress",
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 

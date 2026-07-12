@@ -2121,7 +2121,8 @@
   }
 
   // ---------------- Add contact (manual) ----------------
-  async function openCreateContact() {
+  async function openCreateContact(opts) {
+    opts = opts || {};
     const [fields, settings] = await Promise.all([
       App.portalApi("/api/fields").catch(() => []),
       App.portalApi("/api/settings").catch(() => ({})),
@@ -2161,7 +2162,14 @@
       if (requireEmail && !payload.email) { toast("Email is required for this CRM", true); return; }
       if (!payload.email && !payload.phone) { toast("Add at least an email or a phone number", true); return; }
       save.disabled = true; save.textContent = "Creating…";
-      try { await App.portalApi("/api/contacts", { method: "POST", body: JSON.stringify(payload) }); toast(App.label("contact","one") + " created"); overlay.remove(); renderContacts(); }
+      try {
+        const created = await App.portalApi("/api/contacts", { method: "POST", body: JSON.stringify(payload) });
+        toast(App.label("contact","one") + " created"); overlay.remove();
+        // Caller-controlled follow-up (e.g. the Related "Contacts" tab links the new contact
+        // to the record in place). Falls back to the contacts list when not provided.
+        if (opts.onCreated) { try { opts.onCreated(created || null); } catch (e) {} return; }
+        renderContacts();
+      }
       catch (e) { toast(e.message, true); save.disabled = false; save.textContent = ("Create " + App.label("contact","one").toLowerCase()); }
     };
   }
@@ -3183,6 +3191,13 @@
           <input id="fm-formula" class="input" placeholder="e.g. {{Name}} — {{Deal size}}" />
           <p class="muted" style="margin:-6px 0 12px">Reference other fields by their label in double braces, like {{Name}}.</p>
         </div>
+        <div id="fm-autonumber-wrap" style="display:none">
+          <label class="field-label">Prefix (optional)</label>
+          <input id="fm-an-prefix" class="input" placeholder="e.g. INV-" />
+          <label class="field-label">Zero-pad width (optional)</label>
+          <input id="fm-an-pad" class="input" type="number" min="0" max="12" placeholder="e.g. 4 → 0001" />
+          <p class="muted" style="margin:-6px 0 12px">A unique number is assigned automatically when a record is saved. Example: prefix “INV-” + pad 4 → INV-0001.</p>
+        </div>
         <label class="form-check"><input type="checkbox" id="fm-required" ${existing && existing.required ? "checked" : ""} /> <span>Required</span></label>
         <button id="fm-save" class="btn btn-primary btn-block" style="margin-top:14px">${isEdit ? "Save field" : "Add field"}</button>
       </div>`;
@@ -3191,12 +3206,18 @@
     const typeSel = inner.querySelector("#fm-type");
     const optsWrap = inner.querySelector("#fm-options-wrap");
     const formulaWrap = inner.querySelector("#fm-formula-wrap");
+    const anWrap = inner.querySelector("#fm-autonumber-wrap");
     if (existing) typeSel.value = existing.type;
-    if (existing && existing.options) inner.querySelector("#fm-options").value = (existing.options || []).join("\n");
+    if (existing && Array.isArray(existing.options)) inner.querySelector("#fm-options").value = (existing.options || []).join("\n");
     if (existing && existing.formula) inner.querySelector("#fm-formula").value = existing.formula;
+    // Auto-number config lives on `options` as an object { prefix, pad } (not an array).
+    const anCfg = (existing && existing.options && !Array.isArray(existing.options)) ? existing.options : {};
+    if (anCfg.prefix != null) inner.querySelector("#fm-an-prefix").value = String(anCfg.prefix);
+    if (anCfg.pad != null) inner.querySelector("#fm-an-pad").value = String(anCfg.pad);
     function syncType() {
       optsWrap.style.display = App.fields.TYPES_WITH_OPTIONS.includes(typeSel.value) ? "block" : "none";
       formulaWrap.style.display = typeSel.value === "formula" ? "block" : "none";
+      anWrap.style.display = typeSel.value === "autonumber" ? "block" : "none";
     }
     typeSel.onchange = syncType;
     syncType();
@@ -3205,8 +3226,13 @@
       const label = inner.querySelector("#fm-label").value.trim();
       if (!label) { App.util.toast("Label is required", true); return; }
       const type = typeSel.value;
-      const options = App.fields.TYPES_WITH_OPTIONS.includes(type)
+      let options = App.fields.TYPES_WITH_OPTIONS.includes(type)
         ? inner.querySelector("#fm-options").value.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+      if (type === "autonumber") {
+        const padRaw = inner.querySelector("#fm-an-pad").value.trim();
+        const pad = padRaw === "" ? 0 : Math.max(0, Math.min(12, parseInt(padRaw, 10) || 0));
+        options = { prefix: inner.querySelector("#fm-an-prefix").value || "", pad: pad };
+      }
       const formula = type === "formula" ? inner.querySelector("#fm-formula").value : null;
       const required = inner.querySelector("#fm-required").checked;
       const payload = { label, type, options, formula, required };
@@ -3828,14 +3854,28 @@
   // create new) and — ONLY when the module has stages — a List | Board kanban toggle. All
   // reads/writes use the SAME endpoints the old hardcoded Jobs/Equipment cards used, so
   // stage moves / unlink / link / create+link behave exactly as before.
-  async function mountContactRelated(tabsBar, body, contactId, contactObj) {
+  // ===================== Generalized "Related" tabs (Part A) =====================
+  // One tabbed Related area shared by EVERY detail page (Contacts + every record module).
+  // `anchor` describes whose page we're on: { kind:"contact"|"record", id, typeKey, type?, obj }.
+  // Each tab is one OTHER module; a record never shows a tab for its own type, and a contact
+  // anchor omits the Contacts tab (it IS the contact). Reuses the symmetric record-link API.
+  async function mountRelatedTabs(tabsBar, body, anchor) {
     tabsBar.innerHTML = ""; body.innerHTML = `<div class="cell-muted">Loading…</div>`;
     let types = [];
     try { types = await App.portalApi("/api/record-types"); } catch (e) {}
     const navPos = {}; (App.fullNavOrder() || []).forEach(function (h, i) { navPos[h] = i; });
     const modules = (types || [])
-      .filter(function (t) { return t.key !== "contact" && !App.isRecordTypeLocked(t.key) && !App.isNavHidden(App.recordTypeHref(t.key)); })
-      .sort(function (a, b) { return (navPos[App.recordTypeHref(a.key)] == null ? 1e9 : navPos[App.recordTypeHref(a.key)]) - (navPos[App.recordTypeHref(b.key)] == null ? 1e9 : navPos[App.recordTypeHref(b.key)]); });
+      .filter(function (t) {
+        if (t.key === anchor.typeKey) return false;               // no tab for the anchor's own type
+        if (t.key === "contact") return anchor.kind !== "contact"; // Contacts tab: record anchors only
+        return !App.isRecordTypeLocked(t.key) && !App.isNavHidden(App.recordTypeHref(t.key));
+      })
+      .sort(function (a, b) {
+        if (a.key === "contact") return -1;
+        if (b.key === "contact") return 1;
+        var pa = navPos[App.recordTypeHref(a.key)]; var pb = navPos[App.recordTypeHref(b.key)];
+        return (pa == null ? 1e9 : pa) - (pb == null ? 1e9 : pb);
+      });
     body.innerHTML = "";
     if (!modules.length) { body.appendChild(el("div", "cell-muted", "No related modules yet.")); return; }
     const panes = {};
@@ -3850,22 +3890,45 @@
       tabsBar.appendChild(tb);
       const pane = el("div", "related-pane"); pane.style.display = i === 0 ? "" : "none";
       body.appendChild(pane);
-      panes[type.key] = { el: pane, loaded: false, render: function () { buildContactRelatedPane(pane, type, contactId, contactObj); } };
+      panes[type.key] = { el: pane, loaded: false, render: function () { buildRelatedPane(pane, type, anchor); } };
     });
     const first = modules[0].key; panes[first].loaded = true; panes[first].render();
   }
 
-  function buildContactRelatedPane(pane, type, contactId, contactObj) {
+  // Kept as a thin wrapper so any external caller/name still works; the Contact page uses
+  // the generalized component with a contact anchor (behaviour is identical to before).
+  function mountContactRelated(tabsBar, body, contactId, contactObj) {
+    return mountRelatedTabs(tabsBar, body, { kind: "contact", id: contactId, typeKey: "contact", obj: contactObj });
+  }
+
+  function buildRelatedPane(pane, type, anchor) {
     pane.innerHTML = "";
+    const isContactTab = type.key === "contact";
     const hasStages = moduleHasStages(type);
     const oneWord = type.label || App.label("record", "one");
     const manyWord = type.labelPlural || type.label || App.label("record", "many");
     const subtypeLabel = function (k) { const s = ((type.subtypes) || []).find(function (x) { return x.key === k; }); return s ? s.label : (k || ""); };
     const stagesFor = function (subKey) { const st = ((type.subtypes) || []).find(function (x) { return x.key === subKey; }); return st ? (st.stages || []) : (type.stages || []); };
+    // The anchor's own first pipeline stage — used when linking to a STAGELESS module from a
+    // STAGED record (mirrors the old record page dropping a contact into the record's pipeline).
+    function anchorFirstStageKey() {
+      if (anchor.kind !== "record" || !anchor.type) return null;
+      const subKey = anchor.obj && anchor.obj.subtypeKey;
+      const st = ((anchor.type.subtypes) || []).find(function (x) { return x.key === subKey; });
+      const stages = st ? (st.stages || []) : ((anchor.type.stages) || []);
+      return stages.length ? stages[0].key : null;
+    }
+    function anchorLabel() {
+      const o = anchor.obj || {};
+      if (anchor.kind === "contact") return o.name || o.phone || o.email || App.label("contact", "one");
+      return o.title || ("Untitled " + App.label("record", "one").toLowerCase());
+    }
+    const recTitle = function (r) { return r ? (r.title || r.name || r.email || r.phone || ("Untitled " + oneWord.toLowerCase())) : ("Untitled " + oneWord.toLowerCase()); };
+    const recHref = function (r) { if (!r || !r.id) return null; return isContactTab ? ("#/contact/" + r.id) : ("#/record/" + r.id); };
 
     let view = "list";
     let links = [];
-    let fieldsCache = null, allRecs = null;
+    let fieldsCache = null, allRecs = null, allContacts = null;
 
     const head = el("div", "related-pane-head");
     let listBtn = null, boardBtn = null;
@@ -3884,13 +3947,28 @@
 
     async function ensureFields() { if (fieldsCache) return fieldsCache; try { const f = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)); fieldsCache = Array.isArray(f) ? f : []; } catch (e) { fieldsCache = []; } return fieldsCache; }
     async function ensureRecs() { if (allRecs) return allRecs; try { const raw = await App.portalApi("/api/records?type=" + encodeURIComponent(type.key)); allRecs = Array.isArray(raw) ? raw : []; } catch (e) { allRecs = []; } return allRecs; }
+    async function ensureContacts() { if (allContacts) return allContacts; try { const raw = await App.portalApi("/api/contacts"); allContacts = Array.isArray(raw) ? raw : []; } catch (e) { allContacts = []; } return allContacts; }
+
+    // Links between the ANCHOR and this tab's module, normalized to { id, stageKey, rec }.
+    async function fetchLinks() {
+      if (anchor.kind === "contact") {
+        const raw = await App.portalApi("/api/contacts/" + anchor.id + "/links?type=" + encodeURIComponent(type.key));
+        return (Array.isArray(raw) ? raw : []).map(function (l) { return { id: l.id, stageKey: l.stageKey, rec: l.record }; });
+      }
+      const raw = await App.portalApi("/api/records/" + anchor.id + "/links");
+      const arr = Array.isArray(raw) ? raw : [];
+      if (isContactTab) {
+        return arr.filter(function (l) { return l.otherType === "contact" && l.other; }).map(function (l) { return { id: l.id, stageKey: l.stageKey, rec: l.other }; });
+      }
+      return arr.filter(function (l) { return l.otherType === "record" && l.other && l.other.recordTypeId === type.id; }).map(function (l) { return { id: l.id, stageKey: l.stageKey, rec: l.other }; });
+    }
 
     async function load() {
       listHost.innerHTML = `<div class="cell-muted">Loading…</div>`;
-      try { links = await App.portalApi("/api/contacts/" + contactId + "/links?type=" + encodeURIComponent(type.key)); }
+      try { links = await fetchLinks(); }
       catch (e) { listHost.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
       if (!Array.isArray(links)) links = [];
-      allRecs = null; // linked set changed — refresh search source on next open
+      allRecs = null; allContacts = null; // linked set changed — refresh search source on next open
       renderView();
     }
     function renderView() { if (hasStages && view === "board") renderBoard(); else renderList(); }
@@ -3901,13 +3979,14 @@
       const list = el("div", "link-list");
       if (!links.length) { list.appendChild(el("div", "cell-muted", "No " + manyWord.toLowerCase() + " linked yet.")); listHost.appendChild(list); return; }
       links.forEach(function (lk) {
-        const rec = lk.record || {};
+        const rec = lk.rec || {};
         const subKey = rec.subtypeKey || null;
-        const title = rec.title || ("Untitled " + oneWord.toLowerCase());
+        const title = recTitle(rec);
         const row = el("div", "link-row");
         const nameEl = el("div", "link-name");
         nameEl.innerHTML = `${esc(title)}${subKey ? ` <span class="cell-muted link-ptype">${esc(subtypeLabel(subKey))}</span>` : ""}`;
-        if (rec.id) { nameEl.style.cursor = "pointer"; nameEl.onclick = function () { App.go("#/record/" + rec.id); }; }
+        const href = recHref(rec);
+        if (href) { nameEl.style.cursor = "pointer"; nameEl.onclick = function () { App.go(href); }; }
         row.appendChild(nameEl);
         if (hasStages) {
           const stageSel = el("select", "input link-stage");
@@ -3926,7 +4005,7 @@
       listHost.appendChild(list);
     }
 
-    // ---- Board view: swimlanes (one lane per linked record) — exactly the Jobs kanban ----
+    // ---- Board view: one swimlane per linked record — same kanban as the Jobs board ----
     function renderBoard() {
       listHost.innerHTML = "";
       if (!links.length) { const empty = el("div", "cell-muted"); empty.style.cssText = "padding:10px 2px;"; empty.textContent = "No " + manyWord.toLowerCase() + " linked yet — link one below to start the board."; listHost.appendChild(empty); return; }
@@ -3936,12 +4015,13 @@
     }
     function buildLane(lk) {
       const lane = el("div", "swimlane");
-      const rec = lk.record || {};
+      const rec = lk.rec || {};
       const subKey = rec.subtypeKey || null;
-      const title = rec.title || ("Untitled " + oneWord.toLowerCase());
+      const title = recTitle(rec);
       const laneHead = el("div", "swimlane-head");
       const titleEl = el("span", "swimlane-title", esc(title));
-      if (rec.id) { titleEl.style.cursor = "pointer"; titleEl.onclick = function () { App.go("#/record/" + rec.id); }; }
+      const href = recHref(rec);
+      if (href) { titleEl.style.cursor = "pointer"; titleEl.onclick = function () { App.go(href); }; }
       laneHead.appendChild(titleEl);
       if (subKey) laneHead.appendChild(el("span", "swimlane-type pill", esc(subtypeLabel(subKey))));
       lane.appendChild(laneHead);
@@ -3952,7 +4032,7 @@
       function highlightCurrent() { board.querySelectorAll(".kanban-col").forEach(function (col) { col.classList.toggle("kanban-col--current", !!col.querySelector(".kanban-card")); }); }
       const card = (function () {
         const cd = el("div", "kanban-card"); cd.draggable = true; cd.dataset.linkId = lk.id;
-        cd.appendChild(el("div", "kanban-card-name", esc(contactObj.name || contactObj.phone || App.label("contact", "one"))));
+        cd.appendChild(el("div", "kanban-card-name", esc(anchorLabel())));
         const x = el("button", "kanban-card-x", "×"); x.title = "Unlink";
         x.onclick = async function (e) { e.stopPropagation(); if (!(await confirmModal({ title: "Unlink", message: `Unlink “${title}”?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); load(); } catch (err) { toast(err.message, true); } };
         cd.appendChild(x);
@@ -3990,37 +4070,63 @@
     }
 
     // ---- Universal link bar: search-existing-and-link + create-new-and-link ----
-    const searchInput = el("input", "input link-search"); searchInput.placeholder = "Link a " + oneWord.toLowerCase() + " — type a title/name…";
+    const searchInput = el("input", "input link-search"); searchInput.placeholder = "Link a " + oneWord.toLowerCase() + " — type a " + (isContactTab ? "name" : "title") + "…";
     addRow.appendChild(searchInput);
     const createBtn = el("button", "btn btn-ghost btn-sm related-create-btn"); createBtn.innerHTML = `<span class="btn-icon">&#43;</span> New ${esc(oneWord.toLowerCase())}`;
-    createBtn.onclick = async function () { const f = await ensureFields(); openCreateRecord(type.key, f, type, { linkContactId: contactId, onCreated: function () { load(); } }); };
+    createBtn.onclick = async function () {
+      if (isContactTab) {
+        openCreateContact({ onCreated: function (c) { if (c && c.id) linkTarget(c, true); else load(); } });
+      } else {
+        const f = await ensureFields();
+        const linkOpts = anchor.kind === "contact" ? { linkContactId: anchor.id } : { linkToRecord: anchor.id };
+        openCreateRecord(type.key, f, type, Object.assign(linkOpts, { onCreated: function () { load(); } }));
+      }
+    };
     addRow.appendChild(createBtn);
     const results = el("div"); results.style.cssText = "margin-top:8px; display:none; flex-basis:100%;"; addRow.appendChild(results);
 
     function hideResults() { results.style.display = "none"; results.innerHTML = ""; }
     function showResults(nodes) { results.innerHTML = ""; const box = el("div"); box.style.cssText = "border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; max-height:260px; overflow-y:auto; background:var(--panel);"; nodes.forEach(function (n) { box.appendChild(n); }); results.appendChild(box); results.style.display = "block"; }
     function msg(t) { const d = el("div", "cell-muted", esc(t)); d.style.cssText = "padding:9px 12px;"; return d; }
+
+    // Create the link between the anchor and `target` (a record of this module, or a contact
+    // when this is the Contacts tab). stageKey follows the staged side (see anchorFirstStageKey).
+    async function linkTarget(target, fromCreate) {
+      try {
+        let sk = null;
+        if (hasStages) { const fs = stagesFor(target.subtypeKey)[0]; sk = fs ? fs.key : null; }
+        else { sk = anchorFirstStageKey(); }
+        if (anchor.kind === "contact") {
+          await App.portalApi("/api/records/" + target.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: anchor.id, stageKey: sk }) });
+        } else if (isContactTab) {
+          await App.portalApi("/api/records/" + anchor.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: target.id, stageKey: sk }) });
+        } else {
+          await App.portalApi("/api/records/" + anchor.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "record", parentId: target.id, stageKey: sk }) });
+        }
+        if (!fromCreate) { toast("Linked"); searchInput.value = ""; hideResults(); }
+        load();
+      } catch (e) { toast(e.message, true); }
+    }
+
     function resultButton(r) {
       const b = el("button", "link-result"); b.style.cssText = "line-height:1.35;";
       const bits = [];
       if (r.subtypeKey) bits.push(subtypeLabel(r.subtypeKey));
-      b.innerHTML = `<div style="font-weight:600;">${esc(r.title || ("Untitled " + oneWord.toLowerCase()))}</div>` + (bits.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(bits.join(" · "))}</div>` : "");
-      b.onclick = async function () {
-        try {
-          const firstStage = hasStages ? stagesFor(r.subtypeKey)[0] : null;
-          await App.portalApi("/api/records/" + r.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: contactId, stageKey: firstStage ? firstStage.key : null }) });
-          toast("Linked"); searchInput.value = ""; hideResults(); load();
-        } catch (e) { toast(e.message, true); }
-      };
+      if (isContactTab) { if (r.email) bits.push(r.email); else if (r.phone) bits.push(r.phone); }
+      b.innerHTML = `<div style="font-weight:600;">${esc(recTitle(r))}</div>` + (bits.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(bits.join(" · "))}</div>` : "");
+      b.onclick = function () { linkTarget(r, false); };
       return b;
     }
     async function runSearch() {
-      const listAll = await ensureRecs();
-      const linkedIds = new Set(links.map(function (l) { return l.record && l.record.id; }).filter(Boolean));
+      const listAll = isContactTab ? await ensureContacts() : await ensureRecs();
+      const linkedIds = new Set(links.map(function (l) { return l.rec && l.rec.id; }).filter(Boolean));
       const available = listAll.filter(function (r) { return !linkedIds.has(r.id); });
       if (!available.length) { showResults([msg("No " + manyWord.toLowerCase() + " to link — use “New " + oneWord.toLowerCase() + "”.")]); return; }
       const q = searchInput.value.trim().toLowerCase();
-      const matches = (!q ? available.slice(0, 8) : available.filter(function (r) { return (r.title || "").toLowerCase().includes(q); }).slice(0, 8));
+      const matchFn = isContactTab
+        ? function (r) { return ((r.name || "") + " " + (r.email || "") + " " + (r.phone || "")).toLowerCase().includes(q); }
+        : function (r) { return (r.title || "").toLowerCase().includes(q); };
+      const matches = (!q ? available.slice(0, 8) : available.filter(matchFn).slice(0, 8));
       if (!matches.length) { showResults([msg(`No ${manyWord.toLowerCase()} match “${searchInput.value.trim()}”.`)]); return; }
       showResults(matches.map(resultButton));
     }
@@ -5881,7 +5987,7 @@
     (fields || []).forEach((f) => {
       const get = (r) => (r.customFields || {})[f.key];
       const disp = (r) => { const v = get(r); return Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); };
-      const colTy = (f.type === "number" || f.type === "currency" || f.type === "rating" || f.type === "duration") ? "number" : f.type === "date" ? "date" : "text";
+      const colTy = (f.type === "number" || f.type === "currency" || f.type === "rating" || f.type === "duration" || f.type === "progress") ? "number" : f.type === "date" ? "date" : "text";
       if (f.type === "line_items") {
         const summary = (r) => App.fields.lineItemsSummary(get(r));
         cols.push({ key: f.key, label: f.label, type: "number", get: (r) => App.fields.lineItemsTotal(get(r)), text: summary, render: (r) => { const s = summary(r); return s ? esc(s) : `<span class="cell-muted">—</span>`; } });
@@ -5894,6 +6000,8 @@
       else if (f.type === "duration") render = (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
       else if (f.type === "address") render = (r) => { const s = App.fields.fmtAddress(get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
       else if (f.type === "currency") render = (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
+      else if (f.type === "color") render = (r) => { const v = get(r); return (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v)) ? `<span class="cell-color"><span class="cell-color-chip" style="background:${esc(v)}"></span>${esc(v)}</span>` : `<span class="cell-muted">—</span>`; };
+      else if (f.type === "progress") render = (r) => { const raw = get(r); if (raw == null || raw === "") return `<span class="cell-muted">—</span>`; let n = Math.round(Number(raw)); if (!isFinite(n)) return `<span class="cell-muted">—</span>`; n = Math.max(0, Math.min(100, n)); return `<span class="cell-progress"><span class="cell-progress-bar"><span class="cell-progress-fill" style="width:${n}%"></span></span><span class="cell-progress-num">${n}%</span></span>`; };
       else render = (r) => esc(disp(r) || "—");
       cols.push({ key: f.key, label: f.label, type: colTy, get, text: disp, render });
     });
@@ -6116,6 +6224,12 @@
         const linkContactId = (contactSel && contactSel.value) || opts.linkContactId || null;
         if (linkContactId) {
           try { await App.portalApi("/api/records/" + rec.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: linkContactId, stageKey: null }) }); }
+          catch (e) { /* record is created; a failed link shouldn't block it */ }
+        }
+        // Link the new record to an anchor RECORD (the Related tabs "create new" on a
+        // non-contact page). Symmetric record<->record link; a failed link never blocks create.
+        if (opts.linkToRecord) {
+          try { await App.portalApi("/api/records/" + rec.id + "/links", { method: "POST", body: JSON.stringify({ parentType: "record", parentId: opts.linkToRecord, stageKey: null }) }); }
           catch (e) { /* record is created; a failed link shouldn't block it */ }
         }
         toast(`${type.label || App.label("record","one")} created`);
@@ -6417,10 +6531,9 @@
       subtypeSel = el("select", "input");
       subtypeSel.appendChild(el("option", null, "— select a type —"));
       subtypes.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((st) => { const o = el("option", null, esc(st.label)); o.value = st.key; if (st.key === currentSubtypeKey) o.selected = true; subtypeSel.appendChild(o); });
-      subtypeSel.onchange = () => { currentSubtypeKey = subtypeSel.value || null; loadLinks(); }; // refresh candidate stage options for the new pipeline
+      subtypeSel.onchange = () => { currentSubtypeKey = subtypeSel.value || null; }; // pipeline changes take effect on the next link
       card.appendChild(subtypeSel);
     }
-    function currentStages() { const st = subtypes.find((s) => s.key === currentSubtypeKey); return st ? (st.stages || []) : ((type && type.stages) || []); }
 
     const recStages = (type && type.recordStages) || [];
     let stageSel = null;
@@ -6530,21 +6643,20 @@
       saveBar.style.display = "none";
     }
 
-    // ---- Linked candidates card: List | Board (kanban) — two views of the SAME links ----
-    const linkCard = el("div", "card");
-    const candHead = el("div", "cand-head");
-    candHead.appendChild(el("div", "drawer-section-title", App.label("contact","many")));
-    const candToggle = el("div", "seg-toggle");
-    const tabListBtn = el("button", "seg-btn seg-on", "List");
-    const tabBoardBtn = el("button", "seg-btn", "Board");
-    candToggle.appendChild(tabListBtn); candToggle.appendChild(tabBoardBtn);
-    candHead.appendChild(candToggle);
-    linkCard.appendChild(candHead);
-    const candBody = el("div");
-    linkCard.appendChild(candBody);
-    const addRow = el("div", "link-add");
-    linkCard.appendChild(addRow);
-    if (!ro) wrap.appendChild(linkCard); // linking/candidate management hidden in the read-only preview
+    // ---- Related tabs: one tab per OTHER module (link existing + create new; Board where
+    // that module has stages) — the SAME generalized component the Contact page uses.
+    // Hidden in the read-only Recycle Bin preview. ----
+    let remountRelated = function () {};
+    if (!ro) {
+      const relatedCard = el("div", "card related-card");
+      relatedCard.appendChild(el("div", "drawer-section-title", "Related"));
+      const relTabsBar = el("div", "tabs related-tabs");
+      const relBody = el("div", "related-tab-body");
+      relatedCard.appendChild(relTabsBar);
+      relatedCard.appendChild(relBody);
+      wrap.appendChild(relatedCard);
+      remountRelated = function () { mountRelatedTabs(relTabsBar, relBody, { kind: "record", id: id, typeKey: type.key, type: type, obj: rec }); };
+    }
 
     // ---- Activity card (Stage 2a): internal notes on this record. Notes live in
     // the record's customFields.__activity; automations and the box below write here.
@@ -6584,198 +6696,14 @@
     if (!ro) actCard.appendChild(addNoteRow); // notes are read-only in the preview
     wrap.appendChild(actCard);
 
-    let candView = "list";
-    let links = [];
-    let kanbanDropHandled = false;
-    function setCandView(v) { candView = v; tabListBtn.classList.toggle("seg-on", v === "list"); tabBoardBtn.classList.toggle("seg-on", v === "board"); renderCandidates(); }
-    tabListBtn.onclick = () => setCandView("list");
-    tabBoardBtn.onclick = () => setCandView("board");
-
     view().innerHTML = "";
     view().appendChild(wrap);
 
-    function candWho(lk) { return lk.parent ? (lk.parent.name || lk.parent.email || lk.parent.phone || App.label("contact","one")) : (lk.parentType + " " + lk.parentId); }
-    function candSub(lk) { if (!lk.parent) return ""; const nm = candWho(lk); const s = []; if (lk.parent.email && lk.parent.email !== nm) s.push(lk.parent.email); if (lk.parent.phone && lk.parent.phone !== nm) s.push(lk.parent.phone); return s.join(" · "); }
-
-    async function loadLinks() {
-      candBody.innerHTML = `<div class="cell-muted">Loading…</div>`;
-      try { links = await App.portalApi("/api/records/" + id + "/links"); }
-      catch (e) { candBody.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
-      renderCandidates();
-    }
-    function renderCandidates() { if (candView === "board") renderCandBoard(); else renderCandList(); }
-
-    // Part 2 (Batch A step 3): reflect server-side stage changes (e.g. the
-    // automation "move" action) without the user navigating away and back.
-    // Lightweight: refetch the links and re-render in place — no polling loop,
-    // no realtime machinery. Skips while a drag is in progress and stops itself
-    // once this record view is gone.
-    async function refreshCandidatesQuietly() {
-      if (!document.body.contains(wrap)) { document.removeEventListener("visibilitychange", onCandVisible); return; }
-      if (document.querySelector(".kanban-card.dragging")) return; // don't fight an active drag
-      try { const fresh = await App.portalApi("/api/records/" + id + "/links"); links = fresh; renderCandidates(); } catch (e) { /* leave current view on error */ }
-    }
-    function scheduleCandRefresh() { setTimeout(refreshCandidatesQuietly, 1200); setTimeout(refreshCandidatesQuietly, 3000); }
-    function onCandVisible() { if (document.visibilityState === "visible") refreshCandidatesQuietly(); }
-    document.addEventListener("visibilitychange", onCandVisible);
-
-    // List view — the original table-ish list; its dropdown writes the SAME
-    // RecordLink.stageKey and updates the in-memory link so the board matches.
-    function renderCandList() {
-      candBody.innerHTML = "";
-      const listEl = el("div", "link-list");
-      if (!links.length) listEl.appendChild(el("div", "cell-muted", ("No " + App.label("contact","many").toLowerCase() + " linked yet.")));
-      links.forEach((lk) => {
-        const row = el("div", "link-row");
-        const who = candWho(lk);
-        const nameEl = el("div", "link-name");
-        nameEl.innerHTML = `${esc(who)} <span class="cell-muted link-ptype">${esc(lk.parentType)}</span>`;
-        if (lk.parentType === "contact" && lk.parent) { nameEl.style.cursor = "pointer"; nameEl.onclick = () => App.go("#/contact/" + lk.parent.id); }
-        row.appendChild(nameEl);
-        const stageSelL = el("select", "input link-stage");
-        stageSelL.appendChild(el("option", null, ("— " + App.label("stage","one").toLowerCase() + " —")));
-        const stages = currentStages();
-        let known = false;
-        stages.forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === lk.stageKey) { o.selected = true; known = true; } stageSelL.appendChild(o); });
-        if (lk.stageKey && !known) { const o = el("option", null, esc(lk.stageKey) + " (not in this pipeline)"); o.value = lk.stageKey; o.selected = true; stageSelL.appendChild(o); }
-        stageSelL.onchange = async () => { const v = stageSelL.value || null; try { await App.portalApi("/api/record-links/" + lk.id, { method: "PATCH", body: JSON.stringify({ stageKey: v }) }); lk.stageKey = v; toast(App.label("stage","one") + " updated"); } catch (e) { toast(e.message, true); } };
-        row.appendChild(stageSelL);
-        const unlink = el("button", "link-danger", "Unlink");
-        unlink.onclick = async () => { if (!(await confirmModal({ title: "Unlink", message: `Unlink ${who}?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (e) { toast(e.message, true); } };
-        row.appendChild(unlink);
-        listEl.appendChild(row);
-      });
-      candBody.appendChild(listEl);
-    }
-
-    // A draggable candidate card for the board.
-    function candCard(lk) {
-      const card = el("div", "kanban-card");
-      card.draggable = true; card.dataset.linkId = lk.id;
-      const who = candWho(lk); const sub = candSub(lk);
-      const nameEl = el("div", "kanban-card-name", esc(who));
-      if (lk.parentType === "contact" && lk.parent) { nameEl.style.cursor = "pointer"; nameEl.onclick = (e) => { e.stopPropagation(); App.go("#/contact/" + lk.parent.id); }; }
-      card.appendChild(nameEl);
-      if (sub) card.appendChild(el("div", "kanban-card-sub", esc(sub)));
-      const x = el("button", "kanban-card-x", "×"); x.title = "Unlink";
-      x.onclick = async (e) => { e.stopPropagation(); if (!(await confirmModal({ title: "Unlink", message: `Unlink ${who}?`, confirmText: "Unlink" }))) return; try { await App.portalApi("/api/record-links/" + lk.id, { method: "DELETE" }); toast("Unlinked"); loadLinks(); } catch (err) { toast(err.message, true); } };
-      card.appendChild(x);
-      card.addEventListener("dragstart", () => { kanbanDropHandled = false; card.classList.add("dragging"); });
-      card.addEventListener("dragend", () => { card.classList.remove("dragging"); document.querySelectorAll(".kanban-col--over").forEach((c) => c.classList.remove("kanban-col--over")); if (!kanbanDropHandled) renderCandBoard(); });
-      return card;
-    }
-
-    // Board view — one column per stage in THIS JOB'S TYPE pipeline (read live),
-    // plus a "Needs review" lane for candidates whose stage isn't in the pipeline
-    // (or is unset). Dropping persists RecordLink.stageKey and updates in place.
-    function renderCandBoard() {
-      candBody.innerHTML = "";
-      if (!links.length) { candBody.appendChild(el("div", "cell-muted", ("No " + App.label("contact","many").toLowerCase() + " linked yet — link one below to start the board."))); return; }
-      const stages = currentStages();
-      const known = new Set(stages.map((s) => s.key));
-      const board = el("div", "kanban");
-      const lanes = [];
-      const colByStage = {};
-      function updateCounts() {
-        lanes.forEach((m) => {
-          const n = m.cards.querySelectorAll(".kanban-card").length;
-          m.count.textContent = String(n);
-          let ph = m.cards.querySelector(".kanban-empty");
-          if (n === 0) { if (!ph) m.cards.appendChild(el("div", "kanban-empty", ("No " + App.label("contact","many").toLowerCase()))); }
-          else if (ph) ph.remove();
-        });
-      }
-      function makeColumn(key, label, isReview) {
-        const col = el("div", "kanban-col" + (isReview ? " kanban-col--review" : ""));
-        col.dataset.stage = key == null ? "" : key;
-        const head = el("div", "kanban-col-head");
-        head.appendChild(el("span", "kanban-col-name", label));
-        head.appendChild(el("span", "kanban-dot", "·"));
-        const count = el("span", "kanban-count", "0"); head.appendChild(count);
-        col.appendChild(head);
-        const cards = el("div", "kanban-cards"); col.appendChild(cards);
-        col.addEventListener("dragover", (e) => { const d = document.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault(); col.classList.add("kanban-col--over"); const ph = cards.querySelector(".kanban-empty"); if (ph) ph.remove(); cards.appendChild(d); });
-        col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("kanban-col--over"); });
-        col.addEventListener("drop", async (e) => {
-          const d = document.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault();
-          col.classList.remove("kanban-col--over"); kanbanDropHandled = true;
-          const linkId = d.dataset.linkId; const lk = links.find((x) => x.id === linkId);
-          const newStage = isReview ? null : key;
-          cards.appendChild(d);
-          updateCounts();
-          try { await App.portalApi("/api/record-links/" + linkId, { method: "PATCH", body: JSON.stringify({ stageKey: newStage }) }); if (lk) lk.stageKey = newStage; }
-          catch (err) { toast(err.message, true); renderCandBoard(); }
-        });
-        const m = { col, cards, count }; lanes.push(m); return m;
-      }
-      const needsReview = links.filter((lk) => !lk.stageKey || !known.has(lk.stageKey));
-      let reviewLane = null;
-      if (needsReview.length) reviewLane = makeColumn(null, "Needs review", true);
-      stages.forEach((s) => { colByStage[s.key] = makeColumn(s.key, s.label, false); });
-      links.forEach((lk) => { const card = candCard(lk); if ((!lk.stageKey || !known.has(lk.stageKey)) && reviewLane) reviewLane.cards.appendChild(card); else if (colByStage[lk.stageKey]) colByStage[lk.stageKey].cards.appendChild(card); else if (reviewLane) reviewLane.cards.appendChild(card); });
-      lanes.forEach((m) => board.appendChild(m.col));
-      updateCounts();
-      candBody.appendChild(board);
-    }
-
-    // Link-a-contact control: search this portal's contacts (GET /api/contacts,
-    // portal-scoped) and link the chosen one. Results render IN-FLOW (not an
-    // absolutely-positioned dropdown) because the enclosing .card has
-    // overflow:hidden, which clipped the old absolute dropdown so it never showed.
-    const addInput = el("input", "input link-search"); addInput.placeholder = ("Link a " + App.label("contact","one").toLowerCase() + " — type a name…");
-    addRow.appendChild(addInput);
-    const results = el("div");
-    results.style.cssText = "margin-top:8px; display:none;";
-    addRow.appendChild(results);
-
-    let allContacts = null;
-    async function ensureContacts() {
-      if (allContacts) return allContacts;
-      try { const raw = await App.portalApi("/api/contacts"); allContacts = Array.isArray(raw) ? raw : []; }
-      catch (e) { allContacts = []; }
-      return allContacts;
-    }
-    function showResults(nodes) {
-      results.innerHTML = "";
-      const box = el("div");
-      box.style.cssText = "border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; max-height:260px; overflow-y:auto; background:var(--panel);";
-      nodes.forEach((n) => box.appendChild(n));
-      results.appendChild(box);
-      results.style.display = "block";
-    }
-    function hideResults() { results.style.display = "none"; results.innerHTML = ""; }
-    function msgNode(text) { const d = el("div", "cell-muted", esc(text)); d.style.cssText = "padding:9px 12px;"; return d; }
-    function resultButton(c) {
-      const r = el("button", "link-result");
-      r.style.cssText = "line-height:1.35;";
-      const name = c.name || c.email || c.phone || App.label("contact","one");
-      const sub = [];
-      if (c.email && c.email !== name) sub.push(c.email);
-      if (c.phone && c.phone !== name) sub.push(c.phone);
-      r.innerHTML = `<div style="font-weight:600;">${esc(name)}</div>` +
-        (sub.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(sub.join(" · "))}</div>` : "");
-      r.onclick = async () => {
-        try {
-          const firstStage = (currentStages())[0];
-          await App.portalApi("/api/records/" + id + "/links", { method: "POST", body: JSON.stringify({ parentType: "contact", parentId: c.id, stageKey: firstStage ? firstStage.key : null }) });
-          toast("Linked"); addInput.value = ""; hideResults(); loadLinks();
-        } catch (e) { toast(e.message, true); }
-      };
-      return r;
-    }
-    async function runSearch() {
-      const list = await ensureContacts();
-      if (!list.length) { showResults([msgNode((`This portal has no ${App.label("contact","many").toLowerCase()} yet — add one on the ${App.label("contact","many")} page first.`))]); return; }
-      const q = addInput.value.trim().toLowerCase();
-      const matches = !q ? list.slice(0, 8) : list.filter((c) => ((c.name || "") + " " + (c.email || "") + " " + (c.phone || "")).toLowerCase().includes(q)).slice(0, 8);
-      if (!matches.length) { showResults([msgNode(`No ${App.label("contact","many").toLowerCase()} match “${addInput.value.trim()}”.`)]); return; }
-      showResults(matches.map(resultButton));
-    }
-    addInput.oninput = App.util.debounce(runSearch, 200);
-    addInput.onfocus = runSearch;
-    addInput.onblur = () => setTimeout(hideResults, 200); // let a result click register first
-
-    if (!ro) loadLinks();
+    // Mount the generalized Related tabs into the live view. Re-mount after a save (a
+    // status/field change may have fired an automation that re-staged links), mirroring
+    // the old auto-refresh — best-effort and delayed so async automations land first.
+    if (!ro) remountRelated();
+    function scheduleCandRefresh() { setTimeout(function () { try { remountRelated(); } catch (e) {} }, 1200); setTimeout(function () { try { remountRelated(); } catch (e) {} }, 3000); }
   }
 
   App.portal = { render, refresh, simulate, renderContact, renderRecord, renderRecycledPreview, current: () => current, contactColumnDefs };

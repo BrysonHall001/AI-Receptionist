@@ -255,7 +255,7 @@
       }
       function rebuildForSource(initial) {
         const src = curSource();
-        const numericFields = src.reportFields.filter((f) => f.type === "number" || f.type === "percent" || f.type === "line_items");
+        const numericFields = src.reportFields.filter((f) => f.type === "number" || f.type === "percent" || f.type === "line_items" || f.type === "progress");
         $("#w-mfield").innerHTML = numericFields.map((f) => `<option value="${esc(f.key)}">${esc(f.label)}</option>`).join("");
         if (initial && w.measure && w.measure.field) $("#w-mfield").value = w.measure.field;
         $("#w-mop").options[0].textContent = "Count of " + String(src.label || "records").toLowerCase();
@@ -858,7 +858,7 @@
       const srcObj = () => state.sources[draft.source] || state.sources[srcOpts[0].key];
       const fieldLabel = (k) => { const f = (srcObj().reportFields || []).find((x) => x.key === k); return f ? f.label : k; };
       const isDate = (k) => { const f = (srcObj().reportFields || []).find((x) => x.key === k); return !!(f && f.type === "date"); };
-      const numericFields = () => (srcObj().reportFields || []).filter((f) => f.type === "number" || f.type === "percent" || f.type === "line_items");
+      const numericFields = () => (srcObj().reportFields || []).filter((f) => f.type === "number" || f.type === "percent" || f.type === "line_items" || f.type === "progress");
       function inferType() { if (!draft.groupKey) return "kpi"; return isDate(draft.groupKey) ? "line" : "bar"; }
       function autoTitle() {
         const sl = (srcOpts.find((o) => o.key === draft.source) || {}).label || draft.source;

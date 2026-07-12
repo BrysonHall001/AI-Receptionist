@@ -647,6 +647,23 @@ textarea.input { resize: vertical; }
 .form-star.on { color: #f5b301; }
 .form-star:disabled { cursor: default; }
 .cell-stars { color: #f5b301; letter-spacing: 1px; }
+/* ---- Field types: Color, Progress, Auto-number (Part B) ---- */
+.form-color { display: flex; align-items: center; gap: 10px; }
+.form-color-input { width: 42px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+.form-color-input:disabled { cursor: default; opacity: 0.6; }
+.form-color-hex { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-soft); text-transform: uppercase; }
+.form-color-clear { font-size: 12px; }
+.form-progress { display: flex; align-items: center; gap: 10px; }
+.form-progress-bar { flex: 1 1 auto; height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; min-width: 80px; }
+.form-progress-fill { height: 100%; background: var(--accent, #6366f1); border-radius: 999px; transition: width 0.12s ease; }
+.form-progress-range { flex: 0 0 140px; }
+.form-progress-num { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-soft); min-width: 40px; text-align: right; }
+.cell-color { display: inline-flex; align-items: center; gap: 6px; }
+.cell-color-chip { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line); flex: 0 0 auto; }
+.cell-progress { display: inline-flex; align-items: center; gap: 8px; min-width: 120px; }
+.cell-progress-bar { width: 74px; height: 7px; border-radius: 999px; background: var(--panel-2); overflow: hidden; flex: 0 0 auto; }
+.cell-progress-fill { height: 100%; background: var(--accent, #6366f1); border-radius: 999px; }
+.cell-progress-num { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--ink-soft); }
 .form-duration { display: flex; align-items: center; gap: 6px; }
 .form-duration .input { margin: 0; width: 72px; }
 .form-address { display: flex; flex-direction: column; gap: 6px; }.form-address-part { margin: 0; }

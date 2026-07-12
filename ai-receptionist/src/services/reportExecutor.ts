@@ -52,7 +52,7 @@ function fmtAppt(iso: any): string {
   if (isNaN(d.getTime())) return "";
   return d.toLocaleString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
-const colType = (t: string) => (t === "number" ? "number" : t === "date" ? "date" : "text");
+const colType = (t: string) => (t === "number" || t === "progress" ? "number" : t === "date" ? "date" : "text");
 
 // Line items: the field VALUE is an array of rows; its numeric total (qty×price summed) is
 // what reporting/measures should see, while CSV/export shows a readable "N items · $total".
