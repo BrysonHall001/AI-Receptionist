@@ -2113,8 +2113,8 @@
       const lab = el("label", "ms-opt"); const cb = el("input"); cb.type = "checkbox"; if (value === true) cb.checked = true; lab.appendChild(cb); lab.appendChild(document.createTextNode(" Yes")); wrap.appendChild(lab); getValue = () => cb.checked;
     } else {
       const inp = el("input", "input");
-      inp.type = f.type === "number" || f.type === "percent" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text";
-      if (value != null) inp.value = value;
+      inp.type = f.type === "number" || f.type === "percent" ? "number" : f.type === "date" ? "date" : f.type === "time" ? "time" : f.type === "datetime" ? "datetime-local" : f.type === "email" ? "email" : "text";
+      if (value != null) inp.value = f.type === "datetime" ? String(value).replace(" ", "T").slice(0, 16) : value;
       wrap.appendChild(inp); getValue = () => (inp.value.trim() === "" ? null : (inp.type === "number" ? Number(inp.value) : inp.value.trim()));
     }
     return { wrap, get: getValue, key: f.key };

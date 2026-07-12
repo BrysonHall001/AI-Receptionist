@@ -61,7 +61,11 @@ function rightsForKind(kind: AreaKind): Right[] {
 export const AREAS: AreaDef[] = [
   // ---- Data (view / edit / delete) ----
   { key: "contacts", label: "Contacts", kind: "data", section: "Data" },
-  { key: "records", label: "Records (Jobs / Bookings / custom)", kind: "data", section: "Data" },
+  // LABEL is "Modules"; the KEY stays "records" so existing grants/enforcement are unchanged.
+  // This governs View/Edit/Delete over record DATA across every record-type module (Jobs,
+  // Bookings, Equipment, and the pre-built + custom modules). Creating/renaming/hiding modules
+  // themselves stays governed by the Settings → Modules & Fields management permission.
+  { key: "records", label: "Modules", kind: "data", section: "Data" },
   { key: "automations", label: "Automations", kind: "data", section: "Data" },
   // Communication, Home Dashboard and Analytics are real CRUD surfaces (email templates,
   // surveys, dashboards + widgets), so they are DATA-kind, not read-only. NOTE: only

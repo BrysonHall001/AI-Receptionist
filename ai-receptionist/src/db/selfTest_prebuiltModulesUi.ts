@@ -1,6 +1,8 @@
-// Pure self-test (no DB) for the five pre-built modules' wiring: the create-tenant picker
-// defaults them OFF, the options carry defaultHidden, and the registry has all five entries
-// with seeders.
+// Pure self-test (no DB) for the five pre-built modules' wiring: the registry has all five
+// entries with seeders, the options still carry defaultHidden, and the create-tenant picker
+// now defaults EVERY module ON (checked) — unchecking is the opt-out that hides a module.
+// (Batch: the picker used to start the pre-built five unchecked; it now starts them checked,
+// matching the pages list. Section (4) below was updated for that intentional change.)
 //
 //   npx tsx src/db/selfTest_prebuiltModulesUi.ts
 import { readFileSync } from "fs";
@@ -32,10 +34,11 @@ check(!/key: "title"/.test(rtSvc.slice(rtSvc.indexOf("DEFAULT_TASK_FIELDS"), rtS
 console.log("\n(3) picker options carry defaultHidden:");
 check(/defaultHidden: !!d\.defaultHidden/.test(rtSvc), "systemRecordTypeOptions() exposes defaultHidden");
 
-console.log("\n(4) create-tenant picker defaults the flagged modules OFF (admin.js):");
-check(/const startHidden = !!opt\.defaultHidden;/.test(admin), "the picker reads opt.defaultHidden");
-check(/cb\.checked = !startHidden;/.test(admin), "default-hidden modules start UNCHECKED");
-check(/if \(startHidden\) \{ const set = new Set\(draft\.hiddenRecordTypes\); set\.add\(opt\.key\); draft\.hiddenRecordTypes = Array\.from\(set\); \}/.test(admin), "and are pre-added to hiddenRecordTypes (hidden in the new portal until opted in)");
+console.log("\n(4) create-tenant picker now defaults EVERY module ON (admin.js):");
+check(/cb\.checked = true;/.test(admin), "togglable modules start CHECKED (on) by default");
+check(!/const startHidden = !!opt\.defaultHidden;/.test(admin), "the picker no longer forces pre-built modules off");
+check(!/cb\.checked = !startHidden;/.test(admin), "no module is pre-unchecked from defaultHidden anymore");
+check(/if \(cb\.checked\) set\.delete\(opt\.key\); else set\.add\(opt\.key\);/.test(admin), "unchecking a module adds its key to hiddenRecordTypes (hide is now the opt-out)");
 
-console.log(`\n${failures === 0 ? "ALL PASSED \u2705 (five modules registered, seeded, default-off in the picker)" : failures + " FAILED \u274c"}`);
+console.log(`\n${failures === 0 ? "ALL PASSED \u2705 (five modules registered, seeded, and default-ON in the picker)" : failures + " FAILED \u274c"}`);
 process.exit(failures ? 1 : 0);

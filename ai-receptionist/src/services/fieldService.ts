@@ -2,7 +2,7 @@ import { prisma } from "../db/client";
 import { ensureContactRecordType, resolveRecordTypeId } from "./recordTypeService";
 
 export const FIELD_TYPES = [
-  "text", "textarea", "number", "percent", "currency", "date", "checkbox",
+  "text", "textarea", "number", "percent", "currency", "date", "time", "datetime", "checkbox",
   "single_select", "multi_select", "phone", "url", "email", "formula", "image", "file",
   "address", "rating", "duration", "line_items",
 ] as const;

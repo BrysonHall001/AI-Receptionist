@@ -437,16 +437,19 @@
     { label: "Feedback", hrefs: ["#/feedback"] },
     { label: "Billing", hrefs: ["#/billing"] },
   ];
-  // Build a checklist of lockable pages into `host`, reflecting `lockedHrefs`. A box is
-  // checked when ALL of its hrefs are locked; toggling adds/removes all of them (so a
-  // multi-href page moves together). Returns a getter for the selected hrefs and
-  // calls onChange(hrefs) on every toggle. Shared by the config view + wizard step 4.
+  // Build a checklist of lockable pages into `host`, reflecting `lockedHrefs`. Polarity is
+  // "checked = the page is ON/available"; UNCHECKING a page LOCKS it (adds its hrefs to the
+  // locked set). A box is checked when NONE of its hrefs are locked; toggling adds/removes
+  // all of them together (so a multi-href page moves as one). Default (no locked hrefs) =
+  // everything checked = nothing locked. Returns a getter for the LOCKED hrefs (unchanged
+  // contract — callers still PATCH/POST lockedPages) and calls onChange(lockedHrefs) on
+  // every toggle. Shared by the config view + the create-tenant wizard.
   function lockChecklist(host, lockedHrefs, onChange) {
     const locked = new Set(lockedHrefs || []);
     LOCKABLE_PAGES.forEach((pg) => {
       const row = el("label"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;cursor:pointer;border-top:1px solid var(--line,#eee)";
-      const cb = el("input"); cb.type = "checkbox"; cb.checked = pg.hrefs.every((h) => locked.has(h));
-      cb.onchange = () => { pg.hrefs.forEach((h) => { if (cb.checked) locked.add(h); else locked.delete(h); }); if (onChange) onChange(Array.from(locked)); };
+      const cb = el("input"); cb.type = "checkbox"; cb.checked = pg.hrefs.every((h) => !locked.has(h));
+      cb.onchange = () => { pg.hrefs.forEach((h) => { if (cb.checked) locked.delete(h); else locked.add(h); }); if (onChange) onChange(Array.from(locked)); };
       row.appendChild(cb); row.appendChild(document.createTextNode(" " + pg.label));
       host.appendChild(row);
     });
@@ -461,7 +464,7 @@
     const h = el("h2", "settings-h", "Pages");
     sec.appendChild(h);
     const hint = el("p", "cell-muted"); hint.style.cssText = "font-size:12.5px;margin:0 0 8px";
-    hint.textContent = "Lock fixed app pages for this tenant. A locked page is hidden from everyone in the tenant — including its Portal Admin — and can't be reached by direct link or API. (Record-type sections are managed as Modules, chosen when the tenant is created and toggled under Settings → Modules & Fields.)";
+    hint.textContent = "Checked = the page is on and available for this tenant. Uncheck a page to LOCK it — a locked page is hidden from everyone in the tenant, including its Portal Admin, and can't be reached by direct link or API until an admin unlocks it here. (Record-type sections are managed as Modules, chosen when the tenant is created and toggled under Settings → Modules & Fields.)";
     sec.appendChild(hint);
     const card = el("div", "card"); card.style.cssText = "padding:20px";
     const listHost = el("div");
@@ -662,7 +665,7 @@
     const lockHost = el("div"); lockHost.style.marginTop = "16px";
     const lockLab = el("label", "field-label", "Pages"); lockLab.style.cssText = "margin:0 0 2px";
     const lockNote = el("p", "cell-muted"); lockNote.style.cssText = "margin:0 0 4px;font-size:12.5px;";
-    lockNote.textContent = "Lock fixed app pages. A locked page is blocked for everyone in the tenant — including its Portal Admin — and can't be reached by menu, direct link, or API unless an admin unlocks it. (Record-type sections are managed under Modules below.)";
+    lockNote.textContent = "Checked = the page is on and available (all pages start on). Uncheck a page to LOCK it — a locked page is blocked for everyone in the tenant, including its Portal Admin, and can't be reached by menu, direct link, or API unless an admin unlocks it later. (Record-type sections are managed under Modules below.)";
     lockHost.appendChild(lockLab); lockHost.appendChild(lockNote);
     lockChecklist(lockHost, draft.lockedPages, (arr) => { draft.lockedPages = arr; });
     s4.appendChild(lockHost);
@@ -677,7 +680,7 @@
     const secHost = el("div"); secHost.style.marginTop = "16px";
     const secLab = el("label", "field-label", "Modules"); secLab.style.cssText = "margin:0 0 2px";
     const secNote = el("p", "cell-muted"); secNote.style.cssText = "margin:0 0 4px;font-size:12.5px;";
-    secNote.textContent = "Choose which record sections this portal has. Unchecked ones are hidden (still created) — turn them on anytime under Settings → Modules & Fields.";
+    secNote.textContent = "Checked = the module is on and visible in this portal (all modules start on). Uncheck one to hide it — it's still created, so you can turn it back on anytime under Settings → Modules & Fields with no data risk.";
     secHost.appendChild(secLab); secHost.appendChild(secNote);
     const secList = el("div"); secList.appendChild(el("p", "cell-muted", "Loading…"));
     secHost.appendChild(secList);
@@ -694,11 +697,12 @@
           cb.disabled = true; row.style.cursor = "default";
           row.appendChild(cb); row.appendChild(document.createTextNode(" " + name + " (always on)"));
         } else {
-          // Pre-built industry modules ship default-OFF: start unchecked and pre-hidden so
-          // they don't clutter a new portal until the owner opts in (here or in Settings).
-          const startHidden = !!opt.defaultHidden;
-          cb.checked = !startHidden;
-          if (startHidden) { const set = new Set(draft.hiddenRecordTypes); set.add(opt.key); draft.hiddenRecordTypes = Array.from(set); }
+          // Every togglable module starts ON (checked) so a new portal has everything
+          // available by default, matching the pages list. Unchecking hides it (adds its
+          // key to hiddenRecordTypes); the type is still seeded, so it's reversible under
+          // Settings → Modules & Fields. (opt.defaultHidden still marks the pre-built
+          // industry modules in the registry, but no longer forces them off here.)
+          cb.checked = true;
           cb.onchange = () => {
             const set = new Set(draft.hiddenRecordTypes);
             if (cb.checked) set.delete(opt.key); else set.add(opt.key);

@@ -9,6 +9,8 @@
     percent: "Percent",
     currency: "Currency",
     date: "Date",
+    time: "Time",
+    datetime: "Date & time",
     checkbox: "Checkbox",
     single_select: "Single select",
     multi_select: "Multi-select",
@@ -78,6 +80,27 @@
     if (typeof v === "string") return v;
     return [v.street, v.city, v.state, v.postal, v.country].map(function (x) { return (x == null ? "" : String(x)).trim(); }).filter(Boolean).join(", ");
   }
+  // Friendly clock time from stored "HH:mm" (24-hour) -> "2:30 PM".
+  function fmtTime(v) {
+    if (v == null || v === "") return "";
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(v));
+    if (!m) return String(v);
+    let H = parseInt(m[1], 10); const M = m[2];
+    if (!isFinite(H)) return String(v);
+    const ap = H >= 12 ? "PM" : "AM";
+    let h12 = H % 12; if (h12 === 0) h12 = 12;
+    return h12 + ":" + M + " " + ap;
+  }
+  const MON_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  // Friendly date+time from stored "YYYY-MM-DDTHH:mm" -> "Jun 5, 2026 2:30 PM".
+  function fmtDateTime(v) {
+    if (v == null || v === "") return "";
+    const s = String(v);
+    const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/.exec(s);
+    if (!m) return s;
+    const mo = MON_ABBR[parseInt(m[2], 10) - 1] || m[2];
+    return mo + " " + parseInt(m[3], 10) + ", " + m[1] + " " + fmtTime(m[4] + ":" + m[5]);
+  }
 
   // Display string for a field value (used in read contexts).
   function formatValue(def, value, fields, values) {
@@ -90,6 +113,8 @@
     if (def.type === "line_items") return lineItemsSummary(value);
     if (def.type === "rating") { const n = Number(value); return value === "" || value == null || !isFinite(n) ? "" : `${Math.round(n)}/5`; }
     if (def.type === "duration") return value === "" || value == null ? "" : fmtDuration(value);
+    if (def.type === "time") return fmtTime(value);
+    if (def.type === "datetime") return fmtDateTime(value);
     if (def.type === "address") return fmtAddress(value);
     if (def.type === "checkbox") return value ? "Yes" : "No";
     if (def.type === "image") return value ? "(image)" : "";
@@ -308,9 +333,11 @@
         node = el("input", "input");
         node.type = def.type === "number" || def.type === "percent" || def.type === "currency" ? "number"
           : def.type === "email" ? "email" : def.type === "url" ? "url"
-          : def.type === "phone" ? "tel" : def.type === "date" ? "date" : "text";
+          : def.type === "phone" ? "tel" : def.type === "date" ? "date"
+          : def.type === "time" ? "time" : def.type === "datetime" ? "datetime-local" : "text";
         let v = values[def.key];
         if (def.type === "date" && v) v = String(v).slice(0, 10);
+        else if (def.type === "datetime" && v) v = String(v).replace(" ", "T").slice(0, 16);
         node.value = v == null ? "" : v;
         node.disabled = readOnly;
         node.oninput = () => setVal(node.value);

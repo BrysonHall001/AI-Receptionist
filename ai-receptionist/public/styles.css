@@ -1808,7 +1808,9 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-lib-item--draggable:hover { border-color: var(--accent); color: var(--ink); }
 .mf-lib-item.dragging { opacity: 0.5; }
 .mf-lib-dot { color: var(--ink-faint); font-size: 12px; flex: 0 0 auto; }
-.mf-lib-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Wrap long type names onto two lines and show the full label (no "Curre…" ellipsis).
+   Grid cells stretch to equal height, so a one-line tile lines up with a two-line one. */
+.mf-lib-name { font-weight: 600; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
 /* Module ⋮ menu (shared) */
 .mf-mod-menu { z-index: 1300; min-width: 150px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
 .mf-mod-menu-item { text-align: left; background: none; border: none; padding: 8px 10px; border-radius: 7px; font-size: 13.5px; color: var(--ink); cursor: pointer; }

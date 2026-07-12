@@ -745,6 +745,22 @@ function normalizeWallClock(val: any): string {
   return "";
 }
 
+// Normalize a bare time-of-day ("2:30 PM", "2:30pm", "14:30", "9:00") to 24-hour
+// "HH:mm". Returns "" if unrecognizable. Zoneless wall-clock, like the date path.
+function normalizeTimeOfDay(val: any): string {
+  const s = String(val == null ? "" : val).trim();
+  if (!s) return "";
+  const pad = (n: any) => String(n).padStart(2, "0");
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?$/.exec(s);
+  if (!m) return "";
+  let H = parseInt(m[1], 10);
+  const M = m[2];
+  if (parseInt(M, 10) > 59) return "";
+  if (m[3]) { const pm = /p/i.test(m[3]); if (pm && H < 12) H += 12; if (!pm && H === 12) H = 0; }
+  if (H > 23) return "";
+  return `${pad(H)}:${M}`;
+}
+
 // Coerce one imported cell to a custom field's defined type. { empty } = nothing to
 // store; { error } = uncoercible (the value is dropped + reported, never a crash).
 export function coerceCustomValue(def: any, raw: any): { value?: any; empty?: boolean; error?: string } {
@@ -766,6 +782,16 @@ export function coerceCustomValue(def: any, raw: any): { value?: any; empty?: bo
       const norm = normalizeWallClock(s);
       if (!norm) return { error: `"${s}" isn't a recognizable date` };
       return { value: norm.slice(0, 10) }; // date fields store YYYY-MM-DD (zoneless, date-only)
+    }
+    case "datetime": {
+      const norm = normalizeWallClock(s);
+      if (!norm) return { error: `"${s}" isn't a recognizable date & time` };
+      return { value: norm }; // datetime stores "YYYY-MM-DDTHH:mm" (zoneless wall-clock)
+    }
+    case "time": {
+      const t = normalizeTimeOfDay(s);
+      if (!t) return { error: `"${s}" isn't a recognizable time` };
+      return { value: t }; // time stores "HH:mm" (24-hour, zoneless)
     }
     case "checkbox":
       return { value: ["true", "yes", "y", "1", "x", "\u2713", "checked"].indexOf(s.toLowerCase()) >= 0 };
