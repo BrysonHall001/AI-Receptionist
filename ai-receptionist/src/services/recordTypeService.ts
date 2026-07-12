@@ -546,7 +546,7 @@ export async function setPipelineEnabled(tenantId: string, recordType: string, e
 // so we VALIDATE the requested set against that reality and drop (never silently keep)
 // anything that isn't actually available. Guarded at the route by the module-management
 // permission. Non-destructive: turning a view off just hides it on the list page.
-const KNOWN_VIEWS = ["board", "calendar", "map"]; // Gallery is a future batch — not accepted here.
+const KNOWN_VIEWS = ["board", "calendar", "map", "gallery"]; // all four optional views are live
 
 /** The date-ish fields a module can lay a calendar out by: any date/datetime FieldDef,
  *  plus the typed "appointmentAt" column for Bookings (which is not a FieldDef). */
@@ -560,6 +560,12 @@ export async function calendarDateFieldKeys(tenantId: string, recordTypeId: stri
 /** The address fields a module can plot on a map (any address-type FieldDef, by order). */
 export async function addressFieldKeys(tenantId: string, recordTypeId: string): Promise<string[]> {
   const defs = await db.fieldDef.findMany({ where: { tenantId, recordTypeId, type: "address" }, orderBy: [{ order: "asc" }, { createdAt: "asc" }], select: { key: true } });
+  return defs.map((f: any) => f.key);
+}
+
+/** The image fields a module can build a gallery from (any image-type FieldDef, by order). */
+export async function imageFieldKeys(tenantId: string, recordTypeId: string): Promise<string[]> {
+  const defs = await db.fieldDef.findMany({ where: { tenantId, recordTypeId, type: "image" }, orderBy: [{ order: "asc" }, { createdAt: "asc" }], select: { key: true } });
   return defs.map((f: any) => f.key);
 }
 
@@ -578,6 +584,7 @@ export async function setModuleViews(
     (Array.isArray(row.stages) && row.stages.length > 0);
   const dateKeys = await calendarDateFieldKeys(tenantId, row.id, row.key);
   const addrKeys = await addressFieldKeys(tenantId, row.id);
+  const imgKeys = await imageFieldKeys(tenantId, row.id);
 
   const requested = Array.isArray(input.enabledViews) ? input.enabledViews.map((v: any) => String(v)) : [];
   const next: string[] = [];
@@ -586,6 +593,7 @@ export async function setModuleViews(
     if (v === "board" && !hasPipeline) throw new Error("Turn on a pipeline to enable the Board view.");
     if (v === "calendar" && dateKeys.length === 0) throw new Error("Add a date field to enable the Calendar view.");
     if (v === "map" && addrKeys.length === 0) throw new Error("Add an address field to enable the Map view.");
+    if (v === "gallery" && imgKeys.length === 0) throw new Error("Add an image field to enable the Gallery view.");
     if (!next.includes(v)) next.push(v);
   }
 

@@ -4251,6 +4251,13 @@
   // Map is offered when the Map view is turned on (the editor only lets it be turned on for
   // modules that actually have an address field).
   function moduleMapEnabled(t) { return moduleViewOn(t, "map"); }
+  // The image fields a module can build a gallery from (any image-type field, by order).
+  function moduleImageFields(t, fields) {
+    return (fields || []).filter(function (f) { return f.type === "image"; });
+  }
+  // Gallery is offered when the Gallery view is turned on (the editor only lets it be turned
+  // on for modules that actually have an image field).
+  function moduleGalleryEnabled(t) { return moduleViewOn(t, "gallery"); }
   // Which date field the calendar uses: the module's chosen field if still valid, else the first.
   function moduleCalendarField(t, fields) {
     var df = moduleDateFields(t, fields);
@@ -4483,8 +4490,22 @@
             .catch(function (e) { map.cb.checked = !map.cb.checked; map.cb.disabled = false; App.util.toast(e.message, true); });
         };
 
-        // GALLERY — future batch; shown disabled so the roadmap is visible.
-        viewRow({ name: "Gallery", comingSoon: true, available: false, hint: "A visual card grid of records." });
+        // GALLERY — available only when the module has at least one image field (mirrors the
+        // Calendar/Map field rules; the renderFields liveness hook re-evaluates this live on
+        // field add/edit/delete). Toggling it on shows the Gallery view on the list page.
+        const imgFields = moduleImageFields(selectedType, fields);
+        const galAvailable = imgFields.length > 0;
+        const gal = viewRow({
+          name: "Gallery", available: galAvailable, on: moduleViewOn(selectedType, "gallery"),
+          hint: galAvailable ? "A visual card grid of records." : "Add an image field to enable the Gallery view.",
+        });
+        gal.cb.onchange = function () {
+          gal.cb.disabled = true;
+          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "gallery"; });
+          if (gal.cb.checked) next.push("gallery");
+          persist(next).then(function (rt) { afterSave(rt, gal.cb.checked ? "Gallery view on" : "Gallery view off"); })
+            .catch(function (e) { gal.cb.checked = !gal.cb.checked; gal.cb.disabled = false; App.util.toast(e.message, true); });
+        };
       });
   }
 
@@ -6373,6 +6394,84 @@
     })();
   }
 
+  // ---- Gallery view — a responsive card grid of a module's records, keyed off its FIRST
+  // image-type field (by order). Card = fixed-ratio lazy-loaded thumbnail (image values are
+  // data-URL strings up to ~1 MB each, so lazy + object-fit:cover thumbnails are mandatory —
+  // never eager full-size renders), the record's title, and up to two compact secondary values
+  // (the status/stage label first if the module has one, then the next non-image field with a
+  // short displayable value via App.fields.formatValue). Records WITHOUT an image still appear
+  // with a neutral initial-letter placeholder — the gallery shows the whole module, never
+  // silently hides imageless records. Card click → the record detail page (same navigation the
+  // table rows use). Read-only sibling of renderRecordMap/renderBookingCalendar. ----
+  function renderRecordGallery(host, type, fields, records) {
+    host.innerHTML = "";
+    const card = el("div", "card gallery-card-wrap");
+    const rows = records || [];
+    if (!rows.length) {
+      // Same friendly empty-state pattern the other views use.
+      card.innerHTML = `<div class="empty"><div class="empty-emoji">&#128444;</div><h3>No ${esc((type.labelPlural || App.label("record", "many")).toLowerCase())} yet</h3><p>Create your first ${esc((type.label || App.label("record", "one")).toLowerCase())} to see it here.</p></div>`;
+      host.appendChild(card);
+      return;
+    }
+
+    // Primary image field = the FIRST image-type field by order (fields arrive order-sorted).
+    const imgFields = moduleImageFields(type, fields);
+    const imgField = imgFields.length ? imgFields[0] : null;
+
+    // Secondary lines: status/stage label first (when the module has one), then the next
+    // non-image field with a short displayable value. Two lines max per card.
+    function secondaryLines(r) {
+      const out = [];
+      if (moduleHasStages(type) && r.stageKey) {
+        const s = recordStageLabel(type, r.stageKey);
+        if (s) out.push({ text: s, pill: true });
+      }
+      for (const f of fields) {
+        if (out.length >= 2) break;
+        if (!f || f.type === "image") continue;
+        if (imgField && f.key === imgField.key) continue;
+        let v = "";
+        try { v = App.fields.formatValue(f, (r.customFields || {})[f.key], fields, r.customFields || {}); } catch (e) { v = ""; }
+        v = (v == null ? "" : String(v)).trim();
+        if (!v || v.length > 60) continue; // only short, displayable values
+        out.push({ text: v, pill: false });
+      }
+      return out.slice(0, 2);
+    }
+
+    const grid = el("div", "gallery-grid");
+    rows.forEach((r) => {
+      const c = el("div", "gallery-card");
+      c.tabIndex = 0;
+      const raw = imgField ? (r.customFields || {})[imgField.key] : null;
+      const src = (typeof raw === "string" && raw) ? raw : null;
+      if (src) {
+        const img = el("img", "gallery-thumb");
+        img.loading = "lazy";       // values can be ~1 MB of base64 each — never load eagerly
+        img.decoding = "async";
+        img.alt = r.title || "Untitled";
+        img.src = src;
+        c.appendChild(img);
+      } else {
+        // Neutral placeholder: the record's initial letter — imageless records still show.
+        const ph = el("div", "gallery-ph", esc(((r.title || "?").trim().charAt(0) || "?").toUpperCase()));
+        c.appendChild(ph);
+      }
+      const meta = el("div", "gallery-meta");
+      meta.appendChild(el("div", "gallery-title", esc(r.title || "Untitled")));
+      secondaryLines(r).forEach((ln) => {
+        meta.appendChild(el("div", "gallery-sub" + (ln.pill ? " gallery-sub-pill" : ""), ln.pill ? `<span class="pill">${esc(ln.text)}</span>` : esc(ln.text)));
+      });
+      c.appendChild(meta);
+      const go = () => App.go("#/record/" + r.id); // same navigation the table rows use
+      c.onclick = go;
+      c.onkeydown = (e) => { if (e.key === "Enter") go(); };
+      grid.appendChild(c);
+    });
+    card.appendChild(grid);
+    host.appendChild(card);
+  }
+
   function recordColumnDefs(fields, type, resById) {
     resById = resById || {};
     const cols = [];
@@ -6496,6 +6595,20 @@
       mapLayout.appendChild(mapArea);
       container.appendChild(mapLayout);
       renderRecordMap(mapArea, type, fields);
+    }
+
+    // ---- Gallery view — a visual card grid of this module's records, built from its first
+    // image field. Shown when the module's Gallery view is turned on (which requires an image
+    // field). Renders from the SAME records the table below already fetched — no extra fetch.
+    // Exact sibling of the Calendar/Map blocks: same inline .table-layout wrapper, additive,
+    // never touches the table. ----
+    if (moduleGalleryEnabled(type)) {
+      const galLayout = el("div", "table-layout");
+      galLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
+      const galArea = el("div", "table-area");
+      galLayout.appendChild(galArea);
+      container.appendChild(galLayout);
+      renderRecordGallery(galArea, type, fields, records);
     }
 
     const tableHost = el("div");

@@ -1981,6 +1981,20 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .map-pop-link:hover { text-decoration: underline; }
 @media (max-width: 640px) { .map-canvas { height: 360px; } }
 
+/* Gallery view — responsive card grid built from a module's first image field. Thumbnails are
+   fixed-ratio crops (object-fit: cover) and lazy-loaded (values are big data-URLs); imageless
+   records get a neutral initial-letter placeholder so the whole module always shows. */
+.gallery-card-wrap { padding: 14px; margin-bottom: 14px; }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; align-items: stretch; }
+.gallery-card { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); cursor: pointer; display: flex; flex-direction: column; min-width: 0; transition: box-shadow 0.15s ease, transform 0.15s ease; }
+.gallery-card:hover, .gallery-card:focus-visible { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10); transform: translateY(-1px); outline: none; }
+.gallery-thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; background: var(--panel-2); }
+.gallery-ph { width: 100%; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; font-size: 34px; font-weight: 800; color: var(--ink-faint); background: var(--panel-2); }
+.gallery-meta { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.gallery-title { font-weight: 700; font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gallery-sub { font-size: 12px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gallery-sub .pill { font-size: 11px; }
+
 /* calendar polish: legend, status glyph, now-line, closed-day label */
 .cal-legend { display: grid; grid-template-columns: auto auto; column-gap: 14px; row-gap: 5px; align-items: center; }
 .cal-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); }

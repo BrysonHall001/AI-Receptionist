@@ -103,7 +103,7 @@ async function main() {
   const bv = portal.slice(portal.indexOf("function buildViewsSection"), portal.indexOf("async function renderSettings"));
   check(/const mapAvailable = addrFields\.length > 0;/.test(bv), "the Map Views-tile availability keys off the presence of an address field");
   check(/name: "Map", available: mapAvailable/.test(bv), "the Map tile uses that availability (no longer \"Coming soon\")");
-  check(/name: "Gallery", comingSoon: true/.test(bv), "Gallery is still \"Coming soon\" (untouched)");
+  check(/name: "Gallery", available: galAvailable/.test(bv), "Gallery is now built (availability-driven, image-field rule)");
   check(/function moduleMapEnabled\(t\) \{ return moduleViewOn\(t, "map"\); \}/.test(portal), "moduleMapEnabled keys off the map view flag");
   check(/if \(moduleMapEnabled\(type\)\) \{/.test(portal) && /renderRecordMap\(mapArea, type, fields\)/.test(portal), "renderRecordList registers a map view mode (renderRecordMap)");
   check(/function renderRecordMap\(host, type, fields\)/.test(portal), "renderRecordMap exists");
