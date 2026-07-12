@@ -412,7 +412,7 @@
     // Read the AI Receptionist flag from the just-loaded card data so the left nav
     // is correct on the FIRST paint of this entry (no stale cached value, no flash),
     // and clear the cache key so it's re-confirmed fresh from the server on entry.
-    App.state.receptionistEnabled = !!(p && p.receptionistEnabled === true);
+    App.state.receptionistEnabled = !!(p && (p.receptionistEnabled === true || (p.voiceMode && p.voiceMode !== "OFF")));
     App.state._recepFor = null;
     // Re-sync the cached identity so the portal view renders the LIVE role (e.g. after
     // a make-owner promotion the sidebar shows "Owner", matching the admin Users list —

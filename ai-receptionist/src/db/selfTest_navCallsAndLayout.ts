@@ -52,6 +52,18 @@ App.navConfig = () => ({ order: [], hidden: [], labels: {} });
 const empty = App.applyNavConfig(full).map((it: any[]) => it[0]);
 check(empty[1] === "#/calls", "with no saved order, Calls defaults to right of Home Dashboard");
 
+// The Calls nav gate keys off App.state.receptionistEnabled; that flag must treat any
+// non-OFF voiceMode as ON (the legacy boolean isn't always synced), or Calls stays hidden
+// on portals that are actually running the receptionist.
+console.log("\n(1b) Calls shows when the receptionist is on (voiceMode-aware):");
+const util = readFileSync(resolve(__dirname, "../../public/js/util.js"), "utf8");
+const admin = readFileSync(resolve(__dirname, "../../public/js/admin.js"), "utf8");
+const voiceAware = /voiceMode && [a-z]*\.?voiceMode !== "OFF"|voiceMode !== "OFF"/;
+check(/receptionistEnabled === true \|\| \(p\.voiceMode && p\.voiceMode !== "OFF"\)/.test(util), "util.js confirm-flag treats a non-OFF voiceMode as ON");
+check(/receptionistEnabled === true \|\| \(settings\.voiceMode && settings\.voiceMode !== "OFF"\)/.test(portal), "portal.js Calls page treats a non-OFF voiceMode as ON");
+check(/receptionistEnabled === true \|\| \(p\.voiceMode && p\.voiceMode !== "OFF"\)/.test(admin), "admin.js enterPortal treats a non-OFF voiceMode as ON");
+check(!/receptionistEnabled = !!\((?:p|settings) && (?:p|settings)\.receptionistEnabled === true\);/.test(util + portal + admin), "no legacy-boolean-only receptionist flag remains");
+
 // (2) new-type formatting (vm-loaded fields.js).
 console.log("\n(2) new-type formatting:");
 const fSandbox: any = { window: { App: { util: { el: () => ({ appendChild() {} }), esc: (s: any) => s } } } };

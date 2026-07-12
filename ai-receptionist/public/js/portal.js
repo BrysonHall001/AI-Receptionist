@@ -143,7 +143,7 @@
     // also returns 403 on /api/calls when off; this is the friendly UI side.)
     let settings = {};
     try { settings = await App.portalApi("/api/settings"); } catch (e) {}
-    App.state.receptionistEnabled = !!(settings && settings.receptionistEnabled === true);
+    App.state.receptionistEnabled = !!(settings && (settings.receptionistEnabled === true || (settings.voiceMode && settings.voiceMode !== "OFF")));
     if (!App.state.receptionistEnabled) {
       view().innerHTML = "";
       const off = el("div", "card");

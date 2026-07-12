@@ -281,7 +281,11 @@
     App.state._recepFor = key;
     portalApi("/api/settings")
       .then(function (p) {
-        App.state.receptionistEnabled = !!(p && p.receptionistEnabled === true);
+        // Source of truth is voiceMode (OFF/WALKIE/SMOOTH); the legacy receptionistEnabled
+        // boolean isn't always synced when a portal is set to a voice mode, so treat any
+        // non-OFF voiceMode as ON too. Otherwise Calls gets hidden on portals that are
+        // actually running the receptionist.
+        App.state.receptionistEnabled = !!(p && (p.receptionistEnabled === true || (p.voiceMode && p.voiceMode !== "OFF")));
         if (App._route) App._route();
       })
       .catch(function () { /* leave as-is; nav shows, server still enforces */ });
