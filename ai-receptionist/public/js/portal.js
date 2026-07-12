@@ -4277,23 +4277,61 @@
     head.appendChild(el("span", "mf-col-title", "Terms"));
     if (modName) head.appendChild(el("span", "mf-terms-for", "for " + esc(modName)));
     col.appendChild(head);
-    col.appendChild(el("p", "mf-col-hint", "Words used on " + (modName ? esc(modName) : "this module") + " — edited here, saved portal-wide."));
+    // Honest wording (clarity pass): the panel is per-module (only the words RELEVANT to this
+    // module show), but each word has ONE portal-wide value — the old hint contradicted itself.
+    col.appendChild(el("p", "mf-col-hint", "Words used on " + (modName ? esc(modName) : "this module") + ". One value per word for the whole portal — renaming it here renames it everywhere it appears."));
     const body = el("div"); col.appendChild(body);
 
+    // Each word carries a plain-English description of what it controls, grounded in the real
+    // App.label call sites: record = the generic noun on shared surfaces (Recycle Bin, related
+    // tabs, bulk actions, import/export); stage = pipeline steps (boards, pipeline editors,
+    // stage dropdowns); resource = the bookable person/thing on Bookings & Scheduling. On
+    // Contacts, Stage explains its own presence (contacts move THROUGH pipelines — the
+    // termAppliesToModule exception), so no module ever shows an unexplained term.
     const GENERIC_WORDS = [
-      { key: "record", dflt: { one: "Record", many: "Records" } },
-      { key: "stage", dflt: { one: "Stage", many: "Stages" } },
-      { key: "resource", dflt: { one: "Resource", many: "Resources" } },
+      { key: "record", dflt: { one: "Record", many: "Records" },
+        desc: "The generic word for an entry — used in shared places like the Recycle Bin, related tabs, bulk actions, and import/export." },
+      { key: "stage", dflt: { one: "Stage", many: "Stages" },
+        desc: "What a pipeline step is called — used on boards, pipeline editors, and stage dropdowns.",
+        descByModule: { contact: "Contacts move through pipeline stages, so the word shows here too — renaming it renames what a step is called everywhere." } },
+      { key: "resource", dflt: { one: "Resource", many: "Resources" },
+        desc: "What a bookable person or thing is called — technician, stylist, bay — used on Bookings and Scheduling." },
     ].filter(function (w) { return termAppliesToModule(w.key, selectedType); });
+
+    // "Shared" cue: a word that also applies to OTHER modules gets a tiny portal-wide tag, so
+    // renaming "Stage" on Jobs isn't a surprise on Contacts. Data-driven off the SAME
+    // termAppliesToModule rule against the live record-type list (falls back to the known
+    // semantics — record/stage span modules, resource is Bookings-only — before the list loads).
+    function termIsShared(key) {
+      const all = (App.state && App.state.recordTypes) || [];
+      if (all.length > 1) {
+        return all.filter(function (t) { return termAppliesToModule(key, t); }).length > 1;
+      }
+      return key !== "resource";
+    }
 
     const rows = [];
     GENERIC_WORDS.forEach(function (w) {
       const cur = generic[w.key] || {};
+      const wrap = el("div", "mf-term");
+      // Name row: the term's default English name (so a renamed value is still identifiable),
+      // plus the subtle portal-wide tag when the word spans modules.
+      const nameRow = el("div", "mf-term-name-row");
+      nameRow.appendChild(el("span", "mf-term-name", esc(w.dflt.one)));
+      if (termIsShared(w.key)) {
+        const tag = el("span", "mf-term-tag", "portal-wide");
+        tag.title = "This word also appears on other modules — one value everywhere.";
+        nameRow.appendChild(tag);
+      }
+      wrap.appendChild(nameRow);
       const r = el("div", "mf-term-row");
       const o = el("input", "input mf-term-input"); o.value = cur.one || w.dflt.one; o.placeholder = w.dflt.one;
       const m = el("input", "input mf-term-input"); m.value = cur.many || w.dflt.many; m.placeholder = w.dflt.many;
       m.title = "Plural — auto-fills from the singular; edit for irregulars";
-      r.appendChild(o); r.appendChild(m); body.appendChild(r);
+      r.appendChild(o); r.appendChild(m); wrap.appendChild(r);
+      const descText = (w.descByModule && selectedType && w.descByModule[selectedType.key]) || w.desc;
+      wrap.appendChild(el("p", "mf-term-desc", esc(descText)));
+      body.appendChild(wrap);
       const row = { key: w.key, oneEl: o, manyEl: m, touched: !!(cur.many && cur.many !== App.pluralize(cur.one || w.dflt.one)) };
       o.addEventListener("input", function () { if (!row.touched) m.value = App.pluralize(o.value); });
       m.addEventListener("input", function () { row.touched = true; });
