@@ -56,7 +56,7 @@ async function main() {
   const opts = systemRecordTypeOptions();
   const contactOpt = opts.find((o) => o.key === "contact");
   check(!!contactOpt && contactOpt.togglable === false, "Contacts is present and NOT togglable (core)");
-  check(opts.filter((o) => o.togglable).map((o) => o.key).join(",") === "job,booking,equipment", "togglable options derived from the registry are job,booking,equipment");
+  check(opts.filter((o) => o.togglable).map((o) => o.key).join(",") === "job,booking,equipment,invoice", "togglable options derived from the registry are job,booking,equipment,invoice");
 
   // A new registry type must appear as a togglable option WITHOUT touching the picker.
   const MOCK: any = { key: "widget_mock", defaults: { key: "widget_mock", label: "Widget", labelPlural: "Widgets", system: false, stages: [], recordStages: [], order: 99 } };

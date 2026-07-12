@@ -129,6 +129,7 @@ model Tenant {
   billingConfig    BillingConfig?
   charges          Charge[]
   payments         Payment[]
+  counters         Counter[]
   stripeCustomerId String?
 }
 
@@ -1248,4 +1249,18 @@ model StripeWebhookEvent {
   eventId   String   @unique
   type      String
   createdAt DateTime @default(now())
+}
+
+// Per-tenant named counters (atomic sequences). Used for invoice numbers (key "invoice");
+// reusable for any future per-tenant sequence. Incremented race-safely via an
+// INSERT ... ON CONFLICT DO UPDATE ... RETURNING (see nextCounter in recordService).
+model Counter {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key       String
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, key])
 }

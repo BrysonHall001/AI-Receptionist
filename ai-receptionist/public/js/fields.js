@@ -103,6 +103,8 @@
     opts = opts || {};
     const readOnly = !!opts.readOnly;
     const allFields = opts.allFields || fields; // formulas may reference fields in other sections
+    // Invoices' computed Total reads from the line_items field (if the module has one).
+    const liKey = (allFields.find((f) => f.type === "line_items") || {}).key;
     container.innerHTML = "";
     const formulaUpdaters = [];
 
@@ -121,6 +123,13 @@
       if (def.type === "formula") {
         node = el("div", "form-static");
         const update = () => { node.textContent = computeFormula(def.formula, allFields, values) || "—"; };
+        update();
+        formulaUpdaters.push(update);
+      } else if (def.type === "currency" && def.key === "total" && liKey) {
+        // Invoices' COMPUTED Total (Task 2): read-only, derived live from the line_items
+        // field's summed total. Never hand-typed; the server recomputes authoritatively too.
+        node = el("div", "form-static form-computed-total");
+        const update = () => { const t = lineItemsTotal(values[liKey]); values[def.key] = t; node.textContent = fmtMoney(t) || "$0.00"; };
         update();
         formulaUpdaters.push(update);
       } else if (def.type === "textarea") {

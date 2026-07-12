@@ -604,6 +604,7 @@ textarea.input { resize: vertical; }
 .form-label { font-size: 12px; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
 .form-label .req { color: var(--red); }
 .form-static { font-size: 14px; color: var(--ink); padding: 6px 0; }
+.form-computed-total { font-weight: 700; font-variant-numeric: tabular-nums; }
 .form-check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
 .form-check input { width: auto; margin: 0; }
 .form-multi { display: flex; flex-direction: column; gap: 6px; }

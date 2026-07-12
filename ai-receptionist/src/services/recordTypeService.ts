@@ -13,6 +13,7 @@ export const CONTACT_RECORD_TYPE_KEY = "contact";
 export const JOB_RECORD_TYPE_KEY = "job";
 export const BOOKING_RECORD_TYPE_KEY = "booking";
 export const EQUIPMENT_RECORD_TYPE_KEY = "equipment";
+export const INVOICE_RECORD_TYPE_KEY = "invoice";
 
 // Default fields seeded ONCE when a portal's Equipment type is first created (see the
 // onCreate hook below). Equipment is a flat catalog (no pipeline), so these are plain
@@ -38,6 +39,32 @@ export async function ensureEquipmentDefaultFields(tenantId: string, recordTypeI
   const existing = await db.fieldDef.findMany({ where: { tenantId, recordTypeId }, select: { key: true } });
   const have = new Set(existing.map((e: any) => e.key));
   const toCreate = DEFAULT_EQUIPMENT_FIELDS.filter((f) => !have.has(f.key));
+  if (!toCreate.length) return;
+  await db.fieldDef.createMany({
+    data: toCreate.map((f) => ({ tenantId, recordTypeId, scope: "record", key: f.key, label: f.label, type: f.type, required: !!(f as any).required, options: f.options || [], order: f.order, system: false })) as any,
+    skipDuplicates: true,
+  });
+}
+
+// Default fields seeded once when a portal's Invoices type is first created. Ordinary
+// editable/removable custom fields — the user can customize them on Modules & Fields like
+// any module. "invoice_number" is auto-filled at create (Task 3); "total" is COMPUTED from
+// the line_items rows on every save (Task 2) and shown read-only; "status" defaults to Draft.
+const DEFAULT_INVOICE_FIELDS = [
+  { key: "invoice_number", label: "Invoice number", type: "text", order: 0, options: [] as string[] },
+  { key: "status", label: "Status", type: "single_select", order: 1, options: ["Draft", "Sent", "Paid", "Void"] },
+  { key: "invoice_date", label: "Invoice date", type: "date", order: 2, options: [] as string[] },
+  { key: "due_date", label: "Due date", type: "date", order: 3, options: [] as string[] },
+  { key: "line_items", label: "Line items", type: "line_items", order: 4, options: [] as string[] },
+  { key: "total", label: "Total", type: "currency", order: 5, options: [] as string[] },
+  { key: "notes", label: "Notes", type: "textarea", order: 6, options: [] as string[] },
+];
+
+/** Seed Invoices' default fields (idempotent by key). Runs once, at type creation. */
+export async function ensureInvoiceDefaultFields(tenantId: string, recordTypeId: string): Promise<void> {
+  const existing = await db.fieldDef.findMany({ where: { tenantId, recordTypeId }, select: { key: true } });
+  const have = new Set(existing.map((e: any) => e.key));
+  const toCreate = DEFAULT_INVOICE_FIELDS.filter((f) => !have.has(f.key));
   if (!toCreate.length) return;
   await db.fieldDef.createMany({
     data: toCreate.map((f) => ({ tenantId, recordTypeId, scope: "record", key: f.key, label: f.label, type: f.type, required: !!(f as any).required, options: f.options || [], order: f.order, system: false })) as any,
@@ -175,6 +202,14 @@ export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
     key: EQUIPMENT_RECORD_TYPE_KEY, label: "Equipment", labelPlural: "Equipment", system: false,
     stages: [], recordStages: [], subtypes: [], order: 3,
   }, onCreate: ensureEquipmentDefaultFields },
+  // Invoices — a normal registry-driven module (seeded by default for every portal, exactly
+  // like Equipment). Its header fields (incl. the line_items table + a COMPUTED total) are
+  // seeded once via onCreate and are fully editable on Modules & Fields. No payment/Stripe —
+  // creation + tracking only; entirely separate from the master-hub billing of tenants.
+  { key: INVOICE_RECORD_TYPE_KEY, defaults: {
+    key: INVOICE_RECORD_TYPE_KEY, label: "Invoice", labelPlural: "Invoices", system: false,
+    stages: [], recordStages: [], subtypes: [], order: 4,
+  }, onCreate: ensureInvoiceDefaultFields },
 ];
 
 /** Keys of the built-in system record types, in registry order. Derived (not a

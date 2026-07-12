@@ -4,7 +4,8 @@
 // the 1a migration. Records keep their own table; contacts are untouched.
 
 import { prisma } from "../db/client";
-import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
+import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_RECORD_TYPE_KEY, INVOICE_RECORD_TYPE_KEY } from "./recordTypeService";
+import { randomUUID } from "crypto";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
 import { resourceExists, resolveResourceHours, resolveResourceDuration, effectiveDurationMin } from "./resourceService";
 import { randomValueForField } from "./contactService";
@@ -207,6 +208,57 @@ async function resolveResourceId(tenantId: string, value: any): Promise<string |
   return id;
 }
 
+// ---- INVOICE / LINE-ITEMS HELPERS (shared by create + update) ----
+// A value is "line items" when it's a non-empty array of row objects carrying qty/price.
+function isLineItemsArray(v: any): boolean {
+  return Array.isArray(v) && v.length > 0 && v.every((r) => r && typeof r === "object" && ("unitPrice" in r || "quantity" in r));
+}
+function sumLineItems(v: any): number {
+  if (!Array.isArray(v)) return 0;
+  return v.reduce((s: number, r: any) => s + Math.max(0, Number(r && r.quantity) || 0) * Math.max(0, Number(r && r.unitPrice) || 0), 0);
+}
+
+/** Atomic per-tenant sequence. Race-safe: concurrent callers each get a distinct value via
+ *  INSERT ... ON CONFLICT DO UPDATE ... RETURNING (no skipped/duplicated numbers). */
+export async function nextCounter(tenantId: string, key: string): Promise<number> {
+  const rows: any[] = await (prisma as any).$queryRaw`
+    INSERT INTO "Counter" ("id", "tenantId", "key", "value", "updatedAt")
+    VALUES (${randomUUID()}, ${tenantId}, ${key}, 1, NOW())
+    ON CONFLICT ("tenantId", "key") DO UPDATE SET "value" = "Counter"."value" + 1, "updatedAt" = NOW()
+    RETURNING "value"`;
+  return Number(rows[0].value);
+}
+
+/** COMPUTED TOTAL (Task 2): keep a currency field keyed "total" in sync with the summed
+ *  line_items on any module that has both. Source of truth = the rows; total is derived on
+ *  every write so it can never desync. Falls back gracefully (no line_items field -> no-op). */
+async function applyComputedTotal(tenantId: string, recordTypeId: string, customFields: any): Promise<any> {
+  if (!customFields || typeof customFields !== "object") return customFields;
+  const touchesLineItems = Object.values(customFields).some(isLineItemsArray) || "total" in customFields || "line_items" in customFields;
+  if (!touchesLineItems) return customFields;
+  const liDef = await db.fieldDef.findFirst({ where: { tenantId, recordTypeId, type: "line_items" } });
+  if (!liDef) return customFields;
+  const totalDef = await db.fieldDef.findFirst({ where: { tenantId, recordTypeId, key: "total", type: "currency" } });
+  if (!totalDef) return customFields;
+  return { ...customFields, [totalDef.key]: sumLineItems(customFields[liDef.key]) };
+}
+
+/** Invoice create-time defaults (Task 3 + status default). Assigns a unique sequential
+ *  "INV-0001" number to a blank invoice_number field and defaults Status to "Draft".
+ *  Invoice-type only; other modules untouched. */
+async function applyInvoiceDefaults(tenantId: string, recordTypeId: string, rtKey: string | undefined, customFields: any): Promise<any> {
+  if (rtKey !== INVOICE_RECORD_TYPE_KEY) return customFields;
+  const cf = { ...(customFields || {}) };
+  const numDef = await db.fieldDef.findFirst({ where: { tenantId, recordTypeId, key: "invoice_number" } });
+  if (numDef && !String(cf.invoice_number || "").trim()) {
+    const n = await nextCounter(tenantId, "invoice");
+    cf.invoice_number = "INV-" + String(n).padStart(4, "0");
+  }
+  const statusDef = await db.fieldDef.findFirst({ where: { tenantId, recordTypeId, key: "status" } });
+  if (statusDef && !String(cf.status || "").trim()) cf.status = "Draft";
+  return cf;
+}
+
 export async function createRecord(
   tenantId: string,
   recordType: string | null | undefined,
@@ -225,7 +277,12 @@ export async function createRecord(
   // transaction. Everything else uses the plain insert.
   const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId }, select: { key: true, label: true } });
   const isBooking = rt && rt.key === BOOKING_RECORD_TYPE_KEY && appointmentAt != null;
-  const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields: input.customFields ?? {} };
+  let customFields = input.customFields ?? {};
+  // Invoices: auto invoice number + Status default (Task 3), then keep the computed Total in
+  // sync with the line_items rows (Task 2). Both are no-ops for other record types.
+  customFields = await applyInvoiceDefaults(tenantId, recordTypeId, rt?.key, customFields);
+  customFields = await applyComputedTotal(tenantId, recordTypeId, customFields);
+  const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields };
 
   if (isBooking) {
     const config = await loadBookingConfig(tenantId);
@@ -299,6 +356,9 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   // move/resize this booking, re-check overlap under the per-tenant lock,
   // excluding the booking itself.
   const rt = await db.recordType.findFirst({ where: { tenantId, id: existing.recordTypeId }, select: { key: true } });
+  // Keep the computed Total in sync when line items change on update (Task 2). No-op for
+  // modules without a line_items + "total" field pair. Invoice number is create-only.
+  if (data.customFields !== undefined) data.customFields = await applyComputedTotal(tenantId, existing.recordTypeId, data.customFields);
   const isBooking = !!(rt && rt.key === BOOKING_RECORD_TYPE_KEY);
   const finalAppt = data.appointmentAt !== undefined ? data.appointmentAt : existing.appointmentAt;
   const finalSubtype = data.subtypeKey !== undefined ? data.subtypeKey : existing.subtypeKey;
