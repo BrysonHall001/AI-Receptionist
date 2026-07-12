@@ -265,11 +265,11 @@ export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
   } },
   { key: JOB_RECORD_TYPE_KEY, defaults: {
     key: JOB_RECORD_TYPE_KEY, label: "Job", labelPlural: "Jobs", system: false,
-    stages: DEFAULT_JOB_STAGES, recordStages: DEFAULT_JOB_RECORD_STAGES, subtypes: DEFAULT_JOB_SUBTYPES, order: 1,
+    stages: DEFAULT_JOB_STAGES, recordStages: DEFAULT_JOB_RECORD_STAGES, subtypes: DEFAULT_JOB_SUBTYPES, pipelineEnabled: true, order: 1,
   } },
   { key: BOOKING_RECORD_TYPE_KEY, defaults: {
     key: BOOKING_RECORD_TYPE_KEY, label: "Booking", labelPlural: "Bookings", system: false,
-    stages: [], recordStages: DEFAULT_BOOKING_RECORD_STAGES, subtypes: DEFAULT_BOOKING_SUBTYPES, order: 2,
+    stages: [], recordStages: DEFAULT_BOOKING_RECORD_STAGES, subtypes: DEFAULT_BOOKING_SUBTYPES, pipelineEnabled: true, order: 2,
   } },
   // First data-driven system type: a flat catalog (no pipeline/subtypes). Its default
   // fields are seeded once via onCreate. Nav item + list page + permissions come for
@@ -404,7 +404,7 @@ export async function createRecordType(tenantId: string, label: string, labelPlu
   const order = (max._max.order ?? -1) + 1;
 
   const created = await db.recordType.create({
-    data: { tenantId, key, label: l, labelPlural: lp, system: false, stages: [], recordStages: [], subtypes: [], order },
+    data: { tenantId, key, label: l, labelPlural: lp, system: false, stages: [], recordStages: [], subtypes: [], pipelineEnabled: false, order },
   });
   // Seed ONE default "Name" text field so the new module isn't empty.
   await db.fieldDef.create({
@@ -414,6 +414,10 @@ export async function createRecordType(tenantId: string, label: string, labelPlu
 }
 
 export function serializeRecordType(rt: any) {
+  // A module "has a pipeline" if it carries subtypes, record-level stages, or top-level
+  // relationship stages. Used as the fallback when pipelineEnabled is absent (pre-migration
+  // rows / partial objects) so behaviour matches today until the column is backfilled.
+  const hasPipeline = ((rt.subtypes && rt.subtypes.length) || (rt.recordStages && rt.recordStages.length) || (rt.stages && rt.stages.length)) ? true : false;
   return {
     id: rt.id,
     key: rt.key,
@@ -423,6 +427,7 @@ export function serializeRecordType(rt: any) {
     stages: rt.stages ?? [],
     recordStages: rt.recordStages ?? [],
     subtypes: rt.subtypes ?? [],
+    pipelineEnabled: typeof rt.pipelineEnabled === "boolean" ? rt.pipelineEnabled : hasPipeline,
     order: rt.order ?? 0,
   };
 }
@@ -502,7 +507,16 @@ export async function setRecordTypeLabels(tenantId: string, key: string, label: 
   return serializeRecordType({ ...row, label: one, labelPlural: many });
 }
 
-// ---- Subtypes (job types) ----
+/** Turn a module's pipeline ON/OFF. NON-DESTRUCTIVE: toggling OFF only flips the flag and
+ *  hides the pipeline UI — subtypes, stages, record statuses, and every record's stage
+ *  assignment are KEPT, so turning it back ON restores the pipeline exactly as it was.
+ *  Toggling ON simply reveals the (possibly empty) types/stages/statuses editors to build.
+ *  Guarded at the route by the existing module-management permission. */
+export async function setPipelineEnabled(tenantId: string, recordType: string, enabled: boolean): Promise<any> {
+  const row = await loadTypeRow(tenantId, recordType);
+  const updated = await db.recordType.update({ where: { id: row.id }, data: { pipelineEnabled: !!enabled } });
+  return serializeRecordType(updated);
+}
 export async function addSubtype(tenantId: string, recordType: string, label: string) {
   const lbl = String(label || "").trim();
   if (!lbl) throw new Error("Type name is required");

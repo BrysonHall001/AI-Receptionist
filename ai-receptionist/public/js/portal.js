@@ -3090,6 +3090,40 @@
       return card;
     }
 
+    // "Structure & behavior": the types/pipelines + Statuses editors grouped under one clear
+    // heading, gated by an explicit Pipeline on/off toggle. OFF = flat catalog (editors hidden);
+    // ON = pipeline shown (types/stages/statuses + board behavior, exactly as today). The toggle
+    // is NON-DESTRUCTIVE — turning it off keeps all types/stages/statuses + record assignments.
+    function structureSection() {
+      const sec = el("div", "mf-structure");
+      sec.appendChild(el("div", "fields-section-name mf-structure-title", "Structure & behavior"));
+      const on = selectedType.pipelineEnabled !== false;
+
+      const tRow = el("div", "card mf-pipeline-card");
+      const toggle = el("label", "switch");
+      const cb = el("input"); cb.type = "checkbox"; cb.checked = on; cb.disabled = !canEdit;
+      toggle.appendChild(cb); toggle.appendChild(el("span", "switch-track"));
+      const tText = el("div", "mf-pipeline-text");
+      tText.appendChild(el("div", "mf-pipeline-title", "Pipeline"));
+      tText.appendChild(el("div", "cell-muted mf-pipeline-hint",
+        on ? "On — this module has types, stages, and statuses (board behavior). Turn off to make it a flat catalog; nothing is deleted."
+           : "Off — this module is a flat catalog. Turn on to add types, stages, and statuses and build a pipeline."));
+      tRow.appendChild(toggle); tRow.appendChild(tText);
+      sec.appendChild(tRow);
+      cb.onchange = async () => {
+        cb.disabled = true;
+        try {
+          await App.portalApi("/api/record-types/pipeline", { method: "POST", body: JSON.stringify({ recordType: selectedKey, enabled: cb.checked }) });
+          App.util.toast(cb.checked ? "Pipeline turned on" : "Pipeline turned off");
+          renderFields(true);
+        } catch (e) { App.util.toast(e.message, true); cb.checked = !cb.checked; cb.disabled = false; }
+      };
+
+      // Pipeline ON → show the (generic) types/pipelines + Statuses editors, unchanged.
+      if (on) { sec.appendChild(subtypesCard()); sec.appendChild(statusesCard()); }
+      return sec;
+    }
+
     // Task: give the Fields list its OWN scroll that fits the viewport, so scrolling
     // while hovering it moves only this column (the library, Terms, and page stay put).
     // Tie its max-height to the element's ACTUAL top so it always fits regardless of how
@@ -3097,7 +3131,7 @@
     const scroll = el("div", "mf-fields-scroll");
     sorted.forEach((s, i) => scroll.appendChild(sectionCard(s, bySection[s.id], i)));
     if (ungrouped.length || !sorted.length) scroll.appendChild(ungroupedCard(ungrouped));
-    if (canEdit && selectedType && selectedType.key !== "contact") { scroll.appendChild(subtypesCard()); scroll.appendChild(statusesCard()); }
+    if (canEdit && selectedType && selectedType.key !== "contact") scroll.appendChild(structureSection());
     wrap.appendChild(scroll);
 
     fieldsView().innerHTML = "";
@@ -4139,6 +4173,7 @@
 
   function moduleHasStages(t) {
     if (!t) return false;
+    if (t.pipelineEnabled === false) return false; // pipeline explicitly OFF → flat catalog (no board/stages)
     if (Array.isArray(t.stages) && t.stages.length) return true;
     return (Array.isArray(t.subtypes) ? t.subtypes : []).some(function (st) { return Array.isArray(st.stages) && st.stages.length; });
   }

@@ -459,6 +459,10 @@ model RecordType {
   stages       Json         @default("[]")  // relationship stages: [{key,label,order}]
   recordStages Json         @default("[]")  // optional record-level lifecycle stages
   subtypes     Json         @default("[]")  // job types + their pipelines: [{key,label,order,stages:[{key,label,order}]}]
+  // Explicit per-module pipeline switch. When true the module supports types/stages/statuses
+  // (board behavior); when false it's a flat catalog. Backfilled to match existing reality
+  // (true where the module already had subtypes/recordStages/stages) so nothing regresses.
+  pipelineEnabled Boolean   @default(false)
   order        Int          @default(0)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

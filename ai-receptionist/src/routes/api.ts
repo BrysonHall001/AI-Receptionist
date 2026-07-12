@@ -12,7 +12,7 @@ import { listResources, createResource, updateResource, deleteResource } from ".
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
-import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType } from "../services/recordTypeService";
+import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType, setPipelineEnabled } from "../services/recordTypeService";
 import { addRecordStatus, renameRecordStatus, reorderRecordStatuses, deleteRecordStatus } from "../services/recordTypeService";
 import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, listDeletedRecords, restoreRecords, purgeExpiredRecords } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
@@ -1297,6 +1297,17 @@ apiRouter.post("/record-stages/delete", async (req: Request, res: Response) => {
   if (!tenantId) return;
   if (!fieldsAdminOnly(req, res)) return;
   try { const { recordType, subtypeKey, key } = (req.body ?? {}) as any; res.json(await deleteStage(tenantId, recordType, subtypeKey, key)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// Turn a module's pipeline ON/OFF (Structure & behavior toggle). Non-destructive: OFF keeps
+// all types/stages/statuses + record stage assignments and only hides the pipeline UI.
+// Same module-management guard as the subtype/stage/status editors above.
+apiRouter.post("/record-types/pipeline", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!fieldsAdminOnly(req, res)) return;
+  try { const { recordType, enabled } = (req.body ?? {}) as any; res.json(await setPipelineEnabled(tenantId, recordType, !!enabled)); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
