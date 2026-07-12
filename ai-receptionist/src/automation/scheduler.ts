@@ -6,6 +6,7 @@ import { loadRecordFieldDefs, buildRecordColumns, recordValueOf } from "./record
 import { evalRules } from "./conditions";
 import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "../services/recordTypeService";
 import { runGoogleCalendarSync } from "../services/googleSyncService";
+import { geocodePending } from "../services/geocodingService";
 
 const db = prisma as any;
 
@@ -525,6 +526,10 @@ export async function processDueJobs(scope?: string): Promise<{ swept: number; r
   // default. Self-contained + never throws, but wrap defensively so a sync hiccup
   // can never break the rest of the tick.
   try { await runGoogleCalendarSync(scope); } catch (e) { logger.error(`[google-sync] sweep error: ${(e as Error).message}`); }
+  // Geocoding sweep (Map foundation): resolves any "pending" address rows into lat/lng. Inert
+  // unless MAPBOX_TOKEN is configured — geocodePending() returns immediately when disabled, so
+  // this is a no-op by default. Never throws into the tick.
+  try { await geocodePending({ tenantId: scope }); } catch (e) { logger.error(`[geocode] sweep error: ${(e as Error).message}`); }
   const now = new Date();
   const where: any = { status: "pending", dueAt: { lte: now } };
   if (scope) where.tenantId = scope;

@@ -82,6 +82,13 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   GOOGLE_OAUTH_REDIRECT_URL: z.string().default(""),
   GOOGLE_TOKEN_ENCRYPTION_KEY: z.string().default(""),
+
+  // ---- GEOCODING (Map foundation) ----
+  // Mapbox access token used to geocode record addresses into lat/lng for the upcoming Map
+  // view. OPTIONAL — the app boots and behaves exactly as today without it: address geocoding
+  // is inert (rows stay "pending") and every record save still succeeds. Set to a real Mapbox
+  // token (pk.… or sk.…) to enable the background geocoding sweep. See geocodingEnabled().
+  MAPBOX_TOKEN: z.string().default(""),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -167,4 +174,14 @@ export function useMockSms(): boolean {
  */
 export function smsEnabled(): boolean {
   return env.SMS_ENABLED === "true";
+}
+
+/**
+ * Master switch for address geocoding (the Map foundation). True only when MAPBOX_TOKEN is set
+ * and isn't a copy-paste placeholder. When false the app boots and behaves exactly as today:
+ * the on-save hook still marks rows "pending" but the sweep (geocodePending) is a no-op, so no
+ * network call is ever made and no token is required. Mirrors smsEnabled()'s shape.
+ */
+export function geocodingEnabled(): boolean {
+  return !isPlaceholderSecret(env.MAPBOX_TOKEN);
 }

@@ -530,6 +530,7 @@ model Record {
   deletedBy    String?
   deletedByType String?
   links        RecordLink[]
+  geo          RecordGeo[]
 
   @@index([tenantId, recordTypeId])
   @@index([tenantId, recordTypeId, deletedAt])
@@ -547,7 +548,36 @@ model Record {
   @@index([tenantId, externalSource])
 }
 
-// The many-to-many join between a "parent" and a Record — and the pipeline atom.
+// GEOCODE CACHE (Map foundation). One row per (record, address-field): the cached
+// latitude/longitude for that field's address, kept fresh by change-detection on the
+// address hash and filled in by a background sweep that calls the geocoding provider.
+// Coordinates are REAL typed columns (not stuffed in Record.customFields JSON) — mirroring
+// the appointmentAt philosophy — so a future Map view can query/bound them directly.
+// A record can have multiple address fields, hence one row per fieldKey. status is
+// "pending" (needs geocoding) | "ok" (has coords) | "failed" (provider error) | "empty"
+// (address blank). Optional + non-blocking: with no provider token configured, rows simply
+// stay "pending" and every record save still succeeds. Cascade-deletes with its record.
+model RecordGeo {
+  id           String    @id @default(cuid())
+  tenantId     String
+  recordId     String
+  record       Record    @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  recordTypeId String
+  fieldKey     String    // which address FieldDef this row caches (a record can have several)
+  addressHash  String    // hash of the normalized address string, for change detection
+  lat          Float?
+  lng          Float?
+  status       String    @default("pending") // pending | ok | failed | empty
+  lastError    String?
+  geocodedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, recordId, fieldKey])
+  @@index([tenantId, status])       // the sweep: find pending rows
+  @@index([tenantId, recordTypeId]) // future map queries: a module's pins
+}
+
 // stageKey here is THE relationship stage (a contact can be at different stages
 // on different records at once). The parent is polymorphic (parentType/parentId)
 // so an Account/Property object can become a parent later with no redesign;

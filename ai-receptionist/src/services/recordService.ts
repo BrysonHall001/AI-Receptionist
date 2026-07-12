@@ -16,6 +16,8 @@ import { EventActor, deletedByFromActor } from "../events/types";
 // (reads the UTC-slot digits verbatim, never zone-converts). Reused here so the
 // reschedule event's old/new values are wall-clock, per the wall-clock rule.
 import { fmtApptWall } from "../automation/scheduler";
+import { markRecordGeoStale } from "./geocodingService";
+import { logger } from "../utils/logger";
 
 const db = prisma as any;
 
@@ -304,6 +306,21 @@ export async function nextCounter(tenantId: string, key: string): Promise<number
   return Number(rows[0].value);
 }
 
+/** GEOCODE ON-SAVE HOOK (Map foundation): keep each address field's RecordGeo cache row in
+ *  sync with the just-written record, so a background sweep can later fill coordinates. Mirrors
+ *  applyComputedTotal's "runs on every write, no-op when not applicable" shape. Best-effort and
+ *  fully swallowed: it must NEVER throw into the save path — a geocoding hiccup can't fail a save.
+ *  `record` is the freshly written row (id/recordTypeId/customFields present). */
+async function markGeoSafe(tenantId: string, record: { id: string; recordTypeId: string; customFields?: any }): Promise<void> {
+  try {
+    const addressDefs = await db.fieldDef.findMany({ where: { tenantId, recordTypeId: record.recordTypeId, type: "address" } });
+    if (!addressDefs.length) return; // no-op for modules without an address field
+    await markRecordGeoStale(tenantId, record, addressDefs);
+  } catch (e) {
+    logger.error(`[geocode] on-save hook failed for record ${record.id}: ${(e as Error).message}`);
+  }
+}
+
 /** COMPUTED TOTAL (Task 2): keep a currency field keyed "total" in sync with the summed
  *  line_items on any module that has both. Source of truth = the rows; total is derived on
  *  every write so it can never desync. Falls back gracefully (no line_items field -> no-op). */
@@ -414,6 +431,7 @@ export async function createRecord(
       }
       return tx.record.create({ data: recData });
     });
+    await markGeoSafe(tenantId, created); // Map foundation: queue address geocoding (best-effort)
     return serializeRecord(created);
   }
 
@@ -434,6 +452,7 @@ export async function createRecord(
       });
     } catch { /* never block the record create on event emission */ }
   }
+  await markGeoSafe(tenantId, created); // Map foundation: queue address geocoding (best-effort)
   return serializeRecord(created);
 }
 
@@ -522,6 +541,7 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   } catch { /* never block the record save on event emission */ }
   // =================== END RECORD-UPDATED EVENT (Stage 2a) ===================
 
+  await markGeoSafe(tenantId, updated); // Map foundation: re-queue geocoding if the address changed
   return serializeRecord(updated);
 }
 

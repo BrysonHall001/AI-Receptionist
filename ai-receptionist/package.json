@@ -18,7 +18,8 @@
     "expire-user": "tsx src/db/expireUser.ts",
     "simulate": "tsx scripts/simulate-call.ts",
     "seed:demo": "tsx src/db/seedDemo.ts",
-    "seed:changelog": "tsx src/db/seedChangelog.ts"
+    "seed:changelog": "tsx src/db/seedChangelog.ts",
+    "backfill:geocode": "tsx src/db/backfillGeocode.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
