@@ -22,26 +22,50 @@ async function writeStageHistory(tenantId: string, recordLinkId: string, fromSta
   });
 }
 
-/** Links on a record (e.g. candidates on a Job), with parent display info. */
+/** Links on a record — SYMMETRIC. Returns links where this record is on EITHER endpoint:
+ *  (A) the historical direction (recordId = this record), and
+ *  (B) the reverse side of a record<->record link (parentType="record", parentId = this record).
+ *  The existing fields (id/recordId/parentType/parentId/role/stageKey/parent) are unchanged —
+ *  `parent` is still the contact object for contact links (null otherwise), so every current
+ *  caller behaves identically. Normalized `otherType/otherId/other` describe the endpoint that
+ *  is NOT this record (contact or record), for the upcoming relationship-field UI. */
 export async function listLinksForRecord(tenantId: string, recordId: string) {
   const rec = await db.record.findFirst({ where: { id: recordId, tenantId, deletedAt: null } });
   if (!rec) throw new Error("Record not found");
-  const links = await db.recordLink.findMany({ where: { tenantId, recordId, deletedAt: null }, orderBy: { createdAt: "asc" } });
-  const contactIds = links.filter((l: any) => l.parentType === "contact").map((l: any) => l.parentId);
+  const forward = await db.recordLink.findMany({ where: { tenantId, recordId, deletedAt: null }, orderBy: { createdAt: "asc" } });
+  // Reverse: record<->record links where THIS record is the (parentType="record") endpoint.
+  // Existing data has only contact parents, so this is empty for legacy rows -> identical output.
+  const reverse = await db.recordLink.findMany({ where: { tenantId, parentType: "record", parentId: recordId, deletedAt: null }, orderBy: { createdAt: "asc" } });
+
+  // Resolve contact parents EXACTLY as before (forward, parentType="contact").
+  const contactIds = forward.filter((l: any) => l.parentType === "contact").map((l: any) => l.parentId);
   const contacts = contactIds.length ? await db.contact.findMany({ where: { id: { in: contactIds }, tenantId } }) : [];
-  const byId: any = {};
-  contacts.forEach((c: any) => (byId[c.id] = c));
-  return links.map((l: any) => ({
-    id: l.id,
-    recordId: l.recordId,
-    parentType: l.parentType,
-    parentId: l.parentId,
-    role: l.role ?? null,
-    stageKey: l.stageKey ?? null,
-    parent: l.parentType === "contact" && byId[l.parentId]
-      ? { id: byId[l.parentId].id, name: byId[l.parentId].name, email: byId[l.parentId].email, phone: byId[l.parentId].phone }
-      : null,
-  }));
+  const contactById: any = {}; contacts.forEach((c: any) => (contactById[c.id] = c));
+
+  // Resolve record endpoints (forward record-parents + reverse recordIds) for `other`.
+  const recIds = new Set<string>();
+  forward.forEach((l: any) => { if (l.parentType === "record") recIds.add(l.parentId); });
+  reverse.forEach((l: any) => recIds.add(l.recordId));
+  const recRows = recIds.size ? await db.record.findMany({ where: { id: { in: Array.from(recIds) }, tenantId, deletedAt: null } }) : [];
+  const recById: any = {}; recRows.forEach((r: any) => (recById[r.id] = r));
+
+  const contactDisp = (c: any) => (c ? { id: c.id, name: c.name, email: c.email, phone: c.phone } : null);
+  const recDisp = (r: any) => (r ? { id: r.id, title: r.title, recordTypeId: r.recordTypeId, stageKey: r.stageKey, subtypeKey: r.subtypeKey ?? null, customFields: r.customFields ?? {} } : null);
+
+  const out: any[] = [];
+  // (A) forward — historical shape preserved byte-for-byte.
+  for (const l of forward) {
+    const isContact = l.parentType === "contact";
+    const parent = isContact ? contactDisp(contactById[l.parentId]) : null; // unchanged
+    const other = isContact ? contactDisp(contactById[l.parentId]) : recDisp(recById[l.parentId]);
+    out.push({ id: l.id, recordId: l.recordId, parentType: l.parentType, parentId: l.parentId, role: l.role ?? null, stageKey: l.stageKey ?? null, parent, otherType: l.parentType, otherId: l.parentId, other });
+  }
+  // (B) reverse record<->record — this record is the parent endpoint; the OTHER endpoint is
+  // the recordId side. `parent` is null (never a contact here) so contact-only callers skip it.
+  for (const l of reverse) {
+    out.push({ id: l.id, recordId: l.recordId, parentType: l.parentType, parentId: l.parentId, role: l.role ?? null, stageKey: l.stageKey ?? null, parent: null, otherType: "record", otherId: l.recordId, other: recDisp(recById[l.recordId]) });
+  }
+  return out;
 }
 
 /** Links from a contact's side (e.g. Jobs this contact is on), with record display info. */
@@ -66,7 +90,10 @@ export async function listLinksForContact(tenantId: string, contactId: string, r
   return out;
 }
 
-/** Create a link (or update stage/role if one already exists). Parent defaults to a contact. */
+/** Create a link (or update stage/role if one already exists). Endpoints are symmetric:
+ *  the parent may be a "contact" (default, historical) or a "record" (any-record<->any-record).
+ *  The contact path is unchanged. For a record<->record parent we validate the parent record
+ *  and de-dupe across BOTH orientations so a symmetric link is never doubled. */
 export async function createLink(tenantId: string, input: { recordId: string; parentType?: string; parentId: string; role?: string | null; stageKey?: string | null }) {
   const parentType = input.parentType || "contact";
   const rec = await db.record.findFirst({ where: { id: input.recordId, tenantId, deletedAt: null } });
@@ -74,8 +101,20 @@ export async function createLink(tenantId: string, input: { recordId: string; pa
   if (parentType === "contact") {
     const c = await db.contact.findFirst({ where: { id: input.parentId, tenantId, deletedAt: null } });
     if (!c) throw new Error("Contact not found");
+  } else if (parentType === "record") {
+    if (input.parentId === input.recordId) throw new Error("A record cannot be linked to itself");
+    const pr = await db.record.findFirst({ where: { id: input.parentId, tenantId, deletedAt: null } });
+    if (!pr) throw new Error("Record not found");
   }
-  const existing = await db.recordLink.findFirst({ where: { tenantId, recordId: input.recordId, parentType, parentId: input.parentId, deletedAt: null } });
+
+  // Existing-link lookup. Contact parents use the historical single-orientation query; record
+  // parents check BOTH orientations so (A,B) and (B,A) resolve to the same link.
+  const existing = parentType === "record"
+    ? await db.recordLink.findFirst({ where: { tenantId, deletedAt: null, OR: [
+        { recordId: input.recordId, parentType: "record", parentId: input.parentId },
+        { recordId: input.parentId, parentType: "record", parentId: input.recordId },
+      ] } })
+    : await db.recordLink.findFirst({ where: { tenantId, recordId: input.recordId, parentType, parentId: input.parentId, deletedAt: null } });
   if (existing) {
     const prevStage = existing.stageKey ?? null; // capture BEFORE any update
     const data: any = {};

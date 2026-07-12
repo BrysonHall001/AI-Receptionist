@@ -544,7 +544,15 @@ model RecordLink {
   tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   recordId     String
   record       Record     @relation(fields: [recordId], references: [id], onDelete: Cascade)
-  parentType   String     // "contact" now; "account"/"property" later
+  // SYMMETRIC any-record <-> any-record (or record <-> contact) link. The two ENDPOINTS
+  // are (recordId) and (parentType,parentId). recordId is always a Record (kept as a real
+  // FK for cascade). parentType is the OTHER endpoint's kind: "contact" (historical) or
+  // "record" (a record<->record link); "account"/"property" could slot in later. A link is
+  // queryable from EITHER endpoint (see listLinksForRecord, which reads both directions).
+  // For a record<->record link the pair is stored once, in one orientation; the service
+  // de-dupes across orientations so it's never doubled. All per-relationship CONTEXT below
+  // (role, stageKey, customFields, stageHistory) is unchanged in meaning.
+  parentType   String     // "contact" | "record" (was contact-only)
   parentId     String
   role         String?    // optional: "primary", "candidate", "holder", …
   stageKey     String?    // THE relationship stage
@@ -554,6 +562,8 @@ model RecordLink {
   deletedAt    DateTime?
   stageHistory StageHistory[]
 
+  // Both-direction lookup: [recordId] finds links where this record is the Record
+  // endpoint; [parentType, parentId] finds links where it's the other endpoint.
   @@index([tenantId, recordId])
   @@index([tenantId, recordId, stageKey])
   @@index([tenantId, parentType, parentId])

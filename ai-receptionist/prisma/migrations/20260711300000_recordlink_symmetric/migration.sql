@@ -1,0 +1,12 @@
+-- RecordLink is now SYMMETRIC: any-record <-> any-record (or record <-> contact), queryable
+-- from either endpoint, with all per-relationship context preserved.
+--
+-- No column or index changes are needed: existing rows are ALREADY in the target shape —
+-- recordId is one endpoint (always a Record) and (parentType, parentId) is the other
+-- ("contact" today; "record" going forward). role / stageKey / customFields / stageHistory
+-- are unchanged in meaning. The both-direction lookup indexes already exist
+-- ([tenantId, recordId] and [tenantId, parentType, parentId]).
+--
+-- This statement is an intentional, idempotent no-op so the model change is recorded as a
+-- migration without altering any data (WHERE false touches zero rows).
+UPDATE "RecordLink" SET "updatedAt" = "updatedAt" WHERE false;
