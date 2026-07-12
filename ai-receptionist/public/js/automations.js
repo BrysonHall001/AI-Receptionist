@@ -664,21 +664,36 @@
       pbody.appendChild(el("div", "cell-muted", "No templates available."));
       return;
     }
-    const renderSection = (label, items) => {
-      if (!items.length) return;
-      pbody.appendChild(el("div", "preset-cat-head", esc(label)));
-      const grid = el("div", "preset-grid");
-      items.forEach((p) => grid.appendChild(presetCard(p, pbody, data, overlay)));
-      pbody.appendChild(grid);
-    };
-    const known = new Set();
-    categories.forEach((cat) => {
-      known.add(cat.key);
-      renderSection(cat.label, presets.filter((p) => p.category === cat.key));
-    });
-    // Safety net: any template whose category isn't in the list still shows up.
+    // Left-side category tabs: only categories that have templates get a tab; anything
+    // in an unknown category still shows under a trailing "Other" tab (safety net).
+    const tabs = categories.filter((c) => presets.some((p) => p.category === c.key));
+    const known = new Set(categories.map((c) => c.key));
     const orphans = presets.filter((p) => !known.has(p.category));
-    renderSection("Other", orphans);
+    if (orphans.length) tabs.push({ key: "__other", label: "Other" });
+
+    const presetsFor = (key) => (key === "__other" ? orphans : presets.filter((p) => p.category === key));
+    const gallery = el("div", "tpl-gallery");
+    const rail = el("div", "tpl-cats");
+    const panel = el("div", "tpl-panel");
+    gallery.appendChild(rail); gallery.appendChild(panel); pbody.appendChild(gallery);
+
+    const selectCat = (cat) => {
+      [...rail.children].forEach((b) => b.classList.toggle("active", b.dataset.key === cat.key));
+      panel.innerHTML = "";
+      panel.appendChild(el("div", "tpl-panel-title", esc(cat.label)));
+      const grid = el("div", "preset-grid");
+      presetsFor(cat.key).forEach((p) => grid.appendChild(presetCard(p, pbody, data, overlay)));
+      panel.appendChild(grid);
+    };
+
+    tabs.forEach((cat, i) => {
+      const b = el("button", "tpl-cat" + (i === 0 ? " active" : ""));
+      b.dataset.key = cat.key;
+      b.innerHTML = `${esc(cat.label)}<span class="tpl-cat-count">${presetsFor(cat.key).length}</span>`;
+      b.onclick = () => selectCat(cat);
+      rail.appendChild(b);
+    });
+    selectCat(tabs[0]);
   }
 
   function presetCard(p, pbody, data, overlay) {

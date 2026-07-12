@@ -509,6 +509,28 @@ textarea.input { resize: vertical; }
 .modal-head h2 { font-size: 17px; font-weight: 700; }
 .modal-body { padding: 20px 22px 24px; }
 .modal-body .field-label { display: block; margin-bottom: 5px; margin-top: 2px; }
+
+/* ---- Template gallery: left-side category tabs (shared by Analytics + Automations) ---- */
+/* A two-column shell: category rail on the left, the selected category's cards on the right. */
+.tpl-gallery { display: grid; grid-template-columns: 190px 1fr; gap: 18px; align-items: start; }
+.tpl-cats { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; }
+.tpl-cat {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 9px 12px; border-radius: 9px; border: 1px solid transparent; background: transparent;
+  color: var(--ink-soft); font-size: 13.5px; font-weight: 600; line-height: 1.25;
+}
+.tpl-cat:hover { background: var(--panel-2); color: var(--ink); }
+.tpl-cat.active { background: var(--accent-soft, var(--panel-2)); color: var(--ink); border-color: var(--line); }
+.tpl-cat .tpl-cat-count { float: right; font-weight: 500; color: var(--ink-faint); font-size: 12px; }
+.tpl-panel { min-width: 0; }
+.tpl-panel-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin: 2px 0 12px; }
+/* Narrow screens: rail collapses to a horizontal, scrollable row of chips above the cards. */
+@media (max-width: 640px) {
+  .tpl-gallery { grid-template-columns: 1fr; gap: 12px; }
+  .tpl-cats { flex-direction: row; overflow-x: auto; gap: 6px; position: static; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  .tpl-cat { width: auto; white-space: nowrap; flex: 0 0 auto; padding: 7px 12px; }
+  .tpl-cat .tpl-cat-count { display: none; }
+}
 .map-grid { display: grid; grid-template-columns: 140px 1fr; gap: 10px 14px; align-items: center; margin: 8px 0 16px; }
 .map-grid .input { margin-bottom: 0; }
 .map-grid .field-label { margin: 0; }

@@ -829,6 +829,84 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
     },
     note: "Uses the Equipment type's 'Warranty expires' date and messages the unit's first linked contact. Email won't send until Resend is connected. Runs on the scheduled-jobs sweep, once per unit per due date.",
   },
+
+  // ===================== Pre-built-module date reminders (follow_ups) =====================
+  // Same RecordDateReached shape as the Equipment reminders above: the trigger field
+  // lives on the record, so it's never flagged as a missing CONTACT field, and the
+  // module's default fields exist for every portal. Applied as inactive drafts.
+  {
+    key: "estimate_expiring_reminder",
+    name: "Estimate expiring reminder",
+    description: "A week before an estimate's 'valid until' date, email the linked contact to nudge them before the quote lapses.",
+    category: "follow_ups",
+    vertical: "general",
+    summary: {
+      trigger: "7 days before an estimate's 'Valid until' date",
+      conditions: ["Runs for every estimate with that date set and a linked contact"],
+      actions: ["Email the linked contact", "Add a reminder note"],
+    },
+    shape: { trigger: "7 days before valid until", actions: ["Send email", "Add note"] },
+    definition: {
+      name: "Estimate expiring reminder",
+      triggerType: "RecordDateReached:estimate:valid_until:7:days:before",
+      conditions: [],
+      actions: [
+        {
+          type: "send_email",
+          config: {
+            subject: "Your estimate {{record_title}} is about to expire",
+            html: "<p>Hi {{name}},</p><p>Just a heads-up that your estimate {{record_title}} is valid until {{valid_until}}. Reply if you'd like to go ahead and we'll get it booked in.</p>",
+          },
+        },
+        { type: "create_note", config: { text: "{{record_title}} expires {{valid_until}} — reminder sent to the linked contact." } },
+      ],
+    },
+    note: "Uses the Estimates module's 'Valid until' date and messages the estimate's first linked contact. Email won't send until Resend is connected. Runs on the scheduled-jobs sweep, once per estimate per date.",
+  },
+  {
+    key: "task_due_soon_reminder",
+    name: "Task due-soon reminder",
+    description: "A couple of days before a task's due date, drop an internal reminder so nothing slips.",
+    category: "follow_ups",
+    vertical: "general",
+    summary: {
+      trigger: "2 days before a task's 'Due date'",
+      conditions: ["Runs for every task with a due date set"],
+      actions: ["Add an internal reminder note on the task"],
+    },
+    shape: { trigger: "2 days before due date", actions: ["Add note"] },
+    definition: {
+      name: "Task due-soon reminder",
+      triggerType: "RecordDateReached:task:due_date:2:days:before",
+      conditions: [],
+      actions: [
+        { type: "create_note", config: { text: "Reminder: {{record_title}} is due on {{due_date}}." } },
+      ],
+    },
+    note: "Uses the Tasks module's 'Due date'. It adds an internal note (no email needed), so it applies cleanly. Runs on the scheduled-jobs sweep, once per task per due date.",
+  },
+  {
+    key: "task_overdue_alert",
+    name: "Overdue task alert",
+    description: "The day after a task's due date passes, flag it — unless it's already been marked Done.",
+    category: "follow_ups",
+    vertical: "general",
+    summary: {
+      trigger: "1 day after a task's 'Due date'",
+      conditions: ["Only if the task's status is not 'Done'"],
+      actions: ["Add an internal 'overdue' note on the task"],
+    },
+    shape: { trigger: "1 day after due date", actions: ["Add note"] },
+    definition: {
+      name: "Overdue task alert",
+      triggerType: "RecordDateReached:task:due_date:1:days:after",
+      conditions: [{ field: "status", op: "is_not", value: "Done" }],
+      actions: [
+        { type: "create_note", config: { text: "OVERDUE: {{record_title}} was due {{due_date}} and isn't Done yet." } },
+      ],
+    },
+    note: "Uses the Tasks module's 'Due date' and skips tasks already marked Done (the scheduled-jobs sweep honors the status condition). Adds an internal note, so it applies cleanly. Runs once per task per date.",
+  },
 ];
 
 export function getPreset(key: string): FlowPreset | undefined {

@@ -800,27 +800,50 @@
       catch (e) { inner.querySelector("#tpl-body").innerHTML = `<div class="cell-muted">Couldn't load templates.</div>`; return; }
       const body = inner.querySelector("#tpl-body"); body.innerHTML = "";
       const cats = data.categories || [], presets = data.presets || [];
-      let shown = 0;
-      cats.forEach((cat) => {
-        const inCat = presets.filter((p) => p.category === cat.key);
-        if (!inCat.length) return;
-        body.appendChild(el("div", "preset-cat-head", cat.label));
+      // Only categories that actually have templates get a tab (empties are skipped).
+      const tabs = cats.filter((c) => presets.some((p) => p.category === c.key));
+      // Safety net: any template whose category isn't in the server list still shows,
+      // grouped under an "Other" tab at the end.
+      const known = new Set(cats.map((c) => c.key));
+      const orphans = presets.filter((p) => !known.has(p.category));
+      if (orphans.length) tabs.push({ key: "__other", label: "Other" });
+      if (!tabs.length) { body.innerHTML = `<div class="cell-muted">No templates available.</div>`; return; }
+
+      const presetsFor = (key) => (key === "__other" ? orphans : presets.filter((p) => p.category === key));
+      const gallery = el("div", "tpl-gallery");
+      const rail = el("div", "tpl-cats");
+      const panel = el("div", "tpl-panel");
+      gallery.appendChild(rail); gallery.appendChild(panel); body.appendChild(gallery);
+
+      const makeCard = (p) => {
+        const card = el("div", "preset-card");
+        card.innerHTML = `<div><div class="preset-name">${esc(RL(p.name))}</div><div class="preset-desc">${esc(RL(p.description))}</div></div>
+          <div class="preset-shape"><span class="shape-chip">${esc(chartLabel(p.type))}</span></div>
+          <div class="preset-card-foot"><button class="btn btn-primary btn-sm">Add to dashboard</button></div>`;
+        card.querySelector("button").onclick = async () => {
+          const def = Object.assign({}, p.widget, { title: RL(p.widget.title) });
+          if (await applyWidget(def)) { overlay.remove(); toast("Widget added"); }
+        };
+        return card;
+      };
+
+      const selectCat = (cat) => {
+        [...rail.children].forEach((b) => b.classList.toggle("active", b.dataset.key === cat.key));
+        panel.innerHTML = "";
+        panel.appendChild(el("div", "tpl-panel-title", esc(cat.label)));
         const grid = el("div", "preset-grid");
-        inCat.forEach((p) => {
-          shown++;
-          const card = el("div", "preset-card");
-          card.innerHTML = `<div><div class="preset-name">${esc(RL(p.name))}</div><div class="preset-desc">${esc(RL(p.description))}</div></div>
-            <div class="preset-shape"><span class="shape-chip">${esc(chartLabel(p.type))}</span></div>
-            <div class="preset-card-foot"><button class="btn btn-primary btn-sm">Add to dashboard</button></div>`;
-          card.querySelector("button").onclick = async () => {
-            const def = Object.assign({}, p.widget, { title: RL(p.widget.title) });
-            if (await applyWidget(def)) { overlay.remove(); toast("Widget added"); }
-          };
-          grid.appendChild(card);
-        });
-        body.appendChild(grid);
+        presetsFor(cat.key).forEach((p) => grid.appendChild(makeCard(p)));
+        panel.appendChild(grid);
+      };
+
+      tabs.forEach((cat, i) => {
+        const b = el("button", "tpl-cat" + (i === 0 ? " active" : ""));
+        b.dataset.key = cat.key;
+        b.innerHTML = `${esc(cat.label)}<span class="tpl-cat-count">${presetsFor(cat.key).length}</span>`;
+        b.onclick = () => selectCat(cat);
+        rail.appendChild(b);
       });
-      if (!shown) body.innerHTML = `<div class="cell-muted">No templates available.</div>`;
+      selectCat(tabs[0]);
     }
 
     function openWizard() {

@@ -21,10 +21,6 @@ export const REPORT_PRESET_CATEGORIES: ReportPresetCategory[] = [
   { key: "conversion_pipeline", label: "Conversion & pipeline" },
   { key: "breakdowns", label: "Breakdowns" },
   { key: "trends", label: "Trends over time" },
-  // Record-type category. Only appears when the portal has that type's templates —
-  // the gallery skips any category with no presets — so portals without equipment
-  // never see an empty "Equipment" heading.
-  { key: "equipment", label: "Equipment" },
 ];
 
 // Internal-only. NOT shown anywhere in the UI; not sent to the browser.
@@ -90,34 +86,131 @@ export const RECORD_TYPE_PRESET_FIELDS: Record<string, { key: string; type: stri
     { key: "warranty_expires", type: "date" },
     { key: "createdAt", type: "date" },
   ],
+  // Pre-built modules (fields mirror the seeded defaults in recordTypeService.ts). Only the
+  // keys a template actually references need to be here (plus createdAt), exactly like above.
+  estimate: [
+    { key: "estimate_number", type: "text" },
+    { key: "status", type: "text" },       // Draft/Sent/Accepted/Declined/Expired
+    { key: "estimate_date", type: "date" },
+    { key: "valid_until", type: "date" },
+    { key: "total", type: "currency" },    // auto-computed from line_items — numeric/aggregatable
+    { key: "line_items", type: "line_items" },
+    { key: "createdAt", type: "date" },
+  ],
+  task: [
+    { key: "status", type: "text" },       // To do/In progress/Done/Blocked
+    { key: "priority", type: "text" },     // Low/Medium/High/Urgent
+    { key: "due_date", type: "date" },
+    { key: "assignee", type: "text" },
+    { key: "createdAt", type: "date" },
+  ],
+  vehicle: [
+    { key: "vehicle_type", type: "text" }, // Car/Truck/SUV/Van/Motorcycle/Other
+    { key: "status", type: "text" },       // Active/In service/Retired
+    { key: "make", type: "text" },
+    { key: "createdAt", type: "date" },
+  ],
+  property: [
+    { key: "property_type", type: "text" },
+    { key: "status", type: "text" },       // Active/Vacant/Under maintenance/Inactive
+    { key: "createdAt", type: "date" },
+  ],
+  product: [
+    { key: "category", type: "text" },     // Part/Labor/Material/Service/Other
+    { key: "unit", type: "text" },
+    { key: "price", type: "currency" },
+    { key: "createdAt", type: "date" },
+  ],
 };
 
 export const RECORD_TYPE_PRESETS: Record<string, ReportPreset[]> = {
+  // Equipment templates now live in the FUNCTIONAL categories (no per-module category), so
+  // every module's templates sit together by purpose. Sources/fields are unchanged.
   equipment: [
     {
-      key: "equipment_total", name: "Total equipment", category: "equipment", vertical: "home_services",
+      key: "equipment_total", name: "Total equipment", category: "volume_activity", vertical: "home_services",
       description: "A single headline number: how many pieces of equipment you're tracking.",
       widget: W({ title: "Total equipment", type: "kpi", source: "equipment", measure: { op: "count" }, groupBy: [], series: [], filters: [] }),
     },
     {
-      key: "equipment_by_status", name: "Equipment by status", category: "equipment", vertical: "home_services",
+      key: "equipment_by_status", name: "Equipment by status", category: "breakdowns", vertical: "home_services",
       description: "A pie of your equipment split by status (e.g. Active, Needs service, Retired).",
       widget: W({ title: "Equipment by status", type: "pie", source: "equipment", measure: { op: "count" }, groupBy: [{ key: "status" }], series: [], filters: [] }),
     },
     {
-      key: "equipment_by_type", name: "Equipment by type", category: "equipment", vertical: "home_services",
+      key: "equipment_by_type", name: "Equipment by type", category: "breakdowns", vertical: "home_services",
       description: "A bar of your equipment grouped by type (e.g. AC, Furnace, Water heater).",
       widget: W({ title: "Equipment by type", type: "bar", source: "equipment", measure: { op: "count" }, groupBy: [{ key: "equipment_type" }], series: [], filters: [] }),
     },
     {
-      key: "equipment_service_due_by_month", name: "Units due for service", category: "equipment", vertical: "home_services",
+      key: "equipment_service_due_by_month", name: "Units due for service", category: "trends", vertical: "home_services",
       description: "How many units are due for service each month — the upcoming service load, so you can plan ahead.",
       widget: W({ title: "Units due for service (by month)", type: "bar", source: "equipment", measure: { op: "count" }, groupBy: [{ key: "next_service_due", date: "month" }], series: [], filters: [] }),
     },
     {
-      key: "equipment_warranty_by_month", name: "Warranties expiring", category: "equipment", vertical: "home_services",
+      key: "equipment_warranty_by_month", name: "Warranties expiring", category: "trends", vertical: "home_services",
       description: "How many warranties expire each month — see what's lapsing soon and reach out before it does.",
       widget: W({ title: "Warranties expiring (by month)", type: "bar", source: "equipment", measure: { op: "count" }, groupBy: [{ key: "warranty_expires", date: "month" }], series: [], filters: [] }),
+    },
+  ],
+
+  // ---- Estimates ----
+  estimate: [
+    {
+      key: "estimates_by_status", name: "Estimates by status", category: "conversion_pipeline", vertical: "general",
+      description: "A pie of your estimates by status (Draft, Sent, Accepted, Declined, Expired) — your quote funnel at a glance.",
+      widget: W({ title: "Estimates by status", type: "pie", source: "estimate", measure: { op: "count" }, groupBy: [{ key: "status" }], series: [], filters: [] }),
+    },
+    {
+      key: "estimate_value_over_time", name: "Estimate value over time", category: "trends", vertical: "general",
+      description: "Total quoted value by month — how much you're putting in front of customers over time.",
+      widget: W({ title: "Estimate value by month", type: "bar", source: "estimate", measure: { op: "sum", field: "total" }, groupBy: [{ key: "estimate_date", date: "month" }], series: [], filters: [] }),
+    },
+    {
+      key: "estimates_expiring_soon", name: "Estimates expiring soon", category: "volume_activity", vertical: "general",
+      description: "How many estimates hit their 'valid until' date each month — chase these before they lapse.",
+      widget: W({ title: "Estimates expiring (by month)", type: "bar", source: "estimate", measure: { op: "count" }, groupBy: [{ key: "valid_until", date: "month" }], series: [], filters: [] }),
+    },
+  ],
+
+  // ---- Tasks ----
+  task: [
+    {
+      key: "tasks_by_status", name: "Tasks by status", category: "breakdowns", vertical: "general",
+      description: "A bar of tasks grouped by status (To do, In progress, Done, Blocked).",
+      widget: W({ title: "Tasks by status", type: "bar", source: "task", measure: { op: "count" }, groupBy: [{ key: "status" }], series: [], filters: [] }),
+    },
+    {
+      key: "open_tasks_by_priority", name: "Open tasks by priority", category: "breakdowns", vertical: "general",
+      description: "A bar of tasks by priority (Low → Urgent), excluding anything already Done — what to tackle next.",
+      widget: W({ title: "Open tasks by priority", type: "bar", source: "task", measure: { op: "count" }, groupBy: [{ key: "priority" }], series: [], filters: [{ key: "status", op: "is_not", value: "Done" }] }),
+    },
+  ],
+
+  // ---- Vehicles ----
+  vehicle: [
+    {
+      key: "vehicles_by_type", name: "Vehicles by type", category: "breakdowns", vertical: "general",
+      description: "A bar of your fleet grouped by vehicle type (Car, Truck, SUV, Van, Motorcycle, Other).",
+      widget: W({ title: "Vehicles by type", type: "bar", source: "vehicle", measure: { op: "count" }, groupBy: [{ key: "vehicle_type" }], series: [], filters: [] }),
+    },
+  ],
+
+  // ---- Properties ----
+  property: [
+    {
+      key: "properties_by_status", name: "Properties by status", category: "breakdowns", vertical: "general",
+      description: "A bar of your properties by status (Active, Vacant, Under maintenance, Inactive).",
+      widget: W({ title: "Properties by status", type: "bar", source: "property", measure: { op: "count" }, groupBy: [{ key: "status" }], series: [], filters: [] }),
+    },
+  ],
+
+  // ---- Products & Services ----
+  product: [
+    {
+      key: "products_by_category", name: "Products by category", category: "breakdowns", vertical: "general",
+      description: "A bar of your catalog grouped by category (Part, Labor, Material, Service, Other).",
+      widget: W({ title: "Products by category", type: "bar", source: "product", measure: { op: "count" }, groupBy: [{ key: "category" }], series: [], filters: [] }),
     },
   ],
 };
