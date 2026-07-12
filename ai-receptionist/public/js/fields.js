@@ -29,6 +29,36 @@
     progress: "Progress",
   };
   const TYPES_WITH_OPTIONS = ["single_select", "multi_select"];
+  // One distinct icon per field type, for the Modules & Fields field library tiles. A
+  // consistent monochrome text-glyph set (no full-color emoji) that inherits the muted
+  // .mf-lib-dot styling. Exported on App.fields (like TYPE_LABELS) so a future design pass
+  // can reuse it — currently applied ONLY on the library tiles, nowhere else.
+  const TYPE_ICONS = {
+    text: "T",
+    textarea: "\u00B6",          // ¶ paragraph
+    number: "#",
+    percent: "%",
+    currency: "$",
+    date: "\u25A4",              // ▤ lined page (calendar sheet)
+    time: "\u25F7",              // ◷ clock face
+    datetime: "\u25F4",          // ◴ clock face (variant — date & time)
+    checkbox: "\u2611",          // ☑
+    single_select: "\u25C9",     // ◉ one chosen
+    multi_select: "\u2630",      // ☰ list of choices
+    phone: "\u2706",             // ✆ handset
+    url: "\u2197",               // ↗ outgoing link
+    email: "@",
+    formula: "\u0192",           // ƒ
+    image: "\u25A7",             // ▧ shaded frame (picture)
+    file: "\u2398",              // ⎘ document page
+    address: "\u2302",           // ⌂ house
+    rating: "\u2605",            // ★
+    duration: "\u29D6",          // ⧖ hourglass
+    line_items: "\u2263",        // ≣ stacked rows
+    autonumber: "\u2116",        // № numbered sequence
+    color: "\u25CF",             // ● color swatch
+    progress: "\u25D0",          // ◐ half-filled
+  };
   const SYSTEM_KEYS = ["name", "phone", "email", "intent"];
 
   function scalar(v) {
@@ -416,5 +446,5 @@
     return combinedOnChange;
   }
 
-  App.fields = { TYPE_LABELS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, renderGroupedEditor, formatValue, computeFormula, fmtDuration, fmtAddress, fmtMoney, lineItemsRows, lineItemsTotal, lineItemsSummary };
+  App.fields = { TYPE_LABELS, TYPE_ICONS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, renderGroupedEditor, formatValue, computeFormula, fmtDuration, fmtAddress, fmtMoney, lineItemsRows, lineItemsTotal, lineItemsSummary };
 })(typeof window !== "undefined" ? window : globalThis);

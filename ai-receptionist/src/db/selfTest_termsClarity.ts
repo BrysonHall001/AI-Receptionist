@@ -67,11 +67,10 @@ async function main() {
   check(/boards, pipeline editors, and stage dropdowns/.test(TS), "stage's description names its real surfaces");
   check(/technician, stylist, bay — used on Bookings and Scheduling/.test(TS), "resource's description names its real surfaces");
   check(/descByModule: \{ contact: "Contacts move through pipeline stages/.test(TS), "on Contacts, Stage explains WHY it appears (the exception is self-explanatory)");
-  check(/One value per word for the whole portal — renaming it here renames it everywhere it appears\./.test(TS), "the hint states the real model plainly");
+  check(/Each word has one value for the whole portal — renaming it here renames it everywhere it appears\./.test(TS), "the hint states the real model plainly — exactly once");
   check(!/— edited here, saved portal-wide\./.test(TS), "the old contradictory hint phrasing is gone");
-  check(/mf-term-tag", "portal-wide"/.test(TS) && /function termIsShared\(key\)/.test(TS), "shared terms carry a subtle portal-wide tag");
-  check(/termAppliesToModule\(key, t\)/.test(TS), "the shared cue is computed from the SAME applicability rule (no duplicated logic)");
-  check(/head\.appendChild\(el\("span", "mf-terms-for", "for " \+ esc\(modName\)\)\)/.test(TS), "the panel stays per-module (\"Terms for <Module>\")");
+  check(!/mf-term-tag/.test(TS) && !/termIsShared/.test(TS), "no per-term portal-wide tag — the point is made once, in the hint (polish pass)");
+  check(!/mf-terms-for/.test(TS) && /Words used on " \+ \(modName/.test(TS), "the head is plain \"Terms\"; the hint (not the head) names the module (polish pass)");
 
   // ---- (3) save payload construction unchanged ----
   console.log("\n(3) save path unchanged:");

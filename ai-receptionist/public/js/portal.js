@@ -3730,7 +3730,7 @@
     Object.keys(App.fields.TYPE_LABELS).forEach(function (t) {
       const item = el("div", "mf-lib-item");
       item.dataset.type = t;
-      item.appendChild(el("span", "mf-lib-dot", "▦"));
+      item.appendChild(el("span", "mf-lib-dot", (App.fields.TYPE_ICONS && App.fields.TYPE_ICONS[t]) || "\u2022"));
       item.appendChild(el("span", "mf-lib-name", App.fields.TYPE_LABELS[t]));
       if (canEdit) {
         item.draggable = true;
@@ -4281,12 +4281,13 @@
     generic = generic || {};
     const modName = selectedType ? (selectedType.labelPlural || selectedType.label || "") : "";
     const head = el("div", "mf-terms-head");
+    // One consistent story (polish pass): the head is just "Terms" (no per-module suffix) and
+    // the hint says the portal-wide point exactly ONCE. Filtering stays per-module — only the
+    // words relevant to the selected module are shown — but nothing in the panel argues with
+    // that anymore (no per-term "portal-wide" tag repeating the hint).
     head.appendChild(el("span", "mf-col-title", "Terms"));
-    if (modName) head.appendChild(el("span", "mf-terms-for", "for " + esc(modName)));
     col.appendChild(head);
-    // Honest wording (clarity pass): the panel is per-module (only the words RELEVANT to this
-    // module show), but each word has ONE portal-wide value — the old hint contradicted itself.
-    col.appendChild(el("p", "mf-col-hint", "Words used on " + (modName ? esc(modName) : "this module") + ". One value per word for the whole portal — renaming it here renames it everywhere it appears."));
+    col.appendChild(el("p", "mf-col-hint", "Words used on " + (modName ? esc(modName) : "this module") + ". Each word has one value for the whole portal — renaming it here renames it everywhere it appears."));
     const body = el("div"); col.appendChild(body);
 
     // Each word carries a plain-English description of what it controls, grounded in the real
@@ -4294,42 +4295,24 @@
     // tabs, bulk actions, import/export); stage = pipeline steps (boards, pipeline editors,
     // stage dropdowns); resource = the bookable person/thing on Bookings & Scheduling. On
     // Contacts, Stage explains its own presence (contacts move THROUGH pipelines — the
-    // termAppliesToModule exception), so no module ever shows an unexplained term.
+    // termAppliesToModule exception); the portal-wide point lives ONLY in the hint above.
     const GENERIC_WORDS = [
       { key: "record", dflt: { one: "Record", many: "Records" },
         desc: "The generic word for an entry — used in shared places like the Recycle Bin, related tabs, bulk actions, and import/export." },
       { key: "stage", dflt: { one: "Stage", many: "Stages" },
         desc: "What a pipeline step is called — used on boards, pipeline editors, and stage dropdowns.",
-        descByModule: { contact: "Contacts move through pipeline stages, so the word shows here too — renaming it renames what a step is called everywhere." } },
+        descByModule: { contact: "Contacts move through pipeline stages, so the word shows here too." } },
       { key: "resource", dflt: { one: "Resource", many: "Resources" },
         desc: "What a bookable person or thing is called — technician, stylist, bay — used on Bookings and Scheduling." },
     ].filter(function (w) { return termAppliesToModule(w.key, selectedType); });
-
-    // "Shared" cue: a word that also applies to OTHER modules gets a tiny portal-wide tag, so
-    // renaming "Stage" on Jobs isn't a surprise on Contacts. Data-driven off the SAME
-    // termAppliesToModule rule against the live record-type list (falls back to the known
-    // semantics — record/stage span modules, resource is Bookings-only — before the list loads).
-    function termIsShared(key) {
-      const all = (App.state && App.state.recordTypes) || [];
-      if (all.length > 1) {
-        return all.filter(function (t) { return termAppliesToModule(key, t); }).length > 1;
-      }
-      return key !== "resource";
-    }
 
     const rows = [];
     GENERIC_WORDS.forEach(function (w) {
       const cur = generic[w.key] || {};
       const wrap = el("div", "mf-term");
-      // Name row: the term's default English name (so a renamed value is still identifiable),
-      // plus the subtle portal-wide tag when the word spans modules.
+      // Name row: the term's default English name (so a renamed value is still identifiable).
       const nameRow = el("div", "mf-term-name-row");
       nameRow.appendChild(el("span", "mf-term-name", esc(w.dflt.one)));
-      if (termIsShared(w.key)) {
-        const tag = el("span", "mf-term-tag", "portal-wide");
-        tag.title = "This word also appears on other modules — one value everywhere.";
-        nameRow.appendChild(tag);
-      }
       wrap.appendChild(nameRow);
       const r = el("div", "mf-term-row");
       const o = el("input", "input mf-term-input"); o.value = cur.one || w.dflt.one; o.placeholder = w.dflt.one;

@@ -1832,7 +1832,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-lib-item--draggable { cursor: grab; }
 .mf-lib-item--draggable:hover { border-color: var(--accent); color: var(--ink); }
 .mf-lib-item.dragging { opacity: 0.5; }
-.mf-lib-dot { color: var(--ink-faint); font-size: 12px; flex: 0 0 auto; }
+.mf-lib-dot { color: var(--ink-faint); font-size: 12px; flex: 0 0 auto; width: 1.35em; text-align: center; line-height: 1; }
 /* Wrap long type names onto two lines and show the full label (no "Curre…" ellipsis).
    Grid cells stretch to equal height, so a one-line tile lines up with a two-line one. */
 .mf-lib-name { font-weight: 600; min-width: 0; white-space: normal; overflow-wrap: normal; line-height: 1.2; }
@@ -1853,7 +1853,6 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-term { margin-bottom: 14px; }
 .mf-term-name-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .mf-term-name { font-size: 12.5px; font-weight: 700; color: var(--ink); }
-.mf-term-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-soft); flex: 0 0 auto; }
 .mf-term-desc { font-size: 11.5px; line-height: 1.4; color: var(--ink-faint); margin: 4px 0 0; white-space: normal; overflow-wrap: normal; }
 /* Views section (beneath Terms) — per-module optional views (Board / Calendar / …) */
 .mf-views { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }

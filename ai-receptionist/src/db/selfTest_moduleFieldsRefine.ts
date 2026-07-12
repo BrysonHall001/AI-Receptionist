@@ -51,7 +51,7 @@ check(/function termAppliesToModule\(termKey, t\)/.test(portal), "termAppliesToM
 check(/\.filter\(function \(w\) \{ return termAppliesToModule\(w\.key, selectedType\); \}\)/.test(portal), "Terms list is filtered to the selected module");
 check(!/Generic words used across modules/.test(portal), "old inaccurate caption is removed");
 check(/mf-terms-for/.test(portal) && /"for " \+ esc\(modName\)/.test(portal), 'a per-module "for <Module>" label is shown');
-check(/One value per word for the whole portal — renaming it here renames it everywhere it appears\./.test(portal), "hint makes clear each word has one portal-wide value (clarity-pass wording)");
+check(/Each word has one value for the whole portal — renaming it here renames it everywhere it appears\./.test(portal), "hint makes clear each word has one portal-wide value (polish-pass wording)");
 
 // (4b) BEHAVIOUR — evaluate the real term-applicability functions.
 console.log("\n(4b) Term applicability (evaluated):");
