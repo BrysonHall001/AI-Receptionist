@@ -1809,7 +1809,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 @media (max-width: 560px) { .lbl-row { grid-template-columns: 1fr 1fr; gap: 6px; } }
 
 /* ---------- Modules & Fields (Modules = horizontal row above; then Field library | Fields | Terms) ---------- */
-.mf-grid { display: grid; grid-template-columns: minmax(150px, 200px) minmax(0, 1fr) minmax(170px, 230px); gap: 16px; align-items: start; }
+.mf-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.15fr) minmax(180px, 240px); gap: 16px; align-items: start; }
 .mf-col { min-width: 0; }
 .mf-col-library, .mf-col-terms { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
 .mf-col-title { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; color: var(--ink); margin-bottom: 8px; }
@@ -1835,7 +1835,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-lib-dot { color: var(--ink-faint); font-size: 12px; flex: 0 0 auto; }
 /* Wrap long type names onto two lines and show the full label (no "Curre…" ellipsis).
    Grid cells stretch to equal height, so a one-line tile lines up with a two-line one. */
-.mf-lib-name { font-weight: 600; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
+.mf-lib-name { font-weight: 600; min-width: 0; white-space: normal; overflow-wrap: normal; line-height: 1.2; }
 /* Module ⋮ menu (shared) */
 .mf-mod-menu { z-index: 1300; min-width: 150px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
 .mf-mod-menu-item { text-align: left; background: none; border: none; padding: 8px 10px; border-radius: 7px; font-size: 13.5px; color: var(--ink); cursor: pointer; }

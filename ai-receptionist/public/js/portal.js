@@ -2758,6 +2758,11 @@
   // renderFields(true) refreshes must target the settings panel, not the main #view.
   // Stored once (set by secFields) and reused on every refresh; null = standalone.
   let fieldsMount = null;
+  // Set by secFields — repaints ONLY the Views panel (not Terms, which has editable inputs)
+  // with a fresh record type. Called after the Pipeline toggle's server round-trip so Board
+  // availability flips live off the fresh pipelineEnabled, not a stale cached copy. Null when
+  // Modules & Fields isn't mounted.
+  let mfViewsRepaint = null;
   function fieldsView() { return fieldsMount || view(); }
   async function renderFields(refresh, mountEl) {
     if (mountEl) fieldsMount = mountEl; // set on first mount; persists across refresh(true)
@@ -3113,9 +3118,12 @@
       cb.onchange = async () => {
         cb.disabled = true;
         try {
-          await App.portalApi("/api/record-types/pipeline", { method: "POST", body: JSON.stringify({ recordType: selectedKey, enabled: cb.checked }) });
+          const updated = await App.portalApi("/api/record-types/pipeline", { method: "POST", body: JSON.stringify({ recordType: selectedKey, enabled: cb.checked }) });
           App.util.toast(cb.checked ? "Pipeline turned on" : "Pipeline turned off");
-          renderFields(true);
+          renderFields(true); // repaint the Fields column (reveals/hides the stages editor, as before)
+          // Repaint the Views panel off the FRESH record type so Board flips available/unavailable
+          // live (its availability keys off pipelineEnabled, which just changed on the server).
+          if (mfViewsRepaint) mfViewsRepaint(updated);
         } catch (e) { App.util.toast(e.message, true); cb.checked = !cb.checked; cb.disabled = false; }
       };
 
@@ -3868,7 +3876,11 @@
         const created = await App.portalApi("/api/record-types", { method: "POST", body: JSON.stringify({ label: one, labelPlural: many }) });
         overlay.remove();
         App.state.fieldsType = created.key;   // select the new module
-        await App.loadLabels();               // refresh nav labels/order so it appears in the nav
+        // Refresh BOTH the nav's record-type source AND labels/order, then repaint. The left
+        // nav derives from App.state.recordTypes (recordTypesForNav/buildPortalNav); loadLabels
+        // only refreshes labels — it does NOT repopulate recordTypes — so without loadRecordTypes
+        // a freshly created module wouldn't appear in the sidebar until a full reload.
+        await Promise.all([App.loadRecordTypes(), App.loadLabels()]);
         App.util.toast("Module added");
         if (App._route) App._route();          // repaint Settings (modules row) + the sidebar nav
       } catch (e) { App.util.toast(e.message || "Could not create the module", true); }
@@ -4292,11 +4304,11 @@
       .then(function (fields) {
         body.innerHTML = "";
         const dateFields = moduleDateFields(selectedType, fields);
-        // Board is available when the module has a pipeline (the explicit flag OR real stages) —
-        // matching the pipeline switch. The kanban itself only renders once stages exist; a
-        // pipeline-on-but-stageless module (e.g. Bookings, which uses statuses) shows Board as
-        // available/on but simply has no board to draw, exactly as today.
-        const hasPipeline = selectedType.pipelineEnabled === true || moduleHasStages(selectedType);
+        // Board is available the moment the module's pipeline is ON — keyed off the explicit
+        // pipelineEnabled flag (the same one the Structure & behavior toggle sets), NOT off
+        // subtypes/stages (a pipeline can be legitimately on with no types/stages yet). The kanban
+        // itself simply has no columns to draw until stages exist; availability is the flag.
+        const hasPipeline = selectedType.pipelineEnabled === true;
 
         function persist(nextViews, calField) {
           const payload = { recordType: selectedType.key, enabledViews: nextViews };
@@ -5282,6 +5294,16 @@
 
       const currentType = function () { return visible.find(function (t) { return t.key === App.state.fieldsType; }) || visible[0]; };
       const renderTerms = function () { buildTermsSection(colTerms, currentType(), generic); buildViewsSection(colTerms, currentType()); };
+      // Repaint just the Views panel with a FRESH record type (from a server round-trip), keeping
+      // the cached list in sync so currentType() and later repaints agree. Used by the Pipeline
+      // toggle so Board availability updates live without a stale read or a full page reload.
+      mfViewsRepaint = function (freshType) {
+        if (freshType && freshType.key) {
+          const i = visible.findIndex(function (t) { return t.key === freshType.key; });
+          if (i >= 0) visible[i] = freshType;
+        }
+        buildViewsSection(colTerms, currentType());
+      };
       function selectModule(key) {
         App.state.fieldsType = key;
         Array.prototype.forEach.call(modulesRow.querySelectorAll(".mf-mod-tab"), function (r) { r.classList.toggle("active", r.dataset.key === key); });

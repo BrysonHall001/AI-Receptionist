@@ -52,7 +52,7 @@ check(/fieldsMount = host;\s*\n\s*await renderFields\(true, host\);/.test(portal
 
 // (3) CSS.
 console.log("\n(3) CSS:");
-check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(150px, 200px\) minmax\(0, 1fr\) minmax\(170px, 230px\)/.test(css), "three-column grid template (Field library | Fields | Terms)");
+check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(240px, 1fr\) minmax\(0, 1\.15fr\) minmax\(180px, 240px\)/.test(css), "three-column grid template (Field library | Fields | Terms), library rebalanced wider");
 check(/\.mf-col-library, \.mf-col-terms \{/.test(css), "Field library + Terms columns get the card styling");
 check(/\.settings-tile \{/.test(css) && /\.settings-tiles \{ display: flex; flex-wrap: wrap/.test(css), "tile styles exist and wrap");
 
