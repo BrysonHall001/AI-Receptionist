@@ -75,25 +75,25 @@
     return `<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:11.5px;color:#fff;background:${esc(color)}">${esc(status)}</span>`;
   }
   async function renderBillingSettings(panel) {
-    panel.innerHTML = `<h2 class="settings-h">Billing</h2><div class="cell-muted" style="font-size:12.5px;margin:0 0 14px">Your bills. Pay any outstanding invoice online with the Pay now button.</div><div id="pb-body"><div class="card cell-muted" style="padding:16px">Loading…</div></div>`;
+    panel.innerHTML = `<h2 class="settings-h">Billing</h2><div class="cell-muted settings-intro">Your bills. Pay any outstanding invoice online with the Pay now button.</div><div id="pb-body"><div class="card cell-muted u-pad-16">Loading…</div></div>`;
     const body = panel.querySelector("#pb-body");
     let data;
     try { data = await App.portalApi("/api/portal-billing"); }
-    catch (e) { body.innerHTML = `<div class="card cell-muted" style="padding:16px">${esc((e && e.message) || "Unable to load billing.")}</div>`; return; }
+    catch (e) { body.innerHTML = `<div class="card cell-muted u-pad-16">${esc((e && e.message) || "Unable to load billing.")}</div>`; return; }
     const charges = (data && data.charges) || [];
     const sum = (data && data.summary) || { outstanding: 0, currency: "USD" };
     const cur = sum.currency || "USD";
     body.innerHTML = "";
 
     // Outstanding summary only (Paid widget removed).
-    const summary = el("div", "card"); summary.style.cssText = "padding:14px 18px;margin-bottom:16px;display:inline-block;min-width:170px";
-    const sl = el("div", "cell-muted"); sl.style.cssText = "font-size:12px;margin-bottom:4px"; sl.textContent = "Outstanding";
-    const sv = el("div"); sv.style.cssText = `font-size:22px;font-weight:700;color:${sum.outstanding > 0 ? "#b45309" : "#16a34a"}`; sv.textContent = billingMoney(sum.outstanding, cur);
+    const summary = el("div", "card bill-summary");
+    const sl = el("div", "cell-muted bill-summary-label"); sl.textContent = "Outstanding";
+    const sv = el("div", "bill-summary-value" + (sum.outstanding > 0 ? " due" : "")); sv.textContent = billingMoney(sum.outstanding, cur);
     summary.appendChild(sl); summary.appendChild(sv);
     body.appendChild(summary);
 
     if (!charges.length) {
-      const empty = el("div", "card cell-muted"); empty.style.cssText = "padding:18px"; empty.textContent = "No bills yet.";
+      const empty = el("div", "card cell-muted u-pad-18"); empty.textContent = "No bills yet.";
       body.appendChild(empty); return;
     }
 
@@ -108,7 +108,7 @@
     ];
     const payCol = {
       key: "__pay", label: "", type: "text", filterable: false, get: () => "",
-      render: (c) => (c.status !== "Paid" ? (c.payUrl ? `<a class="btn btn-primary btn-sm" href="${esc(c.payUrl)}" target="_blank" rel="noopener">Pay now</a>` : `<span class="cell-muted" style="font-size:12px">Payment link not available yet</span>`) : ""),
+      render: (c) => (c.status !== "Paid" ? (c.payUrl ? `<a class="btn btn-primary btn-sm" href="${esc(c.payUrl)}" target="_blank" rel="noopener">Pay now</a>` : `<span class="cell-muted u-meta">Payment link not available yet</span>`) : ""),
     };
     const defaultKeys = ["period", "dueDate", "status", "amount", "note"];
 
@@ -122,7 +122,7 @@
     const handle = App.table.mount({
       container: tableHost, rows: charges, rowId: (c) => c.id, columns: applied(), scrollX: true,
       defaultSort: "period", defaultSortDir: "desc",
-      emptyHtml: `<div class="card cell-muted" style="padding:16px">No bills yet.</div>`,
+      emptyHtml: `<div class="card cell-muted u-pad-16">No bills yet.</div>`,
     });
     const manageBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#9776;</span> Manage columns`);
     manageBtn.onclick = () => App.table.openColumnManager(manageable, layout, defaultKeys, (nl) => { layout = { order: nl.order, hidden: nl.hidden }; saveLayout(layout); handle.setColumns(applied()); });
@@ -866,7 +866,7 @@
   async function renderIntegrations(host) {
     let s;
     try { s = await App.portalApi("/api/settings"); }
-    catch { host.innerHTML = `<div class="cell-muted" style="padding:8px;">Couldn't load integrations.</div>`; return; }
+    catch { host.innerHTML = `<div class="cell-muted u-pad-8">Couldn't load integrations.</div>`; return; }
 
     const me = App.state.me || {};
     const canEditTO = App.isAdminTier(me.role); // Twilio + OpenAI edit gate
@@ -875,29 +875,29 @@
     const wrap = el("div");
     wrap.innerHTML = `<h2 class="settings-h">Integrations</h2>`;
     const intro = el("p", "cell-muted", "Connect and manage the services that power your receptionist.");
-    intro.style.cssText = "margin:0 0 16px;";
+    intro.classList.add("settings-intro");
     wrap.appendChild(intro);
 
     // Responsive tile grid: tiles never shrink below 320px — they wrap to fewer
     // columns instead (auto-fill + minmax), so controls never get compressed.
     // Equal-height rows via align-items:stretch; 16px gutters.
     const grid = el("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;align-items:stretch;";
+    grid.className = "intg-grid";
     wrap.appendChild(grid);
 
     // Shared tile: brand logo + title header; returns the body element to fill.
     // Controls inside render at full, normal size — the grid wraps, never narrows them.
     function card(logo, title) {
       const c = el("div", "card");
-      c.style.cssText = "padding:18px;margin:0;display:flex;flex-direction:column;min-width:0;";
+      c.classList.add("intg-card");
       const head = el("div");
-      head.style.cssText = "display:flex;align-items:center;gap:10px;margin:0 0 12px;";
+      head.className = "intg-head";
       const img = el("img"); img.src = logo; img.alt = title + " logo";
-      img.style.cssText = "width:26px;height:26px;object-fit:contain;flex:0 0 auto;";
-      const h = el("h3", null, esc(title)); h.style.cssText = "margin:0;";
+      img.className = "intg-logo";
+      const h = el("h3", "intg-title", esc(title));
       head.appendChild(img); head.appendChild(h);
       c.appendChild(head);
-      const body = el("div"); body.style.cssText = "flex:1 1 auto;"; c.appendChild(body);
+      const body = el("div", "intg-body"); c.appendChild(body);
       grid.appendChild(c);
       return body;
     }
@@ -906,21 +906,21 @@
     (function twilio() {
       const body = card("/img/twilio.png", "Twilio");
       const label = el("label", "cell-muted", "Connected phone number");
-      label.style.cssText = "font-size:13px;font-weight:600;display:block;margin:0 0 6px;";
+      label.classList.add("intg-label");
       body.appendChild(label);
       const inp = el("input", "input"); inp.value = s.phoneNumber || ""; inp.placeholder = "+1 555 555 5555";
-      inp.style.cssText = "width:100%;"; // full tile inner width — never narrowed to fit
+      inp.classList.add("intg-input"); // full tile inner width — never narrowed to fit
       body.appendChild(inp);
       if (!canEditTO) {
         inp.disabled = true;
         const note = el("p", "cell-muted", "View only — ask an owner or super admin to change this.");
-        note.style.cssText = "font-size:12px;margin:8px 0 0;";
+        note.classList.add("intg-note");
         body.appendChild(note);
         return;
       }
-      const barB = el("div"); barB.style.cssText = "margin-top:10px;display:flex;gap:10px;align-items:center;";
+      const barB = el("div", "intg-bar");
       const save = el("button", "btn btn-primary btn-sm", "Save");
-      const stat = el("span", "cell-muted"); stat.style.cssText = "font-size:12px;";
+      const stat = el("span", "cell-muted u-meta");
       save.onclick = async () => {
         save.disabled = true; stat.textContent = "Saving…";
         try {
@@ -937,19 +937,19 @@
     (function openai() {
       const body = card("/img/openai.webp", "OpenAI");
       const desc = el("p", "cell-muted", "Powers the AI receptionist that answers and handles your calls.");
-      desc.style.cssText = "font-size:13px;margin:0 0 10px;";
+      desc.classList.add("intg-desc");
       body.appendChild(desc);
       const tWrap = el("label");
-      tWrap.style.cssText = "display:flex;gap:8px;align-items:center;font-size:14px;" + (canEditTO ? "cursor:pointer;" : "");
+      tWrap.className = "intg-toggle-row" + (canEditTO ? " clickable" : "");
       const tog = el("input"); tog.type = "checkbox"; tog.checked = (s.receptionistEnabled === true);
       const txt = el("span", null, "AI receptionist enabled");
-      const stat = el("span", "cell-muted"); stat.style.cssText = "font-size:12px;margin-left:6px;";
+      const stat = el("span", "cell-muted u-meta intg-stat-gap");
       tWrap.appendChild(tog); tWrap.appendChild(txt); tWrap.appendChild(stat);
       body.appendChild(tWrap);
       if (!canEditTO) {
         tog.disabled = true;
         const note = el("p", "cell-muted", "View only — ask an owner or super admin to change this.");
-        note.style.cssText = "font-size:12px;margin:8px 0 0;";
+        note.classList.add("intg-note");
         body.appendChild(note);
         return;
       }
@@ -976,19 +976,19 @@
     (function mapbox() {
       const body = card("/img/mapbox.png", "Mapbox");
       const desc = el("p", "cell-muted", "Powers address geocoding for the Map view.");
-      desc.style.cssText = "font-size:13px;margin:0 0 10px;";
+      desc.classList.add("intg-desc");
       body.appendChild(desc);
       const on = !!(s.geocoding && s.geocoding.enabled);
       const statLine = el("div");
-      statLine.style.cssText = "display:flex;gap:8px;align-items:center;font-size:14px;";
+      statLine.className = "intg-toggle-row";
       const dot = el("span");
-      dot.style.cssText = "width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:" + (on ? "var(--green)" : "var(--line-strong)") + ";";
+      dot.className = "intg-status-dot" + (on ? " on" : "");
       statLine.appendChild(dot);
       statLine.appendChild(el("span", null, on ? "Maps active" : "Not configured"));
       body.appendChild(statLine);
       if (!on) {
         const note = el("p", "cell-muted", "Map geocoding is off until the server key is set.");
-        note.style.cssText = "font-size:12px;margin:8px 0 0;";
+        note.classList.add("intg-note");
         body.appendChild(note);
       }
     })();
@@ -3050,7 +3050,7 @@
       head.appendChild(addBtn);
       card.appendChild(head);
       const note = el("p", "muted");
-      note.style.cssText = "margin:2px 0 12px; font-size:13px;";
+      note.classList.add("field-note");
       note.textContent = `Each ${(((selectedType && selectedType.label) || App.label("job","one")).toLowerCase())} type has its own pipeline. A ${(((selectedType && selectedType.label) || App.label("job","one")).toLowerCase())}'s Type chooses which pipeline its ${App.label("contact","many").toLowerCase()} move through. Renaming changes labels only; a type with ${(((selectedType && selectedType.labelPlural) || App.label("job","many")).toLowerCase())} (or a ${App.label("stage","one").toLowerCase()} with ${App.label("contact","many").toLowerCase()}) can't be deleted until those are moved.`;
       card.appendChild(note);
 
@@ -3150,7 +3150,7 @@
       head.appendChild(addBtn);
       card.appendChild(head);
       const note = el("p", "muted");
-      note.style.cssText = "margin:2px 0 12px; font-size:13px;";
+      note.classList.add("field-note");
       note.textContent = "These are the Status options on a " + typeLabel.toLowerCase() + "’s profile. Renaming changes the label only — the underlying key never changes. A status that records use, or that an automation references, can’t be deleted until those are changed.";
       card.appendChild(note);
 
@@ -3329,24 +3329,24 @@
         <input id="fm-label" class="input" value="${existing ? esc(existing.label) : ""}" placeholder="e.g. Deal size" />
         <label class="field-label">Type</label>
         <select id="fm-type" class="input" ${isSystem ? "disabled" : ""}>${typeOpts}</select>
-        <div id="fm-options-wrap" style="display:none">
+        <div id="fm-options-wrap" class="u-hidden">
           <label class="field-label">Options (one per line)</label>
           <textarea id="fm-options" class="input" rows="4" placeholder="Hot\nWarm\nCold"></textarea>
         </div>
-        <div id="fm-formula-wrap" style="display:none">
+        <div id="fm-formula-wrap" class="u-hidden">
           <label class="field-label">Formula</label>
           <input id="fm-formula" class="input" placeholder="e.g. {{Name}} — {{Deal size}}" />
-          <p class="muted" style="margin:-6px 0 12px">Reference other fields by their label in double braces, like {{Name}}.</p>
+          <p class="muted fm-inline-note">Reference other fields by their label in double braces, like {{Name}}.</p>
         </div>
-        <div id="fm-autonumber-wrap" style="display:none">
+        <div id="fm-autonumber-wrap" class="u-hidden">
           <label class="field-label">Prefix (optional)</label>
           <input id="fm-an-prefix" class="input" placeholder="e.g. INV-" />
           <label class="field-label">Zero-pad width (optional)</label>
           <input id="fm-an-pad" class="input" type="number" min="0" max="12" placeholder="e.g. 4 → 0001" />
-          <p class="muted" style="margin:-6px 0 12px">A unique number is assigned automatically when a record is saved. Example: prefix “INV-” + pad 4 → INV-0001.</p>
+          <p class="muted fm-inline-note">A unique number is assigned automatically when a record is saved. Example: prefix “INV-” + pad 4 → INV-0001.</p>
         </div>
         <label class="form-check"><input type="checkbox" id="fm-required" ${existing && existing.required ? "checked" : ""} /> <span>Required</span></label>
-        <button id="fm-save" class="btn btn-primary btn-block" style="margin-top:14px">${isEdit ? "Save field" : "Add field"}</button>
+        <button id="fm-save" class="btn btn-primary btn-block u-mt-14">${isEdit ? "Save field" : "Add field"}</button>
       </div>`;
     const overlay = modal(inner);
     inner.querySelector("#fm-close").onclick = () => overlay.remove();
@@ -3362,9 +3362,9 @@
     if (anCfg.prefix != null) inner.querySelector("#fm-an-prefix").value = String(anCfg.prefix);
     if (anCfg.pad != null) inner.querySelector("#fm-an-pad").value = String(anCfg.pad);
     function syncType() {
-      optsWrap.style.display = App.fields.TYPES_WITH_OPTIONS.includes(typeSel.value) ? "block" : "none";
-      formulaWrap.style.display = typeSel.value === "formula" ? "block" : "none";
-      anWrap.style.display = typeSel.value === "autonumber" ? "block" : "none";
+      optsWrap.classList.toggle("u-hidden", !App.fields.TYPES_WITH_OPTIONS.includes(typeSel.value));
+      formulaWrap.classList.toggle("u-hidden", typeSel.value !== "formula");
+      anWrap.classList.toggle("u-hidden", typeSel.value !== "autonumber");
     }
     typeSel.onchange = syncType;
     syncType();
@@ -3671,20 +3671,20 @@
 
     async function secLabels(panel) {
       panel.innerHTML = `<h2 class="settings-h">Pages</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:16px">Rename, reorder, or hide the pages in your menu, and edit the shared terms used across your portal. Module names live on the <strong>Modules &amp; Fields</strong> tab.</p>
-        <div id="lbl-body"><div class="cell-muted" style="padding:6px">Loading…</div></div>`;
+        <p class="cell-muted settings-intro">Rename, reorder, or hide the pages in your menu, and edit the shared terms used across your portal. Module names live on the <strong>Modules &amp; Fields</strong> tab.</p>
+        <div id="lbl-body"><div class="cell-muted u-pad-6">Loading…</div></div>`;
       const body = panel.querySelector("#lbl-body");
       let labelsData;
       try {
         labelsData = await App.portalApi("/api/labels");
-      } catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:6px">Couldn’t load pages.</div>`; return; }
+      } catch (e) { body.innerHTML = `<div class="cell-muted u-pad-6">Couldn’t load pages.</div>`; return; }
 
       const navCfg = (labelsData && labelsData.nav && typeof labelsData.nav === "object") ? labelsData.nav : { order: [], hidden: [], labels: {} };
 
       body.innerHTML = "";
 
       // ===================== Pages & navigation (pages only) =====================
-      const g2hint = el("p", "cell-muted"); g2hint.style.cssText = "font-size:12.5px;margin:0 0 10px"; g2hint.innerHTML = "Rename, drag to reorder, or hide the items in your left-hand menu. <strong>Home Dashboard</strong> always stays so there’s a landing page.";
+      const g2hint = el("p", "cell-muted intg-desc"); g2hint.innerHTML = "Rename, drag to reorder, or hide the items in your left-hand menu. <strong>Home Dashboard</strong> always stays so there’s a landing page.";
       body.appendChild(g2hint);
       const navListEl = el("div", "nav-edit-list");
       body.appendChild(navListEl);
@@ -3764,7 +3764,7 @@
       // module order/hide/labels managed on Modules & Fields) so we never clobber
       // the module entries: keep their saved order slots and hidden/label state.
       const saveBtn = el("button", "btn btn-primary btn-sm", "Save");
-      saveBtn.style.marginTop = "18px";
+      saveBtn.classList.add("u-mt-18");
       saveBtn.onclick = async () => {
         const cur = (App.navConfig && App.navConfig()) || { order: [], hidden: [], labels: {} };
         const pageSet = new Set(navOrder); // hrefs this (pages-only) editor manages
@@ -3793,7 +3793,7 @@
       // The portal-wide word editor now lives here, beside the other naming controls. Its own
       // titled group with its own Save — the editor logic (labels, descriptions, singular/
       // plural, auto-pluralize, PATCH /api/labels {generic} with server merge) is unchanged.
-      const termsDivider = el("div"); termsDivider.style.cssText = "border-top:1px solid var(--line);margin:22px 0 16px";
+      const termsDivider = el("div", "lbl-divider");
       body.appendChild(termsDivider);
       const termsHost = el("div", "lbl-terms-group");
       body.appendChild(termsHost);
@@ -4423,8 +4423,7 @@
       m.addEventListener("input", function () { row.touched = true; });
       rows.push(row);
     });
-    const save = el("button", "btn btn-ghost btn-sm", "Save terms");
-    save.style.marginTop = "8px";
+    const save = el("button", "btn btn-ghost btn-sm u-mt-8", "Save terms");
     save.onclick = async function () {
       // Only the shown terms are sent; the server MERGES per key, so terms not shown
       // here keep their stored values untouched.
@@ -4666,7 +4665,7 @@
           <label class="field-label">Business name</label><input id="set-name" class="input" value="${esc(portal.name)}" />
           <label class="field-label">Notify email</label><input id="set-email" class="input" value="${esc(portal.notifyEmail)}" />
         </div>
-        <p class="cell-muted" style="font-size:12.5px;margin:6px 0 14px">Where call summaries and business notifications are sent.</p>
+        <p class="cell-muted settings-intro">Where call summaries and business notifications are sent.</p>
         <button id="set-save" class="btn btn-primary btn-sm">Save changes</button>`;
       App.util.$("#set-save").onclick = async () => {
         try {
@@ -4679,7 +4678,7 @@
 
     async function secAppearance(panel) {
       panel.innerHTML = `<h2 class="settings-h">Appearance</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:6px">Pick a theme for this portal, or design your own. Applies to everyone in this portal.</p>
+        <p class="cell-muted settings-intro">Pick a theme for this portal, or design your own. Applies to everyone in this portal.</p>
         <div id="theme-host"></div>`;
       if (App.theme) { const h = App.util.$("#theme-host"); if (h) App.theme.mountSettings(h); }
     }
@@ -4688,7 +4687,7 @@
     // the new System knowledge module-awareness checklist.
     async function secAiReceptionist(panel) {
       panel.innerHTML = "";
-      const bar = el("div"); bar.style.cssText = "display:flex;gap:4px;margin:0 0 16px;border-bottom:1px solid var(--line,#eee);";
+      const bar = el("div", "settings-tabs");
       const body = el("div");
       const subtabs = [{ key: "instructions", label: "Instructions" }, { key: "knowledge", label: "System knowledge" }];
       let active = "instructions";
@@ -4696,7 +4695,7 @@
         bar.innerHTML = "";
         subtabs.forEach((t) => {
           const b = el("button", null, t.label);
-          b.style.cssText = "padding:8px 14px;border:none;background:none;cursor:pointer;font-size:14px;border-bottom:2px solid " + (active === t.key ? "var(--accent,#5b5bd6)" : "transparent") + ";font-weight:" + (active === t.key ? "600" : "400") + ";color:" + (active === t.key ? "var(--text,#111)" : "var(--muted,#666)") + ";";
+          b.className = "settings-tab" + (active === t.key ? " active" : "");
           b.onclick = () => { if (active !== t.key) { active = t.key; paintBar(); paintBody(); } };
           bar.appendChild(b);
         });
@@ -4793,16 +4792,16 @@
         <div class="add-user">
           <input id="nu-name" class="input" placeholder="Name" />
           <input id="nu-email" class="input" placeholder="email@company.com" />
-          <select id="nu-role" class="input" style="flex:0 0 160px"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option>${customOpts ? `<optgroup label="Custom roles">${customOpts}</optgroup>` : ""}</select>
+          <select id="nu-role" class="input nu-role-select"><option value="CLIENT_USER">Client User</option><option value="PORTAL_ADMIN">Portal Admin</option>${customOpts ? `<optgroup label="Custom roles">${customOpts}</optgroup>` : ""}</select>
           <button id="nu-add" class="btn btn-primary btn-sm">Send invite</button>
           <button id="nu-custom" class="btn btn-ghost btn-sm">Write custom email</button>
         </div>
-        <p class="cell-muted" style="font-size:12px;margin-top:8px">We'll email them an invite link automatically — or write a custom email and place the link yourself.</p>`;
+        <p class="cell-muted u-meta u-mt-8">We'll email them an invite link automatically — or write a custom email and place the link yourself.</p>`;
       panel.appendChild(membersCard);
 
       // ---- Permissions panel (separate card) ----
       const permCard = el("div", "settings-card card");
-      permCard.style.marginTop = "16px";
+      permCard.classList.add("u-mt-16");
       permCard.innerHTML = `<div id="perm-panel"></div>`;
       panel.appendChild(permCard);
 
@@ -5050,7 +5049,7 @@
 
     async function secLeadCapture(panel) {
       panel.innerHTML = `<h2 class="settings-h">Lead capture links</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:10px">Create a secure link you can give to a website form, Zapier, or another tool so new leads land directly in this portal.</p>
+        <p class="cell-muted settings-intro">Create a secure link you can give to a website form, Zapier, or another tool so new leads land directly in this portal.</p>
         <div id="inbound-host"></div>`;
       if (App.inbound) { const h = App.util.$("#inbound-host"); if (h) App.inbound.render(h); }
     }
@@ -5302,7 +5301,7 @@
       panel.innerHTML = "";
       const schedWrap = el("div");
       const resWrap = el("div");
-      resWrap.style.marginTop = "32px";
+      resWrap.classList.add("u-mt-32");
       panel.appendChild(schedWrap);
       panel.appendChild(resWrap);
       await secScheduling(schedWrap);
@@ -5409,19 +5408,19 @@
           ${field("Role", roleLabel(me.role))}
           <div class="field">
             <span class="field-label">Dot color</span>
-            <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
-              <div id="dot-preview" style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:0 0 auto;border:2px solid var(--topbar-bg);box-shadow:0 1px 2px rgba(0,0,0,.25)">?</div>
-              <input id="dot-color" type="color" value="#888888" style="width:44px;height:32px;padding:0;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel);cursor:pointer" />
-              <span id="dot-note" class="cell-muted" style="font-size:12px"></span>
+            <div class="acct-dot-row">
+              <div id="dot-preview" class="acct-dot-preview">?</div>
+              <input id="dot-color" type="color" value="#888888" class="acct-color-input" />
+              <span id="dot-note" class="cell-muted u-meta"></span>
             </div>
           </div>
         </div>
-        <label class="field-label" style="margin-top:4px">Change password</label>
+        <label class="field-label u-mt-4">Change password</label>
         <div class="add-user"><input id="acct-pass" class="input" type="password" placeholder="New password (8+)" />
           <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>
-        <label class="field-label" style="margin-top:8px">Email signature</label>
+        <label class="field-label u-mt-8">Email signature</label>
         <div id="sig-host"></div>
-        <button id="sig-save" class="btn btn-ghost btn-sm" style="margin-top:10px">Save signature</button>`;
+        <button id="sig-save" class="btn btn-ghost btn-sm u-mt-10">Save signature</button>`;
       // Dot color: your "who's online" avatar color. Shows a live preview with your
       // initial; readable text (dark on light colors, white on dark) is applied live.
       (function () {
@@ -5467,7 +5466,7 @@
     // settings tab — layout restructure.)
     async function secFields(panel) {
       panel.innerHTML = `<h2 class="settings-h">Modules &amp; Fields</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Your modules, the fields on each, and which views a module offers. Drag a field type onto a section to add it.</p>`;
+        <p class="cell-muted settings-intro">Your modules, the fields on each, and which views a module offers. Drag a field type onto a section to add it.</p>`;
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
       const visible = (types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -5544,7 +5543,7 @@
       } else if (editable) {
         const sysOpt = (val, label) => `<option value="${val}"${!u.customRoleId && u.role === val ? " selected" : ""}>${label}</option>`;
         const custOpts = customRoles.map((r) => `<option value="${r.id}"${u.customRoleId === r.id ? " selected" : ""}>${esc(r.name)}</option>`).join("");
-        roleCell = `<select class="input role-sel" data-uid="${esc(u.id)}" style="padding:4px 6px;font-size:13px">${sysOpt("CLIENT_USER", "Client User")}${sysOpt("PORTAL_ADMIN", "Portal Admin")}${custOpts ? `<optgroup label="Custom roles">${custOpts}</optgroup>` : ""}</select>`;
+        roleCell = `<select class="input role-sel role-select-compact" data-uid="${esc(u.id)}">${sysOpt("CLIENT_USER", "Client User")}${sysOpt("PORTAL_ADMIN", "Portal Admin")}${custOpts ? `<optgroup label="Custom roles">${custOpts}</optgroup>` : ""}</select>`;
       } else {
         const cr = u.customRoleId ? customRoles.find((r) => r.id === u.customRoleId) : null;
         roleCell = esc(cr ? cr.name : roleLabel(u.role));

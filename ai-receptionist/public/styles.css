@@ -1320,6 +1320,56 @@ body[data-theme="academia"] {
   background: radial-gradient(120% 90% at 50% 40%, #2a1e14 0%, #1a130d 60%, #120c07 100%) fixed;
 }
 
+/* ===== Design Phase 3: Settings surface classes =====
+   Migrated from inline styles in portal.js's Settings renderers. Values preserved 1:1
+   except the enumerated convergences (see the batch summary): the shared settings-intro
+   paragraph and the billing status colors (now semantic tokens, so they theme-follow). */
+.settings-intro { font-size: var(--text-sm); margin: 0 0 14px; }
+.u-hidden { display: none; }
+.u-meta { font-size: var(--text-xs); }
+.u-pad-6 { padding: 6px; }
+.u-pad-8 { padding: var(--sp-2); }
+.u-pad-16 { padding: var(--sp-4); }
+.u-pad-18 { padding: 18px; }
+.u-mt-2 { margin-top: 2px; }
+.u-mt-4 { margin-top: var(--sp-1); }
+.u-mt-8 { margin-top: var(--sp-2); }
+.u-mt-10 { margin-top: 10px; }
+.u-mt-14 { margin-top: 14px; }
+.u-mt-16 { margin-top: var(--sp-4); }
+.u-mt-18 { margin-top: 18px; }
+.u-mt-32 { margin-top: var(--sp-7); }
+.settings-tabs { display: flex; gap: var(--sp-1); margin: 0 0 var(--sp-4); border-bottom: 1px solid var(--line); }
+.settings-tab { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: var(--text-base); border-bottom: 2px solid transparent; font-weight: 400; color: var(--ink-soft); }
+.settings-tab.active { border-bottom-color: var(--accent); font-weight: 600; color: var(--ink); }
+.intg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--sp-4); align-items: stretch; }
+.intg-card { padding: 18px; margin: 0; display: flex; flex-direction: column; min-width: 0; }
+.intg-head { display: flex; align-items: center; gap: 10px; margin: 0 0 var(--sp-3); }
+.intg-logo { width: 26px; height: 26px; object-fit: contain; flex: 0 0 auto; }
+.intg-title { margin: 0; }
+.intg-body { flex: 1 1 auto; }
+.intg-label { font-size: var(--text-sm); font-weight: 600; display: block; margin: 0 0 6px; }
+.intg-input { width: 100%; }
+.intg-note { font-size: var(--text-xs); margin: var(--sp-2) 0 0; }
+.intg-bar { margin-top: 10px; display: flex; gap: 10px; align-items: center; }
+.intg-desc { font-size: var(--text-sm); margin: 0 0 10px; }
+.intg-toggle-row { display: flex; gap: var(--sp-2); align-items: center; font-size: var(--text-base); }
+.intg-toggle-row.clickable { cursor: pointer; }
+.intg-status-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--line-strong); }
+.intg-status-dot.on { background: var(--green); }
+.intg-stat-gap { margin-left: 6px; }
+.bill-summary { padding: 14px 18px; margin-bottom: var(--sp-4); display: inline-block; min-width: 170px; }
+.bill-summary-label { font-size: var(--text-xs); margin-bottom: var(--sp-1); }
+.bill-summary-value { font-size: var(--text-xl); font-weight: 700; color: var(--green); }
+.bill-summary-value.due { color: var(--amber); }
+.acct-dot-row { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+.acct-color-input { width: 44px; height: 32px; padding: 0; border: 1px solid var(--control-border); border-radius: 8px; background: var(--control-bg); cursor: pointer; }
+.nu-role-select { flex: 0 0 160px; }
+.role-select-compact { padding: 4px 6px; font-size: var(--text-sm); }
+.fm-inline-note { margin: -6px 0 12px; }
+.field-note { margin: 2px 0 12px; font-size: var(--text-sm); }
+.lbl-divider { border-top: 1px solid var(--line); margin: 22px 0 16px; }
+
 /* (Deep Sea, Cherry Blossom, Terminal, and Brutalist themes retired.) */
 
 

@@ -76,9 +76,9 @@
       "inlineStyle": 0
     },
     "js/portal.js": {
-      "rawHex": 22,
-      "offScaleFontSize": 22,
-      "inlineStyle": 356
+      "rawHex": 15,
+      "offScaleFontSize": 19,
+      "inlineStyle": 290
     },
     "js/presence.js": {
       "rawHex": 0,
@@ -127,9 +127,9 @@
     }
   },
   "totals": {
-    "rawHex": 173,
-    "offScaleFontSize": 166,
-    "inlineStyle": 1131
+    "rawHex": 166,
+    "offScaleFontSize": 163,
+    "inlineStyle": 1065
   },
   "info": {
     "distinctSpacingValues": 31

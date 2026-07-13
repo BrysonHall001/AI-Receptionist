@@ -17,20 +17,23 @@ function main() {
   console.log("Integrations tile grid");
   console.log("======================");
   const portal = readFileSync(resolve(__dirname, "../../public/js/portal.js"), "utf8");
+  const css = readFileSync(resolve(__dirname, "../../public/styles.css"), "utf8"); // design Phase 3: tile styling lives in classes now
+  const segStart = portal.indexOf("function renderIntegrations");
+  const seg = portal.slice(segStart, portal.indexOf("\n  async function ", segStart + 1)); // forward to the next top-level function
 
   // ---- (1) enforced tile sizing ----
   console.log("(1) tile grid sizing:");
-  check(/repeat\(auto-fill,\s*minmax\(320px,\s*1fr\)\)/.test(portal), "responsive grid: auto-fill + minmax(320px, 1fr) (never below 320px)");
-  check(/gap:16px/.test(portal), "16px gutters between tiles");
+  check(/grid\.className = "intg-grid"/.test(seg) && /\.intg-grid \{ display: grid; grid-template-columns: repeat\(auto-fill, minmax\(320px, 1fr\)\)/.test(css), "responsive grid: auto-fill + minmax(320px, 1fr) (never below 320px) — via .intg-grid (design Phase 3)");
+  check(/\.intg-grid \{[^}]*gap: var\(--sp-4\)/.test(css) && /--sp-4: 16px;/.test(css), "16px gutters between tiles (tokenized — design Phase 3)");
   check(/align-items:stretch/.test(portal), "equal-height rows (align-items:stretch)");
   check(/grid\.appendChild\(c\)/.test(portal), "tiles are placed into the grid (not stacked full-width)");
-  check(/padding:18px;margin:0;/.test(portal), "comfortable tile padding (≥16px) with no stacking margin");
+  check(/classList\.add\("intg-card"\)/.test(seg) && /\.intg-card \{ padding: 18px; margin: 0;/.test(css), "comfortable tile padding (18px) with no stacking margin — via .intg-card (design Phase 3)");
   check(!/grid-template-columns:\s*repeat\(\s*[2-9]\s*,/.test(portal), "no hardcoded fixed column count (wraps naturally)");
 
   // ---- (2) Twilio number input not narrowed ----
   console.log("\n(2) controls not cramped:");
   const twilioInput = /inp\.style\.cssText = "width:100%;"; \/\/ full tile inner width/.test(portal);
-  check(twilioInput, "Twilio number input spans full tile inner width");
+  check(/inp\.classList\.add\("intg-input"\)/.test(seg) && /\.intg-input \{ width: 100%; \}/.test(css), "Twilio number input spans full tile inner width — via .intg-input (design Phase 3)");
   check(!/inp\.style\.cssText = "width:100%;max-width:320px;"/.test(portal), "old max-width cap on the Twilio input removed");
 
   // ---- (3) heading/intro preserved ----
