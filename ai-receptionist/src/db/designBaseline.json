@@ -1,0 +1,137 @@
+{
+  "files": {
+    "index.html": {
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
+    },
+    "invite.html": {
+      "rawHex": 0,
+      "offScaleFontSize": 5,
+      "inlineStyle": 0
+    },
+    "js/admin.js": {
+      "rawHex": 31,
+      "offScaleFontSize": 44,
+      "inlineStyle": 217
+    },
+    "js/app.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 10
+    },
+    "js/auth.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 1
+    },
+    "js/automations.js": {
+      "rawHex": 6,
+      "offScaleFontSize": 37,
+      "inlineStyle": 140
+    },
+    "js/communication.js": {
+      "rawHex": 5,
+      "offScaleFontSize": 15,
+      "inlineStyle": 175
+    },
+    "js/compose.js": {
+      "rawHex": 1,
+      "offScaleFontSize": 1,
+      "inlineStyle": 39
+    },
+    "js/drips.js": {
+      "rawHex": 42,
+      "offScaleFontSize": 22,
+      "inlineStyle": 82
+    },
+    "js/feedback.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 1,
+      "inlineStyle": 21
+    },
+    "js/fields.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 4
+    },
+    "js/flowPreview.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
+    },
+    "js/inbound.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 3,
+      "inlineStyle": 5
+    },
+    "js/learn.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
+    },
+    "js/navModel.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
+    },
+    "js/portal.js": {
+      "rawHex": 22,
+      "offScaleFontSize": 22,
+      "inlineStyle": 356
+    },
+    "js/presence.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 1,
+      "inlineStyle": 2
+    },
+    "js/reports.js": {
+      "rawHex": 4,
+      "offScaleFontSize": 9,
+      "inlineStyle": 34
+    },
+    "js/table.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 8
+    },
+    "js/theme.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 1,
+      "inlineStyle": 9
+    },
+    "js/themeScene.js": {
+      "rawHex": 18,
+      "offScaleFontSize": 0,
+      "inlineStyle": 24
+    },
+    "js/util.js": {
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 2
+    },
+    "js/webgl-sunset.js": {
+      "rawHex": 1,
+      "offScaleFontSize": 0,
+      "inlineStyle": 2
+    },
+    "styles.css": {
+      "rawHex": 79,
+      "offScaleFontSize": 124,
+      "inlineStyle": 0
+    },
+    "survey.html": {
+      "rawHex": 0,
+      "offScaleFontSize": 5,
+      "inlineStyle": 0
+    }
+  },
+  "totals": {
+    "rawHex": 209,
+    "offScaleFontSize": 290,
+    "inlineStyle": 1131
+  },
+  "info": {
+    "distinctSpacingValues": 31
+  }
+}

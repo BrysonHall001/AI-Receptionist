@@ -32,6 +32,42 @@
   --sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-ui: var(--sans);
   --font-display: var(--sans);
+
+  /* ============ DESIGN CANON (design-system Phase 0) ============
+     Additive tokens only — nothing below changes any existing rule's computed value.
+     See docs/design-system.md. Migration happens surface-by-surface in later batches;
+     the ratchet (selfTest_designRatchet.ts) keeps new code honest meanwhile. */
+
+  /* Type scale — 7 steps, 12px floor, compact-leaning to match the app today. */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+
+  /* Spacing scale — 4px base. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 48px;
+
+  /* Component indirection layer: components will read THESE, which default to the
+     existing base tokens — so today nothing changes, but a future Appearance
+     "button style" or "density" preset is just a token bundle overriding this layer
+     (same mechanism the THEMES presets and theme.js already use — never a bypass). */
+  --btn-radius: var(--radius-sm);
+  --btn-weight: 600;
+  --control-bg: var(--panel);
+  --control-border: var(--line-strong);
+  --card-radius: var(--radius);
+  --card-shadow: var(--shadow);
+  --table-row-pad: 10px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
