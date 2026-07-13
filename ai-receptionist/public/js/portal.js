@@ -72,7 +72,7 @@
   function billingMoney(n, cur) { return (cur && cur !== "USD" ? "" : "$") + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2) + (cur && cur !== "USD" ? " " + cur : ""); }
   function billingStatePill(status) {
     const color = { Paid: "#16a34a", Overdue: "#b45309", Due: "#2563eb" }[status] || "#6b7280";
-    return `<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:11.5px;color:#fff;background:${esc(color)}">${esc(status)}</span>`;
+    return `<span class="state-pill" style="--pill-bg:${esc(color)}">${esc(status)}</span>`;
   }
   async function renderBillingSettings(panel) {
     panel.innerHTML = `<h2 class="settings-h">Billing</h2><div class="cell-muted settings-intro">Your bills. Pay any outstanding invoice online with the Pay now button.</div><div id="pb-body"><div class="card cell-muted u-pad-16">Loading…</div></div>`;
@@ -146,10 +146,10 @@
     if (!App.state.receptionistEnabled) {
       view().innerHTML = "";
       const off = el("div", "card");
-      off.style.cssText = "margin-top:8px;padding:32px;text-align:center;";
+      off.classList.add("calls-off-box");
       off.innerHTML =
-        `<h3 style="margin:0 0 6px;">AI Receptionist is off</h3>` +
-        `<p class="cell-muted" style="margin:0;">This feature isn't enabled for this portal.</p>`;
+        `<h3 class="calls-off-title">AI Receptionist is off</h3>` +
+        `<p class="cell-muted u-m-0">This feature isn't enabled for this portal.</p>`;
       view().appendChild(off);
       return;
     }
@@ -1043,7 +1043,7 @@
     let types = [];
     try { types = await App.portalApi("/api/record-types"); } catch (e) { /* empty */ }
     const grid = el("div");
-    grid.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;";
+    grid.className = "fields-chip-row";
     // Owner page-lock: don't offer import for a locked page's type.
     if (!App.isPageLocked("#/contacts")) {
       const cBtn = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(App.label("contact", "many"))}`);
@@ -1106,7 +1106,7 @@
     // icon); each button renders that type's export form INLINE below via the SAME
     // buildOpts(value) + openExport({ inline:true }) the dropdown used.
     const grid = el("div");
-    grid.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;margin-bottom:8px;";
+    grid.className = "fields-chip-row u-mb-8";
     const formHost = el("div");
 
     let activeBtn = null;
@@ -1114,9 +1114,9 @@
       if (activeBtn) activeBtn.classList.remove("active");
       activeBtn = btn || null;
       if (btn) btn.classList.add("active");
-      formHost.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+      formHost.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
       let opts;
-      try { opts = await buildOpts(value); } catch (err) { formHost.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(err.message)}</div>`; return; }
+      try { opts = await buildOpts(value); } catch (err) { formHost.innerHTML = `<div class="cell-muted u-pad-8">${esc(err.message)}</div>`; return; }
       if (!opts) { formHost.innerHTML = ""; return; }
       openExport(Object.assign({}, opts, { inline: true, container: formHost }));
     }
@@ -1291,23 +1291,23 @@
     if (App.canViewArea("billing")) bkTypes.push("Charges");
     if (isAdmin && !App.isPageLocked("#/feedback")) bkTypes.push("Feedback");
     wrap.innerHTML = `
-      <p class="cell-muted" style="margin-top:4px">Download a complete backup of this portal's data — one tab (Excel) or file (CSV zip) per data type: ${bkTypes.join(", ")}, and optionally automations and team. Sign-in credentials and connected-account tokens are never included.</p>
-      <div style="max-width:640px">
-        <div style="display:flex;gap:36px;flex-wrap:wrap;align-items:flex-start;margin-top:14px">
-          <div style="display:flex;flex-direction:column;gap:8px">
+      <p class="cell-muted u-mt-4">Download a complete backup of this portal's data — one tab (Excel) or file (CSV zip) per data type: ${bkTypes.join(", ")}, and optionally automations and team. Sign-in credentials and connected-account tokens are never included.</p>
+      <div class="bk-wrap">
+        <div class="bk-cols">
+          <div class="bk-col">
             <label class="ex-field"><input type="checkbox" id="bk-auto" checked /> <span>Include automation definitions</span></label>
             <label class="ex-field"><input type="checkbox" id="bk-team" checked /> <span>Include team (names, emails, roles)</span></label>
           </div>
-          <div style="display:flex;flex-direction:column;gap:6px;min-width:300px">
-            <label class="field-label" style="margin:0">Format</label>
-            <select id="bk-format" class="input" style="max-width:340px">
+          <div class="bk-col-wide">
+            <label class="field-label u-m-0">Format</label>
+            <select id="bk-format" class="input bk-format">
               <option value="xlsx">Excel workbook (.xlsx) — one sheet per type</option>
               <option value="zip">CSV files (.zip) — one .csv per type</option>
             </select>
           </div>
         </div>
-        <button id="bk-go" class="btn btn-primary" style="margin-top:18px">Download backup</button>
-        <div id="bk-status" class="cell-muted" style="margin-top:10px"></div>
+        <button id="bk-go" class="btn btn-primary u-mt-18">Download backup</button>
+        <div id="bk-status" class="cell-muted u-mt-10"></div>
       </div>`;
     host.appendChild(wrap);
     const statusEl = wrap.querySelector("#bk-status");
@@ -1357,10 +1357,10 @@
     return typeLabel + " · " + (r.kind === "import" ? "Import" : "Export");
   }
   async function tabHistory(host) {
-    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    host.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
     let rows = [], types = [];
     try { [rows, types] = await Promise.all([App.portalApi("/api/exports"), App.portalApi("/api/record-types").catch(() => [])]); }
-    catch (e) { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
+    catch (e) { host.innerHTML = `<div class="cell-muted u-pad-8">${esc(e.message)}</div>`; return; }
     rows = Array.isArray(rows) ? rows : [];
     const typeLabels = dataHistoryTypeLabels(types);
     const typeLabelOf = (dt) => (dt ? (typeLabels[dt] || dt) : "Other");
@@ -1399,7 +1399,7 @@
       App.table.mount({
         container: tableHost, columns, rows: data,
         defaultSort: "createdAt", defaultSortDir: "desc",
-        emptyHtml: `<div class="card cell-muted" style="padding:18px">No import or export activity yet.</div>`,
+        emptyHtml: `<div class="card cell-muted u-pad-18">No import or export activity yet.</div>`,
         pageSize: 50,
       });
     }
@@ -1435,7 +1435,7 @@
   }
 
   async function tabReports(host) {
-    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    host.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
     let rows = [], recordTypes = [], settings = {};
     try {
       [rows, recordTypes, settings] = await Promise.all([
@@ -1443,7 +1443,7 @@
         App.portalApi("/api/record-types").catch(() => []),
         App.portalApi("/api/settings").catch(() => ({})),
       ]);
-    } catch (e) { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
+    } catch (e) { host.innerHTML = `<div class="cell-muted u-pad-8">${esc(e.message)}</div>`; return; }
     rows = Array.isArray(rows) ? rows : [];
     recordTypes = Array.isArray(recordTypes) ? recordTypes : [];
     // Owner page-lock: don't offer reporting on a locked page's type.
@@ -1504,7 +1504,7 @@
         container: tableHost, columns, rows: data,
         defaultSort: "createdAt", defaultSortDir: "desc",
         onRowClick: (r) => openEdit(r.id),
-        emptyHtml: `<div class="card cell-muted" style="padding:18px">No reports yet.</div>`,
+        emptyHtml: `<div class="card cell-muted u-pad-18">No reports yet.</div>`,
         pageSize: 50,
       });
     }
@@ -1516,7 +1516,7 @@
     });
     host.appendChild(filterTabs);
     const editHint = el("div", "cell-muted", "Click a report to edit its fields, filters, email body, or schedule.");
-    editHint.style.cssText = "font-size:13px; margin:4px 2px 8px";
+    editHint.classList.add("rpt-edit-hint");
     host.appendChild(editHint);
     host.appendChild(tableHost);
     mountTable();
@@ -2161,7 +2161,7 @@
     const body = el("div", "modal-body");
     const note = el("p", "cell-muted");
     note.textContent = `${reachable.length} of ${rows.length} selected have a phone number and will receive this.`;
-    note.style.marginBottom = "10px";
+    note.classList.add("u-mb-10");
     body.appendChild(note);
     const composerHost = el("div");
     body.appendChild(composerHost);
@@ -2530,7 +2530,7 @@
     back.href = "#/settings/data/recycle";
     card.appendChild(back);
     const p = el("p", "cell-muted");
-    p.style.marginTop = "12px";
+    p.classList.add("u-mt-12");
     p.textContent = "This item is no longer in the Recycle Bin — it may have been restored or permanently removed.";
     card.appendChild(p);
     view().appendChild(card);
@@ -2669,13 +2669,13 @@
         ${savedBlock}
         <label class="field-label">${esc(opts.filterLabel || "Who to export")}</label>
         <div id="ex-rules"></div>
-        <label class="field-label" style="margin-top:14px">Fields to include</label>
+        <label class="field-label u-mt-14">Fields to include</label>
         <div id="ex-fields" class="ex-fields"></div>
         <p class="cell-muted" id="ex-count"></p>
         <label class="field-label">Format</label>
         <select id="ex-format" class="input"><option value="csv">CSV (.csv)</option><option value="xlsx">Excel (.xlsx)</option></select>
         <button id="ex-go" class="btn btn-primary btn-block">Export</button>
-        ${opts.note ? `<p class="cell-muted" style="font-size:12px;margin:8px 0 0">${esc(opts.note)}</p>` : ""}
+        ${opts.note ? `<p class="cell-muted intg-note">${esc(opts.note)}</p>` : ""}
         ${historyBlock}
       </div>`;
     if (!inline) {
@@ -3476,7 +3476,7 @@
       <div class="contact-sub">${esc(c.phone || "")}${c.email ? " · " + esc(c.email) : ""}</div></div>`;
     if (!ro) {
       const runAuto = el("button", "btn btn-ghost btn-sm", "Run automation");
-      runAuto.style.marginLeft = "auto";
+      runAuto.classList.add("u-ml-auto");
       runAuto.onclick = () => openRunAutomation(id, c.name || c.phone || ("this " + App.label("contact","one").toLowerCase()));
       head.appendChild(runAuto);
     }
@@ -3598,7 +3598,7 @@
       card.appendChild(composerHost);
       const api = App.compose.mount(composerHost, { kind: "email" });
       const send = el("button", "btn btn-primary btn-sm", "Send email");
-      send.style.marginTop = "14px";
+      send.classList.add("u-mt-14");
       send.onclick = async () => {
         const subject = api.getSubject();
         if (!subject) { App.util.toast("Add a subject", true); return; }
@@ -3628,7 +3628,7 @@
       card.appendChild(composerHost);
       const api = App.compose.mount(composerHost, { kind: "sms" });
       const send = el("button", "btn btn-primary btn-sm", "Send text");
-      send.style.marginTop = "14px";
+      send.classList.add("u-mt-14");
       send.onclick = async () => {
         const body = api.getText().trim();
         if (!body) { App.util.toast("Type a message", true); return; }
@@ -3858,8 +3858,8 @@
         <input id="mm-one" class="input" value="${esc(t.label || "")}" placeholder="e.g. Client" />
         <label class="field-label">Plural (auto — editable)</label>
         <input id="mm-many" class="input" value="${esc(t.labelPlural || App.pluralize(t.label || ""))}" placeholder="e.g. Clients" />
-        <p class="muted" style="margin:-4px 0 12px">Renaming updates this module everywhere in the portal — the menu, the page title, and labels. Field keys and saved data never change.</p>
-        <button id="mm-save" class="btn btn-primary btn-block" style="margin-top:8px">Save</button>
+        <p class="muted modal-note">Renaming updates this module everywhere in the portal — the menu, the page title, and labels. Field keys and saved data never change.</p>
+        <button id="mm-save" class="btn btn-primary btn-block u-mt-8">Save</button>
       </div>`;
     const overlay = modal(inner);
     const oneEl = inner.querySelector("#mm-one");
@@ -3973,8 +3973,8 @@
         <input id="am-one" class="input" placeholder="e.g. Vehicle" />
         <label class="field-label">Plural (auto — editable)</label>
         <input id="am-many" class="input" placeholder="e.g. Vehicles" />
-        <p class="muted" style="margin:-4px 0 12px">A new module gets its own page, fields, permissions, analytics, automations, import/export and recycle bin. It starts with one “Name” field — add more by dragging field types in.</p>
-        <button id="am-save" class="btn btn-primary btn-block" style="margin-top:8px">Create module</button>
+        <p class="muted modal-note">A new module gets its own page, fields, permissions, analytics, automations, import/export and recycle bin. It starts with one “Name” field — add more by dragging field types in.</p>
+        <button id="am-save" class="btn btn-primary btn-block u-mt-8">Create module</button>
       </div>`;
     const overlay = modal(inner);
     const oneEl = inner.querySelector("#am-one");
@@ -4042,14 +4042,14 @@
     const panes = {};
     function selectTab(key) {
       App.util.$$(".tab", tabsBar).forEach(function (t) { t.classList.toggle("active", t.dataset.k === key); });
-      Object.keys(panes).forEach(function (k) { panes[k].el.style.display = k === key ? "" : "none"; });
+      Object.keys(panes).forEach(function (k) { panes[k].el.classList.toggle("u-hidden", k !== key); });
       const p = panes[key]; if (p && !p.loaded) { p.loaded = true; p.render(); }
     }
     modules.forEach(function (type, i) {
       const tb = el("button", "tab" + (i === 0 ? " active" : ""), esc(type.labelPlural || type.label || type.key));
       tb.dataset.k = type.key; tb.onclick = function () { selectTab(type.key); };
       tabsBar.appendChild(tb);
-      const pane = el("div", "related-pane"); pane.style.display = i === 0 ? "" : "none";
+      const pane = el("div", "related-pane" + (i === 0 ? "" : " u-hidden"));
       body.appendChild(pane);
       panes[type.key] = { el: pane, loaded: false, render: function () { buildRelatedPane(pane, type, anchor); } };
     });
@@ -5707,7 +5707,7 @@
     inner.innerHTML = `<div class="modal-head"><h2>Can’t delete “${esc(st.label || st.key || "status")}”</h2><button class="icon-btn" id="sb-close">&times;</button></div>`;
     const body = el("div", "modal-body");
     const intro = el("p", "muted");
-    intro.style.cssText = "margin:0 0 12px; font-size:13px;";
+    intro.classList.add("modal-intro");
     intro.textContent = "This status is still in use. Move these onto another status (or change the automations), then delete it.";
     body.appendChild(intro);
     const overlay = modal(inner);
@@ -5717,7 +5717,7 @@
       records.forEach((r) => {
         const row = el("div", "stage-row");
         const a = el("a", "stage-name", esc(r.title || "(untitled)"));
-        a.href = "#/record/" + r.id; a.style.cursor = "pointer";
+        a.href = "#/record/" + r.id; a.classList.add("u-pointer");
         a.onclick = (e) => { e.preventDefault(); overlay.remove(); App.go("#/record/" + r.id); };
         row.appendChild(a);
         ul.appendChild(row);
@@ -5727,13 +5727,13 @@
     }
     if (autos.length) {
       const h = el("div", "fields-section-name", `${autos.length} automation${autos.length === 1 ? "" : "s"} referencing this status`);
-      h.style.marginTop = "14px";
+      h.classList.add("u-mt-14");
       body.appendChild(h);
       const ul = el("div", "stage-list");
       autos.forEach((a) => {
         const row = el("div", "stage-row");
         const link = el("a", "stage-name", esc(a.name || "(untitled automation)"));
-        link.href = "#/automations"; link.style.cursor = "pointer";
+        link.href = "#/automations"; link.classList.add("u-pointer");
         link.onclick = (e) => { e.preventDefault(); overlay.remove(); App.go("#/automations"); };
         row.appendChild(link);
         row.appendChild(el("div", "cell-muted", "used in " + ((a.where || []).join(", ") || "this automation")));
@@ -5766,13 +5766,10 @@
     const body = el("div", "modal-body");
     inner.appendChild(body);
     const out = el("div");
-    out.style.marginTop = "10px";
+    out.classList.add("u-mt-10");
     flows.forEach((f) => {
       const rowEl = el("div", "action-row");
-      rowEl.style.display = "flex";
-      rowEl.style.alignItems = "center";
-      rowEl.style.justifyContent = "space-between";
-      rowEl.style.gap = "10px";
+      rowEl.classList.add("flex-between-row");
       const nm = el("div", null, `<strong>${esc(f.name)}</strong>`);
       const run = el("button", "btn btn-primary btn-sm", "Run");
       run.onclick = async () => {
@@ -5798,14 +5795,14 @@
   function runResult(r) {
     if (!r) return el("div", "cell-muted", "No result returned.");
     const box = el("div", "card");
-    box.style.marginTop = "8px";
+    box.classList.add("u-mt-8");
     const head = el("div", null, r.matched
       ? `<strong>Ran.</strong> Conditions matched.`
       : `<strong>Skipped.</strong> Conditions did not match, so no actions ran.`);
     box.appendChild(head);
     (r.results || []).forEach((x) => {
       const line = el("div", "cell-muted");
-      line.style.marginTop = "4px";
+      line.classList.add("u-mt-4");
       line.textContent = `${x.type}: ${x.status}${x.detail ? " — " + x.detail : ""}${x.error ? " — " + x.error : ""}`;
       box.appendChild(line);
     });
@@ -5821,7 +5818,7 @@
         <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing.${requireEmail ? (" This CRM requires a unique email on every " + App.label("contact","one").toLowerCase() + ", so the Email column must be mapped.") : ""}</p>
         <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,text/csv" class="input" />
         <div id="imp-step2"></div>
-        <div class="ex-history-head" style="margin-top:16px">Previous imports</div>
+        <div class="ex-history-head u-mt-16">Previous imports</div>
         <div id="imp-history" class="ex-history"><div class="cell-muted">Loading…</div></div>
       </div>`;
     const overlay = modal(inner);
@@ -6927,7 +6924,7 @@
     App.fields.renderEditor(editorHost, fields || [], values, {});
 
     const save = el("button", "btn btn-primary btn-block", "Create");
-    save.style.marginTop = "14px";
+    save.classList.add("u-mt-14");
     save.onclick = async () => {
       const title = titleInp.value.trim();
       if (!title) { toast("Title is required", true); titleInp.focus(); return; }
@@ -6993,7 +6990,7 @@
         <p class="cell-muted">Upload a CSV or Excel file (.csv, .xlsx). You'll map its columns to the fields below before importing. Each row needs a Title.</p>
         <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,text/csv" class="input" />
         <div id="imp-step2"></div>
-        <div class="ex-history-head" style="margin-top:16px">Previous imports</div>
+        <div class="ex-history-head u-mt-16">Previous imports</div>
         <div id="imp-history" class="ex-history"><div class="cell-muted">Loading…</div></div>
       </div>`;
     const overlay = modal(inner);
@@ -7079,7 +7076,7 @@
         if (!items.length) return "";
         const shown = cap(items, 50).map((x) => `<li>${fmt(x)}</li>`).join("");
         const more = items.length > 50 ? `<li>…and ${items.length - 50} more</li>` : "";
-        return `<p class="cell-muted" style="margin-top:8px">${esc(label)}</p><ul class="cell-muted" style="margin:4px 0 0 18px">${shown}${more}</ul>`;
+        return `<p class="cell-muted u-mt-8">${esc(label)}</p><ul class="cell-muted imp-list">${shown}${more}</ul>`;
       };
       const skippedRows = res.skippedRows || [];
       const valueWarnings = res.valueWarnings || [];
@@ -7087,9 +7084,9 @@
       let html = `<p><strong>Imported ${res.imported}</strong>${res.skipped ? ` · skipped ${res.skipped}` : ""}.</p>`;
       html += listOf("Skipped rows:", skippedRows, (s) => `Row ${s.row}${s.title ? ` (${esc(s.title)})` : ""}: ${esc(s.reason)}`);
       html += listOf("Values skipped (row kept, field left empty):", valueWarnings, (w) => `Row ${w.row}, ${esc(w.field)}: ${esc(w.reason)}`);
-      if (resourceWarnings.length) html += `<p class="cell-muted" style="margin-top:8px">${esc(App.label("resource", "many"))} not matched (left blank): ${esc(resourceWarnings.join(", "))}</p>`;
-      if (ignoredCols.length) html += `<p class="cell-muted" style="margin-top:8px">Columns ignored (not mapped): ${esc(ignoredCols.join(", "))}</p>`;
-      host.innerHTML = html + `<button class="btn btn-primary btn-block" id="imp-done" style="margin-top:14px">Done</button>`;
+      if (resourceWarnings.length) html += `<p class="cell-muted u-mt-8">${esc(App.label("resource", "many"))} not matched (left blank): ${esc(resourceWarnings.join(", "))}</p>`;
+      if (ignoredCols.length) html += `<p class="cell-muted u-mt-8">Columns ignored (not mapped): ${esc(ignoredCols.join(", "))}</p>`;
+      host.innerHTML = html + `<button class="btn btn-primary btn-block u-mt-14" id="imp-done">Done</button>`;
       host.querySelector("#imp-done").onclick = () => { overlay.remove(); renderRecordList(typeKey); };
       toast(`Imported ${res.imported}${res.skipped ? `, skipped ${res.skipped}` : ""}`);
     }
@@ -7159,7 +7156,7 @@
         <label class="field-label">Field</label>
         <select id="mu-field" class="input"></select>
         <div id="mu-valwrap"></div>
-        <button id="mu-go" class="btn btn-primary btn-block" style="margin-top:14px">Apply</button>
+        <button id="mu-go" class="btn btn-primary btn-block u-mt-14">Apply</button>
       </div>`;
     const overlay = modal(inner);
     inner.querySelector("#mu-close").onclick = () => overlay.remove();
@@ -7179,7 +7176,7 @@
         const s = el("select", "input"); // Type is required, so no blank option
         (f._subtypes || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((st) => { const o = el("option", null, esc(st.label)); o.value = st.key; s.appendChild(o); });
         valWrap.appendChild(s); getVal = () => s.value || null;
-        const warn = el("p", "muted"); warn.style.cssText = "margin:8px 0 0; font-size:12.5px;";
+        const warn = el("p", "muted mu-warn");
         warn.textContent = (`Changing Type switches a ${App.label("job","one").toLowerCase()}'s pipeline. ${App.label("contact","many")} keep their current ${App.label("stage","one").toLowerCase()} value, even if the new type's pipeline doesn't include it — re-${App.label("stage","one").toLowerCase()} them afterward.`);
         valWrap.appendChild(warn);
       } else if (f.type === "stage") {

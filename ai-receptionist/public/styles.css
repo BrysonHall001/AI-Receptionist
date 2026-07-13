@@ -1396,6 +1396,30 @@ body[data-theme="academia"] {
 .link-result-title { font-weight: 600; }
 .link-result-meta { font-size: var(--text-xs); color: var(--ink-faint); margin-top: 1px; }
 
+/* ===== Design Phase 5a: modals + scattered surfaces =====
+   Migrated from inline styles in the modal builders, Calls, Data Administration tabs, and
+   misc overlays. The anchored-popup positioning in openModuleMenu (viewport math) is a
+   documented dynamic, like the calendar's layout engine. */
+.modal-intro { margin: 0 0 12px; font-size: var(--text-sm); }
+.modal-note { margin: -4px 0 12px; }
+.u-m-0 { margin: 0; }
+.u-mb-8 { margin-bottom: var(--sp-2); }
+.u-mt-12 { margin-top: var(--sp-3); }
+.u-ml-auto { margin-left: auto; }
+.flex-between-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.calls-off-box { margin-top: var(--sp-2); padding: var(--sp-7); text-align: center; }
+.calls-off-title { margin: 0 0 6px; }
+.mu-warn { margin: var(--sp-2) 0 0; font-size: var(--text-xs); }
+.imp-list { margin: 4px 0 0 18px; }
+.bk-wrap { max-width: 640px; }
+.bk-cols { display: flex; gap: 36px; flex-wrap: wrap; align-items: flex-start; margin-top: 14px; }
+.bk-col { display: flex; flex-direction: column; gap: var(--sp-2); }
+.bk-col-wide { display: flex; flex-direction: column; gap: 6px; min-width: 300px; }
+.bk-format { max-width: 340px; }
+.fields-chip-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; margin-top: var(--sp-1); }
+.rpt-edit-hint { font-size: var(--text-sm); margin: 4px 2px 8px; }
+.state-pill { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: var(--text-xs); color: var(--on-accent); background: var(--pill-bg); }
+
 /* (Deep Sea, Cherry Blossom, Terminal, and Brutalist themes retired.) */
 
 
