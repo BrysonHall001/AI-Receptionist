@@ -71,7 +71,7 @@ check(/name: "Board", available: hasPipeline/.test(BV), "the Board tile's availa
 check(/const updated = await App\.portalApi\("\/api\/record-types\/pipeline"/.test(portal), "the pipeline toggle captures the fresh record type from the server");
 check(/if \(mfViewsRepaint\) mfViewsRepaint\(updated\)/.test(portal), "the pipeline toggle repaints the Views panel live with the fresh type");
 check(/mfViewsRepaint = function \(freshType\)/.test(portal), "secFields defines the Views repaint hook");
-check(/mfViewsRepaint[\s\S]{0,240}buildViewsSection\(colTerms, currentType\(\)\)/.test(portal), "the repaint hook rebuilds the Views panel from the fresh cached type");
+check(/mfViewsRepaint[\s\S]{0,240}buildViewsSection\(viewsStrip, currentType\(\)\)/.test(portal), "the repaint hook rebuilds the Views STRIP from the fresh cached type (layout restructure)");
 
 console.log("\n(3) Field library width + word-boundary wrapping:");
 check(!/\.mf-lib-name \{[^}]*overflow-wrap: anywhere/.test(css), ".mf-lib-name no longer uses overflow-wrap: anywhere (no mid-word breaks)");

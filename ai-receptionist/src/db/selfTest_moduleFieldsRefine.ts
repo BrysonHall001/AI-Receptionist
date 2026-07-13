@@ -48,7 +48,7 @@ check(/\.mf-lib-list \{ display: grid; grid-template-columns: 1fr 1fr/.test(css)
 // (4) Per-module Terms + caption fix (static).
 console.log("\n(4) Terms are per-module + caption fixed:");
 check(/function termAppliesToModule\(termKey, t\)/.test(portal), "termAppliesToModule gates which terms show");
-check(/\.filter\(function \(w\) \{ return termAppliesToModule\(w\.key, selectedType\); \}\)/.test(portal), "Terms list is filtered to the selected module");
+check(/\.filter\(function \(w\) \{ return termUsedInPortal\(w\.key\); \}\)/.test(portal), "Terms list is filtered portal-level (a word shows if relevant anywhere — layout restructure)");
 check(!/Generic words used across modules/.test(portal), "old inaccurate caption is removed");
 check(/mf-terms-for/.test(portal) && /"for " \+ esc\(modName\)/.test(portal), 'a per-module "for <Module>" label is shown');
 check(/Each word has one value for the whole portal — renaming it here renames it everywhere it appears\./.test(portal), "hint makes clear each word has one portal-wide value (polish-pass wording)");
@@ -56,7 +56,7 @@ check(/Each word has one value for the whole portal — renaming it here renames
 // (4b) BEHAVIOUR — evaluate the real term-applicability functions.
 console.log("\n(4b) Term applicability (evaluated):");
 const a = portal.indexOf("function moduleHasStages");
-const b = portal.indexOf('// "Terms" column');
+const b = portal.indexOf('// ---- SHARED TERMS editor'); // the vm block ends where the (relocated) editor begins
 const block = portal.slice(a, b);
 const sandbox: any = {};
 vm.createContext(sandbox);

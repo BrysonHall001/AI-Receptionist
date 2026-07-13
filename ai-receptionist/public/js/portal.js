@@ -3619,7 +3619,7 @@
 
     async function secLabels(panel) {
       panel.innerHTML = `<h2 class="settings-h">Pages</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:16px">Rename, reorder, or hide the pages in your menu. Module names and generic words now live on the <strong>Modules &amp; Fields</strong> tab.</p>
+        <p class="cell-muted" style="font-size:13px;margin-bottom:16px">Rename, reorder, or hide the pages in your menu, and edit the shared terms used across your portal. Module names live on the <strong>Modules &amp; Fields</strong> tab.</p>
         <div id="lbl-body"><div class="cell-muted" style="padding:6px">Loading…</div></div>`;
       const body = panel.querySelector("#lbl-body");
       let labelsData;
@@ -3736,6 +3736,16 @@
         } catch (err) { toast(err.message, true); }
       };
       body.appendChild(saveBtn);
+
+      // ===================== Shared terms (relocated from Modules & Fields) =====
+      // The portal-wide word editor now lives here, beside the other naming controls. Its own
+      // titled group with its own Save — the editor logic (labels, descriptions, singular/
+      // plural, auto-pluralize, PATCH /api/labels {generic} with server merge) is unchanged.
+      const termsDivider = el("div"); termsDivider.style.cssText = "border-top:1px solid var(--line);margin:22px 0 16px";
+      body.appendChild(termsDivider);
+      const termsHost = el("div", "lbl-terms-group");
+      body.appendChild(termsHost);
+      buildTermsSection(termsHost, (labelsData && labelsData.generic) || {});
     }
 
   // ============ Modules & Fields — three-column helpers (Batch 1 of 2) ============
@@ -4293,38 +4303,41 @@
     return false;
   }
 
-  // "Terms" column — the generic words, but showing ONLY those relevant to the
-  // SELECTED module (see termAppliesToModule). Values are portal-wide: editing here
-  // saves via PATCH /api/labels { generic } (merged server-side), exactly as before.
-  function buildTermsSection(col, selectedType, generic) {
+  // ---- SHARED TERMS editor — now lives on the PAGES settings tab (layout restructure), not
+  // on Modules & Fields. Portal-level filtering: with no selected module, a word shows if it's
+  // relevant ANYWHERE in the portal — record always; stage when any module has a pipeline;
+  // resource when a Bookings module exists. Values, save payload, and the server merge are
+  // byte-for-byte unchanged. ----
+  function termUsedInPortal(key) {
+    if (key === "record") return true; // the generic noun appears on shared surfaces everywhere
+    const all = (App.state && App.state.recordTypes) || [];
+    if (key === "stage") return all.some(function (t) { return moduleHasStages(t); });
+    if (key === "resource") return all.some(function (t) { return termAppliesToModule("resource", t); });
+    return true;
+  }
+
+  function buildTermsSection(col, generic) {
     col.innerHTML = "";
     generic = generic || {};
-    const modName = selectedType ? (selectedType.labelPlural || selectedType.label || "") : "";
     const head = el("div", "mf-terms-head");
-    // One consistent story (polish pass): the head is just "Terms" (no per-module suffix) and
-    // the hint says the portal-wide point exactly ONCE. Filtering stays per-module — only the
-    // words relevant to the selected module are shown — but nothing in the panel argues with
-    // that anymore (no per-term "portal-wide" tag repeating the hint).
-    head.appendChild(el("span", "mf-col-title", "Terms"));
+    head.appendChild(el("span", "mf-col-title", "Shared terms"));
     col.appendChild(head);
-    col.appendChild(el("p", "mf-col-hint", "Words used on " + (modName ? esc(modName) : "this module") + ". Each word has one value for the whole portal — renaming it here renames it everywhere it appears."));
+    col.appendChild(el("p", "mf-col-hint", "Words used across your portal. Each word has one value for the whole portal — renaming it here renames it everywhere it appears."));
     const body = el("div"); col.appendChild(body);
 
     // Each word carries a plain-English description of what it controls, grounded in the real
     // App.label call sites: record = the generic noun on shared surfaces (Recycle Bin, related
     // tabs, bulk actions, import/export); stage = pipeline steps (boards, pipeline editors,
-    // stage dropdowns); resource = the bookable person/thing on Bookings & Scheduling. On
-    // Contacts, Stage explains its own presence (contacts move THROUGH pipelines — the
-    // termAppliesToModule exception); the portal-wide point lives ONLY in the hint above.
+    // stage dropdowns — Contacts move through pipeline stages too, so the word covers their
+    // steps as well); resource = the bookable person/thing on Bookings & Scheduling.
     const GENERIC_WORDS = [
       { key: "record", dflt: { one: "Record", many: "Records" },
         desc: "The generic word for an entry — used in shared places like the Recycle Bin, related tabs, bulk actions, and import/export." },
       { key: "stage", dflt: { one: "Stage", many: "Stages" },
-        desc: "What a pipeline step is called — used on boards, pipeline editors, and stage dropdowns.",
-        descByModule: { contact: "Contacts move through pipeline stages, so the word shows here too." } },
+        desc: "What a pipeline step is called — used on boards, pipeline editors, and stage dropdowns. Contacts move through pipeline stages too, so this word also names their steps." },
       { key: "resource", dflt: { one: "Resource", many: "Resources" },
         desc: "What a bookable person or thing is called — technician, stylist, bay — used on Bookings and Scheduling." },
-    ].filter(function (w) { return termAppliesToModule(w.key, selectedType); });
+    ].filter(function (w) { return termUsedInPortal(w.key); });
 
     const rows = [];
     GENERIC_WORDS.forEach(function (w) {
@@ -4339,7 +4352,7 @@
       const m = el("input", "input mf-term-input"); m.value = cur.many || w.dflt.many; m.placeholder = w.dflt.many;
       m.title = "Plural — auto-fills from the singular; edit for irregulars";
       r.appendChild(o); r.appendChild(m); wrap.appendChild(r);
-      const descText = (w.descByModule && selectedType && w.descByModule[selectedType.key]) || w.desc;
+      const descText = w.desc;
       wrap.appendChild(el("p", "mf-term-desc", esc(descText)));
       body.appendChild(wrap);
       const row = { key: w.key, oneEl: o, manyEl: m, touched: !!(cur.many && cur.many !== App.pluralize(cur.one || w.dflt.one)) };
@@ -4351,7 +4364,7 @@
     save.style.marginTop = "8px";
     save.onclick = async function () {
       // Only the shown terms are sent; the server MERGES per key, so terms not shown
-      // for this module keep their portal-wide values untouched.
+      // here keep their stored values untouched.
       const payload = { generic: {} };
       for (const row of rows) {
         const one = row.oneEl.value.trim(); let many = row.manyEl.value.trim();
@@ -4365,11 +4378,12 @@
     col.appendChild(save);
   }
 
-  // ---- VIEWS section (beneath Terms) — the module's OPTIONAL views. Board (kanban) is
-  // available only for modules with a pipeline; Calendar only for modules with a date field.
-  // Each shows an ON/OFF toggle (with an availability hint when it can't be turned on) that
-  // controls whether the view appears on the module's list page. Map/Gallery are shown as
-  // "Coming soon" (future batches). Guarded by the module-management permission. ----
+  // ---- VIEWS section (a horizontal STRIP on Modules & Fields, below the module tabs and
+  // above the library/fields grid) — the module's OPTIONAL views as compact side-by-side tile
+  // cards. Board is available only for modules with a pipeline; Calendar only with a date
+  // field; Map only with an address field; Gallery only with an image field. Each shows an
+  // ON/OFF toggle (with an availability hint when it can't be turned on) that controls whether
+  // the view appears on the module's list page. Guarded by the module-management permission. ----
   function buildViewsSection(col, selectedType) {
     const prev = col.querySelector(".mf-views"); if (prev) prev.remove(); // avoid dupes on re-render
     if (!selectedType) return;
@@ -5389,36 +5403,39 @@
       };
     }
 
-    // Modules & Fields — three columns: field library | modules (+ Terms) | the
-    // selected module's sections & fields. Module selection replaces the old dropdown.
+    // Modules & Fields — module tabs row, then the per-module VIEWS strip, then TWO columns:
+    // field library | the selected module's sections & fields. (Terms now live on the Pages
+    // settings tab — layout restructure.)
     async function secFields(panel) {
       panel.innerHTML = `<h2 class="settings-h">Modules &amp; Fields</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Your modules, what their records are called, and the fields on each. Drag a field type onto a section to add it.</p>`;
+        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Your modules, the fields on each, and which views a module offers. Drag a field type onto a section to add it.</p>`;
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
       const visible = (types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
       if (!App.state.fieldsType || !visible.some((t) => t.key === App.state.fieldsType)) {
         App.state.fieldsType = (visible[0] && visible[0].key) || "contact";
       }
-      // Terms values are portal-wide; fetch the generic map once for this render.
-      let generic = {};
-      try { const ld = await App.portalApi("/api/labels"); generic = (ld && ld.generic) || {}; } catch (e) {}
 
-      // Modules — a HORIZONTAL row of tabs directly beneath the description (Task 2).
+      // Modules — a HORIZONTAL row of tabs directly beneath the description.
       const modulesRow = el("nav", "mf-modules-row");
       panel.appendChild(modulesRow);
 
-      // Below: three columns — Field library | Fields | Terms (Modules is the row above).
+      // VIEWS strip — full-width horizontal band below the module tabs, above the grid
+      // (layout restructure). Same data + behavior as the old right-column panel; only the home
+      // and the tile layout changed.
+      const viewsStrip = el("div", "mf-views-strip");
+      panel.appendChild(viewsStrip);
+
+      // Below: TWO columns — Field library | Fields (Terms moved to the Pages tab).
       const grid = el("div", "mf-grid");
       const colLib = el("div", "mf-col mf-col-library");
       const host = el("div", "mf-col mf-col-fields"); // "Fields" column — the editor mount
-      const colTerms = el("div", "mf-col mf-col-terms");
-      grid.appendChild(colLib); grid.appendChild(host); grid.appendChild(colTerms);
+      grid.appendChild(colLib); grid.appendChild(host);
       panel.appendChild(grid);
 
       const currentType = function () { return visible.find(function (t) { return t.key === App.state.fieldsType; }) || visible[0]; };
-      const renderTerms = function () { buildTermsSection(colTerms, currentType(), generic); buildViewsSection(colTerms, currentType()); };
-      // Repaint just the Views panel with a FRESH record type (from a server round-trip), keeping
+      const renderViewsStrip = function () { buildViewsSection(viewsStrip, currentType()); };
+      // Repaint just the Views strip with a FRESH record type (from a server round-trip), keeping
       // the cached list in sync so currentType() and later repaints agree. Used by the Pipeline
       // toggle so Board availability updates live without a stale read or a full page reload.
       mfViewsRepaint = function (freshType) {
@@ -5426,18 +5443,18 @@
           const i = visible.findIndex(function (t) { return t.key === freshType.key; });
           if (i >= 0) visible[i] = freshType;
         }
-        buildViewsSection(colTerms, currentType());
+        buildViewsSection(viewsStrip, currentType());
       };
       function selectModule(key) {
         App.state.fieldsType = key;
         Array.prototype.forEach.call(modulesRow.querySelectorAll(".mf-mod-tab"), function (r) { r.classList.toggle("active", r.dataset.key === key); });
-        renderFields(true); // repaint the Fields column
-        renderTerms();      // repaint Terms for the newly-selected module
+        renderFields(true);   // repaint the Fields column
+        renderViewsStrip();   // repaint the Views strip for the newly-selected module
       }
 
       buildFieldLibrary(colLib);                              // Field library (two columns via CSS)
       buildModulesRow(modulesRow, visible, selectModule);     // Modules horizontal row (⋮ rename/move/hide)
-      renderTerms();                                          // Terms (only those relevant to the module)
+      renderViewsStrip();                                     // Views strip (per selected module)
 
       fieldsMount = host;
       await renderFields(true, host);                         // Fields

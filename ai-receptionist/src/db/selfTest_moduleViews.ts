@@ -63,7 +63,7 @@ check(/if \(boardEnabled && view === "board"\) renderBoard\(\)/.test(REL), "boar
 
 console.log("\n(E) Views section rendered beneath Terms:");
 check(/function buildViewsSection\(col, selectedType\)/.test(portal), "buildViewsSection exists");
-check(/buildTermsSection\(colTerms, currentType\(\), generic\); buildViewsSection\(colTerms, currentType\(\)\);/.test(portal), "the Views section is rendered beneath Terms (same column)");
+check(/const renderViewsStrip = function \(\) \{ buildViewsSection\(viewsStrip, currentType\(\)\); \};/.test(portal), "the Views section renders as the horizontal strip (layout restructure)");
 check(/Turn on a pipeline to enable the Board view\./.test(portal), "Board shows the pipeline-required hint when unavailable");
 check(/Add a date field to enable the Calendar view\./.test(portal), "Calendar shows the date-field-required hint when unavailable");
 check(/name: "Map", available: mapAvailable/.test(portal) && /name: "Gallery", available: galAvailable/.test(portal), "Map and Gallery are both built (availability-driven) — no more coming-soon tiles");

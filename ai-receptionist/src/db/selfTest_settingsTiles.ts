@@ -38,10 +38,10 @@ check(/\.filter\(\(s\) => canEditPortal \|\| !s\.admin\)/.test(portal), "admin-o
 // (2) Modules & Fields layout: Modules is now a horizontal ROW; below are three
 //     columns Field library | Fields | Terms (updated by the later refinements batch).
 console.log("\n(2) Modules & Fields — modules row + Field library | Fields | Terms:");
-check(/grid\.appendChild\(colLib\); grid\.appendChild\(host\); grid\.appendChild\(colTerms\);/.test(portal), "below-row columns appended in order: Field library, Fields, Terms");
+check(/grid\.appendChild\(colLib\); grid\.appendChild\(host\);/.test(portal) && !/colTerms/.test(portal), "below-strip columns appended in order: Field library, Fields (Terms column removed — layout restructure)");
 check(/mf-modules-row/.test(portal) && /mf-mod-tab/.test(portal), "Modules render as a horizontal row of tabs");
-check(/mf-col mf-col-library/.test(portal) && /mf-col mf-col-fields/.test(portal) && /mf-col mf-col-terms/.test(portal), "the three column classes are present");
-check(/buildTermsSection\(colTerms, currentType\(\), generic\)/.test(portal), "Terms column is built per selected module");
+check(/mf-col mf-col-library/.test(portal) && /mf-col mf-col-fields/.test(portal) && !/mf-col-terms/.test(portal), "the two column classes are present (no Terms column class remains)");
+check(/panel\.appendChild\(viewsStrip\);[\s\S]{0,700}panel\.appendChild\(grid\);/.test(portal), "the Views strip mounts between the module tabs and the grid (Terms moved to the Pages tab)");
 check(!/beneath the modules/.test(portal), "Terms is not a sub-section under Modules");
 check(/el\("div", "mf-col-title", "Fields"\)/.test(portal), 'the Fields column heading is "Fields"');
 check(!/"mf-col-title", "Sections & fields"/.test(portal), '"Sections & fields" heading is gone');
@@ -52,8 +52,8 @@ check(/fieldsMount = host;\s*\n\s*await renderFields\(true, host\);/.test(portal
 
 // (3) CSS.
 console.log("\n(3) CSS:");
-check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(240px, 1fr\) minmax\(0, 1\.15fr\) minmax\(180px, 240px\)/.test(css), "three-column grid template (Field library | Fields | Terms), library rebalanced wider");
-check(/\.mf-col-library, \.mf-col-terms \{/.test(css), "Field library + Terms columns get the card styling");
+check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(240px, 1fr\) minmax\(0, 1\.15fr\); gap: 16px/.test(css), "two-column grid template (Field library | Fields), balance kept from the earlier rebalance");
+check(/\.mf-col-library \{/.test(css) && !/mf-col-terms/.test(css), "the Field library keeps the card styling; no .mf-col-terms orphan rules remain");
 check(/\.settings-tile \{/.test(css) && /\.settings-tiles \{ display: flex; flex-wrap: wrap/.test(css), "tile styles exist and wrap");
 
 console.log(`\n${failures === 0 ? "ALL PASSED \u2705 (tiles alphabetical; MF = Modules | Field library | Fields | Terms)" : failures + " FAILED \u274c"}`);

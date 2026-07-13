@@ -37,7 +37,7 @@ async function main() {
   // ---- (1) termAppliesToModule unchanged (vm-evaluate the REAL function) ----
   console.log("\n(1) termAppliesToModule behavior unchanged:");
   const a = portal.indexOf("function moduleHasStages");
-  const b = portal.indexOf('// "Terms" column');
+  const b = portal.indexOf('// ---- SHARED TERMS editor'); // the vm block ends where the (relocated) editor begins
   const block = portal.slice(a, b);
   const sandbox: any = {};
   vm.createContext(sandbox);
@@ -55,7 +55,7 @@ async function main() {
 
   // ---- (2) rendered structure + wording ----
   console.log("\n(2) per-term name + inputs + description; honest hint:");
-  const tsStart = portal.indexOf("function buildTermsSection(col, selectedType, generic)");
+  const tsStart = portal.indexOf("function buildTermsSection(col, generic)"); // portal-level since the layout restructure
   const tsEnd = portal.indexOf("// ---- VIEWS section");
   const TS = portal.slice(tsStart, tsEnd);
   check(tsStart > 0 && TS.length > 0, "buildTermsSection located");
@@ -66,11 +66,11 @@ async function main() {
   check(/Recycle Bin, related tabs, bulk actions, and import\/export/.test(TS), "record's description names its real surfaces");
   check(/boards, pipeline editors, and stage dropdowns/.test(TS), "stage's description names its real surfaces");
   check(/technician, stylist, bay — used on Bookings and Scheduling/.test(TS), "resource's description names its real surfaces");
-  check(/descByModule: \{ contact: "Contacts move through pipeline stages/.test(TS), "on Contacts, Stage explains WHY it appears (the exception is self-explanatory)");
+  check(/Contacts move through pipeline stages too/.test(TS), "Stage's description keeps the contact rationale (portal-level phrasing)");
   check(/Each word has one value for the whole portal — renaming it here renames it everywhere it appears\./.test(TS), "the hint states the real model plainly — exactly once");
   check(!/— edited here, saved portal-wide\./.test(TS), "the old contradictory hint phrasing is gone");
   check(!/mf-term-tag/.test(TS) && !/termIsShared/.test(TS), "no per-term portal-wide tag — the point is made once, in the hint (polish pass)");
-  check(!/mf-terms-for/.test(TS) && /Words used on " \+ \(modName/.test(TS), "the head is plain \"Terms\"; the hint (not the head) names the module (polish pass)");
+  check(!/mf-terms-for/.test(TS) && /Words used across your portal\./.test(TS), "the head has no module suffix; the hint is portal-level (Terms now live on the Pages tab)");
 
   // ---- (3) save payload construction unchanged ----
   console.log("\n(3) save path unchanged:");
@@ -94,8 +94,8 @@ async function main() {
   console.log("\n(5) layout sanity:");
   check(/\.mf-term-desc \{[^}]*overflow-wrap: normal/.test(css) && !/\.mf-term-desc \{[^}]*overflow-wrap: anywhere/.test(css), "descriptions wrap at word boundaries (no overflow-wrap:anywhere)");
   check(/\.mf-term \{ margin-bottom: 14px; \}/.test(css), "term rows stack vertically with breathing room");
-  check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(240px, 1fr\) minmax\(0, 1\.15fr\) minmax\(180px, 240px\)/.test(css), "the three-column grid (and the Terms column width) is untouched");
-  check(/buildTermsSection\(colTerms, currentType\(\), generic\); buildViewsSection\(colTerms, currentType\(\)\);/.test(portal), "the Views panel still renders beneath Terms, undisturbed");
+  check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(240px, 1fr\) minmax\(0, 1\.15fr\); gap: 16px/.test(css), "the grid is two columns (Terms moved off Modules & Fields — layout restructure)");
+  check(/buildTermsSection\(termsHost, \(labelsData && labelsData\.generic\) \|\| \{\}\)/.test(portal), "the Terms editor mounts on the Pages tab (its new home)");
 }
 
 main()

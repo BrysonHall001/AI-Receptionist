@@ -40,17 +40,17 @@ async function main() {
 
   // ---- (1) Terms panel: one consistent story ----
   console.log("\n(1) Terms panel messaging:");
-  const TS = portal.slice(portal.indexOf("function buildTermsSection(col, selectedType, generic)"), portal.indexOf("// ---- VIEWS section"));
+  const TS = portal.slice(portal.indexOf("function buildTermsSection(col, generic)"), portal.indexOf("// ---- VIEWS section")); // portal-level since the layout restructure
   check(TS.length > 0, "buildTermsSection located");
   check(!/mf-terms-for/.test(TS), "the head no longer renders a \"for <Module>\" suffix (plain \"Terms\")");
-  check(/mf-col-title", "Terms"/.test(TS), "the head title is still \"Terms\"");
-  check(/Words used on " \+ \(modName \? esc\(modName\) : "this module"\) \+ "\. Each word has one value for the whole portal — renaming it here renames it everywhere it appears\."/.test(TS), "the hint carries the new single consistent phrasing (module named here, portal-wide said once)");
+  check(/mf-col-title", "Shared terms"/.test(TS), "the head title is \"Shared terms\" (its Pages-tab group title)");
+  check(/Words used across your portal\. Each word has one value for the whole portal — renaming it here renames it everywhere it appears\./.test(TS), "the hint keeps the single consistent portal-wide phrasing (now portal-level)");
   check(!/mf-term-tag/.test(TS) && !/termIsShared/.test(TS), "no per-term \"PORTAL-WIDE\" tag remains (no tag element, no shared-cue logic)");
   check(!/mf-term-tag/.test(css), "the tag's CSS is removed too (no dead styling)");
   check(!/renames what a step is called everywhere/.test(TS), "no description repeats the portal-wide point (said exactly once, in the hint)");
-  check(/descByModule: \{ contact: "Contacts move through pipeline stages, so the word shows here too\." \}/.test(TS), "the Contacts Stage explanation is kept (trimmed)");
+  check(/Contacts move through pipeline stages too/.test(TS), "the contact rationale is kept inside Stage's portal-level description");
   check(/mf-term-name", esc\(w\.dflt\.one\)/.test(TS) && /mf-term-desc", esc\(descText\)/.test(TS), "per-term name labels + descriptions are kept");
-  check(/\.filter\(function \(w\) \{ return termAppliesToModule\(w\.key, selectedType\); \}\)/.test(TS), "per-module FILTERING is unchanged (only relevant words show)");
+  check(/\.filter\(function \(w\) \{ return termUsedInPortal\(w\.key\); \}\)/.test(TS), "PORTAL-LEVEL filtering (a word shows if relevant anywhere — layout restructure)");
   // Save path byte-identical (same assertions the clarity-pass test proved).
   check(/const payload = \{ generic: \{\} \};/.test(TS) && /payload\.generic\[row\.key\] = \{ one: one, many: many \};/.test(TS), "the save payload construction is unchanged");
   check(/App\.portalApi\("\/api\/labels", \{ method: "PATCH", body: JSON\.stringify\(payload\) \}\)/.test(TS), "the PATCH /api/labels call is unchanged");

@@ -1809,9 +1809,9 @@ tbody tr.row-selected { background: var(--accent-soft); }
 @media (max-width: 560px) { .lbl-row { grid-template-columns: 1fr 1fr; gap: 6px; } }
 
 /* ---------- Modules & Fields (Modules = horizontal row above; then Field library | Fields | Terms) ---------- */
-.mf-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.15fr) minmax(180px, 240px); gap: 16px; align-items: start; }
+.mf-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
 .mf-col { min-width: 0; }
-.mf-col-library, .mf-col-terms { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
+.mf-col-library { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
 .mf-col-title { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; color: var(--ink); margin-bottom: 8px; }
 .mf-col-subtitle { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 4px; }
 .mf-col-hint { font-size: 11.5px; color: var(--ink-faint); margin: 0 0 10px; line-height: 1.4; }
@@ -1855,9 +1855,12 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-term-name { font-size: 12.5px; font-weight: 700; color: var(--ink); }
 .mf-term-desc { font-size: 11.5px; line-height: 1.4; color: var(--ink-faint); margin: 4px 0 0; white-space: normal; overflow-wrap: normal; }
 /* Views section (beneath Terms) — per-module optional views (Board / Calendar / …) */
-.mf-views { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }
+.mf-views-strip { margin: 0 0 16px; }
+.mf-views { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; }
 .mf-views .mf-col-hint { margin-bottom: 10px; }
-.mf-views-body { display: flex; flex-direction: column; gap: 8px; }
+.mf-views-body { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+.mf-views-body .mf-view-row { flex: 1 1 230px; max-width: 360px; min-width: 0; }
+@media (max-width: 700px) { .mf-views-body { flex-direction: column; } .mf-views-body .mf-view-row { max-width: none; } }
 .mf-view-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; }
 .mf-view-row .switch { margin-top: 2px; flex: none; }
 .mf-view-row-off { opacity: 0.72; }
