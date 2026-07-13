@@ -118,7 +118,7 @@ async function main() {
   cf = await listFields(T, "contact");
   const dateField = cf.find((f: any) => f.type === "date");
   check(!!dateField, "adding a date field makes Calendar available (moduleDateFields rule)");
-  if (!dateField) throw new Error("contact date field missing after createField \u2014 aborting the calendar assertions (failure already recorded above)");
+  if (!dateField) throw new Error("no date field on the contact type — cannot continue"); // narrows the type; fails loudly
   check(cf.filter((f: any) => f.type === "image").length === 0, "(setup) no image field → Gallery unavailable");
   await createField(T, { label: "Photo", type: "image" }, "contact");
   cf = await listFields(T, "contact");
