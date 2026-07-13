@@ -83,7 +83,19 @@ function countCss(css: string): FileCounts & { spacing: Set<string> } {
   return { rawHex, offScaleFontSize, inlineStyle: 0, spacing };
 }
 
+// Email-HTML exemption (Phase 6): email clients don't support stylesheets, so any code
+// that BUILDS outbound email markup must keep its inline styles. Such regions are wrapped
+// in marker comments and skipped for every counter:
+//   // <email-html>
+//   ...builders of sent/previewed email markup...
+//   // </email-html>
+// The markers are deliberate documentation — an unmarked inline style is still a violation.
+function stripEmailHtmlRegions(src: string): string {
+  return src.replace(/\/\/ <email-html>[\s\S]*?\/\/ <\/email-html>/g, "/* email-html exempt */");
+}
+
 function countJsOrHtml(src: string, isThemeJs: boolean): FileCounts {
+  src = stripEmailHtmlRegions(src);
   let rawHex = 0;
   if (!isThemeJs) {
     for (const line of src.split("\n")) {

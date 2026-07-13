@@ -47,11 +47,15 @@
     ].join(";");
   }
   // Full inline-styled anchor markup for the button (round-trips into the email HTML).
+  // <email-html>
+  // buildButtonHtml produces OUTBOUND EMAIL markup — inline styles are REQUIRED here
+  // (email clients don't load stylesheets). Exempt from the design ratchet by marker.
   function buildButtonHtml(cfg) {
     cfg = cfg || {};
     return '<a href="' + esc(cfg.url || "#") + '" target="_blank" rel="noopener noreferrer" class="cta-btn" data-cta="' +
       esc(JSON.stringify(cfg)) + '" style="' + buttonStyle(cfg) + '">' + esc(cfg.text || "Button") + "</a>";
   }
+  // </email-html>
   // What a chosen survey contributes as a link value: the per-recipient MERGE TOKEN in a
   // personalizing context, else the survey's generic public link.
   function surveyLinkValue(survey, mode, origin) {
@@ -120,18 +124,18 @@
   // Opens a small modal: type a URL OR pick a survey. Calls back with the chosen value.
   function openLinkPicker(current, surveyLinkMode, onPick) {
     const overlay = el("div", "modal-overlay");
-    const modal = el("div", "modal"); modal.style.maxWidth = "440px";
+    const modal = el("div", "modal cp-modal-sm");
     modal.innerHTML = '<div class="modal-head"><h2>Link</h2><button class="icon-btn" id="lp-close">&times;</button></div>';
     const body = el("div", "modal-body");
     body.appendChild(el("label", "field-label", "URL"));
     const urlInput = el("input", "input"); urlInput.type = "text"; urlInput.placeholder = "https://… or pick a survey"; urlInput.value = current && current !== SURVEY_LINK_TOKEN ? current : "";
     if (current === SURVEY_LINK_TOKEN) urlInput.value = SURVEY_LINK_TOKEN;
     body.appendChild(urlInput);
-    const pickRow = el("div"); pickRow.style.cssText = "margin-top:10px";
+    const pickRow = el("div", "u-mt-10");
     const pickBtn = el("button", "btn btn-ghost btn-sm", "Pick a survey \u25BE");
     pickRow.appendChild(pickBtn); body.appendChild(pickRow);
-    const surveyList = el("div"); surveyList.style.cssText = "margin-top:8px;max-height:180px;overflow:auto;display:none;border:1px solid var(--line-strong);border-radius:6px"; body.appendChild(surveyList);
-    const note = el("div", "cell-muted"); note.style.cssText = "font-size:12px;margin-top:8px";
+    const surveyList = el("div", "cp-survey-list u-hidden"); body.appendChild(surveyList);
+    const note = el("div", "cell-muted cp-note");
     note.textContent = surveyLinkMode === "token"
       ? "Picking a survey inserts a personal link token so each recipient gets their own."
       : "Picking a survey inserts its shareable link.";
@@ -139,19 +143,19 @@
 
     pickBtn.onclick = async () => {
       if (surveyList.style.display === "none") {
-        surveyList.style.display = "block"; surveyList.innerHTML = '<div class="cell-muted" style="padding:8px">Loading…</div>';
+        surveyList.classList.remove("u-hidden"); surveyList.innerHTML = '<div class="cell-muted u-pad-8">Loading…</div>';
         try {
           const surveys = await App.portalApi("/api/surveys");
           surveyList.innerHTML = "";
-          if (!surveys.length) { surveyList.appendChild(el("div", "cell-muted", "No surveys yet.")).style.padding = "8px"; return; }
+          if (!surveys.length) { surveyList.appendChild(el("div", "cell-muted u-pad-8", "No surveys yet.")); return; }
           surveys.forEach((s) => {
-            const row = el("button", "saved-item"); row.style.cssText = "display:block;width:100%;text-align:left;padding:8px 10px;background:none;border:0;cursor:pointer";
-            row.innerHTML = '<span class="cell-strong">' + esc(s.name) + '</span> <span class="cell-muted" style="font-size:11px">' + esc(s.status) + "</span>";
-            row.onclick = () => { urlInput.value = surveyLinkValue(s, surveyLinkMode); surveyList.style.display = "none"; };
+            const row = el("button", "saved-item cp-survey-row");
+            row.innerHTML = '<span class="cell-strong">' + esc(s.name) + '</span> <span class="cell-muted u-meta">' + esc(s.status) + "</span>";
+            row.onclick = () => { urlInput.value = surveyLinkValue(s, surveyLinkMode); surveyList.classList.add("u-hidden"); };
             surveyList.appendChild(row);
           });
-        } catch (e) { surveyList.innerHTML = '<div class="cell-muted" style="padding:8px">' + esc(e.message) + "</div>"; }
-      } else { surveyList.style.display = "none"; }
+        } catch (e) { surveyList.innerHTML = '<div class="cell-muted u-pad-8">' + esc(e.message) + "</div>"; }
+      } else { surveyList.classList.add("u-hidden"); }
     };
 
     const foot = el("div", "modal-foot");
@@ -170,7 +174,7 @@
   function openButtonBuilder(existing, surveyLinkMode, onSave, onRemove) {
     const cfg = Object.assign({ text: "Click here", url: "", fill: "#5b5bd6", color: "#ffffff", border: "#5b5bd6", radius: 6, font: "arial" }, existing || {});
     const overlay = el("div", "modal-overlay");
-    const modal = el("div", "modal"); modal.style.maxWidth = "460px";
+    const modal = el("div", "modal"); // 460px is the .modal base max-width already
     modal.innerHTML = '<div class="modal-head"><h2>' + (existing ? "Edit button" : "Insert button") + '</h2><button class="icon-btn" id="bb-close">&times;</button></div>';
     const body = el("div", "modal-body");
 
@@ -186,10 +190,10 @@
 
     function swatches(label, key) {
       body.appendChild(el("label", "field-label", label));
-      const row = el("div"); row.style.cssText = "display:flex;flex-wrap:wrap;gap:6px";
+      const row = el("div", "cp-swatch-row");
       PRESET_COLORS.forEach((c) => {
         const sw = el("button"); sw.type = "button";
-        sw.style.cssText = "width:24px;height:24px;border-radius:5px;border:2px solid " + (cfg[key] === c ? "var(--ink)" : "var(--line-strong)") + ";background:" + c + ";cursor:pointer";
+        sw.className = "cp-swatch" + (cfg[key] === c ? " sel" : ""); sw.style.setProperty("--swatch", c);
         sw.onclick = () => { cfg[key] = c; paint(); };
         sw.dataset.key = key; sw.dataset.color = c;
         row.appendChild(sw);
@@ -201,13 +205,13 @@
     swatches("Outline color", "border");
 
     body.appendChild(el("label", "field-label", "Corner roundness"));
-    const range = el("input"); range.type = "range"; range.min = "0"; range.max = "40"; range.value = String(cfg.radius); range.style.width = "100%";
+    const range = el("input"); range.type = "range"; range.min = "0"; range.max = "40"; range.value = String(cfg.radius); range.classList.add("u-w-full");
     range.oninput = () => { cfg.radius = Number(range.value); paint(); };
     body.appendChild(range);
 
     body.appendChild(el("label", "field-label", "Link"));
-    const linkRow = el("div"); linkRow.style.cssText = "display:flex;gap:8px;align-items:center";
-    const linkIn = el("input", "input"); linkIn.type = "text"; linkIn.style.flex = "1"; linkIn.placeholder = "https://… or pick a survey"; linkIn.value = cfg.url || "";
+    const linkRow = el("div", "flex-row-8");
+    const linkIn = el("input", "input u-flex-1"); linkIn.type = "text"; linkIn.placeholder = "https://… or pick a survey"; linkIn.value = cfg.url || "";
     linkIn.oninput = () => { cfg.url = linkIn.value; };
     const linkPick = el("button", "btn btn-ghost btn-sm", "Pick…");
     linkPick.onclick = () => openLinkPicker(cfg.url, surveyLinkMode, (v) => { cfg.url = v || ""; linkIn.value = cfg.url; });
@@ -215,12 +219,12 @@
     body.appendChild(linkRow);
 
     body.appendChild(el("label", "field-label", "Preview"));
-    const preview = el("div"); preview.style.cssText = "background:#fff;padding:14px;border:1px solid var(--line-strong);border-radius:6px";
+    const preview = el("div", "cp-btn-preview");
     body.appendChild(preview);
     function paint() {
       preview.innerHTML = buildButtonHtml(cfg);
       Array.prototype.forEach.call(body.querySelectorAll("button[data-key]"), (sw) => {
-        sw.style.borderColor = cfg[sw.dataset.key] === sw.dataset.color ? "var(--ink)" : "var(--line-strong)";
+        sw.classList.toggle("sel", cfg[sw.dataset.key] === sw.dataset.color);
       });
     }
     paint();
@@ -273,16 +277,16 @@
   // "scopeApi is not defined" crash when opening the picker).
   function openMergeTagPicker(onInsert, scopeApi) {
     const overlay = el("div", "modal-overlay");
-    const m = el("div", "modal"); m.style.cssText = "max-width:440px;width:100%;";
+    const m = el("div", "modal cp-modal-sm");
     m.innerHTML = `<div class="modal-head"><h2>Insert merge tag</h2><button class="icon-btn" id="mt-close">&times;</button></div>`;
     const body = el("div", "modal-body");
-    const hint = el("p", "cell-muted"); hint.style.cssText = "margin:0 0 8px;font-size:13px;line-height:1.5";
+    const hint = el("p", "cell-muted cp-hint");
     hint.textContent = "Pick a field to personalize per recipient. Set an optional fallback used when a recipient has no value (e.g. \u201cthere\u201d).";
     body.appendChild(hint);
-    const search = el("input", "input"); search.placeholder = "Search fields\u2026"; search.style.cssText = "margin:0 0 8px";
+    const search = el("input", "input"); search.placeholder = "Search fields\u2026"; search.classList.add("cp-mb8");
     body.appendChild(search);
-    const list = el("div"); list.style.cssText = "max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:4px"; body.appendChild(list);
-    const fbWrap = el("label", "field"); fbWrap.style.cssText = "display:block;margin-top:10px";
+    const list = el("div", "cp-tag-list"); body.appendChild(list);
+    const fbWrap = el("label", "field cp-block-mt10");
     fbWrap.innerHTML = `<span class="field-label">Fallback (optional)</span>`;
     const fb = el("input", "input"); fb.placeholder = "e.g. there"; fbWrap.appendChild(fb);
     body.appendChild(fbWrap);
@@ -295,8 +299,8 @@
       const q = search.value.trim().toLowerCase();
       list.innerHTML = "";
       tags.filter((t) => !q || t.key.toLowerCase().includes(q) || (t.label || "").toLowerCase().includes(q)).forEach((t) => {
-        const b = el("button", "btn btn-ghost btn-sm"); b.style.cssText = "justify-content:flex-start;text-align:left";
-        b.innerHTML = `${esc(t.label)} <span class="cell-muted" style="margin-left:6px">{{${esc(t.key)}}}</span>`;
+        const b = el("button", "btn btn-ghost btn-sm cp-tag-btn");
+        b.innerHTML = `${esc(t.label)} <span class="cell-muted u-ml-6">{{${esc(t.key)}}}</span>`;
         b.onclick = () => { const f = fb.value.trim(); onInsert("{{" + t.key + (f ? "|" + f : "") + "}}"); close(); };
         list.appendChild(b);
       });
@@ -418,7 +422,9 @@
       getHTML: () => (quill ? quill.root.innerHTML : plainBody.innerHTML),
       getText: () => (quill ? quill.getText() : plainBody.innerText),
       setBody: (html) => { if (quill) { quill.setContents([]); if (html) quill.clipboard.dangerouslyPasteHTML(0, html); } else plainBody.innerHTML = html || ""; },
+      // <email-html> the img below is OUTBOUND email content — inline style required
       insertHeaderImage: (dataUrl) => { if (quill) quill.insertEmbed(0, "image", dataUrl, "user"); else plainBody.innerHTML = '<img class="email-header-img" src="' + dataUrl + '" style="max-width:100%" />' + plainBody.innerHTML; },
+      // </email-html>
       appendHtml: (html) => { if (quill) quill.clipboard.dangerouslyPasteHTML(quill.getLength(), "<p><br></p>" + html); else plainBody.innerHTML += "<br>" + html; },
       focus: () => (quill ? quill.focus() : plainBody.focus()),
     };
@@ -468,7 +474,7 @@
       tplMenu.innerHTML = "";
       // Searchable header (email templates carry tags/preview worth filtering).
       if (kind === "email") {
-        const search = el("input", "input"); search.placeholder = "Search templates\u2026"; search.style.cssText = "margin:0 0 6px;width:100%"; search.value = tplFilter;
+        const search = el("input", "input"); search.placeholder = "Search templates\u2026"; search.classList.add("cp-tpl-search"); search.value = tplFilter;
         search.onclick = (e) => e.stopPropagation();
         search.oninput = () => { tplFilter = search.value; paintList(); };
         tplMenu.appendChild(search);
@@ -481,11 +487,11 @@
         const shown = templates.filter((t) => !q || (t.name || "").toLowerCase().includes(q) || (t.tag || "").toLowerCase().includes(q));
         if (!shown.length) { listWrap.appendChild(el("div", "saved-empty", templates.length ? "No matches" : "No templates yet")); return; }
         shown.forEach((t) => {
-          const row = el("div", "saved-item"); row.style.cssText = "align-items:flex-start";
-          const main = el("button", "saved-name"); main.style.cssText = "flex:1;text-align:left;display:block";
-          const tagPill = (kind === "email" && t.tag) ? ` <span class="pill" style="margin-left:6px">${esc(t.tag)}</span>` : "";
+          const row = el("div", "saved-item cp-item-top");
+          const main = el("button", "saved-name cp-item-main");
+          const tagPill = (kind === "email" && t.tag) ? ` <span class="pill u-ml-6">${esc(t.tag)}</span>` : "";
           const prev = kind === "email" ? stripPreview(t.body) : "";
-          main.innerHTML = `<span class="cell-strong">${esc(t.name)}</span>${tagPill}` + (prev ? `<br><span class="cell-muted" style="font-size:12px">${esc(prev)}</span>` : "");
+          main.innerHTML = `<span class="cell-strong">${esc(t.name)}</span>${tagPill}` + (prev ? `<br><span class="cell-muted u-meta">${esc(prev)}</span>` : "");
           main.onclick = () => { if (kind === "email" && subjectInput && t.subject) subjectInput.value = t.subject; api.setBody(t.body || ""); tplMenu.classList.add("hidden"); toast("Loaded \u201c" + t.name + "\u201d"); };
           const del = el("button", "saved-del", "&times;");
           del.onclick = async (e) => { e.stopPropagation(); if (!(await App.ui.confirmModal({ title: "Delete template", message: "Delete template \u201c" + t.name + "\u201d?", confirmText: "Delete template" }))) return; try { await scopeApi("/api/templates/" + t.id, { method: "DELETE" }); toast("Template deleted"); loadTemplates(); } catch (err) { toast(err.message, true); } };
@@ -526,7 +532,7 @@
     }
 
     const hdrBtn = el("button", "btn btn-ghost btn-sm", "Header image");
-    const hdrFile = el("input"); hdrFile.type = "file"; hdrFile.accept = "image/*"; hdrFile.style.display = "none";
+    const hdrFile = el("input"); hdrFile.type = "file"; hdrFile.accept = "image/*"; hdrFile.classList.add("u-hidden");
     hdrBtn.onclick = () => hdrFile.click();
     hdrFile.onchange = () => {
       const f = hdrFile.files[0]; if (!f) return;
@@ -550,14 +556,14 @@
   function openInviteComposer(opts) {
     opts = opts || {};
     const overlay = el("div", "modal-overlay");
-    const m = el("div", "modal"); m.style.cssText = "max-width:680px;width:100%;";
+    const m = el("div", "modal cp-modal-lg");
     m.innerHTML = `<div class="modal-head"><h2>Write invite email</h2><button class="icon-btn" id="ic-close">&times;</button></div>`;
     const body = el("div", "modal-body");
-    const to = el("p", "cell-muted"); to.style.cssText = "margin:0 0 10px;font-size:13px;line-height:1.5;";
+    const to = el("p", "cell-muted cp-to-line");
     to.innerHTML = `To: <strong>${esc(opts.email || "")}</strong>. Use <strong>Insert invite link</strong> below (or type <code>${esc(INVITE_LINK_TOKEN)}</code>, or put it in a button/link's URL) to place their unique apply link anywhere in your message. The invite is only created when you send.`;
     body.appendChild(to);
 
-    const tools = el("div"); tools.style.cssText = "display:flex;gap:8px;margin:0 0 8px;";
+    const tools = el("div", "cp-tools");
     const insertBtn = el("button", "btn btn-ghost btn-sm", "Insert invite link");
     tools.appendChild(insertBtn);
     body.appendChild(tools);
@@ -578,7 +584,7 @@
       api.focus();
     };
 
-    const foot = el("div", "modal-foot"); foot.style.cssText = "display:flex;gap:10px;justify-content:flex-end;";
+    const foot = el("div", "modal-foot cp-foot-gap10");
     const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
     const sendBtn = el("button", "btn btn-primary btn-sm", "Send invitation");
     foot.appendChild(cancel); foot.appendChild(sendBtn);

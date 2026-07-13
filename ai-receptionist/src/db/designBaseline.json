@@ -36,14 +36,14 @@
       "inlineStyle": 175
     },
     "js/compose.js": {
-      "rawHex": 1,
-      "offScaleFontSize": 1,
-      "inlineStyle": 39
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
     },
     "js/drips.js": {
-      "rawHex": 42,
-      "offScaleFontSize": 22,
-      "inlineStyle": 82
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 17
     },
     "js/feedback.js": {
       "rawHex": 0,
@@ -127,9 +127,9 @@
     }
   },
   "totals": {
-    "rawHex": 160,
-    "offScaleFontSize": 161,
-    "inlineStyle": 971
+    "rawHex": 117,
+    "offScaleFontSize": 138,
+    "inlineStyle": 867
   },
   "info": {
     "distinctSpacingValues": 31

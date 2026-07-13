@@ -31,15 +31,15 @@
   // ------------------------------------------------------------------ Library
   async function renderLibrary(host) {
     const { el, esc, toast } = App.util;
-    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    host.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
     let drips = [];
     try { drips = await App.portalApi("/api/drips"); } catch (e) { host.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; return; }
     drips = Array.isArray(drips) ? drips : [];
     host.innerHTML = "";
-    const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px";
+    const head = el("div"); head.classList.add("dr-lib-head");;
     const hl = el("div");
     hl.appendChild(el("h3", "settings-sub", "Drips"));
-    hl.appendChild(el("div", "cell-muted", "Visual drip campaigns — wire steps together, branch on conditions, and turn them on to run through your automations.")).style.cssText = "font-size:12.5px;margin-top:2px";
+    hl.appendChild(el("div", "cell-muted", "Visual drip campaigns — wire steps together, branch on conditions, and turn them on to run through your automations.")).classList.add("u-meta", "u-mt-2");
     const newBtn = el("button", "btn btn-primary btn-sm", "+ New drip");
     newBtn.onclick = async () => {
       const name = await App.ui.promptModal({ title: "New drip", label: "Drip name", placeholder: "e.g. New-lead nurture", okText: "Create" });
@@ -51,23 +51,23 @@
     host.appendChild(head);
 
     if (!drips.length) { host.appendChild(el("div", "card cell-muted", "No drips yet. Create one to start building.")); return; }
-    const list = el("div"); list.style.cssText = "display:flex;flex-direction:column;gap:8px";
+    const list = el("div"); list.classList.add("dr-lib-list");;
     drips.forEach((d) => {
       const nodeCount = (d.graph && Array.isArray(d.graph.nodes)) ? d.graph.nodes.length : 0;
       const branched = (d.graph && Array.isArray(d.graph.nodes)) ? d.graph.nodes.some((n) => n.type === "branch") : false;
-      const row = el("div", "card"); row.style.cssText = "padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap";
+      const row = el("div", "card"); row.classList.add("dr-lib-row");;
       const left = el("div");
       const pill = d.enabled
-        ? `<span style="display:inline-block;font-size:11px;font-weight:700;color:#166534;background:#dcfce7;border-radius:999px;padding:1px 8px;margin-left:8px">On</span>`
-        : `<span style="display:inline-block;font-size:11px;font-weight:700;color:#6b7280;background:#f1f5f9;border-radius:999px;padding:1px 8px;margin-left:8px">Off</span>`;
-      const brPill = branched ? `<span style="display:inline-block;font-size:11px;font-weight:700;color:#3730a3;background:#e0e7ff;border-radius:999px;padding:1px 8px;margin-left:6px">Branch</span>` : "";
-      left.innerHTML = `<div style="font-weight:600">${esc(d.name)}${pill}${brPill}</div><div class="cell-muted" style="font-size:12.5px">${nodeCount} step${nodeCount === 1 ? "" : "s"} · updated ${App.util.fmtDate ? App.util.fmtDate(d.updatedAt) : ""}</div>`;
-      const btns = el("div"); btns.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+        ? `<span class="pill success u-ml-8">On</span>`
+        : `<span class="pill pill-muted u-ml-8">Off</span>`;
+      const brPill = branched ? `<span class="pill u-ml-8">Branch</span>` : "";
+      left.innerHTML = `<div class="dr-row-name">${esc(d.name)}${pill}${brPill}</div><div class="cell-muted u-meta">${nodeCount} step${nodeCount === 1 ? "" : "s"} · updated ${App.util.fmtDate ? App.util.fmtDate(d.updatedAt) : ""}</div>`;
+      const btns = el("div"); btns.classList.add("dr-btns");;
       const open = el("button", "btn btn-primary btn-sm", "Open");
       open.onclick = async () => { try { const full = await App.portalApi("/api/drips/" + d.id); openEditor(host, full); } catch (e) { toast(e.message, true); } };
       const ren = el("button", "btn btn-ghost btn-sm", "Rename");
       ren.onclick = async () => { const name = await App.ui.promptModal({ title: "Rename drip", label: "Drip name", value: d.name, okText: "Rename" }); if (!name || !name.trim()) return; try { await App.portalApi("/api/drips/" + d.id, { method: "PATCH", body: JSON.stringify({ name: name.trim() }) }); toast("Renamed"); renderLibrary(host); } catch (e) { toast(e.message, true); } };
-      const del = el("button", "btn btn-ghost btn-sm", "Delete"); del.style.color = "#dc2626";
+      const del = el("button", "btn btn-ghost btn-sm txt-danger", "Delete");
       del.onclick = async () => { if (!(await App.ui.confirmModal({ title: "Delete drip", message: `Delete the drip \u201c${d.name}\u201d? Its automation will be removed too.`, confirmText: "Delete" }))) return; try { await App.portalApi("/api/drips/" + d.id, { method: "DELETE" }); toast("Deleted"); renderLibrary(host); } catch (e) { toast(e.message, true); } };
       btns.appendChild(open); btns.appendChild(ren); btns.appendChild(del);
       row.appendChild(left); row.appendChild(btns);
@@ -95,26 +95,26 @@
     };
 
     // Top bar
-    const bar = el("div"); bar.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px";
+    const bar = el("div"); bar.classList.add("dr-bar");;
     const back = el("button", "btn btn-ghost btn-sm", "\u2190 Drips"); back.onclick = () => renderLibrary(host);
-    const title = el("div", "settings-sub"); title.style.cssText = "font-weight:700;font-size:16px;flex:1"; title.textContent = drip.name;
-    const statusPill = el("span"); statusPill.style.cssText = "font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px";
-    const note = el("span", "cell-muted"); note.style.cssText = "font-size:12.5px";
+    const title = el("div", "settings-sub"); title.classList.add("dr-title");; title.textContent = drip.name;
+    const statusPill = el("span", "pill");
+    const note = el("span", "cell-muted u-meta");
     const saveBtn = el("button", "btn btn-ghost btn-sm", "Save");
     const toggleBtn = el("button", "btn btn-primary btn-sm", "Turn on");
     bar.appendChild(back); bar.appendChild(title); bar.appendChild(statusPill); bar.appendChild(note); bar.appendChild(saveBtn); bar.appendChild(toggleBtn);
     host.appendChild(bar);
 
-    const banner = el("div"); banner.style.cssText = "display:none;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px"; host.appendChild(banner);
+    const banner = el("div"); banner.classList.add("dr-banner"); banner.classList.add("u-hidden");; host.appendChild(banner);
 
     // Layout
-    const layout = el("div", "drip-layout"); layout.style.cssText = "display:flex;gap:12px;align-items:stretch;min-height:520px";
-    const palette = el("div", "drip-palette"); palette.style.cssText = "flex:0 0 190px;display:flex;flex-direction:column;gap:12px;overflow:auto;max-height:660px";
-    const canvasWrap = el("div"); canvasWrap.style.cssText = "flex:1 1 auto;min-width:320px;position:relative";
-    const canvas = el("div", "drip-canvas"); canvas.style.cssText = "position:relative;width:100%;height:660px;overflow:hidden;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:var(--panel-2);background-image:radial-gradient(rgba(128,128,128,.16) 1px, transparent 1px);background-size:22px 22px;cursor:grab";
+    const layout = el("div", "drip-layout"); layout.classList.add("dr-layout");;
+    const palette = el("div", "drip-palette"); palette.classList.add("dr-palette-col");;
+    const canvasWrap = el("div"); canvasWrap.classList.add("dr-canvas-wrap");;
+    const canvas = el("div", "drip-canvas"); canvas.classList.add("dr-canvas-box");;
     canvas.setAttribute("data-drip-canvas", "1");
-    const surface = el("div", "drip-surface"); surface.style.cssText = "position:absolute;left:0;top:0;width:2600px;height:1700px;transform-origin:0 0";
-    const svg = document.createElementNS(SVGNS, "svg"); svg.setAttribute("width", "2600"); svg.setAttribute("height", "1700"); svg.style.cssText = "position:absolute;left:0;top:0;pointer-events:none;overflow:visible";
+    const surface = el("div", "drip-surface"); surface.classList.add("dr-surface-box");;
+    const svg = document.createElementNS(SVGNS, "svg"); svg.setAttribute("width", "2600"); svg.setAttribute("height", "1700"); svg.classList.add("dr-svg");;
     // arrowhead marker
     const defs = document.createElementNS(SVGNS, "defs");
     const marker = document.createElementNS(SVGNS, "marker");
@@ -125,25 +125,25 @@
     canvas.appendChild(surface); canvasWrap.appendChild(canvas);
 
     // Zoom controls (overlay)
-    const zoomBar = el("div"); zoomBar.style.cssText = "position:absolute;right:12px;bottom:12px;display:flex;gap:6px;background:var(--panel,#fff);border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:4px;box-shadow:0 1px 4px rgba(0,0,0,.1)";
+    const zoomBar = el("div"); zoomBar.classList.add("dr-zoombar");;
     const zOut = el("button", "btn btn-ghost btn-sm", "\u2212"); const zIn = el("button", "btn btn-ghost btn-sm", "+"); const zFit = el("button", "btn btn-ghost btn-sm", "Fit");
-    [zOut, zIn, zFit].forEach((b) => { b.style.cssText = "padding:2px 9px;min-width:30px;font-weight:700"; zoomBar.appendChild(b); });
+    [zOut, zIn, zFit].forEach((b) => { b.classList.add("dr-zbtn"); zoomBar.appendChild(b); });
     canvasWrap.appendChild(zoomBar);
 
-    const configPanel = el("div", "drip-config"); configPanel.style.cssText = "flex:0 0 320px;border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:14px;overflow:auto;max-height:660px;background:var(--panel,#fff)";
+    const configPanel = el("div", "drip-config"); configPanel.classList.add("dr-config-col");;
     layout.appendChild(palette); layout.appendChild(canvasWrap); layout.appendChild(configPanel);
     host.appendChild(layout);
 
     // ---- Palette ----
     PALETTE_GROUPS.forEach((grp) => {
       const box = el("div");
-      box.appendChild(el("div", "cell-muted", grp.group)).style.cssText = "font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px";
+      box.appendChild(el("div", "cell-muted dr-grp-label", grp.group));
       grp.types.forEach((type) => {
         const m = NODE_META[type];
         const item = el("div", "drip-pal-item");
-        item.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line,#e5e7eb);border-left:4px solid " + m.accent + ";border-radius:8px;cursor:grab;margin-bottom:6px;background:var(--panel-2);font-size:13px";
+        item.classList.add("dr-palette-item"); item.style.setProperty("--node-accent", m.accent);
         item.setAttribute("draggable", "true"); item.dataset.type = type;
-        item.innerHTML = `<span style="font-size:15px">${m.icon}</span><span>${esc(m.label)}</span>`;
+        item.innerHTML = `<span class="dr-item-icon">${m.icon}</span><span>${esc(m.label)}</span>`;
         item.addEventListener("dragstart", (e) => { try { e.dataTransfer.setData("text/drip-node", type); e.dataTransfer.effectAllowed = "copy"; } catch (er) {} });
         box.appendChild(item);
       });
@@ -174,10 +174,10 @@
     // Pan on empty-canvas drag.
     canvas.addEventListener("mousedown", (e) => {
       if (e.target !== canvas && e.target !== surface && e.target !== svg && e.target !== edgeLayer) return;
-      deselect(); canvas.style.cursor = "grabbing";
+      deselect(); canvas.classList.add("grabbing");
       const sx = e.clientX, sy = e.clientY, otx = state.view.tx, oty = state.view.ty;
       const move = (ev) => { state.view.tx = otx + (ev.clientX - sx); state.view.ty = oty + (ev.clientY - sy); applyView(); };
-      const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); canvas.style.cursor = "grab"; };
+      const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); canvas.classList.remove("grabbing"); };
       document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
     });
 
@@ -194,8 +194,8 @@
     function markDirty() { note.textContent = "Unsaved changes"; }
     function markClean(txt) { note.textContent = txt || ""; }
     function paintStatus() {
-      if (state.enabled) { statusPill.textContent = "On"; statusPill.style.cssText = "font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;color:#166534;background:#dcfce7"; toggleBtn.textContent = "Turn off"; }
-      else { statusPill.textContent = "Off"; statusPill.style.cssText = "font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;color:#6b7280;background:#f1f5f9"; toggleBtn.textContent = "Turn on"; }
+      if (state.enabled) { statusPill.textContent = "On"; statusPill.className = "pill success"; toggleBtn.textContent = "Turn off"; }
+      else { statusPill.textContent = "Off"; statusPill.className = "pill pill-muted"; toggleBtn.textContent = "Turn on"; }
     }
 
     // ---- Anchors ----
@@ -221,14 +221,14 @@
         path.setAttribute("d", edgePath(a, b)); path.setAttribute("fill", "none");
         path.setAttribute("stroke", e.branch === "otherwise" ? "#9ca3af" : "#fb923c"); path.setAttribute("stroke-width", "2.5");
         path.setAttribute("marker-end", "url(#drip-arrow)");
-        path.setAttribute("data-edge", e.source + ">" + e.target); path.style.pointerEvents = "stroke"; path.style.cursor = "pointer";
+        path.setAttribute("data-edge", e.source + ">" + e.target); path.setAttribute("class", "dr-edge");
         edgeLayer.appendChild(path);
         const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
         if (e.branch) {
-          const lbl = document.createElementNS(SVGNS, "text"); lbl.setAttribute("x", mx); lbl.setAttribute("y", my - 6); lbl.setAttribute("text-anchor", "middle"); lbl.setAttribute("font-size", "11"); lbl.setAttribute("font-weight", "700"); lbl.setAttribute("fill", e.branch === "otherwise" ? "#6b7280" : "#ea580c"); lbl.style.pointerEvents = "none"; lbl.textContent = e.branch === "otherwise" ? "Otherwise" : "If"; edgeLayer.appendChild(lbl);
+          const lbl = document.createElementNS(SVGNS, "text"); lbl.setAttribute("x", mx); lbl.setAttribute("y", my - 6); lbl.setAttribute("text-anchor", "middle"); lbl.setAttribute("font-size", "11"); lbl.setAttribute("font-weight", "700"); lbl.setAttribute("class", "dr-edge-x"); lbl.setAttribute("fill", e.branch === "otherwise" ? "var(--ink-faint)" : "var(--flow-yes)"); lbl.textContent = e.branch === "otherwise" ? "Otherwise" : "If"; edgeLayer.appendChild(lbl);
         }
-        const del = document.createElementNS(SVGNS, "circle"); del.setAttribute("cx", mx); del.setAttribute("cy", my); del.setAttribute("r", "8"); del.setAttribute("fill", e.branch === "otherwise" ? "#9ca3af" : "#fb923c"); del.style.pointerEvents = "all"; del.style.cursor = "pointer";
-        const x = document.createElementNS(SVGNS, "text"); x.setAttribute("x", mx); x.setAttribute("y", my + 3.5); x.setAttribute("text-anchor", "middle"); x.setAttribute("font-size", "11"); x.setAttribute("fill", "#fff"); x.style.pointerEvents = "none"; x.textContent = "\u00d7";
+        const del = document.createElementNS(SVGNS, "circle"); del.setAttribute("cx", mx); del.setAttribute("cy", my); del.setAttribute("r", "8"); del.setAttribute("fill", e.branch === "otherwise" ? "#9ca3af" : "#fb923c"); del.setAttribute("class", "dr-edge-del");
+        const x = document.createElementNS(SVGNS, "text"); x.setAttribute("x", mx); x.setAttribute("y", my + 3.5); x.setAttribute("text-anchor", "middle"); x.setAttribute("font-size", "11"); x.setAttribute("fill", "#fff"); x.setAttribute("class", "dr-edge-x"); x.textContent = "\u00d7";
         del.addEventListener("click", (ev) => { ev.stopPropagation(); const i = state.edges.findIndex((ed) => ed.source === e.source && ed.target === e.target && ed.branch === e.branch); if (i >= 0) state.edges.splice(i, 1); renderEdges(); markDirty(); });
         edgeLayer.appendChild(del); edgeLayer.appendChild(x);
       });
@@ -260,20 +260,20 @@
       const selected = state.selectedId === node.id;
       if (m.trigger) {
         const d = TRIG_R * 2;
-        card.style.cssText = "position:absolute;left:" + node.x + "px;top:" + node.y + "px;width:" + d + "px;height:" + d + "px;border-radius:50%;background:var(--panel-2);border:2px solid " + (err ? "#ef4444" : m.accent) + ";box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:grab;user-select:none;padding:6px" + (selected ? ";outline:2px solid " + m.accent + ";outline-offset:2px" : "");
-        const outH = `<div class="drip-h drip-h-out" data-h="out" data-node-id="${node.id}" style="position:absolute;right:-7px;top:${TRIG_R - 6}px;width:12px;height:12px;border-radius:50%;background:${m.accent};border:2px solid #fff;cursor:crosshair"></div>`;
-        card.innerHTML = `<div style="font-size:18px">${m.icon}</div><div style="font-size:10.5px;font-weight:700;line-height:1.1;margin-top:2px">${esc(m.label)}</div><div class="drip-node-sub" style="font-size:9.5px;color:var(--ink-soft,#64748b);margin-top:1px;max-width:66px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nodeSummary(node))}</div>${outH}`;
+        card.className = "dr-node-trig" + (selected ? " sel" : ""); card.style.left = node.x + "px"; card.style.top = node.y + "px"; card.style.width = d + "px"; card.style.height = d + "px"; card.style.setProperty("--node-accent", err ? "var(--red)" : m.accent);
+        const outH = `<div class="drip-h drip-h-out dr-h-out-t" data-h="out" data-node-id="${node.id}" style="--node-accent:${m.accent}"></div>`;
+        card.innerHTML = `<div class="dr-t-icon">${m.icon}</div><div class="dr-t-label">${esc(m.label)}</div><div class="drip-node-sub dr-t-sub">${esc(nodeSummary(node))}</div>${outH}`;
       } else if (m.branch) {
-        card.style.cssText = "position:absolute;left:" + node.x + "px;top:" + node.y + "px;width:" + NODE_W + "px;min-height:" + NODE_H + "px;background:var(--panel-2);border:1px solid " + (err ? "#ef4444" : m.accent) + ";border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.1);padding:9px 12px;cursor:grab;user-select:none" + (selected ? ";outline:2px solid " + m.accent + ";outline-offset:2px" : "");
-        const inH = `<div class="drip-h drip-h-in" data-h="in" data-node-id="${node.id}" style="position:absolute;left:-7px;top:${NODE_H / 2 - 6}px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid ${m.accent};cursor:crosshair"></div>`;
-        const ifH = `<div class="drip-h drip-h-out" data-h="out" data-branch="if" data-node-id="${node.id}" style="position:absolute;left:${NODE_W * 0.25 - 6}px;bottom:-8px;width:13px;height:13px;border-radius:50%;background:#ea580c;border:2px solid #fff;cursor:crosshair" title="If (match)"></div>`;
-        const elseH = `<div class="drip-h drip-h-out" data-h="out" data-branch="otherwise" data-node-id="${node.id}" style="position:absolute;left:${NODE_W * 0.75 - 6}px;bottom:-8px;width:13px;height:13px;border-radius:50%;background:#9ca3af;border:2px solid #fff;cursor:crosshair" title="Otherwise"></div>`;
-        card.innerHTML = `<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700"><span>${m.icon}</span><span>${esc(m.label)}</span></div><div class="cell-muted drip-node-sub" style="font-size:11px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nodeSummary(node))}</div><div style="position:absolute;left:${NODE_W * 0.25 - 8}px;bottom:-22px;font-size:9px;font-weight:700;color:#ea580c">If</div><div style="position:absolute;left:${NODE_W * 0.75 - 20}px;bottom:-22px;font-size:9px;font-weight:700;color:var(--ink-soft)">Otherwise</div>${inH}${ifH}${elseH}` + (err ? `<div style="color:#dc2626;font-size:10.5px;margin-top:3px">${esc(err)}</div>` : "");
+        card.className = "dr-node" + (selected ? " sel" : ""); card.style.left = node.x + "px"; card.style.top = node.y + "px"; card.style.setProperty("--node-accent", err ? "var(--red)" : m.accent);
+        const inH = `<div class="drip-h drip-h-in dr-h-in" data-h="in" data-node-id="${node.id}" style="--node-accent:${m.accent}"></div>`;
+        const ifH = `<div class="drip-h drip-h-out dr-h-if" data-h="out" data-branch="if" data-node-id="${node.id}" title="If (match)"></div>`;
+        const elseH = `<div class="drip-h drip-h-out dr-h-else" data-h="out" data-branch="otherwise" data-node-id="${node.id}" title="Otherwise"></div>`;
+        card.innerHTML = `<div class="dr-n-head"><span>${m.icon}</span><span>${esc(m.label)}</span></div><div class="cell-muted drip-node-sub dr-n-sub">${esc(nodeSummary(node))}</div><div class="dr-br-lbl dr-br-if">If</div><div class="dr-br-lbl dr-br-else">Otherwise</div>${inH}${ifH}${elseH}` + (err ? `<div class="dr-n-err">${esc(err)}</div>` : "");
       } else {
-        card.style.cssText = "position:absolute;left:" + node.x + "px;top:" + node.y + "px;width:" + NODE_W + "px;min-height:" + NODE_H + "px;background:var(--panel-2);border:1px solid " + (err ? "#ef4444" : "var(--line,#e5e7eb)") + ";border-left:5px solid " + m.accent + ";border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.09);padding:9px 12px 9px 13px;cursor:grab;user-select:none" + (selected ? ";outline:2px solid " + m.accent + ";outline-offset:2px" : "");
-        const inH = `<div class="drip-h drip-h-in" data-h="in" data-node-id="${node.id}" style="position:absolute;left:-7px;top:${NODE_H / 2 - 6}px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid ${m.accent};cursor:crosshair"></div>`;
-        const outH = `<div class="drip-h drip-h-out" data-h="out" data-node-id="${node.id}" style="position:absolute;right:-7px;top:${NODE_H / 2 - 6}px;width:12px;height:12px;border-radius:50%;background:${m.accent};border:2px solid #fff;cursor:crosshair"></div>`;
-        card.innerHTML = `<div style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700"><span style="font-size:14px">${m.icon}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.label)}</span></div><div class="cell-muted drip-node-sub" style="font-size:11px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nodeSummary(node))}</div>${inH}${outH}` + (err ? `<div style="color:#dc2626;font-size:10.5px;margin-top:3px">${esc(err)}</div>` : "");
+        card.className = "dr-node-branch" + (selected ? " sel" : ""); card.style.left = node.x + "px"; card.style.top = node.y + "px"; card.style.setProperty("--edge-line", err ? "var(--red)" : "var(--line)"); card.style.setProperty("--node-accent", m.accent);
+        const inH = `<div class="drip-h drip-h-in dr-h-in" data-h="in" data-node-id="${node.id}" style="--node-accent:${m.accent}"></div>`;
+        const outH = `<div class="drip-h drip-h-out dr-h-out" data-h="out" data-node-id="${node.id}" style="--node-accent:${m.accent}"></div>`;
+        card.innerHTML = `<div class="dr-n-head7"><span class="dr-n-ico">${m.icon}</span><span class="dr-n-title">${esc(m.label)}</span></div><div class="cell-muted drip-node-sub dr-n-sub">${esc(nodeSummary(node))}</div>${inH}${outH}` + (err ? `<div class="dr-n-err">${esc(err)}</div>` : "");
       }
       attachNodeDrag(card, node); attachConnect(card, node);
     }
@@ -320,9 +320,9 @@
       const node = state.nodes.find((n) => n.id === state.selectedId);
       if (!node) { configPanel.appendChild(el("div", "cell-muted", "Select a step to configure it, or drag a new one from the palette.")); return; }
       const m = NODE_META[node.type];
-      const head = el("div"); head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px";
-      head.innerHTML = `<div style="font-weight:700;font-size:14px">${m.icon} ${esc(m.label)}</div>`;
-      const delBtn = el("button", "btn btn-ghost btn-sm drip-node-del", "Delete"); delBtn.style.color = "#dc2626";
+      const head = el("div"); head.classList.add("dr-cfg-head");;
+      head.innerHTML = `<div class="dr-cfg-title">${m.icon} ${esc(m.label)}</div>`;
+      const delBtn = el("button", "btn btn-ghost btn-sm drip-node-del txt-danger", "Delete");
       delBtn.onclick = () => { state.flush = null; state.edges = state.edges.filter((ed) => ed.source !== node.id && ed.target !== node.id); state.nodes = state.nodes.filter((n) => n.id !== node.id); const c = surface.querySelector(`[data-node-id="${node.id}"]`); if (c) c.remove(); state.selectedId = null; renderEdges(); renderConfig(); markDirty(); };
       head.appendChild(delBtn); configPanel.appendChild(head);
       const body = el("div"); configPanel.appendChild(body);
@@ -341,10 +341,10 @@
     }
     function cfgWait(node, body, done) {
       const cfg = node.config;
-      const row = el("div"); row.style.cssText = "display:flex;gap:8px;align-items:flex-end";
-      const amtWrap = el("label", "field"); amtWrap.style.flex = "1"; amtWrap.innerHTML = `<span class="field-label">Wait</span>`;
+      const row = el("div"); row.classList.add("dr-wait-row");;
+      const amtWrap = el("label", "field u-flex-1"); amtWrap.innerHTML = `<span class="field-label">Wait</span>`;
       const amt = el("input", "input"); amt.type = "number"; amt.min = "0"; amt.value = cfg.amount != null ? cfg.amount : 1; amtWrap.appendChild(amt);
-      const unitWrap = el("label", "field"); unitWrap.style.flex = "1"; unitWrap.innerHTML = `<span class="field-label">Unit</span>`;
+      const unitWrap = el("label", "field u-flex-1"); unitWrap.innerHTML = `<span class="field-label">Unit</span>`;
       const unit = el("select", "input"); ["minutes", "hours", "days"].forEach((u) => { const o = el("option"); o.value = u; o.textContent = u; if ((cfg.unit || "days") === u) o.selected = true; unit.appendChild(o); }); unitWrap.appendChild(unit);
       row.appendChild(amtWrap); row.appendChild(unitWrap); body.appendChild(row);
       const flush = () => { node.config = { amount: Number(amt.value) || 0, unit: unit.value }; done(); };
@@ -360,7 +360,7 @@
     async function cfgCondition(node, body, done, isBranch) {
       const cfg = node.config;
       body.appendChild(el("div", "field-label", isBranch ? "Branch when the contact matches" : (node.type === "unenroll" ? "Unenroll people who match (optional)" : "Enroll people who match")));
-      if (isBranch) { const hint = el("div", "cell-muted", "Use a yes/no style rule (is, contains, is empty…). The “Otherwise” path runs for everyone who doesn’t match."); hint.style.cssText = "font-size:11.5px;margin-bottom:6px"; body.appendChild(hint); }
+      if (isBranch) { const hint = el("div", "cell-muted", "Use a yes/no style rule (is, contains, is empty…). The “Otherwise” path runs for everyone who doesn’t match."); hint.classList.add("dr-hint"); body.appendChild(hint); }
       const holder = el("div"); body.appendChild(holder); holder.appendChild(el("div", "cell-muted", "Loading…"));
       let contacts = [], fields = [];
       try { [contacts, fields] = await Promise.all([App.portalApi("/api/contacts").catch(() => []), App.portalApi("/api/fields").catch(() => [])]); } catch (e) {}
@@ -374,7 +374,7 @@
       const cfg = node.config;
       const mode = el("select", "input"); ["scratch", "template"].forEach((mv) => { const o = el("option"); o.value = mv; o.textContent = mv === "scratch" ? "Create from scratch" : "Use an email template"; if ((cfg.mode || "scratch") === mv) o.selected = true; mode.appendChild(o); });
       body.appendChild(el("div", "field-label", "Email")); body.appendChild(mode);
-      const area = el("div"); area.style.marginTop = "10px"; body.appendChild(area);
+      const area = el("div", "u-mt-10"); body.appendChild(area);
       let composer = null, tmplSel = null;
       function paint() {
         area.innerHTML = ""; composer = null; tmplSel = null;
@@ -386,7 +386,7 @@
         } else {
           const subj = el("input", "input"); subj.placeholder = "Subject"; subj.value = cfg.subject || "";
           area.appendChild(el("div", "field-label", "Subject")); area.appendChild(subj);
-          const cHost = el("div"); cHost.style.marginTop = "8px"; area.appendChild(cHost);
+          const cHost = el("div", "u-mt-8"); area.appendChild(cHost);
           try { composer = App.compose.mount(cHost, { kind: "email" }); if (cfg.html && composer.setHTML) composer.setHTML(cfg.html); }
           catch (e) { const ta = el("textarea", "input"); ta.rows = 6; ta.value = cfg.html || ""; ta.placeholder = "Email body (HTML)"; cHost.appendChild(ta); composer = { getHTML: () => ta.value, getSubject: () => subj.value }; }
           node._readEmail = () => ({ subject: subj.value, html: composer && composer.getHTML ? composer.getHTML() : (cfg.html || "") });
@@ -400,7 +400,7 @@
       const cfg = node.config;
       const mode = el("select", "input"); ["existing", "scratch"].forEach((mv) => { const o = el("option"); o.value = mv; o.textContent = mv === "existing" ? "Use an existing survey" : "Compose invite from scratch"; if ((cfg.mode || "existing") === mv) o.selected = true; mode.appendChild(o); });
       body.appendChild(el("div", "field-label", "Survey")); body.appendChild(mode);
-      const area = el("div"); area.style.marginTop = "10px"; body.appendChild(area);
+      const area = el("div", "u-mt-10"); body.appendChild(area);
       let surveySel = null, composer = null, subj = null;
       function paint() {
         area.innerHTML = ""; surveySel = null; composer = null; subj = null;
@@ -409,7 +409,7 @@
         surveySel.onchange = () => done();
         area.appendChild(el("div", "field-label", mode.value === "existing" ? "Which survey" : "Attach to survey")); area.appendChild(surveySel);
         subj = el("input", "input"); subj.placeholder = "Email subject"; subj.value = cfg.subject || ""; area.appendChild(el("div", "field-label", "Invite subject")); area.appendChild(subj);
-        const cHost = el("div"); cHost.style.marginTop = "8px"; area.appendChild(cHost);
+        const cHost = el("div", "u-mt-8"); area.appendChild(cHost);
         try { composer = App.compose.mount(cHost, { kind: "email", surveyLinkMode: "token" }); if (cfg.html && composer.setHTML) composer.setHTML(cfg.html); }
         catch (e) { const ta = el("textarea", "input"); ta.rows = 5; ta.value = cfg.html || ""; ta.placeholder = "Invite body — include {{survey_link}}"; cHost.appendChild(ta); composer = { getHTML: () => ta.value }; }
       }
@@ -423,10 +423,10 @@
       state.errorsByNode = {};
       (errors || []).forEach((e) => { if (e.nodeId) state.errorsByNode[e.nodeId] = e.message; });
       state.nodes.forEach(renderNode);
-      if (errors && errors.length) { banner.style.display = ""; banner.innerHTML = `<div style="font-weight:700;margin-bottom:4px">This drip can't run yet:</div><ul style="margin:0;padding-left:18px">` + (errors.map((e) => `<li>${esc(e.message)}</li>`).join("")) + `</ul>`; }
-      else { banner.style.display = "none"; banner.innerHTML = ""; }
+      if (errors && errors.length) { banner.classList.remove("u-hidden"); banner.innerHTML = `<div class="dr-banner-title">This drip can't run yet:</div><ul class="dr-banner-list">` + (errors.map((e) => `<li>${esc(e.message)}</li>`).join("")) + `</ul>`; }
+      else { banner.classList.add("u-hidden"); banner.innerHTML = ""; }
     }
-    function clearErrors() { state.errorsByNode = {}; banner.style.display = "none"; banner.innerHTML = ""; state.nodes.forEach(renderNode); }
+    function clearErrors() { state.errorsByNode = {}; banner.classList.add("u-hidden"); banner.innerHTML = ""; state.nodes.forEach(renderNode); }
 
     // ---- Save / toggle ----
     function serialize() { return { nodes: state.nodes.map((n) => ({ id: n.id, type: n.type, x: n.x, y: n.y, config: n.config || {} })), edges: state.edges.map((e) => e.branch ? ({ source: e.source, target: e.target, branch: e.branch }) : ({ source: e.source, target: e.target })) }; }
