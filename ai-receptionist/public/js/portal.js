@@ -2102,7 +2102,7 @@
     modal.innerHTML = `<div class="modal-head"><h2>Manage columns</h2><button class="icon-btn" id="mc-close">&times;</button></div>`;
     const body = el("div", "modal-body");
     const help = el("p", "cell-muted", "Check to show, drag to reorder. Saved to your account.");
-    help.style.marginBottom = "10px";
+    help.classList.add("u-mb-10");
     body.appendChild(help);
     const list = el("div", "mc-list");
     body.appendChild(list);
@@ -4148,7 +4148,7 @@
         const nameEl = el("div", "link-name");
         nameEl.innerHTML = `${esc(title)}${subKey ? ` <span class="cell-muted link-ptype">${esc(subtypeLabel(subKey))}</span>` : ""}`;
         const href = recHref(rec);
-        if (href) { nameEl.style.cursor = "pointer"; nameEl.onclick = function () { App.go(href); }; }
+        if (href) { nameEl.classList.add("u-pointer"); nameEl.onclick = function () { App.go(href); }; }
         row.appendChild(nameEl);
         if (hasStages) {
           const stageSel = el("select", "input link-stage");
@@ -4170,7 +4170,7 @@
     // ---- Board view: one swimlane per linked record — same kanban as the Jobs board ----
     function renderBoard() {
       listHost.innerHTML = "";
-      if (!links.length) { const empty = el("div", "cell-muted"); empty.style.cssText = "padding:10px 2px;"; empty.textContent = "No " + manyWord.toLowerCase() + " linked yet — link one below to start the board."; listHost.appendChild(empty); return; }
+      if (!links.length) { const empty = el("div", "cell-muted rel-empty"); empty.textContent = "No " + manyWord.toLowerCase() + " linked yet — link one below to start the board."; listHost.appendChild(empty); return; }
       const lanes = el("div", "swimlanes");
       links.forEach(function (lk) { lanes.appendChild(buildLane(lk)); });
       listHost.appendChild(lanes);
@@ -4183,7 +4183,7 @@
       const laneHead = el("div", "swimlane-head");
       const titleEl = el("span", "swimlane-title", esc(title));
       const href = recHref(rec);
-      if (href) { titleEl.style.cursor = "pointer"; titleEl.onclick = function () { App.go(href); }; }
+      if (href) { titleEl.classList.add("u-pointer"); titleEl.onclick = function () { App.go(href); }; }
       laneHead.appendChild(titleEl);
       if (subKey) laneHead.appendChild(el("span", "swimlane-type pill", esc(subtypeLabel(subKey))));
       lane.appendChild(laneHead);
@@ -4245,11 +4245,11 @@
       }
     };
     addRow.appendChild(createBtn);
-    const results = el("div"); results.style.cssText = "margin-top:8px; display:none; flex-basis:100%;"; addRow.appendChild(results);
+    const results = el("div", "rel-results u-hidden"); addRow.appendChild(results);
 
-    function hideResults() { results.style.display = "none"; results.innerHTML = ""; }
-    function showResults(nodes) { results.innerHTML = ""; const box = el("div"); box.style.cssText = "border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; max-height:260px; overflow-y:auto; background:var(--panel);"; nodes.forEach(function (n) { box.appendChild(n); }); results.appendChild(box); results.style.display = "block"; }
-    function msg(t) { const d = el("div", "cell-muted", esc(t)); d.style.cssText = "padding:9px 12px;"; return d; }
+    function hideResults() { results.classList.add("u-hidden"); results.innerHTML = ""; }
+    function showResults(nodes) { results.innerHTML = ""; const box = el("div", "rel-results-box"); nodes.forEach(function (n) { box.appendChild(n); }); results.appendChild(box); results.classList.remove("u-hidden"); }
+    function msg(t) { const d = el("div", "cell-muted rel-msg", esc(t)); return d; }
 
     // Create the link between the anchor and `target` (a record of this module, or a contact
     // when this is the Contacts tab). stageKey follows the staged side (see anchorFirstStageKey).
@@ -4271,11 +4271,11 @@
     }
 
     function resultButton(r) {
-      const b = el("button", "link-result"); b.style.cssText = "line-height:1.35;";
+      const b = el("button", "link-result link-result-tight");
       const bits = [];
       if (r.subtypeKey) bits.push(subtypeLabel(r.subtypeKey));
       if (isContactTab) { if (r.email) bits.push(r.email); else if (r.phone) bits.push(r.phone); }
-      b.innerHTML = `<div style="font-weight:600;">${esc(recTitle(r))}</div>` + (bits.length ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:1px;">${esc(bits.join(" · "))}</div>` : "");
+      b.innerHTML = `<div class="link-result-title">${esc(recTitle(r))}</div>` + (bits.length ? `<div class="link-result-meta">${esc(bits.join(" · "))}</div>` : "");
       b.onclick = function () { linkTarget(r, false); };
       return b;
     }
@@ -6079,7 +6079,7 @@
         stagesList.forEach((s) => {
           const m = metaFor(s.key);
           const item = el("span", "cal-legend-item");
-          const sw = el("span", "cal-legend-sw"); sw.style.background = m.bg; sw.style.color = m.fg; sw.textContent = m.glyph;
+          const sw = el("span", "cal-legend-sw cal-legend-sw-dyn"); sw.style.setProperty("--sw-bg", m.bg); sw.style.setProperty("--sw-fg", m.fg); sw.textContent = m.glyph;
           item.appendChild(sw);
           item.appendChild(el("span", "cal-legend-lbl", s.label));
           legend.appendChild(item);
@@ -6206,7 +6206,7 @@
           // Resource / Unassigned column header — name with a color accent underline.
           const h = el("div", "cal-dayhead cal-reshead" + (colClosed ? " is-closed" : ""));
           const nm = el("div", "cal-resname", c.headMain);
-          nm.style.borderBottom = "3px solid " + (c.color || "var(--line)");
+          nm.classList.add("cal-res-head-dyn"); if (c.color) nm.style.setProperty("--res-color", c.color);
           if (!c.color) nm.classList.add("is-unassigned");
           h.appendChild(nm);
           if (colClosed) h.appendChild(el("div", "cal-closed-tag", "Closed"));
@@ -6287,26 +6287,26 @@
           if (c.color) {
             // Resource view: tint the block with the resource's color; the status
             // glyph keeps its own color so status still reads.
-            blk.style.background = c.color + "22"; blk.style.borderColor = c.color; blk.style.color = "var(--ink)"; blk.style.borderLeftWidth = "3px";
+            blk.classList.add("cal-block-tinted"); blk.style.setProperty("--ev-bg", c.color + "22"); blk.style.setProperty("--ev-color", c.color);
           } else {
-            blk.style.background = m.bg; blk.style.borderColor = m.fg; blk.style.color = m.fg; blk.style.borderLeftWidth = "3px";
+            blk.classList.add("cal-block-extc"); blk.style.setProperty("--ev-bg", m.bg); blk.style.setProperty("--ev-fg", m.fg);
           }
           if (isExt) {
             // External/Blocked (from Google): distinct read-only look, dashed border.
             blk.classList.add("cal-block-ext");
-            blk.style.background = "#f1f5f9"; blk.style.borderColor = "#64748b"; blk.style.color = "#475569";
-            blk.style.borderStyle = "dashed"; blk.style.borderLeftWidth = "3px";
+            blk.classList.add("cal-block-ext-fallback");
+            blk.classList.add("cal-block-dashed");
           }
           const tline = el("div", "cal-block-t");
           if (isExt) { tline.appendChild(el("span", "cal-ext-badge", "Google")); }
-          const gl = el("span", "cal-glyph", m.glyph); if (c.color) gl.style.color = m.fg; tline.appendChild(gl);
+          const gl = el("span", "cal-glyph" + (c.color ? " cal-glyph-dyn" : ""), m.glyph); if (c.color) gl.style.setProperty("--sw-fg", m.fg); tline.appendChild(gl);
           // Subtle resource indicator: only in the week/day view (no column color),
           // where the resource isn't already conveyed by the column tint. In the
           // resource-column ("All") view we skip it to avoid doubling up.
           let resForTip = null;
           if (!c.color && it.b.resourceId) {
             resForTip = calResById[it.b.resourceId] || null;
-            if (resForTip) { const rd = el("span", "res-dot"); rd.style.background = resForTip.color || "#6366f1"; tline.appendChild(rd); }
+            if (resForTip) { const rd = el("span", "res-dot"); if (resForTip.color) rd.style.setProperty("--swatch", resForTip.color); tline.appendChild(rd); }
           }
           tline.appendChild(document.createTextNode(it.b.contactName || it.b.title || "Booking"));
           blk.appendChild(tline);
@@ -6332,7 +6332,7 @@
         // Click-to-create is a bookings feature (it opens the booking create flow with
         // a resource + appointment time); other-module calendars are read-only here.
         if (isBooking) {
-          col.style.cursor = "pointer";
+          col.classList.add("cal-col-clickable");
           col.addEventListener("click", (e) => {
             const rect = col.getBoundingClientRect();
             const y = e.clientY - rect.top;
@@ -6684,7 +6684,7 @@
         render: (r) => {
           const x = r.resourceId ? resById[r.resourceId] : null;
           if (!x) return `<span class="cell-muted">Unassigned</span>`;
-          return `<span class="res-dot" style="background:${esc(x.color || "#6366f1")}"></span>${esc(x.name)}`;
+          return `<span class="res-dot" style="--swatch:${esc(x.color || "var(--accent)")}"></span>${esc(x.name)}`;
         },
       });
     }
@@ -6710,8 +6710,8 @@
       else if (f.type === "duration") render = (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
       else if (f.type === "address") render = (r) => { const s = App.fields.fmtAddress(get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
       else if (f.type === "currency") render = (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };
-      else if (f.type === "color") render = (r) => { const v = get(r); return (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v)) ? `<span class="cell-color"><span class="cell-color-chip" style="background:${esc(v)}"></span>${esc(v)}</span>` : `<span class="cell-muted">—</span>`; };
-      else if (f.type === "progress") render = (r) => { const raw = get(r); if (raw == null || raw === "") return `<span class="cell-muted">—</span>`; let n = Math.round(Number(raw)); if (!isFinite(n)) return `<span class="cell-muted">—</span>`; n = Math.max(0, Math.min(100, n)); return `<span class="cell-progress"><span class="cell-progress-bar"><span class="cell-progress-fill" style="width:${n}%"></span></span><span class="cell-progress-num">${n}%</span></span>`; };
+      else if (f.type === "color") render = (r) => { const v = get(r); return (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v)) ? `<span class="cell-color"><span class="cell-color-chip" style="--swatch:${esc(v)}"></span>${esc(v)}</span>` : `<span class="cell-muted">—</span>`; };
+      else if (f.type === "progress") render = (r) => { const raw = get(r); if (raw == null || raw === "") return `<span class="cell-muted">—</span>`; let n = Math.round(Number(raw)); if (!isFinite(n)) return `<span class="cell-muted">—</span>`; n = Math.max(0, Math.min(100, n)); return `<span class="cell-progress"><span class="cell-progress-bar"><span class="cell-progress-fill" style="--pw:${n}%"></span></span><span class="cell-progress-num">${n}%</span></span>`; };
       else render = (r) => esc(disp(r) || "—");
       cols.push({ key: f.key, label: f.label, type: colTy, get, text: disp, render });
     });
@@ -7369,7 +7369,7 @@
     // technique used below for Google-synced bookings.
     if (ro) {
       card.querySelectorAll("input, select, textarea").forEach((e) => { e.disabled = true; });
-      saveBar.style.display = "none";
+      saveBar.classList.add("u-hidden");
     }
 
     // External/Blocked bookings (synced from Google) are read-only here — the server
@@ -7380,7 +7380,7 @@
       banner.innerHTML = `<span aria-hidden="true">🔒</span><span>This booking is synced from <strong>Google Calendar</strong> and is read-only here. Edit or delete it in Google — your changes flow back automatically.</span>`;
       card.insertBefore(banner, card.firstChild.nextSibling);
       card.querySelectorAll("input, select, textarea").forEach((e) => { e.disabled = true; });
-      saveBar.style.display = "none";
+      saveBar.classList.add("u-hidden");
     }
 
     // ---- Related tabs: one tab per OTHER module (link existing + create new; Board where
@@ -7409,18 +7409,18 @@
       actList.innerHTML = "";
       if (!items.length) { actList.appendChild(el("p", "cell-muted", "No activity yet.")); return; }
       items.forEach((it) => {
-        const row = el("div"); row.style.cssText = "padding:8px 0; border-bottom:1px solid var(--line);";
+        const row = el("div", "rec-note-row");
         const when = it.at ? new Date(it.at).toLocaleString() : "";
         const who = it.actorName ? it.actorName : (it.actorType === "automation" ? "Automation" : "System");
         const top = el("div"); top.textContent = it.text || "";
-        const sub = el("div", "cell-muted"); sub.style.fontSize = "12px"; sub.textContent = who + " · " + when;
+        const sub = el("div", "cell-muted u-meta"); sub.textContent = who + " · " + when;
         row.appendChild(top); row.appendChild(sub);
         actList.appendChild(row);
       });
     }
     renderActivity();
-    const addNoteRow = el("div"); addNoteRow.style.cssText = "display:flex; gap:6px; margin-top:10px;";
-    const noteInp = el("input", "input"); noteInp.placeholder = "Add an internal note…"; noteInp.style.marginBottom = "0";
+    const addNoteRow = el("div", "rec-addnote-row");
+    const noteInp = el("input", "input u-mb-0"); noteInp.placeholder = "Add an internal note…";
     const noteBtn = el("button", "btn btn-sm", "Add note");
     noteBtn.onclick = async () => {
       const text = noteInp.value.trim(); if (!text) return;

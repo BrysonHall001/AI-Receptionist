@@ -50,7 +50,7 @@ check(/\/api\/bookings\/calendar\?from=\$\{from\}&to=\$\{to\}/.test(CAL), "Booki
 console.log("\n(C) generic calendar path + booking-only chrome gating:");
 check(/\/api\/records\/calendar\?type=\$\{encodeURIComponent\(type\.key\)\}&field=\$\{encodeURIComponent\(dateField \|\| ""\)\}/.test(CAL), "other modules load via the generic /api/records/calendar path");
 check(/if \(isBooking\) \{[\s\S]{0,200}?const syncCalendars = \[\]/.test(CAL), "the Calendar Sync block is bookings-only");
-check(/if \(isBooking\) \{\s*col\.style\.cursor = "pointer";/.test(CAL), "empty-slot click-to-create is bookings-only (other calendars are read-only)");
+check(/if \(isBooking\) \{\s*col\.classList\.add\("cal-col-clickable"\);/.test(CAL), "empty-slot click-to-create is bookings-only (other calendars are read-only; pointer via class — design Phase 4)");
 check(/if \(isBooking\) \{\s*Promise\.all\(\[\s*App\.portalApi\("\/api\/booking-config"\)/.test(CAL), "the booking-config/google-status side-fetch is bookings-only");
 
 console.log("\n(D) related-pane List|Board toggle honors the Board view flag:");
