@@ -165,14 +165,11 @@ async function main() {
   const portal = readFileSync(resolve(__dirname, "../../public/js/portal.js"), "utf8");
   const bv = portal.slice(portal.indexOf("function buildViewsSection"), portal.indexOf("async function renderSettings"));
   check(!/Contacts have no optional views/.test(bv) && !/selectedType\.key === "contact"\) return/.test(bv), "buildViewsSection no longer early-returns for Contacts");
-  check(/const isContact = selectedType\.key === "contact";/.test(bv), "Contacts are branch-detected instead");
+  // Contacts view parity (contacts-all-views): the Map-only special-casing is GONE — all four
+  // tiles render for every module, Contacts included, under the standard data-driven rules.
+  check(!/isContact/.test(bv), "no contact special-casing remains in the Views strip (all four tiles for Contacts)");
   const boardIdx = bv.indexOf("// BOARD — available"), calIdx = bv.indexOf("// CALENDAR — available"), mapIdx = bv.indexOf("// MAP — available"), galIdx = bv.indexOf("// GALLERY — available");
-  const guard1 = bv.lastIndexOf("if (!isContact) {", boardIdx);
-  const guard1Close = bv.indexOf("\n        }", calIdx); // the record-only branch closes after Calendar, before Map
-  const guard2 = bv.lastIndexOf("if (!isContact) {", galIdx);
-  check(guard1 >= 0 && guard1 < boardIdx && boardIdx < calIdx && calIdx < guard1Close && guard1Close < mapIdx, "Board + Calendar are wrapped in a record-only branch that CLOSES before the Map tile");
-  check(guard2 > mapIdx && guard2 < galIdx, "Gallery is wrapped in its own record-only branch AFTER the Map tile");
-  check(bv.lastIndexOf("if (!isContact) {", mapIdx) === guard1 && guard1Close < mapIdx, "the Map tile sits between the two branches — the ONLY tile Contacts see");
+  check(boardIdx > 0 && calIdx > boardIdx && mapIdx > calIdx && galIdx > mapIdx, "Board, Calendar, Map, and Gallery tiles all render, in order, for every module");
 
   const rc = portal.slice(portal.indexOf("async function renderContacts()"), portal.indexOf("function openManageColumns("));
   check(/moduleMapEnabled\(contactType\)/.test(rc), "the Contacts page offers map mode only when the contact type's Map view is on");

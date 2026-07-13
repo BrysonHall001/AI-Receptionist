@@ -256,6 +256,13 @@ model Contact {
   // category: "user" | "ai" | "sync" | "system".
   deletedBy    String?
   deletedByType String?
+  // The contact's OWN pipeline stage on the contact record type (contacts-all-views): which of
+  // the contact type's pipeline stages this contact sits in — the contact twin of
+  // Record.stageKey. INDEPENDENT of RecordLink.stageKey (the funnel/relationship stages a
+  // contact has PER linked record): setting this never creates or modifies RecordLink rows,
+  // and the funnel/analytics read models are untouched. Nullable; no backfill — existing
+  // contacts simply have no stage.
+  stageKey     String?
   callSessions CallSession[]
   activity     ActivityLog[]
   geo          ContactGeo[]

@@ -9,7 +9,7 @@ import { runSimulatedCall } from "../services/simulationService";
 import { findOpenSlots, getCalendarData } from "../services/availabilityService";
 import { loadBookingConfig, saveBookingConfig } from "../services/bookingConfig";
 import { listResources, createResource, updateResource, deleteResource } from "../services/resourceService";
-import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact, getContactsMapData } from "../services/contactService";
+import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact, getContactsMapData, getContactsCalendarData } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
 import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType, setPipelineEnabled, setModuleViews } from "../services/recordTypeService";
@@ -293,6 +293,24 @@ apiRouter.get("/contacts/map", async (req: Request, res: Response) => {
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
+// ---- Calendar data for contacts (contacts-all-views): lay contacts out by a chosen date
+// field, mirroring GET /records/calendar's shape. Registered BEFORE "/contacts/:id" so
+// "calendar" isn't read as an id (like /contacts/map and /contacts/deleted). ----
+apiRouter.get("/contacts/calendar", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const field = String(req.query.field ?? "");
+    const from = String(req.query.from ?? "");
+    const to = String(req.query.to ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      res.status(400).json({ error: "from and to must be YYYY-MM-DD" });
+      return;
+    }
+    res.json(await getContactsCalendarData(tenantId, field, from, to));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // ---- Recycle bin (soft-deleted contacts) ----
 // MUST be registered before "/contacts/:id" so "deleted" isn't read as an id.
 apiRouter.get("/contacts/deleted", async (req: Request, res: Response) => {
@@ -416,9 +434,9 @@ apiRouter.post("/contacts/import", async (req: Request, res: Response) => {
 apiRouter.patch("/contacts/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
-  const { name, phone, email, intent, customFields } = (req.body ?? {}) as any;
+  const { name, phone, email, intent, stageKey, customFields } = (req.body ?? {}) as any;
   try {
-    await updateContact(req.params.id, tenantId, { name, phone, email, intent, customFields }, actorOf(req));
+    await updateContact(req.params.id, tenantId, { name, phone, email, intent, stageKey, customFields }, actorOf(req));
     res.json({ ok: true });
   } catch (err) {
     const msg = (err as Error).message.includes("Unique") ? "That phone number is already used by another contact" : (err as Error).message;

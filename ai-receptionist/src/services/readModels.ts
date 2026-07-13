@@ -101,6 +101,8 @@ function mapContact(c: any) {
     email: c.email ?? null,
     intent: c.intent ?? null,
     source: c.source ?? "unknown",
+    // The contact's own pipeline stage (contacts-all-views) — independent of RecordLink stages.
+    stageKey: c.stageKey ?? null,
     callerId: c.callerId ?? null,
     customFields: (c.customFields as any) ?? {},
     callCount: c._count?.callSessions ?? 0,
@@ -153,6 +155,8 @@ export async function getContact(id: string, tenantId?: string | null) {
     phone: c.phone,
     email: c.email ?? null,
     intent: c.intent ?? null,
+    // The contact's own pipeline stage (contacts-all-views) — independent of RecordLink stages.
+    stageKey: (c as any).stageKey ?? null,
     callerId: (c as any).callerId ?? null,
     customFields: (c.customFields as any) ?? {},
     createdAt: c.createdAt.toISOString(),

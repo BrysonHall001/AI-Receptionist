@@ -8,6 +8,23 @@ import { ensureContactRecordType } from "./recordTypeService";
 import { geocodingEnabled } from "../config/env";
 import { logger } from "../utils/logger";
 
+// ---- Contact pipeline stages (contacts-all-views) ----------------------------
+// The contact type's own pipeline stages: top-level stages when defined, else the union of its
+// subtypes' stages (contacts carry no subtype, so a subtype-built pipeline flattens — dedup by
+// key, in order). These are the keys Contact.stageKey may hold. INDEPENDENT of RecordLink
+// stages (the funnel): nothing here reads or writes RecordLink.
+export async function contactPipelineStages(tenantId: string): Promise<{ key: string; label: string }[]> {
+  const recordTypeId = await ensureContactRecordType(tenantId);
+  const rt: any = await prisma.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
+  if (!rt) return [];
+  const out: { key: string; label: string }[] = [];
+  const seen = new Set<string>();
+  const push = (st: any) => { if (st && st.key && !seen.has(st.key)) { seen.add(st.key); out.push({ key: st.key, label: st.label || st.key }); } };
+  (Array.isArray(rt.stages) ? rt.stages : []).forEach(push);
+  (Array.isArray(rt.subtypes) ? rt.subtypes : []).forEach((sub: any) => (Array.isArray(sub.stages) ? sub.stages : []).forEach(push));
+  return out;
+}
+
 /** GEOCODE ON-SAVE HOOK for contacts (contacts-on-the-map): keep each address field's
  *  ContactGeo cache row in sync with the just-written contact, then kick the shared debounced
  *  fire-and-forget sweep so pins appear promptly. The exact mirror of recordService's
@@ -119,13 +136,14 @@ export interface ImportRow {
   phone?: string | null;
   email?: string | null;
   intent?: string | null;
+  stage?: string | null; // optional (contacts-all-views): stage KEY or LABEL, coerced on import
 }
 
 /** Update a contact's editable fields, including custom field values. */
 export async function updateContact(
   id: string,
   tenantId: string,
-  data: { name?: string | null; phone?: string | null; email?: string | null; intent?: string | null; customFields?: Record<string, unknown> },
+  data: { name?: string | null; phone?: string | null; email?: string | null; intent?: string | null; stageKey?: string | null; customFields?: Record<string, unknown> },
   actor?: MutationActor,
 ) {
   const c = await prisma.contact.findUnique({ where: { id } });
@@ -139,6 +157,16 @@ export async function updateContact(
   if (data.phone !== undefined && data.phone && data.phone.trim()) update.phone = data.phone.trim();
   if (data.email !== undefined) update.email = data.email || null;
   if (data.intent !== undefined) update.intent = data.intent || null;
+  if (data.stageKey !== undefined) {
+    // The contact's own pipeline stage (contacts-all-views): nullable, and when set it must be
+    // one of the contact type's pipeline stage keys. Independent of RecordLink/funnel stages.
+    const next = data.stageKey == null || data.stageKey === "" ? null : String(data.stageKey);
+    if (next != null) {
+      const stages = await contactPipelineStages(tenantId);
+      if (!stages.some((st) => st.key === next)) throw new Error("Unknown stage for contacts");
+    }
+    update.stageKey = next;
+  }
   if (data.customFields !== undefined) {
     update.customFields = { ...oldCustom, ...data.customFields };
   }
@@ -156,6 +184,9 @@ export async function updateContact(
         changes.push({ field: k, label: defMap[k]?.label || k, from: oldSystem[k] ?? "", to: (update as any)[k] ?? "" });
       }
     });
+    if (data.stageKey !== undefined && norm(c.stageKey) !== norm(update.stageKey)) {
+      changes.push({ field: "stageKey", label: "Stage", from: c.stageKey ?? "", to: update.stageKey ?? "" });
+    }
     if (data.customFields) {
       Object.keys(data.customFields).forEach((k) => {
         if (norm(oldCustom[k]) !== norm((data.customFields as any)[k])) {
@@ -221,6 +252,16 @@ export async function importContacts(
 ): Promise<{ imported: number; skipped: number }> {
   let imported = 0;
   let skipped = 0;
+  // Optional Stage column (contacts-all-views): a value matches by stage KEY or LABEL
+  // (case-insensitive) against the contact type's pipeline stages; anything else imports as no
+  // stage — imports stay skip-proof, mirroring how record imports coerce statuses.
+  const stages = await contactPipelineStages(tenantId);
+  const coerceStage = (v: any): string | null => {
+    const t = (v == null ? "" : String(v)).trim().toLowerCase();
+    if (!t) return null;
+    const hit = stages.find((st) => st.key.toLowerCase() === t || (st.label || "").toLowerCase() === t);
+    return hit ? hit.key : null;
+  };
   const requireEmail = await tenantRequiresEmail(tenantId);
   const seenEmails = new Set<string>(); // dedupe within this file when email is required
   for (const row of rows) {
@@ -238,7 +279,7 @@ export async function importContacts(
 
     if (phone) {
       // Has a phone: upsert by phone (dedupes repeat phone numbers, as before).
-      await createOrUpdateContact({
+      const upserted = await createOrUpdateContact({
         tenantId,
         phone,
         name: row.name?.trim() || null,
@@ -246,9 +287,14 @@ export async function importContacts(
         intent: row.intent?.trim() || null,
         source: "import",
       }, actor);
+      const sk = coerceStage(row.stage);
+      if (sk != null && upserted && upserted.id) {
+        // Set the coerced stage through the validated path (activity/events fire like any edit).
+        try { await updateContact(upserted.id, tenantId, { stageKey: sk }, actor); } catch { /* never fail an import over a stage */ }
+      }
     } else {
       // Email-only: create a new contact with no phone.
-      const c = await prisma.contact.create({ data: { tenantId, phone: null, name: row.name?.trim() || null, email, intent: row.intent?.trim() || null, source: "import" } as any });
+      const c = await prisma.contact.create({ data: { tenantId, phone: null, name: row.name?.trim() || null, email, intent: row.intent?.trim() || null, stageKey: coerceStage(row.stage), source: "import" } as any });
       try { await emitEvent({ tenantId, type: EVENT_TYPES.ContactCreated, actor: actorOf(actor), subject: { type: "contact", id: c.id }, payload: { name: c.name, email: c.email, source: "import" } }); } catch { /* non-critical */ }
       await markContactGeoSafe(tenantId, c); // contacts-on-the-map (per imported contact; hook is cheap + debounced)
     }
@@ -582,4 +628,48 @@ export async function getContactsMapData(tenantId: string) {
   });
 
   return { addressFieldKey: primary.key as string | null, geocodingEnabled: enabled, records };
+}
+
+// ---- CALENDAR data for CONTACTS (contacts-all-views) --------------------------
+// The contact twin of recordService.getModuleCalendarData, byte-for-byte in output SHAPE
+// ({ from, to, hours, bookings, resources }) so the shared calendar renderer consumes it
+// unchanged: one pseudo-booking per contact whose chosen date field falls in [from, to), titled
+// by the contact's NAME, stage-labelled from the contact type's own pipeline stages. Read-only
+// + tenant-scoped; nothing here touches Records, bookings, or RecordLink.
+export async function getContactsCalendarData(tenantId: string, field: string, fromDate: string, toDate: string) {
+  const { valueToWall } = await import("./recordService"); // the shared wall-clock parser
+  const stages = await contactPipelineStages(tenantId);
+  const stageLabel = (k: string | null) => { const s = stages.find((x) => x.key === k); return s ? s.label : (k || ""); };
+  const fieldKey = String(field || "").trim();
+  if (!fieldKey) return { from: fromDate, to: toDate, hours: {}, bookings: [] as any[], resources: [] as any[] };
+
+  const rows = await prisma.contact.findMany({
+    where: { tenantId, deletedAt: null } as any,
+    orderBy: { createdAt: "asc" },
+  });
+
+  const bookings = rows
+    .map((c: any) => {
+      const start = valueToWall((c.customFields || {})[fieldKey]);
+      if (!start) return null;
+      const ymd = start.slice(0, 10);
+      if (ymd < fromDate || ymd >= toDate) return null; // half-open [from, to)
+      return {
+        id: c.id,
+        title: c.name || "Unnamed contact",
+        start,
+        end: start,
+        durationMin: 60,
+        serviceKey: null,
+        serviceLabel: "",
+        stageKey: c.stageKey || null,
+        stageLabel: stageLabel(c.stageKey || null),
+        contactName: null,
+        resourceId: null,
+        externalSource: null,
+      };
+    })
+    .filter((b: any): b is any => b != null);
+
+  return { from: fromDate, to: toDate, hours: {}, bookings, resources: [] as any[] };
 }

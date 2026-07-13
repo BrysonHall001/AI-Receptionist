@@ -1905,6 +1905,11 @@
             : (r) => esc(disp(r) || "—"),
       };
     });
+    // Stage (contacts-all-views): the contact's own pipeline stage. A synthetic column like
+    // Source/Caller ID below — NOT in DEFAULT_COLS, so the table looks exactly as before until
+    // someone shows it via Manage columns (then it exports like any visible column).
+    const stageLabelForCol = (k) => { const t = (App.state.recordTypes || []).find((x) => x.key === "contact"); const st = t ? contactPipelineStages(t).find((x) => x.key === k) : null; return st ? st.label : (k || ""); };
+    cols.push({ key: "stageKey", label: "Stage", type: "text", get: (r) => r.stageKey, text: (r) => stageLabelForCol(r.stageKey), render: (r) => r.stageKey ? `<span class="pill">${esc(stageLabelForCol(r.stageKey))}</span>` : `<span class="cell-muted">—</span>` });
     cols.push({ key: "source", label: "Source", type: "text", get: (r) => r.source, text: (r) => r.source || "unknown", render: (r) => esc(r.source || "unknown") });
     cols.push({ key: "callerId", label: "Caller ID", type: "text", get: (r) => r.callerId, text: (r) => r.callerId || "", cellClass: "cell-mono", render: (r) => esc(r.callerId || "—") });
     cols.push({ key: "callCount", label: "Calls", type: "number", get: (r) => r.callCount, text: (r) => String(r.callCount || 0) });
@@ -1972,6 +1977,56 @@
         titleOf: function (r) { return r.name || "Unnamed contact"; },
         linkText: "Open contact →",
         linkHref: function (r) { return "#/contact/" + r.id; },
+      });
+    }
+
+    // ---- Board view (contacts-all-views) — the SHARED stage board: lanes = the contact
+    // type's own pipeline stages (+ the standard "No stage" lane), cards = the contacts this
+    // page already loaded. Drag persists via PATCH /api/contacts/:id → updateContact, so
+    // validation, the activity timeline, and domain events fire exactly like any contact edit
+    // (never a direct DB write). INDEPENDENT of RecordLink/funnel stages. ----
+    const contactStages = contactPipelineStages(contactType);
+    const contactStageLabel = function (k) { const st = contactStages.find(function (x) { return x.key === k; }); return st ? st.label : (k || ""); };
+    if (contactType && moduleBoardEnabled(contactType)) {
+      const boardHost = el("div");
+      container.appendChild(boardHost);
+      mountStageBoard(boardHost, {
+        lanes: contactStages,
+        rows: contacts,
+        currentKeyOf: function (r) { return r.stageKey || null; },
+        titleOf: function (r) { return r.name || "Unnamed contact"; },
+        subtitleOf: function (r) { return r.email || r.phone || ""; },
+        hrefOf: function (r) { return "#/contact/" + r.id; },
+        onMove: async function (r, newKey) {
+          await App.portalApi("/api/contacts/" + r.id, { method: "PATCH", body: JSON.stringify({ stageKey: newKey }) });
+          r.stageKey = newKey; // keep the loaded row in sync for the other views on this page
+        },
+      });
+    }
+
+    // ---- Calendar view (contacts-all-views) — the SHARED calendar renderer, pointed at
+    // /api/contacts/calendar and the contact type's chosen date field; events open the
+    // contact. Read-only, same as the generalized record calendar. ----
+    if (contactType && moduleCalendarEnabled(contactType)) {
+      const calHost = el("div");
+      container.appendChild(calHost);
+      renderBookingCalendar(calHost, contactType, fields, {
+        dateField: moduleCalendarField(contactType, fields),
+        calendarUrl: function (from, to) { return "/api/contacts/calendar?field=" + encodeURIComponent(moduleCalendarField(contactType, fields) || "") + "&from=" + from + "&to=" + to; },
+        eventHrefBase: "#/contact/",
+      });
+    }
+
+    // ---- Gallery view (contacts-all-views) — the SHARED card-grid renderer over the contacts
+    // this page already loaded: contact names, contact links, stage pills from the contact
+    // type's own pipeline stages. Same lazy-thumbnail/placeholder/two-line rules as records. ----
+    if (contactType && moduleGalleryEnabled(contactType)) {
+      const galHost = el("div");
+      container.appendChild(galHost);
+      renderRecordGallery(galHost, contactType, fields, contacts, {
+        titleOf: function (r) { return r.name || "Unnamed contact"; },
+        hrefOf: function (r) { return "#/contact/" + r.id; },
+        stageLabelOf: contactStageLabel,
       });
     }
 
@@ -3183,7 +3238,10 @@
     const scroll = el("div", "mf-fields-scroll");
     sorted.forEach((s, i) => scroll.appendChild(sectionCard(s, bySection[s.id], i)));
     if (ungrouped.length || !sorted.length) scroll.appendChild(ungroupedCard(ungrouped));
-    if (canEdit && selectedType && selectedType.key !== "contact") scroll.appendChild(structureSection());
+    // Structure & behavior renders for EVERY module now, including Contacts (contacts-all-views)
+    // — Board can never become available if Contacts can't enable a pipeline. The toggle keeps
+    // its existing non-destructive semantics.
+    if (canEdit && selectedType) scroll.appendChild(structureSection());
     wrap.appendChild(scroll);
 
     fieldsView().innerHTML = "";
@@ -4288,6 +4346,17 @@
   // Gallery is offered when the Gallery view is turned on (the editor only lets it be turned
   // on for modules that actually have an image field).
   function moduleGalleryEnabled(t) { return moduleViewOn(t, "gallery"); }
+  // The contact type's own pipeline stages, flattened (contacts-all-views): top-level stages
+  // when defined, else the union of subtype stages (contacts carry no subtype). These are the
+  // lanes the Contacts board shows and the keys Contact.stageKey may hold — INDEPENDENT of
+  // RecordLink/funnel stages. Mirrors contactPipelineStages on the server.
+  function contactPipelineStages(t) {
+    const out = []; const seen = {};
+    const push = function (st) { if (st && st.key && !seen[st.key]) { seen[st.key] = 1; out.push({ key: st.key, label: st.label || st.key }); } };
+    ((t && t.stages) || []).forEach(push);
+    ((t && t.subtypes) || []).forEach(function (sub) { (sub.stages || []).forEach(push); });
+    return out;
+  }
   // Which date field the calendar uses: the module's chosen field if still valid, else the first.
   function moduleCalendarField(t, fields) {
     var df = moduleDateFields(t, fields);
@@ -4387,9 +4456,9 @@
   function buildViewsSection(col, selectedType) {
     const prev = col.querySelector(".mf-views"); if (prev) prev.remove(); // avoid dupes on re-render
     if (!selectedType) return;
-    // Contacts now get a Views panel too (contacts-on-the-map) — but ONLY the Map tile:
-    // Board/Calendar/Gallery remain record-module concepts and are not offered on Contacts.
-    const isContact = selectedType.key === "contact";
+    // Contacts get ALL FOUR tiles under the standard data-driven rules (contacts-all-views):
+    // Board needs the contact pipeline, Calendar a date field, Gallery an image field, Map an
+    // address field — no special-casing left.
     const canEdit = App.state.me.role !== "CLIENT_USER";
     const modName = selectedType.labelPlural || selectedType.label || "these records";
 
@@ -4448,52 +4517,50 @@
           return { cb, row };
         }
 
-        if (!isContact) {
-          // BOARD — available only with a pipeline.
-          const board = viewRow({
-            name: "Board", available: hasPipeline, on: moduleViewOn(selectedType, "board"),
-            hint: hasPipeline ? "A kanban of records grouped by pipeline stage." : "Turn on a pipeline to enable the Board view.",
-          });
-          board.cb.onchange = function () {
-            board.cb.disabled = true;
-            const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "board"; });
-            if (board.cb.checked) next.push("board");
-            persist(next).then(function (rt) { afterSave(rt, board.cb.checked ? "Board view on" : "Board view off"); })
-              .catch(function (e) { board.cb.checked = !board.cb.checked; board.cb.disabled = false; App.util.toast(e.message, true); });
-          };
+        // BOARD — available only with a pipeline.
+        const board = viewRow({
+          name: "Board", available: hasPipeline, on: moduleViewOn(selectedType, "board"),
+          hint: hasPipeline ? "A kanban of records grouped by pipeline stage." : "Turn on a pipeline to enable the Board view.",
+        });
+        board.cb.onchange = function () {
+          board.cb.disabled = true;
+          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "board"; });
+          if (board.cb.checked) next.push("board");
+          persist(next).then(function (rt) { afterSave(rt, board.cb.checked ? "Board view on" : "Board view off"); })
+            .catch(function (e) { board.cb.checked = !board.cb.checked; board.cb.disabled = false; App.util.toast(e.message, true); });
+        };
 
-          // CALENDAR — available only when the module has at least one date/datetime field.
-          const calAvailable = dateFields.length > 0;
-          const cal = viewRow({
-            name: "Calendar", available: calAvailable, on: moduleViewOn(selectedType, "calendar"),
-            hint: calAvailable ? "A month/week/day grid of records laid out by a date field." : "Add a date field to enable the Calendar view.",
-          });
-          cal.cb.onchange = function () {
-            cal.cb.disabled = true;
-            const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "calendar"; });
-            if (cal.cb.checked) next.push("calendar");
-            persist(next).then(function (rt) { afterSave(rt, cal.cb.checked ? "Calendar view on" : "Calendar view off"); })
-              .catch(function (e) { cal.cb.checked = !cal.cb.checked; cal.cb.disabled = false; App.util.toast(e.message, true); });
-          };
+        // CALENDAR — available only when the module has at least one date/datetime field.
+        const calAvailable = dateFields.length > 0;
+        const cal = viewRow({
+          name: "Calendar", available: calAvailable, on: moduleViewOn(selectedType, "calendar"),
+          hint: calAvailable ? "A month/week/day grid of records laid out by a date field." : "Add a date field to enable the Calendar view.",
+        });
+        cal.cb.onchange = function () {
+          cal.cb.disabled = true;
+          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "calendar"; });
+          if (cal.cb.checked) next.push("calendar");
+          persist(next).then(function (rt) { afterSave(rt, cal.cb.checked ? "Calendar view on" : "Calendar view off"); })
+            .catch(function (e) { cal.cb.checked = !cal.cb.checked; cal.cb.disabled = false; App.util.toast(e.message, true); });
+        };
 
-          // When Calendar is ON and the module has MORE THAN ONE date field, let the user pick
-          // which one the calendar uses. Bookings map to their existing field, so unchanged.
-          if (calAvailable && moduleViewOn(selectedType, "calendar") && dateFields.length > 1) {
-            const pick = el("div", "mf-view-pick");
-            pick.appendChild(el("label", "mf-view-pick-lbl", "Calendar date field"));
-            const sel = el("select", "input");
-            const chosen = moduleCalendarField(selectedType, fields);
-            dateFields.forEach(function (f) { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === chosen) o.selected = true; sel.appendChild(o); });
-            sel.disabled = !canEdit;
-            sel.onchange = function () {
-              sel.disabled = true;
-              persist(moduleEnabledViews(selectedType), sel.value)
-                .then(function (rt) { afterSave(rt, "Calendar date field updated"); })
-                .catch(function (e) { sel.disabled = false; App.util.toast(e.message, true); });
-            };
-            pick.appendChild(sel);
-            cal.row.appendChild(pick);
-          }
+        // When Calendar is ON and the module has MORE THAN ONE date field, let the user pick
+        // which one the calendar uses. Bookings map to their existing field, so unchanged.
+        if (calAvailable && moduleViewOn(selectedType, "calendar") && dateFields.length > 1) {
+          const pick = el("div", "mf-view-pick");
+          pick.appendChild(el("label", "mf-view-pick-lbl", "Calendar date field"));
+          const sel = el("select", "input");
+          const chosen = moduleCalendarField(selectedType, fields);
+          dateFields.forEach(function (f) { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === chosen) o.selected = true; sel.appendChild(o); });
+          sel.disabled = !canEdit;
+          sel.onchange = function () {
+            sel.disabled = true;
+            persist(moduleEnabledViews(selectedType), sel.value)
+              .then(function (rt) { afterSave(rt, "Calendar date field updated"); })
+              .catch(function (e) { sel.disabled = false; App.util.toast(e.message, true); });
+          };
+          pick.appendChild(sel);
+          cal.row.appendChild(pick);
         }
 
         // MAP — available only when the module has at least one address field (mirrors the
@@ -4512,24 +4579,22 @@
             .catch(function (e) { map.cb.checked = !map.cb.checked; map.cb.disabled = false; App.util.toast(e.message, true); });
         };
 
-        if (!isContact) {
-          // GALLERY — available only when the module has at least one image field (mirrors the
-          // Calendar/Map field rules; the renderFields liveness hook re-evaluates this live on
-          // field add/edit/delete). Toggling it on shows the Gallery view on the list page.
-          const imgFields = moduleImageFields(selectedType, fields);
-          const galAvailable = imgFields.length > 0;
-          const gal = viewRow({
-            name: "Gallery", available: galAvailable, on: moduleViewOn(selectedType, "gallery"),
-            hint: galAvailable ? "A visual card grid of records." : "Add an image field to enable the Gallery view.",
-          });
-          gal.cb.onchange = function () {
-            gal.cb.disabled = true;
-            const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "gallery"; });
-            if (gal.cb.checked) next.push("gallery");
-            persist(next).then(function (rt) { afterSave(rt, gal.cb.checked ? "Gallery view on" : "Gallery view off"); })
-              .catch(function (e) { gal.cb.checked = !gal.cb.checked; gal.cb.disabled = false; App.util.toast(e.message, true); });
-          };
-        }
+        // GALLERY — available only when the module has at least one image field (mirrors the
+        // Calendar/Map field rules; the renderFields liveness hook re-evaluates this live on
+        // field add/edit/delete). Toggling it on shows the Gallery view on the list page.
+        const imgFields = moduleImageFields(selectedType, fields);
+        const galAvailable = imgFields.length > 0;
+        const gal = viewRow({
+          name: "Gallery", available: galAvailable, on: moduleViewOn(selectedType, "gallery"),
+          hint: galAvailable ? "A visual card grid of records." : "Add an image field to enable the Gallery view.",
+        });
+        gal.cb.onchange = function () {
+          gal.cb.disabled = true;
+          const next = moduleEnabledViews(selectedType).filter(function (v) { return v !== "gallery"; });
+          if (gal.cb.checked) next.push("gallery");
+          persist(next).then(function (rt) { afterSave(rt, gal.cb.checked ? "Gallery view on" : "Gallery view off"); })
+            .catch(function (e) { gal.cb.checked = !gal.cb.checked; gal.cb.disabled = false; App.util.toast(e.message, true); });
+        };
       });
   }
 
@@ -5537,6 +5602,7 @@
       phone: find("phone", "mobile", "cell", "number", "tel"),
       email: find("email", "e-mail"),
       intent: find("reason", "intent", "note", "subject", "message", "inquiry"),
+      stage: find("stage", "status", "pipeline"),
     };
   }
 
@@ -5776,7 +5842,7 @@
 
   function renderMapping(host, headers, dataRows, overlay, requireEmail) {
     const guess = guessMap(headers);
-    const fields = [["name", "Name"], ["phone", "Phone"], ["email", requireEmail ? "Email (required)" : "Email"], ["intent", "Reason / notes"]];
+    const fields = [["name", "Name"], ["phone", "Phone"], ["email", requireEmail ? "Email (required)" : "Email"], ["intent", "Reason / notes"], ["stage", "Stage (optional)"]];
     const optionsHtml = (sel) => `<option value="-1">— skip —</option>` + headers.map((h, i) => `<option value="${i}" ${i === sel ? "selected" : ""}>${esc(h)}</option>`).join("");
     host.innerHTML = `<div class="map-grid">${fields.map(([k, lbl]) => `
       <label class="field-label">${esc(lbl)}</label>
@@ -5793,6 +5859,7 @@
         phone: map.phone >= 0 ? r[map.phone] : null,
         email: map.email >= 0 ? r[map.email] : null,
         intent: map.intent >= 0 ? r[map.intent] : null,
+        stage: map.stage >= 0 ? r[map.stage] : null, // stage KEY or LABEL; the server coerces
       }));
       const btn = host.querySelector("#imp-go");
       btn.disabled = true; btn.textContent = "Importing…";
@@ -5917,9 +5984,14 @@
       const dates = visibleDates();
       const from = dates[0];
       const to = addDays(dates[dates.length - 1], 1);
-      const url = isBooking
+      // Data source override (contacts-all-views): a caller may supply its own window-scoped
+      // URL builder (the Contacts page points this at /api/contacts/calendar); the booking and
+      // generic-record URLs below are byte-for-byte the defaults.
+      const url = (opts && opts.calendarUrl)
+        ? opts.calendarUrl(from, to)
+        : (isBooking
         ? `/api/bookings/calendar?from=${from}&to=${to}`
-        : `/api/records/calendar?type=${encodeURIComponent(type.key)}&field=${encodeURIComponent(dateField || "")}&from=${from}&to=${to}`;
+        : `/api/records/calendar?type=${encodeURIComponent(type.key)}&field=${encodeURIComponent(dateField || "")}&from=${from}&to=${to}`);
       let data;
       try { data = await App.portalApi(url); }
       catch (e) { host.innerHTML = `<div class="card cal-card"><div class="cal-empty">${esc(e.message || "Could not load calendar.")}</div></div>`; return; }
@@ -6243,7 +6315,7 @@
             blk.appendChild(el("div", "cal-block-sub", `${label12(it.s)} · ${[it.b.serviceLabel, it.b.stageLabel].filter(Boolean).join(" · ")}`.replace(/ · $/, "")));
           }
           blk.title = `${it.b.title}${it.b.contactName ? " — " + it.b.contactName : ""}\n${label12(it.s)}–${label12(it.e)} · ${it.b.serviceLabel || ""} · ${it.b.stageLabel || ""}${resForTip ? " · " + resForTip.name : ""}`;
-          blk.onclick = (e) => { e.stopPropagation(); App.go("#/record/" + it.b.id); };
+          blk.onclick = (e) => { e.stopPropagation(); App.go((opts && opts.eventHrefBase ? opts.eventHrefBase : "#/record/") + it.b.id); };
           col.appendChild(blk);
         });
 
@@ -6453,7 +6525,9 @@
   // with a neutral initial-letter placeholder — the gallery shows the whole module, never
   // silently hides imageless records. Card click → the record detail page (same navigation the
   // table rows use). Read-only sibling of renderRecordMap/renderBookingCalendar. ----
-  function renderRecordGallery(host, type, fields, records) {
+  function renderRecordGallery(host, type, fields, records, cfg) {
+    cfg = cfg || {}; // optional per-caller config (contacts-all-views): title/link/stage-label
+                     // resolvers — every default below is the record behavior, byte-for-byte.
     host.innerHTML = "";
     const card = el("div", "card gallery-card-wrap");
     const rows = records || [];
@@ -6473,7 +6547,7 @@
     function secondaryLines(r) {
       const out = [];
       if (moduleHasStages(type) && r.stageKey) {
-        const s = recordStageLabel(type, r.stageKey);
+        const s = cfg.stageLabelOf ? cfg.stageLabelOf(r.stageKey) : recordStageLabel(type, r.stageKey);
         if (s) out.push({ text: s, pill: true });
       }
       for (const f of fields) {
@@ -6499,7 +6573,7 @@
         const img = el("img", "gallery-thumb");
         img.loading = "lazy";       // values can be ~1 MB of base64 each — never load eagerly
         img.decoding = "async";
-        img.alt = r.title || "Untitled";
+        img.alt = cfg.titleOf ? cfg.titleOf(r) : (r.title || "Untitled");
         img.src = src;
         c.appendChild(img);
       } else {
@@ -6508,17 +6582,87 @@
         c.appendChild(ph);
       }
       const meta = el("div", "gallery-meta");
-      meta.appendChild(el("div", "gallery-title", esc(r.title || "Untitled")));
+      meta.appendChild(el("div", "gallery-title", esc(cfg.titleOf ? cfg.titleOf(r) : (r.title || "Untitled"))));
       secondaryLines(r).forEach((ln) => {
         meta.appendChild(el("div", "gallery-sub" + (ln.pill ? " gallery-sub-pill" : ""), ln.pill ? `<span class="pill">${esc(ln.text)}</span>` : esc(ln.text)));
       });
       c.appendChild(meta);
-      const go = () => App.go("#/record/" + r.id); // same navigation the table rows use
+      const go = cfg.hrefOf ? (() => App.go(cfg.hrefOf(r))) : (() => App.go("#/record/" + r.id)); // same navigation the table rows use
       c.onclick = go;
       c.onkeydown = (e) => { if (e.key === "Enter") go(); };
       grid.appendChild(c);
     });
     card.appendChild(grid);
+    host.appendChild(card);
+  }
+
+  // ---- SHARED stage BOARD (kanban) — a standalone, data-driven board: one lane per pipeline
+  // stage plus the standard "No stage" lane for rows without one (the same needs-review lane
+  // idea the related-pane link board uses). Drag persists through cfg.onMove — the CALLER
+  // decides the write path (the Contacts page PATCHes /api/contacts/:id so updateContact's
+  // validation/activity/events fire; nothing here writes anywhere itself). Mirrors the
+  // related-pane kanban's DOM (.kanban/.kanban-col/.kanban-card) and drag UX so the two look
+  // and feel identical — but it is INDEPENDENT of RecordLink/funnel stages and never touches
+  // them. cfg: { lanes:[{key,label}], rows, currentKeyOf(r), titleOf(r), subtitleOf(r)?,
+  // hrefOf(r), onMove(row, newKeyOrNull) -> Promise }. ----
+  function mountStageBoard(host, cfg) {
+    host.innerHTML = "";
+    const card = el("div", "card board-card-wrap");
+    const board = el("div", "kanban");
+    const rows = cfg.rows || [];
+    const known = new Set((cfg.lanes || []).map(function (l) { return l.key; }));
+    function makeCol(key, label, isNone) {
+      const col = el("div", "kanban-col" + (isNone ? " kanban-col--review" : ""));
+      col.appendChild(el("div", "kanban-col-head", esc(label) + ' <span class="kanban-count"></span>'));
+      const cards = el("div", "kanban-cards");
+      col.appendChild(cards);
+      col.addEventListener("dragover", function (e) { const d = board.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault(); col.classList.add("kanban-col--over"); cards.appendChild(d); });
+      col.addEventListener("dragleave", function (e) { if (!col.contains(e.relatedTarget)) col.classList.remove("kanban-col--over"); });
+      col.addEventListener("drop", async function (e) {
+        const d = board.querySelector(".kanban-card.dragging"); if (!d) return; e.preventDefault();
+        col.classList.remove("kanban-col--over"); cards.appendChild(d); refreshCounts();
+        const row = rows.find(function (r) { return r.id === d.dataset.id; }); if (!row) return;
+        const newKey = isNone ? null : key;
+        const curKey = cfg.currentKeyOf(row) || null;
+        if (newKey === curKey) return;
+        try { await cfg.onMove(row, newKey); App.util.toast(App.label("stage", "one") + " updated"); }
+        catch (err) { App.util.toast(err.message, true); paint(); }
+      });
+      return { col: col, cards: cards, key: key, isNone: isNone };
+    }
+    function refreshCounts() {
+      board.querySelectorAll(".kanban-col").forEach(function (c) {
+        const n = c.querySelectorAll(".kanban-card").length;
+        const badge = c.querySelector(".kanban-count"); if (badge) badge.textContent = n ? "(" + n + ")" : "";
+      });
+    }
+    function makeCard(r) {
+      const cd = el("div", "kanban-card");
+      cd.dataset.id = r.id;
+      cd.draggable = true;
+      cd.appendChild(el("div", "kanban-card-title", esc(cfg.titleOf(r))));
+      const sub = cfg.subtitleOf ? cfg.subtitleOf(r) : "";
+      if (sub) cd.appendChild(el("div", "kanban-card-sub", esc(sub)));
+      cd.addEventListener("dragstart", function (e) { cd.classList.add("dragging"); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", r.id); } catch (_e) {} });
+      cd.addEventListener("dragend", function () { cd.classList.remove("dragging"); board.querySelectorAll(".kanban-col--over").forEach(function (cc) { cc.classList.remove("kanban-col--over"); }); refreshCounts(); });
+      cd.addEventListener("click", function () { App.go(cfg.hrefOf(r)); });
+      return cd;
+    }
+    function paint() {
+      board.innerHTML = "";
+      const cols = [];
+      cols.push(makeCol(null, "No " + App.label("stage", "one").toLowerCase(), true)); // rows without a stage
+      (cfg.lanes || []).forEach(function (l) { cols.push(makeCol(l.key, l.label, false)); });
+      cols.forEach(function (m) { board.appendChild(m.col); });
+      rows.forEach(function (r) {
+        const k = cfg.currentKeyOf(r);
+        const target = (k && known.has(k)) ? cols.find(function (m) { return m.key === k; }) : cols[0];
+        (target || cols[0]).cards.appendChild(makeCard(r));
+      });
+      refreshCounts();
+    }
+    paint();
+    card.appendChild(board);
     host.appendChild(card);
   }
 

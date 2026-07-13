@@ -199,7 +199,7 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 /** Turn a stored date/datetime value into a zoneless wall-clock "YYYY-MM-DDT HH:mm" string,
  *  or null if it can't be parsed. Date-only values get a default 9:00 AM slot so they show
  *  as a visible block rather than at midnight. */
-function valueToWall(v: any): string | null {
+export function valueToWall(v: any): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   if (!s) return null;
