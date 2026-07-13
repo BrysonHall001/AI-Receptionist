@@ -116,8 +116,8 @@
       "inlineStyle": 2
     },
     "styles.css": {
-      "rawHex": 79,
-      "offScaleFontSize": 124,
+      "rawHex": 43,
+      "offScaleFontSize": 0,
       "inlineStyle": 0
     },
     "survey.html": {
@@ -127,8 +127,8 @@
     }
   },
   "totals": {
-    "rawHex": 209,
-    "offScaleFontSize": 290,
+    "rawHex": 173,
+    "offScaleFontSize": 166,
     "inlineStyle": 1131
   },
   "info": {

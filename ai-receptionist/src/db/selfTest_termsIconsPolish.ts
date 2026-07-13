@@ -94,7 +94,7 @@ async function main() {
   check((portal.match(/TYPE_ICONS/g) || []).length === 2 && lib.includes(dotLine), "TYPE_ICONS is applied ONLY on the library tiles (its sole usage is the mf-lib-dot line)");
   check(/e\.dataTransfer\.setData\("text\/plain", "fieldtype:" \+ t\)/.test(lib), "the drag payload construction is unchanged (no icon carried over)");
   check(/mfLibraryDragType = t;/.test(lib), "the drag state handoff is unchanged");
-  check(/\.mf-lib-dot \{ color: var\(--ink-faint\); font-size: 12px; flex: 0 0 auto; width: 1\.35em; text-align: center; line-height: 1; \}/.test(css), "the .mf-lib-dot styling stays muted/monochrome, with fixed-width centering for alignment");
+  check(/\.mf-lib-dot \{ color: var\(--ink-faint\); font-size: var\(--text-xs\); flex: 0 0 auto; width: 1\.35em; text-align: center; line-height: 1; \}/.test(css), "the .mf-lib-dot styling stays muted/monochrome, with fixed-width centering (12px tokenized — design Phase 2)");
 }
 
 main()

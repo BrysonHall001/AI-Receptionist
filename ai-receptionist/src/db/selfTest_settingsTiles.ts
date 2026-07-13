@@ -52,7 +52,7 @@ check(/fieldsMount = host;\s*\n\s*await renderFields\(true, host\);/.test(portal
 
 // (3) CSS.
 console.log("\n(3) CSS:");
-check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(240px, 1fr\) minmax\(0, 1\.15fr\); gap: 16px/.test(css), "two-column grid template (Field library | Fields), balance kept from the earlier rebalance");
+check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(240px, 1fr\) minmax\(0, 1\.15fr\); gap: var\(--sp-4\)/.test(css) && /--sp-4: 16px;/.test(css), "two-column grid template (Field library | Fields), balance kept (gap tokenized at 16px — design Phase 2)");
 check(/\.mf-col-library \{/.test(css) && !/mf-col-terms/.test(css), "the Field library keeps the card styling; no .mf-col-terms orphan rules remain");
 check(/\.settings-tile \{/.test(css) && /\.settings-tiles \{ display: flex; flex-wrap: wrap/.test(css), "tile styles exist and wrap");
 
