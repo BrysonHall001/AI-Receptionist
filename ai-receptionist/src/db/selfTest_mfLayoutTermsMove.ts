@@ -95,7 +95,7 @@ async function main() {
 
   // ---- (4) two-column grid; zero orphans ----
   console.log("\n(4) grid + CSS:");
-  check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(240px, 1fr\) minmax\(0, 1\.15fr\); gap: 16px; align-items: start; \}/.test(css), ".mf-grid is TWO columns (library | fields, prior balance kept)");
+  check(/\.mf-grid \{ display: grid; grid-template-columns: minmax\(240px, 1fr\) minmax\(0, 1\.15fr\); gap: 16px; align-items: stretch; \}/.test(css), ".mf-grid is TWO columns (library | fields, prior balance kept; stretched for height parity — space pass)");
   check(!/mf-col-terms/.test(css) && !/mf-col-terms/.test(portal), "zero .mf-col-terms rules or usages remain (deleted, not repurposed)");
   check(/\.mf-views-strip \{/.test(css), "the strip has its own styling hook");
   check(/\.mf-views-body \{ display: flex; flex-wrap: wrap; gap: 10px/.test(css), "view tiles lay out side-by-side and wrap");

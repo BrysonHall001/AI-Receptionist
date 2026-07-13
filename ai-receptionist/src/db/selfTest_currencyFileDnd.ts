@@ -52,7 +52,7 @@ check(/f\.type === "currency"[\s\S]*?App\.fields\.formatValue/.test(portal), "li
 
 console.log("\n(5) independent scroll (Task 3) + CSS:");
 check(/const scroll = el\("div", "mf-fields-scroll"\)/.test(portal), "the sections/fields list is wrapped in a scroll container");
-check(/\.mf-fields-scroll \{[^}]*max-height: calc\(100vh[^}]*overflow-y: auto/.test(css), "mf-fields-scroll has a viewport-tied max-height + own scroll");
+check(/\.mf-fields-scroll \{ flex: 1 1 auto; min-height: 0; overflow-y: auto/.test(css) && !/\.mf-fields-scroll \{[^}]*max-height: calc\(100vh/.test(css), "mf-fields-scroll fills its column and scrolls (the old viewport max-height cap is gone — space pass)");
 check(/\.field-list--drop \{/.test(css), "drop-target highlight style exists");
 check(/\.form-currency \{/.test(css) && /\.form-file \{/.test(css) && /\.cell-link \{/.test(css), "currency/file/cell-link styles exist");
 

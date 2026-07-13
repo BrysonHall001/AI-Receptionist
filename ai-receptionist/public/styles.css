@@ -1812,7 +1812,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 @media (max-width: 560px) { .lbl-row { grid-template-columns: 1fr 1fr; gap: 6px; } }
 
 /* ---------- Modules & Fields (Modules = horizontal row above; then Field library | Fields | Terms) ---------- */
-.mf-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
+.mf-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.15fr); gap: 16px; align-items: stretch; }
 .mf-col { min-width: 0; }
 .mf-col-library { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
 .mf-col-title { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; color: var(--ink); margin-bottom: 8px; }
@@ -1859,6 +1859,12 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mf-term-desc { font-size: 11.5px; line-height: 1.4; color: var(--ink-faint); margin: 4px 0 0; white-space: normal; overflow-wrap: normal; }
 /* Views section (beneath Terms) — per-module optional views (Board / Calendar / …) */
 .mf-views-strip { margin: 0 0 16px; }
+/* Structure & behavior as a full-width horizontal panel beneath the grid (space pass):
+   title + pipeline toggle span the width; the types/pipelines and Statuses editors sit side
+   by side when space allows and wrap to stacked on narrow screens. */
+.mf-structure-panel { margin-top: 16px; }
+.mf-structure-panel .mf-structure { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+.mf-structure-panel .mf-structure-title, .mf-structure-panel .mf-pipeline-card { grid-column: 1 / -1; }
 .mf-views { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; }
 .mf-views .mf-col-hint { margin-bottom: 10px; }
 .mf-views-body { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
@@ -1896,8 +1902,22 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .field-list--drop { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 8px; background: var(--accent-soft); }
 /* Task 3: the sections/fields list scrolls independently so the side columns and the
    rest of the page stay put. Disabled when columns stack on narrow screens. */
-.mf-fields-scroll { max-height: calc(100vh - 300px); min-height: 200px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
-@media (max-width: 640px) { .mf-fields-scroll { max-height: none; overflow: visible; padding-right: 0; } }
+/* Height parity (space pass): the Fields column fills its grid row exactly — the row's
+   height is the Field library's natural height (the absolute wrap contributes none), so both
+   columns bottom-align with NO fixed cap, and the scroller engages only past that shared
+   height. Derived entirely from the layout; the old viewport-math JS sizer is gone. */
+.mf-col-fields { position: relative; }
+.mf-fields-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
+.mf-fields-wrap .mf-fields-intro { flex: none; }
+.mf-fields-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+/* Two-column field sections (3+ sections incl. Ungrouped — class set in renderFields). */
+.mf-fields-scroll.mf-sections-2col { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0 12px; align-items: start; }
+@media (max-width: 900px) { .mf-fields-scroll.mf-sections-2col { display: block; } }
+@media (max-width: 640px) {
+  .mf-col-fields { position: static; }
+  .mf-fields-wrap { position: static; display: block; }
+  .mf-fields-scroll { max-height: none; overflow: visible; padding-right: 0; }
+}
 /* Responsive: 3 cols -> Field library + Terms share a row with Fields full-width ->
    single column. Never crush/clip. */
 @media (max-width: 1000px) {

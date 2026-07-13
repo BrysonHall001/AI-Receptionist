@@ -88,8 +88,8 @@ check(/\.chrome-toggle \{[^}]*top: 11px/.test(css) && /\.portal-pages-row \{[^}]
 // Item 3: collapsed content padding.
 check(/\.app-shell\.chrome-collapsed \.content \{ padding-top: 36px; padding-left: 64px; \}/.test(css), "collapsed full-screen gives the content padding");
 // Item 4: JS-sized independent scroll.
-check(/function sizeMfFieldsScroll\(\)/.test(portal) && /window\.innerHeight - top - 24/.test(portal), "Fields scroll height is sized from its actual viewport top");
-check(/window\.addEventListener\("resize", sizeMfFieldsScroll\)/.test(portal), "Fields scroll re-sizes on window resize");
+check(!/sizeMfFieldsScroll/.test(portal) && /\.mf-fields-wrap \{ position: absolute; inset: 0;/.test(css), "Fields column height derives from the layout (fills its grid row) — the JS viewport sizer is retired (space pass)");
+check(/\.mf-grid \{[^}]*align-items: stretch/.test(css), "the grid stretches both columns to the same row height (no resize listener needed)");
 check(/\.mf-fields-scroll \{[^}]*overflow-y: auto; overscroll-behavior: contain/.test(css), "Fields scroll contains its overscroll (page stays put)");
 // Item 6: all-tenants block moved bottom-right; removed from the logo.
 check(/adminContext: false \} : \{ attribution: true, adminContext: false \}/.test(app), "the All-tenants block is no longer rendered beside the logo");

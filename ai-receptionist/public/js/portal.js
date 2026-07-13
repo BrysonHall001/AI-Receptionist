@@ -5,7 +5,6 @@
   let current = "dashboard";
   let fieldDropHandled = false; // set true when a field is dropped on a section list
   let mfLibraryDragType = null; // non-null while dragging a type out of the Field library
-  let mfScrollResizeBound = false; // window-resize listener for the Fields column height
 
   function view() { return App.util.$("#view"); }
   function setView(v) { current = v; }
@@ -2857,6 +2856,7 @@
   // renderFields(true) refreshes must target the settings panel, not the main #view.
   // Stored once (set by secFields) and reused on every refresh; null = standalone.
   let fieldsMount = null;
+  let structureMount = null; // the full-width Structure & behavior panel beneath the M&F grid
   // Set by secFields — repaints ONLY the Views panel (not Terms, which has editable inputs)
   // with a fresh record type. Called after the Pipeline toggle's server round-trip so Board
   // availability flips live off the fresh pipelineEnabled, not a stale cached copy. Null when
@@ -2880,7 +2880,7 @@
       App.portalApi("/api/field-sections?recordType=" + encodeURIComponent(selectedKey)).catch(() => []),
     ]);
     const canEdit = App.state.me.role !== "CLIENT_USER";
-    const wrap = el("div", refresh ? "" : "fade-in"); // don't replay the fade-in animation on in-place refreshes
+    const wrap = el("div", refresh ? "mf-fields-wrap" : "mf-fields-wrap fade-in"); // don't replay the fade-in animation on in-place refreshes
 
     // Column header — the selected module's fields, with "+ Add section" aligned on the
     // same row. Field creation is drag-from-library now, so there's no "+ Add field".
@@ -3236,13 +3236,22 @@
     // Tie its max-height to the element's ACTUAL top so it always fits regardless of how
     // much sits above it; recompute on resize.
     const scroll = el("div", "mf-fields-scroll");
+    // Two-column section layout (space pass): with 3+ sections (Ungrouped counts), the cards
+    // flow into a two-column grid; 1–2 sections keep the single column. Drag-and-drop is
+    // untouched — every section's .field-list is its own drop target with within-list Y
+    // positioning, so dragging between sections works identically across columns.
+    const shownUngrouped = (ungrouped.length || !sorted.length) ? 1 : 0;
+    if (sorted.length + shownUngrouped >= 3) scroll.classList.add("mf-sections-2col");
     sorted.forEach((s, i) => scroll.appendChild(sectionCard(s, bySection[s.id], i)));
     if (ungrouped.length || !sorted.length) scroll.appendChild(ungroupedCard(ungrouped));
-    // Structure & behavior renders for EVERY module now, including Contacts (contacts-all-views)
-    // — Board can never become available if Contacts can't enable a pipeline. The toggle keeps
-    // its existing non-destructive semantics.
-    if (canEdit && selectedType) scroll.appendChild(structureSection());
     wrap.appendChild(scroll);
+    // Structure & behavior renders for EVERY module, including Contacts (contacts-all-views) —
+    // now into its own FULL-WIDTH panel beneath the grid (space pass); same section, same
+    // wiring, same permission gate. Fallback to the column keeps any mount-less caller whole.
+    if (canEdit && selectedType) {
+      if (structureMount) { structureMount.innerHTML = ""; structureMount.appendChild(structureSection()); }
+      else scroll.appendChild(structureSection());
+    } else if (structureMount) structureMount.innerHTML = "";
 
     fieldsView().innerHTML = "";
     fieldsView().appendChild(wrap);
@@ -3256,21 +3265,6 @@
     // No-op outside the Modules & Fields settings panel (mfViewsRepaint is null there).
     if (refresh && mfViewsRepaint) { try { mfViewsRepaint(); } catch (e) {} }
 
-    if (typeof window !== "undefined" && window.requestAnimationFrame) {
-      window.requestAnimationFrame(sizeMfFieldsScroll);
-      if (!mfScrollResizeBound) { mfScrollResizeBound = true; window.addEventListener("resize", sizeMfFieldsScroll); }
-    }
-  }
-
-  // Cap the Fields column to the space between its top and the viewport bottom, so it
-  // scrolls internally instead of pushing the page. No-op when the column isn't shown
-  // or when it's stacked on a narrow screen (its CSS max-height is removed there).
-  function sizeMfFieldsScroll() {
-    const s = document.querySelector(".mf-fields-scroll");
-    if (!s) return;
-    if (window.innerWidth <= 640) { s.style.maxHeight = ""; return; }
-    const top = s.getBoundingClientRect().top;
-    s.style.maxHeight = Math.max(200, Math.round(window.innerHeight - top - 24)) + "px";
   }
 
   function fieldRow(f, canEdit, allFields, recordTypeKey, sections, currentSectionId) {
@@ -5498,6 +5492,11 @@
       grid.appendChild(colLib); grid.appendChild(host);
       panel.appendChild(grid);
 
+      // Structure & behavior now lives in its own FULL-WIDTH panel beneath the two columns
+      // (space pass) — same section, same wiring; renderFields mounts it here.
+      const structurePanel = el("div", "mf-structure-panel");
+      panel.appendChild(structurePanel);
+
       const currentType = function () { return visible.find(function (t) { return t.key === App.state.fieldsType; }) || visible[0]; };
       const renderViewsStrip = function () { buildViewsSection(viewsStrip, currentType()); };
       // Repaint just the Views strip with a FRESH record type (from a server round-trip), keeping
@@ -5521,6 +5520,7 @@
       buildModulesRow(modulesRow, visible, selectModule);     // Modules horizontal row (⋮ rename/move/hide)
       renderViewsStrip();                                     // Views strip (per selected module)
 
+      structureMount = structurePanel;
       fieldsMount = host;
       await renderFields(true, host);                         // Fields
     }
