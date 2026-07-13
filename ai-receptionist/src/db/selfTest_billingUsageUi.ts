@@ -19,7 +19,7 @@ function main() {
   check(has(reports, "renderWidgetBody,") || /renderWidgetBody\s*[},]/.test(reports.slice(reports.indexOf("App.reports ="))), "reports.js exposes renderWidgetBody on App.reports");
   check(has(admin, "App.reports.renderWidgetBody("), "admin.js drives the SAME engine via App.reports.renderWidgetBody");
   check(!/renderWidgetBody[\s\S]{0,400}App\.portalApi/.test(admin) && has(admin, "/api/admin/usage"), "hub usage widgets fetch from the admin usage endpoints, not portalApi");
-  check(has(html, "chart.umd.min.js") && html.indexOf("chart.umd.min.js") < html.indexOf("/js/admin.js"), "Chart.js is loaded before admin.js on the hub page");
+  check(has(html, "/js/vendor/chartjs/chart.umd.js") && html.indexOf("chart.umd.js") < html.indexOf("/js/admin.js"), "Chart.js (vendored locally) is loaded before admin.js on the hub page");
 
   console.log("\n(2) usage reporting source (Task 1):");
   for (const f of ['key: "date"', 'key: "tenant"', 'key: "calls"', 'key: "callMinutes"', 'key: "promptTokens"', 'key: "completionTokens"', 'key: "totalTokens"', 'key: "emails"', 'key: "sms"', 'key: "callCost"', 'key: "tokenCost"', 'key: "numberCost"', 'key: "totalCost"']) {
