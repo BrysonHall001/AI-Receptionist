@@ -42,12 +42,12 @@
 .wf-builder { display: block; }
 .wf-step { display: block; }
 .wf-step-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 8px; flex-wrap: wrap; }
-.wf-badge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 9px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-soft); flex: 0 0 auto; }
+.wf-badge { font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 9px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-soft); flex: 0 0 auto; }
 .wf-badge.trigger { background: var(--accent-soft); color: var(--accent); }
 .wf-badge.conditions { background: var(--amber-soft); color: var(--amber); }
 .wf-badge.actions { background: var(--green-soft); color: var(--green); }
 .wf-step-title { font-size: 14px; font-weight: 700; color: var(--ink); }
-.wf-step-opt { font-size: 11.5px; font-weight: 600; color: var(--ink-faint); }
+.wf-step-opt { font-size: var(--text-xs); font-weight: 600; color: var(--ink-faint); }
 .wf-hint { font-size: 12px; color: var(--ink-faint); margin: 0 0 9px; }
 .wf-node { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); padding: 14px; }
 .wf-node.trigger-node { background: var(--accent-soft); border-color: transparent; }
@@ -61,8 +61,8 @@
 .wf-action-cfg { margin-top: 10px; }
 .wf-action-cfg .input { margin-bottom: 8px; }
 .wf-action-cfg textarea.input { min-height: 70px; resize: vertical; }
-.wf-empty-actions { font-size: 12.5px; color: var(--ink-faint); padding: 4px 0 2px; }
-.subnav-caption { font-size: 12.5px; color: var(--ink-faint); margin: -10px 0 16px; }
+.wf-empty-actions { font-size: var(--text-xs); color: var(--ink-faint); padding: 4px 0 2px; }
+.subnav-caption { font-size: var(--text-xs); color: var(--ink-faint); margin: -10px 0 16px; }
 .wf-process-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .wf-process-note { font-size: 12px; color: var(--ink-faint); }
 .job-item { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--panel); display: flex; align-items: center; gap: 10px; }
@@ -86,9 +86,9 @@
 .tpl-entry-card.disabled .tpl-entry-icon { background: var(--gray-soft); color: var(--ink-faint); }
 .tpl-entry-main { min-width: 0; flex: 1; }
 .tpl-entry-title { font-size: 14px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.tpl-entry-sub { font-size: 12.5px; color: var(--ink-faint); margin-top: 2px; }
-.tpl-entry-cta { flex: 0 0 auto; font-size: 12.5px; font-weight: 700; color: var(--accent); }
-.tpl-soon { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-faint); }
+.tpl-entry-sub { font-size: var(--text-xs); color: var(--ink-faint); margin-top: 2px; }
+.tpl-entry-cta { flex: 0 0 auto; font-size: var(--text-xs); font-weight: 700; color: var(--accent); }
+.tpl-soon { font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-faint); }
 
 /* ----- Presets library ----- */
 .preset-cat-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin: 18px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
@@ -97,35 +97,35 @@
 .preset-card { display: flex; flex-direction: column; gap: 11px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); padding: 14px; cursor: pointer; transition: border-color .12s ease, box-shadow .12s ease; }
 .preset-card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
 .preset-name { font-size: 14px; font-weight: 700; color: var(--ink); }
-.preset-desc { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; line-height: 1.45; }
+.preset-desc { font-size: var(--text-xs); color: var(--ink-soft); margin-top: 3px; line-height: 1.45; }
 .preset-shape { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.shape-chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.shape-chip { font-size: var(--text-xs); font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 .shape-chip.trigger { background: var(--accent-soft); color: var(--accent); }
 .shape-chip.action { background: var(--green-soft); color: var(--green); }
 .shape-arrow { display: inline-flex; color: var(--ink-faint); }
-.preset-missing { font-size: 11.5px; font-weight: 600; color: var(--amber); background: var(--amber-soft); border-radius: var(--radius-sm); padding: 5px 9px; }
+.preset-missing { font-size: var(--text-xs); font-weight: 600; color: var(--amber); background: var(--amber-soft); border-radius: var(--radius-sm); padding: 5px 9px; }
 .preset-card-foot { display: flex; gap: 7px; margin-top: auto; }
 .preset-card-foot .btn { flex: 1; justify-content: center; }
 
 /* ----- Preset preview (inside the same library modal) ----- */
 .preset-pv-head { margin: 12px 0 14px; }
-.preset-pv-title { font-size: 17px; font-weight: 700; color: var(--ink); }
+.preset-pv-title { font-size: var(--text-md); font-weight: 700; color: var(--ink); }
 .preset-pv-desc { font-size: 13px; color: var(--ink-soft); margin-top: 4px; line-height: 1.5; }
 .preset-pv-section { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-2); padding: 13px 14px; margin-top: 13px; }
 .pv-block { display: flex; gap: 12px; padding: 5px 0; }
 .pv-block + .pv-block { border-top: 1px solid var(--line); }
-.pv-k { flex: 0 0 54px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); padding-top: 2px; }
+.pv-k { flex: 0 0 54px; font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); padding-top: 2px; }
 .pv-v { font-size: 13px; color: var(--ink); min-width: 0; }
 .pv-v ul { margin: 0; padding-left: 18px; }
 .pv-v li { margin: 2px 0; }
 .field-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.field-flag { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.field-flag { font-size: var(--text-xs); font-weight: 600; padding: 3px 9px; border-radius: 999px; }
 .field-flag.ok { background: var(--green-soft); color: var(--green); }
 .field-flag.missing { background: var(--amber-soft); color: var(--amber); }
-.pv-warn { font-size: 12.5px; color: var(--amber); margin: 10px 0 0; line-height: 1.5; }
+.pv-warn { font-size: var(--text-xs); color: var(--amber); margin: 10px 0 0; line-height: 1.5; }
 
 /* ----- Editor warning banner (applied preset that needs a field) ----- */
-.wf-warnbar { font-size: 12.5px; color: var(--ink); line-height: 1.5; background: var(--amber-soft); border: 1px solid var(--amber); border-radius: var(--radius-sm); padding: 11px 13px; margin-bottom: 16px; }
+.wf-warnbar { font-size: var(--text-xs); color: var(--ink); line-height: 1.5; background: var(--amber-soft); border: 1px solid var(--amber); border-radius: var(--radius-sm); padding: 11px 13px; margin-bottom: 16px; }
 .wf-warnbar strong { color: var(--amber); }
 
 @media (max-width: 640px) {
@@ -135,19 +135,19 @@
 
 /* ----- Branching wizard ----- */
 .wiz-steps { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
-.wiz-step-pill { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-faint); white-space: nowrap; }
+.wiz-step-pill { font-size: var(--text-xs); font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--gray-soft); color: var(--ink-faint); white-space: nowrap; }
 .wiz-step-pill.active { background: var(--accent-soft); color: var(--accent); }
 .wiz-step-pill.done { background: var(--green-soft); color: var(--green); }
-.wiz-q { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0 0 4px; }
-.wiz-sub { font-size: 12.5px; color: var(--ink-faint); margin: 0 0 14px; line-height: 1.5; }
+.wiz-q { font-size: var(--text-base); font-weight: 700; color: var(--ink); margin: 0 0 4px; }
+.wiz-sub { font-size: var(--text-xs); color: var(--ink-faint); margin: 0 0 14px; line-height: 1.5; }
 .wiz-cond-row { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
 .wiz-cond-row .input { margin-bottom: 0; }
 .wiz-cond-row select.input, .wiz-cond-row input.input { flex: 1 1 110px; min-width: 0; }
 .wiz-choice { display: flex; gap: 10px; }
-.wiz-choice-card { flex: 1; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 16px 14px; cursor: pointer; text-align: center; font-weight: 700; font-size: 13.5px; color: var(--ink-soft); transition: border-color .12s ease, background .12s ease; }
+.wiz-choice-card { flex: 1; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 16px 14px; cursor: pointer; text-align: center; font-weight: 700; font-size: var(--text-sm); color: var(--ink-soft); transition: border-color .12s ease, background .12s ease; }
 .wiz-choice-card:hover { border-color: var(--accent); }
 .wiz-choice-card.sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.wiz-choice-sub { display: block; font-size: 11.5px; font-weight: 500; color: var(--ink-faint); margin-top: 4px; }
+.wiz-choice-sub { display: block; font-size: var(--text-xs); font-weight: 500; color: var(--ink-faint); margin-top: 4px; }
 .wiz-choice-card.sel .wiz-choice-sub { color: var(--accent); }
 .wiz-path { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-2); padding: 13px; margin-bottom: 12px; }
 .wiz-path-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); margin-bottom: 9px; }
@@ -156,7 +156,7 @@
 .wiz-review-block { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-2); padding: 12px 14px; margin-bottom: 12px; }
 .wiz-review-block ul { margin: 4px 0 0; padding-left: 18px; }
 .wiz-review-block li { margin: 2px 0; font-size: 13px; color: var(--ink); }
-.wiz-note { font-size: 12.5px; color: var(--amber); background: var(--amber-soft); border-radius: var(--radius-sm); padding: 9px 12px; line-height: 1.5; }
+.wiz-note { font-size: var(--text-xs); color: var(--amber); background: var(--amber-soft); border-radius: var(--radius-sm); padding: 9px 12px; line-height: 1.5; }
 .wiz-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; }
 .wiz-foot .wiz-foot-right { display: flex; gap: 8px; margin-left: auto; }
 
@@ -164,13 +164,13 @@
 .pair-group { border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 10px 2px; margin-bottom: 12px; background: var(--accent-soft); }
 .pair-group.soft { border-color: var(--line-strong); border-style: dashed; background: var(--panel-2); }
 .pair-group-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 2px 4px 8px; }
-.pair-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); display: inline-flex; align-items: center; gap: 5px; }
+.pair-badge { font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); display: inline-flex; align-items: center; gap: 5px; }
 .pair-badge.soft { color: var(--ink-faint); }
 .pair-group-note { font-size: 12px; color: var(--ink-faint); }
 .pair-group .auto-card { margin-bottom: 8px; }
-.pair-pill { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; margin-left: 6px; }
+.pair-pill { font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; margin-left: 6px; }
 .pair-pill.soft { background: var(--gray-soft); color: var(--ink-faint); }
-.pair-warn { font-size: 12.5px; color: var(--ink); line-height: 1.5; background: var(--amber-soft); border: 1px solid var(--amber); border-radius: var(--radius-sm); padding: 9px 12px; margin: 0 0 12px; }
+.pair-warn { font-size: var(--text-xs); color: var(--ink); line-height: 1.5; background: var(--amber-soft); border: 1px solid var(--amber); border-radius: var(--radius-sm); padding: 9px 12px; margin: 0 0 12px; }
 .pair-orphan-note { font-size: 12px; color: var(--ink-faint); margin: 0 0 12px; }
 
 /* ----- Automations list toolbar (read-only view controls) ----- */
@@ -179,7 +179,7 @@
 .auto-toolbar .auto-search { flex: 1 1 200px; min-width: 140px; }
 .auto-toolbar select.input { cursor: pointer; }
 .auto-toolbar .btn { flex: 0 0 auto; }
-.auto-count { font-size: 12.5px; color: var(--ink-faint); margin-bottom: 12px; }
+.auto-count { font-size: var(--text-xs); color: var(--ink-faint); margin-bottom: 12px; }
 `;
     const style = el("style");
     style.id = "wf-builder-styles";
@@ -219,7 +219,7 @@
     host.appendChild(caption);
 
     const body = el("div", "automations-body");
-    body.innerHTML = `<div class="cell-muted" style="padding:24px">Loading…</div>`;
+    body.innerHTML = `<div class="cell-muted au-t1">Loading…</div>`;
     host.appendChild(body);
 
     try {
@@ -238,7 +238,7 @@
         renderEvents(body);
       }
     } catch (e) {
-      body.innerHTML = `<div class="cell-muted" style="padding:24px">${esc(e.message)}</div>`;
+      body.innerHTML = `<div class="cell-muted au-t1">${esc(e.message)}</div>`;
     }
   }
 
@@ -588,7 +588,7 @@
   }
 
   function branchGlyph() {
-    return `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="vertical-align:-1px"><path d="M3 1v3.5C3 6 4 6.5 5.2 6.5H9M3 11V7.5C3 6 4 5.5 5.2 5.5H9M9 4.5L11 6 9 7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    return `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" class="au-t2"><path d="M3 1v3.5C3 6 4 6.5 5.2 6.5H9M3 11V7.5C3 6 4 5.5 5.2 5.5H9M9 4.5L11 6 9 7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   }
 
   // Two-up entry row: "Start from a template" opens the preset library; "Build
@@ -640,7 +640,7 @@
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Automation templates</h2><button class="icon-btn" id="pl-close">&times;</button></div>`;
     const pbody = el("div", "modal-body");
-    pbody.innerHTML = `<div class="cell-muted" style="padding:24px">Loading templates…</div>`;
+    pbody.innerHTML = `<div class="cell-muted au-t1">Loading templates…</div>`;
     inner.appendChild(pbody);
     const overlay = modal(inner, "modal-builder");
     inner.querySelector("#pl-close").onclick = () => overlay.remove();
@@ -648,7 +648,7 @@
       const data = await App.portalApi("/api/automations/presets");
       showGallery(pbody, data, overlay);
     } catch (e) {
-      pbody.innerHTML = `<div class="cell-muted" style="padding:24px">${esc(e.message)}</div>`;
+      pbody.innerHTML = `<div class="cell-muted au-t1">${esc(e.message)}</div>`;
     }
   }
 
@@ -707,7 +707,7 @@
     }
     if (data && !data.smsEnabled && p.hasSms) {
       const n = el("div", "preset-missing", "Includes a text step — hidden while texting is off.");
-      n.style.cssText = "background:var(--panel-2);color:var(--ink-soft)";
+      n.classList.add("au-n");
       card.appendChild(n);
     }
     const foot = el("div", "preset-card-foot");
@@ -749,7 +749,7 @@
 
     if (data && !data.smsEnabled && p.hasSms) {
       const n = el("div", "preset-missing", "This template includes a text (SMS) step. Texting is currently off, so that step stays hidden and won't send; the rest applies normally.");
-      n.style.cssText = "background:var(--panel-2);color:var(--ink-soft);margin-top:12px";
+      n.classList.add("au-n2");
       pbody.appendChild(n);
     }
 
@@ -886,7 +886,7 @@
       if (!list.some(([v]) => v === cond.op)) { cond.op = list[0][0]; osel.value = cond.op; }
       toggleVal();
     }
-    function toggleVal() { valInp.style.display = noValueOp(cond.op) ? "none" : ""; }
+    function toggleVal() { valInp.classList.toggle("u-hidden", noValueOp(cond.op)); }
     fsel.onchange = () => { cond.field = fsel.value; rebuildOps(); onChange && onChange(); };
     osel.onchange = () => { cond.op = osel.value; toggleVal(); onChange && onChange(); };
     valInp.oninput = () => { cond.value = valInp.value; onChange && onChange(); };
@@ -1011,9 +1011,9 @@
     fillTriggerSelect(sel, w.baseTrigger);
     box.appendChild(sel);
     const desc = el("div", "wf-help-desc");
-    desc.style.cssText = "margin-top:6px;font-size:12.5px;color:var(--ink-soft);";
+    desc.classList.add("au-desc");
     box.appendChild(desc);
-    const extra = el("div"); extra.style.marginTop = "10px"; box.appendChild(extra);
+    const extra = el("div"); extra.classList.add("u-mt-10"); box.appendChild(extra);
     function renderExtra() {
       desc.textContent = triggerDescription(w.baseTrigger);
       extra.innerHTML = "";
@@ -1038,7 +1038,7 @@
         const anyF = el("option", null, "Any field"); anyF.value = ""; rfs.appendChild(anyF);
         (meta.recordFields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === w.recField) o.selected = true; rfs.appendChild(o); });
         extra.appendChild(rfs);
-        const vHost = el("div"); vHost.style.marginTop = "8px"; extra.appendChild(vHost);
+        const vHost = el("div"); vHost.classList.add("u-mt-8"); extra.appendChild(vHost);
         function renderWRecValue() {
           vHost.innerHTML = "";
           if (!w.recField) return;
@@ -1073,7 +1073,7 @@
         if (!dateFields.length) extra.appendChild(small("No Date fields exist yet. Create one under Fields first (e.g. a renewal date)."));
         extra.appendChild(small("Run this many, before/after, which date field:"));
         const rowEl = el("div", "wiz-cond-row");
-        const amt = el("input", "input"); amt.type = "number"; amt.placeholder = "6"; amt.style.flex = "0 0 70px"; amt.value = w.sched.amount; amt.oninput = () => { w.sched.amount = amt.value; };
+        const amt = el("input", "input"); amt.type = "number"; amt.placeholder = "6"; amt.classList.add("au-flex-70"); amt.value = w.sched.amount; amt.oninput = () => { w.sched.amount = amt.value; };
         const unit = el("select", "input"); [["days", "days"], ["weeks", "weeks"], ["months", "months"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.sched.unit === v) o.selected = true; unit.appendChild(o); }); unit.onchange = () => { w.sched.unit = unit.value; };
         const dir = el("select", "input"); [["before", "before"], ["after", "after"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.sched.dir === v) o.selected = true; dir.appendChild(o); }); dir.onchange = () => { w.sched.dir = dir.value; };
         const fs = el("select", "input"); const b = el("option", null, "— date field —"); b.value = ""; fs.appendChild(b);
@@ -1102,7 +1102,7 @@
         rowType.appendChild(ts); extra.appendChild(rowType);
 
         const rowEl = el("div", "wiz-cond-row");
-        const amt = el("input", "input"); amt.type = "number"; amt.min = "0"; amt.placeholder = "7"; amt.style.flex = "0 0 70px"; amt.value = w.recDate.amount; amt.oninput = () => { w.recDate.amount = amt.value; };
+        const amt = el("input", "input"); amt.type = "number"; amt.min = "0"; amt.placeholder = "7"; amt.classList.add("au-flex-70"); amt.value = w.recDate.amount; amt.oninput = () => { w.recDate.amount = amt.value; };
         const unit = el("select", "input"); [["days", "days"], ["weeks", "weeks"], ["months", "months"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.recDate.unit === v) o.selected = true; unit.appendChild(o); }); unit.onchange = () => { w.recDate.unit = unit.value; };
         const dir = el("select", "input"); [["before", "before"], ["after", "after"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.recDate.dir === v) o.selected = true; dir.appendChild(o); }); dir.onchange = () => { w.recDate.dir = dir.value; };
         const fs = el("select", "input");
@@ -1122,16 +1122,16 @@
       } else if (w.baseTrigger === "AppointmentReminder") {
         extra.appendChild(small("Send this long before a booking's appointment:"));
         const rowEl = el("div", "wiz-cond-row");
-        const amt = el("input", "input"); amt.type = "number"; amt.min = "1"; amt.placeholder = "2"; amt.style.flex = "0 0 70px"; amt.value = w.remind.amount; amt.oninput = () => { w.remind.amount = amt.value; };
+        const amt = el("input", "input"); amt.type = "number"; amt.min = "1"; amt.placeholder = "2"; amt.classList.add("au-flex-70"); amt.value = w.remind.amount; amt.oninput = () => { w.remind.amount = amt.value; };
         const unit = el("select", "input"); [["minutes", "minutes"], ["hours", "hours"], ["days", "days"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.remind.unit === v) o.selected = true; unit.appendChild(o); }); unit.onchange = () => { w.remind.unit = unit.value; };
-        const beforeLbl = el("span", "cell-muted", "before the appointment"); beforeLbl.style.cssText = "font-size:12.5px; align-self:center;";
+        const beforeLbl = el("span", "cell-muted", "before the appointment"); beforeLbl.classList.add("au-beforelbl");
         rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(beforeLbl);
         extra.appendChild(rowEl);
         extra.appendChild(hint("Texts/emails the booking's linked contact. Based on the appointment's clock time; if your business isn't on UTC the send time shifts by your timezone offset."));
       } else if (w.baseTrigger === "Stalled") {
         extra.appendChild(small("Run when something has sat in its current stage, no movement, for at least this many days:"));
         const rowEl = el("div", "wiz-cond-row");
-        const days = el("input", "input"); days.type = "number"; days.min = "1"; days.placeholder = "7"; days.style.flex = "0 0 80px"; days.value = w.stall.days || "7"; days.oninput = () => { w.stall.days = days.value; };
+        const days = el("input", "input"); days.type = "number"; days.min = "1"; days.placeholder = "7"; days.classList.add("au-flex-80"); days.value = w.stall.days || "7"; days.oninput = () => { w.stall.days = days.value; };
         const stageSel = el("select", "input"); const any = el("option", null, App.relabelText("Any stage", { all: true })); any.value = ""; stageSel.appendChild(any);
         (meta.stages || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === w.stall.stageKey) o.selected = true; stageSel.appendChild(o); });
         stageSel.onchange = () => { w.stall.stageKey = stageSel.value; };
@@ -1174,7 +1174,7 @@
     box.appendChild(choice);
 
     if (w.branch) {
-      const cWrap = el("div"); cWrap.style.marginTop = "14px";
+      const cWrap = el("div"); cWrap.classList.add("u-mt-14");
       cWrap.appendChild(small("Split on this condition (yes/no style):"));
       cWrap.appendChild(condRow(w.branchCond, branchOps, null));
       cWrap.appendChild(hint("The wizard will create one draft that runs when this is true, and a second draft (the exact opposite) for everything else."));
@@ -1205,7 +1205,7 @@
     box.appendChild(el("p", "wiz-q", "Review and create"));
     box.appendChild(el("p", "wiz-sub", "Here's the automation you've assembled. Creating it saves an inactive DRAFT (or two, for a branch) you can review and switch on yourself — nothing runs automatically."));
 
-    const nameWrap = el("div"); nameWrap.style.marginBottom = "14px";
+    const nameWrap = el("div"); nameWrap.classList.add("u-mb-14");
     nameWrap.appendChild(label("Name"));
     const nameInp = el("input", "input");
     nameInp.value = w.name || (w.name = suggestName(w));
@@ -1305,7 +1305,7 @@
     else if (pairInfo && pairInfo.kind === "name") pairTag = ` <span class="pair-pill soft">Possible pair</span>`;
     // "From drip" badge for drip-generated automations (the drip is the source of truth).
     let dripTag = "";
-    if (a.dripId) dripTag = ` <span class="pair-pill" style="background:#e0e7ff;color:#3730a3">⚡ From drip${a.dripName ? ": " + esc(a.dripName) : ""}</span>`;
+    if (a.dripId) dripTag = ` <span class="pair-pill pair-pill-info">⚡ From drip${a.dripName ? ": " + esc(a.dripName) : ""}</span>`;
 
     const left = el("div", "auto-card-main");
     left.innerHTML = `<div class="auto-name">${esc(a.name)}${pairTag}${dripTag}</div>
@@ -1335,7 +1335,7 @@
     // that a recompile would overwrite. Show a static state chip instead.
     if (a.dripId) {
       const chip = el("span", "pair-pill", a.enabled ? "On (via drip)" : "Off (via drip)");
-      chip.style.cssText = "background:" + (a.enabled ? "#dcfce7;color:#166534" : "#f1f5f9;color:#6b7280");
+      chip.classList.add(a.enabled ? "chip-on" : "chip-off");
       top.appendChild(chip);
     } else {
       top.appendChild(toggle);
@@ -1485,13 +1485,13 @@
     // condText, actionSummary) plus the shared FlowPreview assembler, so the two
     // can't drift. Re-rendered on every trigger/condition/action change.
     const previewNode = el("div", "wf-preview");
-    previewNode.style.cssText = "margin:12px 0 4px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);font-size:13px;line-height:1.55;";
+    previewNode.classList.add("au-previewnode");
     bodyEl.appendChild(previewNode);
-    const PV_LAB = 'style="color:var(--ink-soft);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:7px;"';
-    const PV_MUTED = 'style="color:var(--ink-soft);"';
-    const PV_TODO = 'style="color:var(--amber);"';
+    const PV_LAB = 'class="au-t3"';
+    const PV_MUTED = 'class="au-t4"';
+    const PV_TODO = 'class="au-t5"';
     function previewLine(lab, bodyHtml) {
-      const d = el("div"); d.style.marginTop = "4px";
+      const d = el("div"); d.classList.add("u-mt-4");
       d.innerHTML = `<span ${PV_LAB}>${lab}</span>${bodyHtml}`;
       return d;
     }
@@ -1507,11 +1507,11 @@
       const actLines = (draft.actions || []).map(actionSummary);
       const FP = (typeof FlowPreview !== "undefined") ? FlowPreview : null;
       previewNode.innerHTML = "";
-      if (!FP) { previewNode.style.display = "none"; return; }
-      previewNode.style.display = "";
+      if (!FP) { previewNode.classList.add("u-hidden"); return; }
+      previewNode.classList.remove("u-hidden");
       const model = FP.flowModel({ when: whenText(tt), whenIncomplete: isWhenIncomplete(tt), conditions: condLines, incompleteConditions: incompleteConds, actions: actLines });
       previewNode.appendChild(el("div", null, `<span ${PV_LAB}>Preview</span>`));
-      previewNode.lastChild.style.marginBottom = "6px";
+      previewNode.lastChild.classList.add("u-mb-6");
       if (model.placeholder) {
         previewNode.appendChild(el("div", null, `<span ${PV_MUTED}>Pick a trigger to see a preview.</span>`));
         return;
@@ -1592,13 +1592,13 @@
     trigNode.appendChild(trig);
     // One-line description of the chosen trigger (display-only; theme tokens only).
     const trigDesc = el("div", "wf-help-desc");
-    trigDesc.style.cssText = "margin-top:6px;font-size:12.5px;color:var(--ink-soft);";
+    trigDesc.classList.add("au-desc");
     trigNode.appendChild(trigDesc);
     // Sub-controls area (field picker for FieldChanged, hint for Manual)
     const trigExtra = el("div");
     trigExtra.addEventListener("input", () => renderPreview());
     trigExtra.addEventListener("change", () => renderPreview());
-    trigExtra.style.marginTop = "10px";
+    trigExtra.classList.add("u-mt-10");
     trigNode.appendChild(trigExtra);
     function renderTrigExtra() {
       trigDesc.textContent = triggerDescription(baseTrigger);
@@ -1624,7 +1624,7 @@
         if (!(meta.stages || []).length) {
           trigExtra.appendChild(small("No pipeline stages found yet. You can still choose “Any stage”."));
         }
-        const note = el("div", "wf-hint", ""); note.style.margin = "6px 0 0";
+        const note = el("div", "wf-hint", ""); note.classList.add("au-m-6t");
         note.textContent = App.relabelText("Runs when a linked contact moves to a different stage on a record. The contact is the subject.", { all: true });
         trigExtra.appendChild(note);
       } else if (baseTrigger === "RecordUpdated") {
@@ -1633,7 +1633,7 @@
         const anyF = el("option", null, "Any field"); anyF.value = ""; fieldSel.appendChild(anyF);
         (meta.recordFields || []).forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === recField) o.selected = true; fieldSel.appendChild(o); });
         trigExtra.appendChild(fieldSel);
-        const valueHost = el("div"); valueHost.style.marginTop = "8px"; trigExtra.appendChild(valueHost);
+        const valueHost = el("div"); valueHost.classList.add("u-mt-8"); trigExtra.appendChild(valueHost);
         function renderRecValue() {
           valueHost.innerHTML = "";
           if (!recField) return; // "Any field" -> no value scoping
@@ -1651,43 +1651,43 @@
         }
         fieldSel.onchange = () => { recField = fieldSel.value; recValue = ""; renderRecValue(); syncTrigger(); };
         renderRecValue();
-        const rnote = el("div", "wf-hint", ""); rnote.style.margin = "6px 0 0";
+        const rnote = el("div", "wf-hint", ""); rnote.classList.add("au-m-6t");
         rnote.textContent = "Acts on the record itself. Only “Create internal note” works for records in this stage — email/SMS to a record will be blocked, not sent.";
         trigExtra.appendChild(rnote);
       } else if (baseTrigger === "Manual") {
         const note = el("div", "wf-hint", "");
         note.textContent = App.relabelText("This flow does not fire on its own. It runs when you open a contact and click “Run automation.”", { all: true });
-        note.style.margin = "0";
+        note.classList.add("u-m-0");
         trigExtra.appendChild(note);
       } else if (baseTrigger === "Scheduled") {
         const dateFields = (meta.fields || []).filter((f) => f.type === "date");
         if (!dateFields.length) {
           trigExtra.appendChild(small("No Date fields exist yet. Create one under Fields first (e.g. “18th Birthday Date”)."));
         }
-        const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px"; rowEl.style.flexWrap = "wrap";
-        const amt = el("input", "input"); amt.type = "number"; amt.style.cssText = "margin-bottom:0;flex:0 0 70px"; amt.placeholder = "6"; amt.value = sched.amount; amt.oninput = () => { sched.amount = amt.value; syncTrigger(); };
-        const unitSel = el("select", "input"); unitSel.style.marginBottom = "0";
+        const rowEl = el("div", "u-flex u-gap-6 u-wrap");
+        const amt = el("input", "input"); amt.type = "number"; amt.classList.add("au-amt"); amt.placeholder = "6"; amt.value = sched.amount; amt.oninput = () => { sched.amount = amt.value; syncTrigger(); };
+        const unitSel = el("select", "input"); unitSel.classList.add("u-mb-0");
         [["days", "days"], ["weeks", "weeks"], ["months", "months"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (sched.unit === v) o.selected = true; unitSel.appendChild(o); });
         unitSel.onchange = () => { sched.unit = unitSel.value; syncTrigger(); };
-        const dirSel = el("select", "input"); dirSel.style.marginBottom = "0";
+        const dirSel = el("select", "input"); dirSel.classList.add("u-mb-0");
         [["before", "before"], ["after", "after"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (sched.dir === v) o.selected = true; dirSel.appendChild(o); });
         dirSel.onchange = () => { sched.dir = dirSel.value; syncTrigger(); };
-        const fieldSel = el("select", "input"); fieldSel.style.marginBottom = "0";
+        const fieldSel = el("select", "input"); fieldSel.classList.add("u-mb-0");
         const blank = el("option", null, "— date field —"); blank.value = ""; fieldSel.appendChild(blank);
         dateFields.forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; if (f.key === sched.field) o.selected = true; fieldSel.appendChild(o); });
         fieldSel.onchange = () => { sched.field = fieldSel.value; syncTrigger(); };
         trigExtra.appendChild(small("Run this many, before/after, which date field:"));
         rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(dirSel); rowEl.appendChild(fieldSel);
         trigExtra.appendChild(rowEl);
-        const note2 = el("div", "wf-hint", ""); note2.style.margin = "6px 0 0";
+        const note2 = el("div", "wf-hint", ""); note2.classList.add("au-m-6t");
         note2.textContent = "Evaluated by the daily sweep / “Process due jobs now”, not instantly.";
         trigExtra.appendChild(note2);
       } else if (baseTrigger === "RecordDateReached") {
         const types = (meta.recordTypes || []).filter((rt) => !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
         if (!types.length) trigExtra.appendChild(small("No record types are available to you. (A locked type won't appear here.)"));
         trigExtra.appendChild(small("Which record type, which date field, and how far before/after:"));
-        const typeRow = el("div"); typeRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px";
-        const typeSel = el("select", "input"); typeSel.style.marginBottom = "0";
+        const typeRow = el("div"); typeRow.classList.add("au-typerow");
+        const typeSel = el("select", "input"); typeSel.classList.add("u-mb-0");
         const tb = el("option", null, "— record type —"); tb.value = ""; typeSel.appendChild(tb);
         types.forEach((rt) => { const o = el("option", null, esc(App.relabelText(rt.label || rt.key, { all: true }))); o.value = rt.key; if (rt.key === recDate.recordType) o.selected = true; typeSel.appendChild(o); });
         function loadRecDateFields() {
@@ -1701,15 +1701,15 @@
         typeSel.onchange = () => { recDate.recordType = typeSel.value; recDate.field = ""; recDate.fields = null; syncTrigger(); loadRecDateFields(); renderTrigExtra(); };
         typeRow.appendChild(typeSel); trigExtra.appendChild(typeRow);
 
-        const rowEl = el("div"); rowEl.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
-        const amt = el("input", "input"); amt.type = "number"; amt.min = "0"; amt.style.cssText = "margin-bottom:0;flex:0 0 70px"; amt.placeholder = "7"; amt.value = recDate.amount; amt.oninput = () => { recDate.amount = amt.value; syncTrigger(); };
-        const unitSel = el("select", "input"); unitSel.style.marginBottom = "0";
+        const rowEl = el("div"); rowEl.classList.add("au-rowel");
+        const amt = el("input", "input"); amt.type = "number"; amt.min = "0"; amt.classList.add("au-amt"); amt.placeholder = "7"; amt.value = recDate.amount; amt.oninput = () => { recDate.amount = amt.value; syncTrigger(); };
+        const unitSel = el("select", "input"); unitSel.classList.add("u-mb-0");
         [["days", "days"], ["weeks", "weeks"], ["months", "months"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (recDate.unit === v) o.selected = true; unitSel.appendChild(o); });
         unitSel.onchange = () => { recDate.unit = unitSel.value; syncTrigger(); };
-        const dirSel = el("select", "input"); dirSel.style.marginBottom = "0";
+        const dirSel = el("select", "input"); dirSel.classList.add("u-mb-0");
         [["before", "before"], ["after", "after"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (recDate.dir === v) o.selected = true; dirSel.appendChild(o); });
         dirSel.onchange = () => { recDate.dir = dirSel.value; syncTrigger(); };
-        const fieldSel = el("select", "input"); fieldSel.style.marginBottom = "0";
+        const fieldSel = el("select", "input"); fieldSel.classList.add("u-mb-0");
         if (!recDate.recordType) { const o = el("option", null, "— pick a record type first —"); o.value = ""; fieldSel.appendChild(o); fieldSel.disabled = true; }
         else if (recDate.loading) { const o = el("option", null, "Loading…"); o.value = ""; fieldSel.appendChild(o); fieldSel.disabled = true; }
         else {
@@ -1721,38 +1721,38 @@
         rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(dirSel); rowEl.appendChild(fieldSel);
         trigExtra.appendChild(rowEl);
         if (recDate.recordType && recDate.fields === null && !recDate.loading) loadRecDateFields();
-        const note4 = el("div", "wf-hint", ""); note4.style.margin = "6px 0 0";
+        const note4 = el("div", "wf-hint", ""); note4.classList.add("au-m-6t");
         note4.textContent = "Evaluated by the daily sweep / “Process due jobs now”. Messages the record's linked contact — use {{record_title}} and the date field in your message.";
         trigExtra.appendChild(note4);
       } else if (baseTrigger === "AppointmentReminder") {
         trigExtra.appendChild(small("Send this long before a booking's appointment:"));
-        const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px"; rowEl.style.flexWrap = "wrap"; rowEl.style.alignItems = "center";
-        const amt = el("input", "input"); amt.type = "number"; amt.min = "1"; amt.style.cssText = "margin-bottom:0;flex:0 0 70px"; amt.placeholder = "2"; amt.value = remind.amount; amt.oninput = () => { remind.amount = amt.value; syncTrigger(); };
-        const unitSel = el("select", "input"); unitSel.style.marginBottom = "0";
+        const rowEl = el("div", "u-flex u-gap-6 u-wrap u-ai-center");
+        const amt = el("input", "input"); amt.type = "number"; amt.min = "1"; amt.classList.add("au-amt"); amt.placeholder = "2"; amt.value = remind.amount; amt.oninput = () => { remind.amount = amt.value; syncTrigger(); };
+        const unitSel = el("select", "input"); unitSel.classList.add("u-mb-0");
         [["minutes", "minutes"], ["hours", "hours"], ["days", "days"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (remind.unit === v) o.selected = true; unitSel.appendChild(o); });
         unitSel.onchange = () => { remind.unit = unitSel.value; syncTrigger(); };
-        const lbl = el("span", "cell-muted", "before the appointment"); lbl.style.fontSize = "12.5px";
+        const lbl = el("span", "cell-muted", "before the appointment"); lbl.classList.add("u-meta");
         rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(lbl);
         trigExtra.appendChild(rowEl);
-        const note3 = el("div", "wf-hint", ""); note3.style.margin = "6px 0 0";
+        const note3 = el("div", "wf-hint", ""); note3.classList.add("au-m-6t");
         note3.textContent = "Texts/emails the booking's linked contact. Based on the appointment's clock time; if your business isn't on UTC the send time shifts by your timezone offset.";
         trigExtra.appendChild(note3);
       } else if (baseTrigger === "Stalled") {
         trigExtra.appendChild(small("Run when something has sat in its current stage, with no movement, for at least this many days:"));
-        const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px"; rowEl.style.flexWrap = "wrap"; rowEl.style.alignItems = "center";
-        const days = el("input", "input"); days.type = "number"; days.min = "1"; days.style.cssText = "margin-bottom:0;flex:0 0 80px"; days.placeholder = "7"; days.value = stall.days || "7";
+        const rowEl = el("div", "u-flex u-gap-6 u-wrap u-ai-center");
+        const days = el("input", "input"); days.type = "number"; days.min = "1"; days.classList.add("au-days"); days.placeholder = "7"; days.value = stall.days || "7";
         days.oninput = () => { stall.days = days.value; syncTrigger(); };
-        const lbl = el("span", "wf-hint", "days"); lbl.style.margin = "0";
+        const lbl = el("span", "wf-hint", "days"); lbl.classList.add("u-m-0");
         rowEl.appendChild(days); rowEl.appendChild(lbl);
         trigExtra.appendChild(rowEl);
         trigExtra.appendChild(small("In which stage? (choose “Any stage” to watch every stage)"));
-        const stageSel = el("select", "input"); stageSel.style.marginBottom = "0";
+        const stageSel = el("select", "input"); stageSel.classList.add("u-mb-0");
         const any = el("option", null, App.relabelText("Any stage", { all: true })); any.value = ""; stageSel.appendChild(any);
         (meta.stages || []).forEach((s) => { const o = el("option", null, esc(s.label)); o.value = s.key; if (s.key === stall.stageKey) o.selected = true; stageSel.appendChild(o); });
         stageSel.onchange = () => { stall.stageKey = stageSel.value; syncTrigger(); };
         trigExtra.appendChild(stageSel);
         if (!(meta.stages || []).length) trigExtra.appendChild(small("No pipeline stages found yet. You can still choose “Any stage”."));
-        const snote = el("div", "wf-hint", ""); snote.style.margin = "6px 0 0";
+        const snote = el("div", "wf-hint", ""); snote.classList.add("au-m-6t");
         snote.textContent = "Evaluated by the daily sweep / “Process due jobs now”, not instantly. The stalled contact is the subject — moving them resets the clock.";
         trigExtra.appendChild(snote);
       }
@@ -1861,7 +1861,7 @@
     // One-line description of the chosen action (display-only; rebuilt on change
     // because changing the select calls redraw()). Theme tokens only.
     const adesc = el("div", "wf-help-desc");
-    adesc.style.cssText = "margin:2px 0 8px 30px;font-size:12.5px;color:var(--ink-soft);";
+    adesc.classList.add("au-adesc");
     adesc.textContent = actionDescription(act.type);
     if (adesc.textContent) row.appendChild(adesc);
 
@@ -1905,10 +1905,10 @@
     // to message more than the threshold. Only shown for the Stalled trigger.
     const appendBulkGate = () => {
       if (!isStalled) return;
-      const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
+      const cbWrap = el("div", "u-flex u-mt-8 u-ai-center u-gap-7");
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
       const lbl = el("label", null, App.relabelText("Allow sending to more than 25 stalled contacts in one sweep", { all: true }));
-      lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
+      lbl.classList.add("u-meta"); lbl.classList.add("txt-soft"); lbl.classList.add("u-pointer");
       lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
       cfg.appendChild(small("Comms are mocked, so nothing actually sends yet — this gate is here for when real keys are added."));
@@ -1936,12 +1936,12 @@
       function redraw() {
         list.innerHTML = "";
         cc.values.forEach((row, i) => {
-          const r = el("div"); r.style.display = "flex"; r.style.gap = "6px"; r.style.marginBottom = "6px";
-          const fs = el("select", "input"); fs.style.flex = "0 0 42%"; fs.style.marginBottom = "0";
+          const r = el("div", "u-flex u-gap-6 u-mb-6");
+          const fs = el("select", "input"); fs.classList.add("au-flex-42"); fs.classList.add("u-mb-0");
           const b = el("option", null, "— field —"); b.value = ""; fs.appendChild(b);
           opts.forEach((o) => { const op = el("option", null, esc(o.label)); op.value = o.value; if (row.field === o.value) op.selected = true; fs.appendChild(op); });
           fs.onchange = () => { row.field = fs.value; };
-          const vi = el("input", "input"); vi.style.marginBottom = "0"; vi.placeholder = "value (supports {{field}})"; vi.value = row.value || ""; vi.oninput = () => { row.value = vi.value; };
+          const vi = el("input", "input"); vi.classList.add("u-mb-0"); vi.placeholder = "value (supports {{field}})"; vi.value = row.value || ""; vi.oninput = () => { row.value = vi.value; };
           const rm = el("button", "rule-remove", "&times;"); rm.onclick = () => { cc.values.splice(i, 1); redraw(); };
           r.appendChild(fs); r.appendChild(vi); r.appendChild(rm); list.appendChild(r);
         });
@@ -1959,7 +1959,7 @@
       // It reads/writes the SAME config keys the engine already uses (c.subject,
       // c.html), so storage/replay/merge-tags are unchanged (UI-only swap).
       const host = el("div", "wf-compose-host");
-      host.style.marginTop = "4px";
+      host.classList.add("u-mt-4");
       cfg.appendChild(host);
       const api = App.compose.mount(host, { kind: "email" });
       // Load existing content. New / inline-HTML automations use c.subject + c.html.
@@ -2002,7 +2002,7 @@
       chOpts.forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (effChannel() === v) o.selected = true; chSel.appendChild(o); });
       chSel.onchange = () => { c.channel = chSel.value; rebuildNotify(); };
       cfg.appendChild(chSel);
-      const sub = el("div"); sub.style.marginTop = "8px"; cfg.appendChild(sub);
+      const sub = el("div"); sub.classList.add("u-mt-8"); cfg.appendChild(sub);
       function rebuildNotify() {
         sub.innerHTML = "";
         const ch = effChannel();
@@ -2043,7 +2043,7 @@
       subOpts.forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (effSub() === v) o.selected = true; subSel.appendChild(o); });
       subSel.onchange = () => { c.subAction = subSel.value; rebuildLinked(); };
       cfg.appendChild(subSel);
-      const sub = el("div"); sub.style.marginTop = "8px"; cfg.appendChild(sub);
+      const sub = el("div"); sub.classList.add("u-mt-8"); cfg.appendChild(sub);
       function rebuildLinked() {
         sub.innerHTML = "";
         const subAction = effSub();
@@ -2056,10 +2056,10 @@
           sub.appendChild(small("Note (supports {{name}}, {{record_title}})")); sub.appendChild(text("text", "Update on {{record_title}} — please review.", true));
         }
         if (subAction === "email" || subAction === "sms") {
-          const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
+          const cbWrap = el("div", "u-flex u-mt-8 u-ai-center u-gap-7");
           const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
           const lbl = el("label", null, App.relabelText("Allow sending to more than 25 linked contacts in one run", { all: true }));
-          lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
+          lbl.classList.add("u-meta"); lbl.classList.add("txt-soft"); lbl.classList.add("u-pointer");
           lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
           cbWrap.appendChild(cb); cbWrap.appendChild(lbl); sub.appendChild(cbWrap);
           sub.appendChild(small("Comms are mocked, so nothing actually sends yet — this gate is here for when real keys are added."));
@@ -2072,16 +2072,16 @@
       cfg.appendChild(small("Only move those currently in (optional):"));
       cfg.appendChild(selectOf("fromStage", (meta.stages || []).map((s) => ({ value: s.key, label: s.label })), "Any stage"));
       if (!(meta.stages || []).length) cfg.appendChild(small("No pipeline stages found yet."));
-      const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
+      const cbWrap = el("div", "u-flex u-mt-8 u-ai-center u-gap-7");
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
-      const lbl = el("label", null, App.relabelText("Allow moving more than 25 contacts in one run", { all: true })); lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer"; lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
+      const lbl = el("label", null, App.relabelText("Allow moving more than 25 contacts in one run", { all: true })); lbl.classList.add("u-meta"); lbl.classList.add("txt-soft"); lbl.classList.add("u-pointer"); lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
       cfg.appendChild(small("An automated move does not set off other automations (loop-safe), and is recorded in the contact's stage history."));
     } else if (act.type === "set_record_field") {
       cfg.appendChild(small("Which field on the record?"));
       const fieldSel = selectOf("field", (meta.recordFields || []).map((f) => ({ value: f.key, label: f.label })));
       cfg.appendChild(fieldSel);
-      const valueHost = el("div"); valueHost.style.marginTop = "8px"; cfg.appendChild(valueHost);
+      const valueHost = el("div"); valueHost.classList.add("u-mt-8"); cfg.appendChild(valueHost);
       function renderRecVal() {
         valueHost.innerHTML = "";
         valueHost.appendChild(small("Set to:"));
@@ -2099,7 +2099,7 @@
       cfg.appendChild(small("Owner")); cfg.appendChild(selectOf("userId", users));
     } else if (act.type === "send_survey") {
       cfg.appendChild(small("Which survey to send? Each recipient gets their own personal link."));
-      const ss = el("select", "input"); ss.style.marginBottom = "8px";
+      const ss = el("select", "input"); ss.classList.add("u-mb-8");
       const blank = el("option", null, "— pick a survey —"); blank.value = ""; ss.appendChild(blank);
       (meta.surveys || []).forEach((s) => { const o = el("option", null, esc(s.name)); o.value = s.id; if (s.id === c.surveyId) o.selected = true; ss.appendChild(o); });
       ss.onchange = () => { c.surveyId = ss.value; };
@@ -2120,9 +2120,9 @@
     } else if (act.type === "wait") {
       cfg.appendChild(small("Wait this long, then run the actions listed below this step:"));
       if (!c.unit) c.unit = "minutes";
-      const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px";
-      const amt = el("input", "input"); amt.type = "number"; amt.style.cssText = "margin-bottom:0;flex:0 0 90px"; amt.placeholder = "2"; amt.value = c.amount != null ? c.amount : ""; amt.oninput = () => { c.amount = amt.value; };
-      const unitSel = el("select", "input"); unitSel.style.marginBottom = "0";
+      const rowEl = el("div", "u-flex u-gap-6");
+      const amt = el("input", "input"); amt.type = "number"; amt.classList.add("au-amt2"); amt.placeholder = "2"; amt.value = c.amount != null ? c.amount : ""; amt.oninput = () => { c.amount = amt.value; };
+      const unitSel = el("select", "input"); unitSel.classList.add("u-mb-0");
       [["minutes", "minutes"], ["hours", "hours"], ["days", "days"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (c.unit === v) o.selected = true; unitSel.appendChild(o); });
       unitSel.onchange = () => { c.unit = unitSel.value; };
       rowEl.appendChild(amt); rowEl.appendChild(unitSel); cfg.appendChild(rowEl);
@@ -2144,10 +2144,10 @@
     } else if (act.type === "delete_record") {
       cfg.appendChild(small("Which contacts to delete? Deleted contacts go to the Recycle Bin and can be restored."));
       cfg.appendChild(targetSelect(c, "contact"));
-      const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
+      const cbWrap = el("div", "u-flex u-mt-8 u-ai-center u-gap-7");
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
       const lbl = el("label", null, App.relabelText("Allow deleting more than 10 contacts in one run", { all: true }));
-      lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
+      lbl.classList.add("u-meta"); lbl.classList.add("txt-soft"); lbl.classList.add("u-pointer");
       lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
     } else if (act.type === "create_record_item") {
@@ -2158,7 +2158,7 @@
       cfg.appendChild(typeSel);
       cfg.appendChild(small("Title (supports {{field}}):"));
       cfg.appendChild(text("title", App.relabelText("New record title", { all: true })));
-      const depHost = el("div"); depHost.style.marginTop = "8px"; cfg.appendChild(depHost);
+      const depHost = el("div"); depHost.classList.add("u-mt-8"); cfg.appendChild(depHost);
       function renderCreateDeps() {
         depHost.innerHTML = "";
         const t = (meta.recordTypes || []).find((x) => x.key === c.recordType);
@@ -2184,10 +2184,10 @@
       cfg.appendChild(w);
     } else if (act.type === "delete_record_items") {
       cfg.appendChild(small("Deletes the records found by a Find records action above. Deleted records go to the Recycle Bin and can be restored."));
-      const cbWrap = el("div"); cbWrap.style.marginTop = "8px"; cbWrap.style.display = "flex"; cbWrap.style.alignItems = "center"; cbWrap.style.gap = "7px";
+      const cbWrap = el("div", "u-flex u-mt-8 u-ai-center u-gap-7");
       const cb = el("input"); cb.type = "checkbox"; cb.checked = !!c.allowBulk; cb.onchange = () => { c.allowBulk = cb.checked; };
       const lbl = el("label", null, App.relabelText("Allow deleting more than 10 records in one run", { all: true }));
-      lbl.style.fontSize = "12.5px"; lbl.style.color = "var(--ink-soft)"; lbl.style.cursor = "pointer";
+      lbl.classList.add("u-meta"); lbl.classList.add("txt-soft"); lbl.classList.add("u-pointer");
       lbl.onclick = () => { cb.checked = !cb.checked; c.allowBulk = cb.checked; };
       cbWrap.appendChild(cb); cbWrap.appendChild(lbl); cfg.appendChild(cbWrap);
     } else if (act.type === "compute_field") {
@@ -2218,9 +2218,9 @@
 
         if (isDate) {
           inner.appendChild(small("Amount"));
-          const rowEl = el("div"); rowEl.style.display = "flex"; rowEl.style.gap = "6px";
-          const amt = el("input", "input"); amt.type = "number"; amt.style.marginBottom = "0"; amt.placeholder = "18"; amt.value = c.amount != null ? c.amount : ""; amt.oninput = () => { c.amount = amt.value; };
-          const unitSel = el("select", "input"); unitSel.style.marginBottom = "0";
+          const rowEl = el("div", "u-flex u-gap-6");
+          const amt = el("input", "input"); amt.type = "number"; amt.classList.add("u-mb-0"); amt.placeholder = "18"; amt.value = c.amount != null ? c.amount : ""; amt.oninput = () => { c.amount = amt.value; };
+          const unitSel = el("select", "input"); unitSel.classList.add("u-mb-0");
           [["years", "years"], ["months", "months"], ["days", "days"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (c.unit === v) o.selected = true; unitSel.appendChild(o); });
           unitSel.onchange = () => { c.unit = unitSel.value; };
           rowEl.appendChild(amt); rowEl.appendChild(unitSel); inner.appendChild(rowEl);
@@ -2235,7 +2235,7 @@
       cfg.appendChild(small("URL to POST to (must be https or http; internal/private addresses are blocked)"));
       const urlInp = text("url", "https://webhook.site/your-unique-id");
       cfg.appendChild(urlInp);
-      const warn = el("div", "wf-hint", ""); warn.style.margin = "0 0 8px"; warn.style.color = "var(--amber)";
+      const warn = el("div", "wf-hint", ""); warn.classList.add("cp-mb8"); warn.classList.add("txt-amber");
       const refreshWarn = () => { warn.textContent = /^http:\/\//i.test(c.url || "") ? "Heads up: http:// sends data unencrypted. https is recommended." : ""; };
       refreshWarn(); urlInp.addEventListener("input", refreshWarn); cfg.appendChild(warn);
       cfg.appendChild(small("Optional header name (e.g. Authorization)"));
@@ -2243,12 +2243,12 @@
       cfg.appendChild(small("Optional header value / secret (stored with the flow; sent as a header; never shown in logs)"));
       const secret = text("headerValue", "Bearer …"); secret.type = "password"; cfg.appendChild(secret);
       cfg.appendChild(small("What gets sent (shape):"));
-      const pre = el("pre"); pre.style.cssText = "background:var(--gray-soft);border-radius:var(--radius-sm);padding:8px;font-size:11px;overflow:auto;margin:0 0 8px";
+      const pre = el("pre"); pre.classList.add("au-pre");
       pre.textContent = '{\n  "source": "ClarityCRM",\n  "event": { "tenantId", "automationName", "trigger", "occurredAt" },\n  "contact": { "id", "fields": { ...your fields... } }\n}';
       cfg.appendChild(pre);
-      const testBar = el("div"); testBar.style.cssText = "display:flex;align-items:center;gap:10px";
+      const testBar = el("div"); testBar.classList.add("au-testbar");
       const testBtn = el("button", "btn btn-ghost btn-sm", "Send test");
-      const testOut = el("span", "wf-hint"); testOut.style.margin = "0";
+      const testOut = el("span", "wf-hint"); testOut.classList.add("u-m-0");
       testBtn.onclick = async () => {
         if (!c.url) { testOut.textContent = "Enter a URL first."; return; }
         testBtn.disabled = true; testOut.textContent = "Sending test…";
@@ -2289,12 +2289,12 @@
     function redraw() {
       list.innerHTML = "";
       c.values.forEach((row, i) => {
-        const r = el("div"); r.style.display = "flex"; r.style.gap = "6px"; r.style.marginBottom = "6px";
-        const fs = el("select", "input"); fs.style.flex = "0 0 42%"; fs.style.marginBottom = "0";
+        const r = el("div", "u-flex u-gap-6 u-mb-6");
+        const fs = el("select", "input"); fs.classList.add("au-flex-42"); fs.classList.add("u-mb-0");
         const blank = el("option", null, "— field —"); blank.value = ""; fs.appendChild(blank);
         writable.forEach((o) => { const op = el("option", null, esc(o.label)); op.value = o.value; if (row.field === o.value) op.selected = true; fs.appendChild(op); });
         fs.onchange = () => { row.field = fs.value; };
-        const vi = el("input", "input"); vi.style.marginBottom = "0"; vi.placeholder = "value (supports {{field}})"; vi.value = row.value || ""; vi.oninput = () => { row.value = vi.value; };
+        const vi = el("input", "input"); vi.classList.add("u-mb-0"); vi.placeholder = "value (supports {{field}})"; vi.value = row.value || ""; vi.oninput = () => { row.value = vi.value; };
         const rm = el("button", "rule-remove", "&times;");
         rm.onclick = () => { c.values.splice(i, 1); redraw(); };
         r.appendChild(fs); r.appendChild(vi); r.appendChild(rm); list.appendChild(r);
@@ -2340,7 +2340,7 @@
   // ---------------- Execution log ----------------
   let runFilter = null;
   async function renderRuns(body) {
-    body.innerHTML = `<div class="cell-muted" style="padding:24px">Loading…</div>`;
+    body.innerHTML = `<div class="cell-muted au-t1">Loading…</div>`;
     const path = runFilter ? `/api/automations/runs?automationId=${encodeURIComponent(runFilter)}` : "/api/automations/runs";
     const runs = await App.portalApi(path);
     body.innerHTML = "";
@@ -2371,10 +2371,10 @@
 
   // ---------------- Event log ----------------
   async function renderEvents(body) {
-    body.innerHTML = `<div class="cell-muted" style="padding:24px">Loading…</div>`;
+    body.innerHTML = `<div class="cell-muted au-t1">Loading…</div>`;
     let events;
     try { events = await App.portalApi("/api/automations/events"); }
-    catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:24px">${esc(e.message)}</div>`; return; }
+    catch (e) { body.innerHTML = `<div class="cell-muted au-t1">${esc(e.message)}</div>`; return; }
     body.innerHTML = "";
     const host = el("div", "fade-in");
     body.appendChild(host);
@@ -2390,7 +2390,7 @@
     const handle = App.table.mount({
       container: host, columns, rows: events,
       defaultSort: "occurredAt", defaultSortDir: "desc",
-      emptyHtml: `<div class="card cell-muted" style="padding:18px">No events yet.</div>`,
+      emptyHtml: `<div class="card cell-muted u-pad-18">No events yet.</div>`,
       pageSize: 50,
     });
 
@@ -2415,15 +2415,15 @@
 
   // ---------------- Scheduled tab ----------------
   async function renderScheduled(body) {
-    body.innerHTML = `<div class="cell-muted" style="padding:24px">Loading…</div>`;
+    body.innerHTML = `<div class="cell-muted au-t1">Loading…</div>`;
     let jobs;
     try { jobs = await App.portalApi("/api/automations/jobs"); }
-    catch (e) { body.innerHTML = `<div class="cell-muted" style="padding:24px">${esc(e.message)}</div>`; return; }
+    catch (e) { body.innerHTML = `<div class="cell-muted au-t1">${esc(e.message)}</div>`; return; }
     body.innerHTML = "";
 
     // Plain-English explainer so a non-technical user understands what this tab is.
     const explain = el("div");
-    explain.style.cssText = "font-size:13px;color:var(--ink-soft);line-height:1.55;margin:2px 0 14px";
+    explain.classList.add("au-explain");
     explain.textContent = "When an automation has a “wait” step, the delayed part is queued here until it's due. You can see what's scheduled and cancel a job before it runs.";
     body.appendChild(explain);
 

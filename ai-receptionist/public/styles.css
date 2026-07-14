@@ -1908,6 +1908,40 @@ body[data-theme="academia"] {
 .cm-mt-18 { margin-top: 18px; }
 .cm-modal-640 { max-width: 640px; }
 
+/* ===== Design Phase 7b: automations.js completion ===== */
+.au-flex-42 { flex: 0 0 42%; }
+.au-flex-70 { flex: 0 0 70px; }
+.au-flex-80 { flex: 0 0 80px; }
+.au-m-6t { margin: 6px 0 0; }
+.txt-soft { color: var(--ink-soft); }
+.u-ai-center { align-items: center; }
+.u-gap-6 { gap: 6px; }
+.u-gap-7 { gap: 7px; }
+.u-wrap { flex-wrap: wrap; }
+.au-n { background: var(--panel-2); color: var(--ink-soft); }
+.au-n2 { background: var(--panel-2); color: var(--ink-soft); margin-top: 12px; }
+.au-desc { margin-top: 6px; font-size: var(--text-xs); color: var(--ink-soft); }
+.au-beforelbl { font-size: var(--text-xs); align-self: center; }
+.au-previewnode { margin: 12px 0 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); font-size: var(--text-sm); line-height: 1.55; }
+.au-amt { margin-bottom: 0; flex: 0 0 70px; }
+.au-typerow { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.au-rowel { display: flex; gap: 6px; flex-wrap: wrap; }
+.au-days { margin-bottom: 0; flex: 0 0 80px; }
+.au-adesc { margin: 2px 0 8px 30px; font-size: var(--text-xs); color: var(--ink-soft); }
+.au-amt2 { margin-bottom: 0; flex: 0 0 90px; }
+.au-pre { background: var(--gray-soft); border-radius: var(--radius-sm); padding: 8px; font-size: var(--text-xs); overflow: auto; margin: 0 0 8px; }
+.au-testbar { display: flex; align-items: center; gap: 10px; }
+.au-explain { font-size: var(--text-sm); color: var(--ink-soft); line-height: 1.55; margin: 2px 0 14px; }
+.au-t1 { padding: 24px; }
+.au-t2 { vertical-align: -1px; }
+.au-t3 { color: var(--ink-soft); font-weight: 600; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; margin-right: 7px; }
+.au-t4 { color: var(--ink-soft); }
+.au-t5 { color: var(--amber); }
+.u-flex { display: flex; }
+.pair-pill-info { background: var(--accent-soft); color: var(--accent); }
+.chip-on { background: var(--green-soft); color: var(--green); }
+.chip-off { background: var(--gray-soft); color: var(--ink-faint); }
+
 /* (Deep Sea, Cherry Blossom, Terminal, and Brutalist themes retired.) */
 
 

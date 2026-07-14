@@ -66,7 +66,7 @@ function main() {
   check(hits(scene) === 24, `scene inline styles still present and untouched (found ${hits(scene)}, expected 24 — they ARE the feature)`);
 
   console.log("\n(5) Seam — deferred work, named:");
-  check(hits(autom) === 140, `automations.js untouched: 140 inventoried sites (found ${hits(autom)}) — recordValueRows 53, renderTrigExtra 36, rest small — Phase 7b`);
+  check(hits(autom) === 0, `automations.js completed by Phase 7b (2026-07-13): fully clean, 0 sites (found ${hits(autom)}); was 140 inventoried at the Phase-7 seam`);
 
   console.log("\n" + (failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`));
   if (failures > 0) process.exit(1);

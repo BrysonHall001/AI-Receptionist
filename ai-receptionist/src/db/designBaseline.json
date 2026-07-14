@@ -26,9 +26,9 @@
       "inlineStyle": 1
     },
     "js/automations.js": {
-      "rawHex": 6,
-      "offScaleFontSize": 37,
-      "inlineStyle": 140
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
     },
     "js/communication.js": {
       "rawHex": 0,
@@ -127,9 +127,9 @@
     }
   },
   "totals": {
-    "rawHex": 50,
-    "offScaleFontSize": 52,
-    "inlineStyle": 232
+    "rawHex": 44,
+    "offScaleFontSize": 15,
+    "inlineStyle": 92
   },
   "info": {
     "distinctSpacingValues": 31
