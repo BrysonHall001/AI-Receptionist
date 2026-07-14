@@ -156,7 +156,7 @@
     const agg = aggregate(src, rows, fields, w);
     host.innerHTML = "";
     const { el, esc } = U();
-    if (agg.kind === "kpi") { const k = el("div", "kpi"); k.appendChild(el("div", "kpi-value", String(agg.value))); k.appendChild(el("div", "kpi-label", measureLabel(w.measure, fields))); host.appendChild(k); return; }
+    if (agg.kind === "kpi") { const k = el("div", "kpi stat-pill"); k.appendChild(el("div", "kpi-value stat-pill-value", String(agg.value))); k.appendChild(el("div", "kpi-label stat-pill-cap", measureLabel(w.measure, fields))); host.appendChild(k); return; } // Phase 9a: KPI adopts the stat-pill
     if (agg.kind === "heatmap") {
       const table = el("table", "heatmap"); const thead = el("thead"); const htr = el("tr"); htr.appendChild(el("th", "", ""));
       agg.cols.forEach((c) => htr.appendChild(el("th", "", esc(c)))); thead.appendChild(htr); table.appendChild(thead);

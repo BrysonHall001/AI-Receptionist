@@ -1377,9 +1377,9 @@
     return card;
   }
   function kpiCard(label, value) {
-    const card = el("div", "card"); card.classList.add("adm-card8");
+    const card = el("div", "card stat-pill"); card.classList.add("adm-card8"); // Phase 9a: usage KPIs adopt the stat-pill finish
     const v = el("div", null, String(value)); v.classList.add("adm-v");
-    const l = el("div", "cell-muted", label); l.classList.add("adm-l2");
+    const l = el("div", "cell-muted stat-pill-cap", label); l.classList.add("adm-l2");
     card.appendChild(v); card.appendChild(l);
     return card;
   }

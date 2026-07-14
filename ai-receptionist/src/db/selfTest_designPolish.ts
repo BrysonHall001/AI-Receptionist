@@ -168,7 +168,9 @@ check(/\.btn-sm \{[^}]*min-height: var\(--control-h-sm\)/.test(css) && /\.icon-b
 check(/--placeholder: var\(--ink-faint\);/.test(css) && /::placeholder[^{]*\{ color: var\(--placeholder\); opacity: 1; \}/.test(css), "placeholder color tokenized");
 const chev = css.slice(css.indexOf("\nselect.input {"), css.indexOf("}", css.indexOf("\nselect.input {")));
 check(chev.includes("appearance: none") && chev.includes("currentColor") && !/#[0-9a-fA-F]{3,8}/.test(chev), "select chevron is consistent and theme-safe (currentColor, no raw values)");
-check(/\.pill \{ display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: var\(--text-xs\); font-weight: 600;/.test(css) && /\.state-pill \{ display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: var\(--text-xs\); font-weight: 600;/.test(css), "pills/badges on ONE size/weight standard (3px 10px, 999px, xs/600)");
+// Phase 9a made the Phase 8 convergence STRUCTURAL: one canonical family rule carries
+// the constants; the variants are slim (display + colors only).
+check(/\.pill, \.badge, \.state-pill, \.nav-edit-pill \{\s*padding: 3px 10px; border-radius: 999px; font-size: var\(--text-xs\); font-weight: 600;/.test(css) && /\.pill \{ display: inline-block; background: var\(--accent-soft\); color: var\(--accent\); \}/.test(css) && /\.state-pill \{ display: inline-block; color: var\(--on-accent\); background: var\(--pill-bg\); \}/.test(css), "pills/badges on ONE size/weight standard (canonical family rule + slim variants)");
 check(/tbody td \{ padding: var\(--table-row-pad\) 18px;/.test(css) && /vertical-align: middle/.test(css), "table rows: tokenized padding + consistent cell vertical alignment");
 
 console.log(`\n${failures.length === 0 ? "ALL PASSED \u2705 (polish is system-level and guarded)" : failures.length + " FAILED \u274c"}`);
