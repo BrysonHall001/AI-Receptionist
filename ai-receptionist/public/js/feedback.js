@@ -107,8 +107,8 @@
 
     const intro = el("div", "fb-intro");
     intro.innerHTML =
-      (mode === "master" ? `<h1 class="page-title" style="font-size:22px">Feedback</h1>` : "") +
-      `<p class="cell-muted" style="font-size:13px;margin-top:2px">` +
+      (mode === "master" ? `<h1 class="page-title fb-title">Feedback</h1>` : "") +
+      `<p class="cell-muted fb-sub">` +
       (mode === "master"
         ? "Raise issues for the team. Auditors, super-admins and the owner can see and reply to all tickets here."
         : "Tell us about a problem and we'll follow up. You'll see your own tickets and replies below.") +
@@ -219,8 +219,8 @@
     wrap.appendChild(rowsHost);
     function addRow(value) {
       const row = el("div", "fb-link-row");
-      row.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:6px";
-      const inp = el("input", "input"); inp.type = "text"; inp.placeholder = "https://…"; inp.value = value || ""; inp.style.marginBottom = "0";
+      row.classList.add("fb-att-row");
+      const inp = el("input", "input"); inp.type = "text"; inp.placeholder = "https://…"; inp.value = value || ""; inp.classList.add("u-mb-0");
       const rm = el("button", "link-danger", "Remove"); rm.type = "button";
       rm.onclick = () => row.remove();
       row.appendChild(inp); row.appendChild(rm);
@@ -291,7 +291,7 @@
       { key: "createdAt", label: "Date posted", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
       { key: "status", label: "Status", type: "status", get: () => kind, render: () => statusBadge(kind) },
     ];
-    const empty = `<div class="card cell-muted" style="padding:18px">${kind === "RESOLVED" ? "No resolved tickets." : "No tickets yet."}</div>`;
+    const empty = `<div class="card cell-muted u-pad-18">${kind === "RESOLVED" ? "No resolved tickets." : "No tickets yet."}</div>`;
     App.table.mount({
       container: host, columns, rows,
       tableId: "feedback-" + mode + "-" + kind,
@@ -318,18 +318,18 @@
     wrap.appendChild(back);
 
     const head = el("div", "card fb-thread-wrap");
-    head.style.marginTop = "12px";
+    head.classList.add("u-mt-12");
     const resolved = t.status === "RESOLVED";
     head.innerHTML =
-      `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">` +
-      `<h2 style="margin:0;font-size:18px">${esc(t.problem)}</h2>${statusBadge(t.status)}</div>` +
-      `<p class="cell-muted" style="font-size:12.5px;margin:6px 0 0">` +
+      `<div class="fb-head-row">` +
+      `<h2 class="fb-problem">${esc(t.problem)}</h2>${statusBadge(t.status)}</div>` +
+      `<p class="cell-muted fb-meta">` +
       `From ${esc(t.submitter ? (t.submitter.name || t.submitter.email) : "Unknown")} · ${fmtDate(t.createdAt)}</p>` +
-      `<p style="white-space:pre-wrap;margin:12px 0 0">${esc(t.description)}</p>` +
+      `<p class="fb-desc">${esc(t.description)}</p>` +
       ((t.attachments && t.attachments.length)
-        ? `<div class="fb-attachments" style="margin-top:12px">` +
-          `<div class="cell-muted" style="font-size:12px;margin-bottom:4px">Attachment links</div>` +
-          t.attachments.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener" style="display:block;font-size:13px;word-break:break-all">${esc(u)}</a>`).join("") +
+        ? `<div class="fb-attachments u-mt-12">` +
+          `<div class="cell-muted fb-att-lbl">Attachment links</div>` +
+          t.attachments.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener" class="fb-att-link">${esc(u)}</a>`).join("") +
           `</div>`
         : "");
     wrap.appendChild(head);
@@ -338,7 +338,7 @@
     const thread = el("div", "fb-thread");
     (t.messages || []).forEach((m) => thread.appendChild(messageBubble(m)));
     if (!(t.messages || []).length) {
-      const none = el("p", "cell-muted"); none.style.cssText = "font-size:13px;margin:14px 2px";
+      const none = el("p", "cell-muted fb-none");
       none.textContent = "No replies yet.";
       thread.appendChild(none);
     }
@@ -347,10 +347,10 @@
     // reply box
     if (!resolved && canReplyTo(mode, t)) {
       const rc = el("div", "card fb-thread-wrap");
-      rc.style.marginTop = "8px";
+      rc.classList.add("u-mt-8");
       const ta = el("textarea", "input"); ta.rows = 3; ta.placeholder = "Write a reply…";
       rc.appendChild(ta);
-      const bar = el("div"); bar.style.marginTop = "8px";
+      const bar = el("div", "u-mt-8");
       const send = el("button", "btn btn-primary btn-sm", "Send reply");
       bar.appendChild(send);
       rc.appendChild(bar);
@@ -366,18 +366,18 @@
       };
       wrap.appendChild(rc);
     } else if (resolved) {
-      const note = el("p", "cell-muted"); note.style.cssText = "font-size:13px;margin:10px 2px";
+      const note = el("p", "cell-muted fb-note");
       note.textContent = "This ticket is resolved.";
       wrap.appendChild(note);
     }
 
     // Add attachment link(s) to this existing ticket — same access rule as replying.
     if (canReplyTo(mode, t)) {
-      const ac = el("div", "card fb-thread-wrap"); ac.style.marginTop = "8px";
+      const ac = el("div", "card fb-thread-wrap u-mt-8");
       ac.appendChild(el("div", "form-label", "Add attachment link"));
       const ed = attachmentLinksEditor();
       ac.appendChild(ed.node);
-      const saveBar = el("div"); saveBar.style.marginTop = "8px";
+      const saveBar = el("div", "u-mt-8");
       const save = el("button", "btn btn-ghost btn-sm", "Save links");
       saveBar.appendChild(save);
       ac.appendChild(saveBar);
@@ -394,7 +394,7 @@
 
     // moderate (resolve / restore)
     if (canModerate(mode)) {
-      const modBar = el("div"); modBar.style.marginTop = "12px";
+      const modBar = el("div", "u-mt-12");
       if (!resolved) {
         const rb = el("button", "btn btn-ghost btn-sm", "Mark resolved");
         rb.onclick = async () => {
@@ -418,7 +418,7 @@
     // Delete (resolved only) — separate, stricter gate so it shows for super-admins
     // in the master view even though they can't resolve there.
     if (resolved && canDelete()) {
-      const delBar = el("div"); delBar.style.marginTop = "8px";
+      const delBar = el("div", "u-mt-8");
       const db = el("button", "btn btn-danger btn-sm", "Delete ticket");
       db.onclick = async () => {
         if (!(await App.ui.confirmModal({ title: "Delete ticket", message: "Permanently delete this resolved ticket and its replies? This can't be undone.", confirmText: "Delete" }))) return;

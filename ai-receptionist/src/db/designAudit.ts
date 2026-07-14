@@ -96,6 +96,10 @@ function stripEmailHtmlRegions(src: string): string {
 
 function countJsOrHtml(src: string, isThemeJs: boolean): FileCounts {
   src = stripEmailHtmlRegions(src);
+  // Scene exemption (Phase 7): themeScene.js is scenic rendering — its inline styles are
+  // the feature. Exempt ONLY when the file carries the explicit <scene-exempt> marker,
+  // so the exemption is visible in the file itself rather than silently configured here.
+  if (src.includes("// <scene-exempt>")) return { rawHex: 0, offScaleFontSize: 0, inlineStyle: 0 };
   let rawHex = 0;
   if (!isThemeJs) {
     for (const line of src.split("\n")) {

@@ -1,3 +1,7 @@
+// <scene-exempt> This file renders the scenic/fun themes (WebGL/canvas/DOM scenery).
+// Its inline styles ARE the feature (per-scene positioning, gradients, animation frames)
+// and are exempt from the design ratchet by this marker, which designAudit.ts requires
+// to be present — deleting it re-enables counting. UI chrome does NOT live here.
 // Animated background SCENES for the two overhauled fun themes (dusk, aero).
 // A fixed, full-viewport, z-index:-1 stack of layered SVG/CSS layers sits BEHIND
 // all app content (content surfaces are solid, so scenery only shows in the

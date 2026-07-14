@@ -11,9 +11,9 @@
       "inlineStyle": 0
     },
     "js/admin.js": {
-      "rawHex": 31,
-      "offScaleFontSize": 44,
-      "inlineStyle": 217
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 4
     },
     "js/app.js": {
       "rawHex": 0,
@@ -47,8 +47,8 @@
     },
     "js/feedback.js": {
       "rawHex": 0,
-      "offScaleFontSize": 1,
-      "inlineStyle": 21
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
     },
     "js/fields.js": {
       "rawHex": 0,
@@ -86,9 +86,9 @@
       "inlineStyle": 2
     },
     "js/reports.js": {
-      "rawHex": 4,
-      "offScaleFontSize": 9,
-      "inlineStyle": 34
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
     },
     "js/table.js": {
       "rawHex": 0,
@@ -101,9 +101,9 @@
       "inlineStyle": 9
     },
     "js/themeScene.js": {
-      "rawHex": 18,
+      "rawHex": 0,
       "offScaleFontSize": 0,
-      "inlineStyle": 24
+      "inlineStyle": 0
     },
     "js/util.js": {
       "rawHex": 0,
@@ -127,9 +127,9 @@
     }
   },
   "totals": {
-    "rawHex": 117,
-    "offScaleFontSize": 138,
-    "inlineStyle": 867
+    "rawHex": 64,
+    "offScaleFontSize": 84,
+    "inlineStyle": 575
   },
   "info": {
     "distinctSpacingValues": 31

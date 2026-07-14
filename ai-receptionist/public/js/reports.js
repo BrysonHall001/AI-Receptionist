@@ -162,7 +162,7 @@
       agg.cols.forEach((c) => htr.appendChild(el("th", "", esc(c)))); thead.appendChild(htr); table.appendChild(thead);
       const tb = el("tbody");
       agg.rows.forEach((rowName, ri) => { const tr = el("tr"); tr.appendChild(el("th", "", esc(rowName)));
-        agg.cols.forEach((_, ci) => { const v = agg.series[ri] ? agg.series[ri].data[ci] : 0; const inten = agg.max ? v / agg.max : 0; const td = el("td", "hm-cell", String(v)); td.style.background = `rgba(91,91,214,${0.08 + inten * 0.72})`; if (inten > 0.6) td.style.color = "#fff"; tr.appendChild(td); });
+        agg.cols.forEach((_, ci) => { const v = agg.series[ri] ? agg.series[ri].data[ci] : 0; const inten = agg.max ? v / agg.max : 0; const td = el("td", "hm-cell" + (inten > 0.6 ? " hm-hot" : ""), String(v)); td.style.setProperty("--hm-a", String(0.08 + inten * 0.72)); tr.appendChild(td); });
         tb.appendChild(tr); });
       table.appendChild(tb); const wrap = el("div", "heatmap-wrap"); wrap.appendChild(table); host.appendChild(wrap); return;
     }
@@ -192,10 +192,10 @@
         const row = el("div", "dim-row");
         const sel = el("select", "input"); const blank = el("option", null, "— select —"); blank.value = ""; sel.appendChild(blank);
         fields.forEach((f) => { const o = el("option", null, f.label); o.value = f.key; sel.appendChild(o); });
-        const dateSel = el("select", "input"); [["day", "By day"], ["week", "By week"], ["month", "By month"], ["year", "By year"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (v === "month") o.selected = true; dateSel.appendChild(o); }); dateSel.style.display = "none";
+        const dateSel = el("select", "input"); [["day", "By day"], ["week", "By week"], ["month", "By month"], ["year", "By year"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (v === "month") o.selected = true; dateSel.appendChild(o); }); dateSel.classList.add("u-hidden");
         const rm = el("button", "icon-btn", "×");
         const entry = { get: () => { if (!sel.value) return null; const f = fields.find((x) => x.key === sel.value); return f && f.type === "date" ? { key: sel.value, date: dateSel.value } : { key: sel.value }; } };
-        function syncDate() { const f = fields.find((x) => x.key === sel.value); dateSel.style.display = f && f.type === "date" ? "" : "none"; }
+        function syncDate() { const f = fields.find((x) => x.key === sel.value); dateSel.classList.toggle("u-hidden", !(f && f.type === "date")); }
         sel.onchange = () => { syncDate(); onChange && onChange(); }; dateSel.onchange = () => onChange && onChange();
         rm.onclick = () => { list.removeChild(row); const i = rows.indexOf(entry); if (i >= 0) rows.splice(i, 1); onChange && onChange(); };
         if (initial) { sel.value = initial.key; if (initial.date) dateSel.value = initial.date; } syncDate();
@@ -224,17 +224,17 @@
           <select id="w-type" class="input"><option value="kpi">KPI (single number)</option><option value="bar">Bar chart</option><option value="stacked">Stacked bar</option><option value="line">Line chart</option><option value="pie">Pie chart</option><option value="heatmap">Heat map</option><option value="list">List / table</option></select>
           <div id="w-measure-wrap"><label class="field-label">Measure</label>
           <div class="w-row"><select id="w-mop" class="input"><option value="count">Count</option><option value="sum">Sum of…</option><option value="avg">Average of…</option></select>
-          <select id="w-mfield" class="input" style="display:none"></select></div></div>
+          <select id="w-mfield" class="input u-block u-hidden"></select></div></div>
           <div id="w-group-wrap"><label class="field-label">Group by</label><div id="w-group"></div></div>
-          <div id="w-series-wrap" style="display:none"><label class="field-label" id="w-series-label">Stack by</label><div id="w-series"></div></div>
-          <div id="w-list-wrap" style="display:none"><label class="field-label">Columns</label><div id="w-list-cols" class="w-list-cols"></div></div>
+          <div id="w-series-wrap" class="u-hidden"><label class="field-label" id="w-series-label">Stack by</label><div id="w-series"></div></div>
+          <div id="w-list-wrap" class="u-hidden"><label class="field-label">Columns</label><div id="w-list-cols" class="w-list-cols"></div></div>
           <label class="field-label">Filters</label><div id="w-filters"></div>
           ${cfg.showScope ? `<label class="field-label">Show in</label>
           <select id="w-scope" class="input"><option value="both">Both (overview + tenant panels)</option><option value="macro">Overview only</option><option value="tenant">Tenant panels only</option></select>` : ""}
-          <label class="w-list-col" style="display:flex;align-items:center;gap:8px;margin-top:6px"><input type="checkbox" id="w-range-on"> Use a custom date range for this widget</label>
-          <div id="w-range-wrap" style="display:none;gap:10px;margin-top:6px">
-            <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label" style="margin:0">From</label><input id="w-range-from" class="input" type="date" style="margin:0;width:auto"></div>
-            <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label" style="margin:0">To</label><input id="w-range-to" class="input" type="date" style="margin:0;width:auto"></div>
+          <label class="w-list-col rw-range-toggle"><input type="checkbox" id="w-range-on"> Use a custom date range for this widget</label>
+          <div id="w-range-wrap" class="rw-range-wrap u-hidden">
+            <div class="rw-range-col"><label class="field-label u-m-0">From</label><input id="w-range-from" class="input rw-date-in" type="date"></div>
+            <div class="rw-range-col"><label class="field-label u-m-0">To</label><input id="w-range-to" class="input rw-date-in" type="date"></div>
           </div>
           <div class="w-preview-label">Preview</div><div id="w-preview" class="w-preview"></div>
           <button id="w-save" class="btn btn-primary btn-block">${existing ? "Save widget" : "Add widget"}</button>
@@ -244,8 +244,8 @@
       $("#w-source").value = curSrcKey; $("#w-type").value = w.type; $("#w-mop").value = w.measure.op;
       if (cfg.showScope && $("#w-scope")) $("#w-scope").value = ["both", "macro", "tenant"].indexOf(w.scope) >= 0 ? w.scope : ((sources[curSrcKey] && sources[curSrcKey].defaultScope) || "both");
       // Per-widget date range override (optional; unset = use the page's global range).
-      if (w.range && w.range.from && w.range.to) { $("#w-range-on").checked = true; $("#w-range-from").value = String(w.range.from).slice(0, 10); $("#w-range-to").value = String(w.range.to).slice(0, 10); $("#w-range-wrap").style.display = "flex"; }
-      $("#w-range-on").addEventListener("change", () => { $("#w-range-wrap").style.display = $("#w-range-on").checked ? "flex" : "none"; });
+      if (w.range && w.range.from && w.range.to) { $("#w-range-on").checked = true; $("#w-range-from").value = String(w.range.from).slice(0, 10); $("#w-range-to").value = String(w.range.to).slice(0, 10); $("#w-range-wrap").classList.remove("u-hidden"); }
+      $("#w-range-on").addEventListener("change", () => { $("#w-range-wrap").classList.toggle("u-hidden", !$("#w-range-on").checked); });
       function curSource() { return sources[curSrcKey] || sources[defaultKey]; }
       let groupEd, seriesEd, listColsEd;
       function listColsEditor(hostEl, flds, chosen, onChange) {
@@ -270,7 +270,7 @@
         const colInit = (initial && Array.isArray(w.columns) && w.columns.length) ? w.columns : defaultListColumns(src);
         listColsEd = listColsEditor($("#w-list-cols"), src.reportFields, colInit, () => preview());
       }
-      function sync() { const t = $("#w-type").value; const isList = t === "list"; $("#w-measure-wrap").style.display = isList ? "none" : "block"; $("#w-mfield").style.display = (!isList && $("#w-mop").value !== "count") ? "block" : "none"; $("#w-group-wrap").style.display = (isList || t === "kpi") ? "none" : "block"; const ns = t === "stacked" || t === "heatmap"; $("#w-series-wrap").style.display = ns ? "block" : "none"; $("#w-series-label").textContent = t === "heatmap" ? "Rows (second dimension)" : "Stack by"; $("#w-list-wrap").style.display = isList ? "block" : "none"; preview(); }
+      function sync() { const t = $("#w-type").value; const isList = t === "list"; $("#w-measure-wrap").classList.toggle("u-hidden", isList); $("#w-mfield").classList.toggle("u-hidden", !(!isList && $("#w-mop").value !== "count")); $("#w-group-wrap").classList.toggle("u-hidden", isList || t === "kpi"); const ns = t === "stacked" || t === "heatmap"; $("#w-series-wrap").classList.toggle("u-hidden", !ns); $("#w-series-label").textContent = t === "heatmap" ? "Rows (second dimension)" : "Stack by"; $("#w-list-wrap").classList.toggle("u-hidden", !isList); preview(); }
       function collect() {
         const t = $("#w-type").value; const mop = $("#w-mop").value;
         const base = { id: w.id, title: $("#w-title").value.trim() || "Untitled", source: curSrcKey, type: t, filters: w.filters, cw: w.cw, ch: w.ch };
@@ -526,8 +526,8 @@
       const widgets = opts.widgetFilter ? allWidgets.filter(opts.widgetFilter) : allWidgets;
       const hiddenCount = allWidgets.length - widgets.length;
       // Scope banner (e.g. tenant panels): makes it obvious every widget is filtered to one portal.
-      if (opts.banner) { const bn = el("div"); bn.style.cssText = "display:inline-block;background:var(--accent-soft,#eef2ff);color:var(--accent,#3730a3);border:1px solid var(--accent,#c7d2fe);border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:600;margin:0 0 10px"; bn.textContent = opts.banner; wrap.appendChild(bn); }
-      if (opts.hiddenNote && hiddenCount > 0) { const n = el("div", "cell-muted"); n.style.cssText = "font-size:12px;margin:2px 0 10px"; n.textContent = opts.hiddenNote; wrap.appendChild(n); }
+      if (opts.banner) { const bn = el("div", "rp-banner"); bn.textContent = opts.banner; wrap.appendChild(bn); }
+      if (opts.hiddenNote && hiddenCount > 0) { const n = el("div", "cell-muted rp-hidden-note"); n.textContent = opts.hiddenNote; wrap.appendChild(n); }
       if (!widgets.length) { const e = el("div", "card"); e.innerHTML = `<div class="empty"><div class="empty-emoji">➕</div><h3>No widgets yet</h3><p>Click “Add widget” to build your first chart.</p></div>`; wrap.appendChild(e); host.appendChild(wrap); return; }
 
       const grid = el("div", "widget-grid");
@@ -614,7 +614,7 @@
       card.appendChild(head);
       const body = el("div", "widget-body");
       card.appendChild(body);
-      if (canEdit) attachDnD(card, handle, w.id); else handle.style.display = "none";
+      if (canEdit) attachDnD(card, handle, w.id); else handle.classList.add("u-hidden");
       return card;
     }
 
@@ -663,7 +663,7 @@
       inner.innerHTML = `<div class="modal-head"><h2>Duplicate widget</h2><button class="icon-btn" id="d-close">&times;</button></div>
         <div class="modal-body"><label class="field-label">Copy “${esc(w.title || "Untitled")}” to dashboard:</label>
         <select id="d-target" class="input">${state.dashboards.map((d) => `<option value="${d.id}"${d.id === state.currentId ? " selected" : ""}>${esc(d.name)}</option>`).join("")}</select>
-        <button id="d-go" class="btn btn-primary btn-block" style="margin-top:14px">Duplicate</button></div>`;
+        <button id="d-go" class="btn btn-primary btn-block u-mt-14">Duplicate</button></div>`;
       const overlay = modal(inner);
       inner.querySelector("#d-close").onclick = () => overlay.remove();
       inner.querySelector("#d-go").onclick = async () => {
@@ -682,10 +682,10 @@
         const row = el("div", "dim-row");
         const sel = el("select", "input"); const blank = el("option", null, "— select —"); blank.value = ""; sel.appendChild(blank);
         fields.forEach((f) => { const o = el("option", null, f.label); o.value = f.key; sel.appendChild(o); });
-        const dateSel = el("select", "input"); [["day", "By day"], ["week", "By week"], ["month", "By month"], ["year", "By year"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (v === "month") o.selected = true; dateSel.appendChild(o); }); dateSel.style.display = "none";
+        const dateSel = el("select", "input"); [["day", "By day"], ["week", "By week"], ["month", "By month"], ["year", "By year"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (v === "month") o.selected = true; dateSel.appendChild(o); }); dateSel.classList.add("u-hidden");
         const rm = el("button", "icon-btn", "×");
         const entry = { get: () => { if (!sel.value) return null; const f = fields.find((x) => x.key === sel.value); return f && f.type === "date" ? { key: sel.value, date: dateSel.value } : { key: sel.value }; } };
-        function syncDate() { const f = fields.find((x) => x.key === sel.value); dateSel.style.display = f && f.type === "date" ? "" : "none"; }
+        function syncDate() { const f = fields.find((x) => x.key === sel.value); dateSel.classList.toggle("u-hidden", !(f && f.type === "date")); }
         sel.onchange = () => { syncDate(); onChange && onChange(); }; dateSel.onchange = () => onChange && onChange();
         rm.onclick = () => { list.removeChild(row); const i = rows.indexOf(entry); if (i >= 0) rows.splice(i, 1); onChange && onChange(); };
         if (initial) { sel.value = initial.key; if (initial.date) dateSel.value = initial.date; } syncDate();
@@ -726,15 +726,15 @@
         ".rw-entry-card{display:flex;align-items:center;gap:13px;padding:15px 16px;border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .04s}" +
         ".rw-entry-card:hover{border-color:var(--accent);box-shadow:var(--shadow)}.rw-entry-card:active{transform:translateY(1px)}.rw-entry-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}" +
         ".rw-entry-icon{flex:0 0 auto;width:38px;height:38px;border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center}" +
-        ".rw-entry-main{min-width:0;flex:1;display:flex;flex-direction:column}.rw-entry-title{font-size:14px;font-weight:700;color:var(--ink)}.rw-entry-sub{font-size:12.5px;color:var(--ink-faint);margin-top:2px}.rw-entry-cta{flex:0 0 auto;font-size:12.5px;font-weight:700;color:var(--accent)}" +
+        ".rw-entry-main{min-width:0;flex:1;display:flex;flex-direction:column}.rw-entry-title{font-size:14px;font-weight:700;color:var(--ink)}.rw-entry-sub{font-size:var(--text-xs);color:var(--ink-faint);margin-top:2px}.rw-entry-cta{flex:0 0 auto;font-size:var(--text-xs);font-weight:700;color:var(--accent)}" +
         ".preset-cat-head{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}.preset-cat-head:first-of-type{margin-top:6px}" +
         ".preset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:12px}" +
         ".preset-card{display:flex;flex-direction:column;gap:11px;border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);padding:14px}" +
-        ".preset-card .preset-name{font-size:14px;font-weight:700;color:var(--ink)}.preset-card .preset-desc{font-size:12.5px;color:var(--ink-soft);margin-top:3px;line-height:1.45}" +
-        ".preset-shape{display:flex;gap:6px;flex-wrap:wrap}.preset-shape .shape-chip{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}" +
+        ".preset-card .preset-name{font-size:14px;font-weight:700;color:var(--ink)}.preset-card .preset-desc{font-size:var(--text-xs);color:var(--ink-soft);margin-top:3px;line-height:1.45}" +
+        ".preset-shape{display:flex;gap:6px;flex-wrap:wrap}.preset-shape .shape-chip{font-size:var(--text-xs);font-weight:600;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}" +
         ".preset-card-foot{display:flex;gap:7px;margin-top:auto}.preset-card-foot .btn{flex:1;justify-content:center}" +
         ".rw-wiz-steps{display:flex;gap:6px;margin:2px 0 16px}.rw-wiz-step{flex:1;height:4px;border-radius:2px;background:var(--line)}.rw-wiz-step.on{background:var(--accent)}" +
-        ".rw-wiz-opt{display:block;width:100%;text-align:left;border:1px solid var(--line-strong);background:var(--panel);color:var(--ink);border-radius:var(--radius-sm);padding:11px 13px;margin-bottom:8px;cursor:pointer;font-size:13.5px}" +
+        ".rw-wiz-opt{display:block;width:100%;text-align:left;border:1px solid var(--line-strong);background:var(--panel);color:var(--ink);border-radius:var(--radius-sm);padding:11px 13px;margin-bottom:8px;cursor:pointer;font-size:var(--text-sm)}" +
         ".rw-wiz-opt:hover{border-color:var(--accent)}.rw-wiz-opt.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}" +
         ".rw-wiz-foot{display:flex;justify-content:space-between;gap:10px;margin-top:16px}@media (max-width:640px){.rw-entry-row{grid-template-columns:1fr}.preset-grid{grid-template-columns:1fr}}";
       document.head.appendChild(st);
@@ -878,10 +878,10 @@
         const titles = ["", "What do you want to look at?", "What do you want to measure?", "Break it down by? (optional)", "How should it look?", "Review & add"];
         const steps = [1, 2, 3, 4, 5].map((n) => `<div class="rw-wiz-step${n <= step ? " on" : ""}"></div>`).join("");
         inner.innerHTML = `<div class="modal-head"><h2>Build a widget</h2><button class="icon-btn" id="wz-close">&times;</button></div>
-          <div class="modal-body"><div class="rw-wiz-steps">${steps}</div><h3 style="margin:0 0 12px;font-size:15px">${esc(titles[step])}</h3><div id="wz-body"></div>
+          <div class="modal-body"><div class="rw-wiz-steps">${steps}</div><h3 class="rw-step-title">${esc(titles[step])}</h3><div id="wz-body"></div>
           <div class="rw-wiz-foot"><button class="btn btn-ghost btn-sm" id="wz-back">Back</button><button class="btn btn-primary btn-sm" id="wz-next">${step === LAST ? "Add to dashboard" : "Next →"}</button></div></div>`;
         inner.querySelector("#wz-close").onclick = () => { clearPreview(); overlay.remove(); };
-        const back = inner.querySelector("#wz-back"); back.disabled = step === 1; back.style.visibility = step === 1 ? "hidden" : "visible";
+        const back = inner.querySelector("#wz-back"); back.disabled = step === 1; back.classList.toggle("u-invisible", step === 1);
         back.onclick = () => { step = Math.max(1, step - 1); render(); };
         inner.querySelector("#wz-next").onclick = onNext;
         const body = inner.querySelector("#wz-body");
@@ -891,7 +891,7 @@
         } else if (step === 2) {
           body.appendChild(optBtn("<b>Count</b> — how many " + esc(RL((srcOpts.find((o) => o.key === draft.source) || {}).label || "rows").toLowerCase()), draft.measureOp === "count", () => { draft.measureOp = "count"; render(); }));
           const nums = numericFields();
-          if (!nums.length) { const p = el("p", "cell-muted"); p.style.cssText = "font-size:12.5px;margin-top:6px"; p.textContent = "This source has no numeric fields, so counting is the only option."; body.appendChild(p); }
+          if (!nums.length) { const p = el("p", "cell-muted rp-note6"); p.textContent = "This source has no numeric fields, so counting is the only option."; body.appendChild(p); }
           nums.forEach((f) => {
             body.appendChild(optBtn("<b>Total</b> of " + esc(RL(f.label)), draft.measureOp === "sum" && draft.measureField === f.key, () => { draft.measureOp = "sum"; draft.measureField = f.key; render(); }));
             body.appendChild(optBtn("<b>Average</b> of " + esc(RL(f.label)), draft.measureOp === "avg" && draft.measureField === f.key, () => { draft.measureOp = "avg"; draft.measureField = f.key; render(); }));
@@ -900,7 +900,7 @@
           body.appendChild(optBtn("<b>Don't break it down</b> — one total", !draft.groupKey, () => { draft.groupKey = ""; render(); }));
           (srcObj().reportFields || []).forEach((f) => body.appendChild(optBtn("By " + esc(RL(f.label)), draft.groupKey === f.key, () => { draft.groupKey = f.key; render(); })));
           if (draft.groupKey && isDate(draft.groupKey)) {
-            const g = el("div"); g.style.cssText = "margin-top:10px";
+            const g = el("div", "u-mt-10");
             g.innerHTML = `<label class="field-label">Group dates by</label>`;
             const sel = el("select", "input"); [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (v === draft.groupDate) o.selected = true; sel.appendChild(o); });
             sel.onchange = () => { draft.groupDate = sel.value; }; g.appendChild(sel); body.appendChild(g);
@@ -909,13 +909,13 @@
           body.appendChild(optBtn("<b>Pick a sensible default for me</b> — currently: " + chartLabel(inferType()), draft.type === "auto", () => { draft.type = "auto"; render(); }));
           const types = draft.groupKey ? ["bar", "line", "pie"] : ["kpi"];
           types.forEach((t) => body.appendChild(optBtn(chartLabel(t), draft.type === t, () => { draft.type = t; render(); })));
-          if (!draft.groupKey) { const p = el("p", "cell-muted"); p.style.cssText = "font-size:12.5px;margin-top:6px"; p.textContent = "With no breakdown, a single number (KPI) fits best."; body.appendChild(p); }
+          if (!draft.groupKey) { const p = el("p", "cell-muted rp-note6"); p.textContent = "With no breakdown, a single number (KPI) fits best."; body.appendChild(p); }
         } else if (step === 5) {
           const nameWrap = el("div"); nameWrap.innerHTML = `<label class="field-label">Widget name</label>`;
           const nameIn = el("input", "input"); nameIn.value = draft.title || autoTitle(); nameIn.oninput = () => { draft.title = nameIn.value; };
           nameWrap.appendChild(nameIn); body.appendChild(nameWrap);
           body.appendChild(el("div", "field-label", "Preview"));
-          const pv = el("div", "card"); pv.style.cssText = "padding:12px;min-height:180px"; body.appendChild(pv);
+          const pv = el("div", "card rp-preview"); body.appendChild(pv);
           try { const s = srcObj(); renderWidgetBody(pv, buildWidget(), s, s.rows, s.reportFields, previewCharts); }
           catch (e) { pv.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; }
         }

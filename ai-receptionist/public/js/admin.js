@@ -106,7 +106,7 @@
 
     const columns = [
       { key: "name", label: "Tenant Name", get: (p) => p.name,
-        render: (p) => `<span style="font-weight:600">${esc(p.name)}</span>` },
+        render: (p) => `<span class="adm-t1">${esc(p.name)}</span>` },
       { key: "status", label: "Status", get: (p) => (p.status === "ACTIVE" ? "Active" : "Suspended"),
         render: (p) => statusBadge(p.status) },
       { key: "created", label: "Created", type: "date", get: (p) => p.createdAt, text: (p) => fmtDate(p.createdAt),
@@ -119,7 +119,7 @@
       // Actions column trimmed to a single compact square arrow that enters the portal.
       // Users, Page access, and Suspend/Activate now live in the row-detail panel (row click).
       { key: "actions", label: "Open tenant", filterable: false, get: () => "",
-        render: (p) => `<button class="btn btn-primary btn-sm t-openbtn" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant" style="padding:4px 9px;line-height:1;min-width:0;font-size:14px">\u2197</button>` },
+        render: (p) => `<button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button>` },
     ];
 
     // Persist the Tenants column layout per-browser, mirroring how portal.js persists
@@ -157,18 +157,18 @@
       const hidden = new Set(panelLayout.hidden || []);
       const shows = (key) => !hidden.has(key);
       const card = el("div", "card tenants-panel-card");
-      card.style.cssText = "padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:8px";
+      card.classList.add("adm-card");
 
       // Header: prominent NAME (no initials badge) + the Open-tenant arrow (same markup).
       const head = el("div");
-      head.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:10px";
+      head.classList.add("adm-head");
       const title = el("div");
-      title.style.cssText = "font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis";
+      title.classList.add("adm-title");
       if (shows("name")) title.textContent = p.name;
       head.appendChild(title);
       if (shows("actions")) {
         const openWrap = el("div");
-        openWrap.innerHTML = `<button class="btn btn-primary btn-sm t-openbtn" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant" style="padding:4px 9px;line-height:1;min-width:0;font-size:14px">\u2197</button>`;
+        openWrap.innerHTML = `<button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button>`;
         head.appendChild(openWrap);
       }
       card.appendChild(head);
@@ -177,8 +177,8 @@
 
       if (shows("ai")) {
         const aiWrap = el("div");
-        aiWrap.style.cssText = "display:flex;flex-direction:column;gap:3px";
-        const lbl = el("span", "cell-muted", "AI Receptionist"); lbl.style.fontSize = "11.5px";
+        aiWrap.classList.add("adm-aiwrap");
+        const lbl = el("span", "cell-muted u-meta", "AI Receptionist");
         aiWrap.appendChild(lbl);
         const selWrap = el("div");
         selWrap.innerHTML = `<select class="input portal-recep-sel t-voice" data-id="${esc(p.id)}">${voiceOptionsHtml(voiceModeOf(p))}</select>`;
@@ -187,7 +187,7 @@
       }
 
       const stats = el("div");
-      stats.style.cssText = "display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px";
+      stats.classList.add("adm-stats");
       const stat = (label, val) => { const d = el("div"); d.innerHTML = `<span class="cell-muted">${esc(label)}:</span> ${esc(String(val == null ? "—" : val))}`; return d; };
       if (shows("created")) stats.appendChild(stat("Created", fmtDate(p.createdAt)));
       if (shows("calls")) stats.appendChild(stat("Calls", p.calls));
@@ -210,7 +210,7 @@
       panelGrid.innerHTML = "";
       if (!list || !list.length) {
         const none = el("div", "cell-muted", portals.length ? "No results match your filters." : "No tenants yet.");
-        none.style.cssText = "padding:24px;grid-column:1/-1;text-align:center";
+        none.classList.add("adm-none");
         panelGrid.appendChild(none);
         return;
       }
@@ -242,7 +242,7 @@
     const tableArea = tableHost.querySelector(".table-area");
     const tableBody = tableHost.querySelector(".table-wrap");
     panelGrid = el("div", "tenants-panel-grid");
-    panelGrid.style.display = "none";
+    panelGrid.classList.add("u-hidden");
     if (tableArea) tableArea.appendChild(panelGrid); else wrap.appendChild(panelGrid);
     renderCards(handle.getFiltered());
 
@@ -294,7 +294,7 @@
     // itself has NO padding). So the caption needs margin-left:18px, not 0 (a prior "fix"
     // set it to 0, which is why it read 18px too far left).
     const caption = el("p", "cell-muted");
-    caption.style.cssText = "font-size:12.5px;margin:4px 0 10px 18px";
+    caption.classList.add("adm-caption");
     const tbEl = tableHost.querySelector(".table-toolbar");
     if (tbEl) tbEl.insertAdjacentElement("afterend", caption); else tableHost.insertBefore(caption, tableHost.firstChild);
 
@@ -306,8 +306,8 @@
       currentView = (v === "panel") ? "panel" : "table";
       saveView(currentView);
       const isPanel = currentView === "panel";
-      if (tableBody) tableBody.style.display = isPanel ? "none" : "";
-      if (panelGrid) panelGrid.style.display = isPanel ? "" : "none";
+      if (tableBody) tableBody.classList.toggle("u-hidden", isPanel);
+      if (panelGrid) panelGrid.classList.toggle("u-hidden", !isPanel);
       tBtn.classList.toggle("active", !isPanel);
       pBtn.classList.toggle("active", isPanel);
       manageBtn.innerHTML = isPanel
@@ -355,8 +355,8 @@
   // client-user server-side, so only those two roles are offered.
   async function usersSectionInto(host, portal) {
     host.innerHTML = "";
-    const head = el("div", "page-actions"); head.style.cssText = "align-items:center;margin-bottom:8px";
-    const h = el("h2", "settings-h", "Users"); h.style.flex = "1";
+    const head = el("div", "page-actions"); head.classList.add("adm-head2");
+    const h = el("h2", "settings-h u-flex-1", "Users");
     const create = el("button", "btn btn-primary btn-sm", "+ Create user");
     create.onclick = () => openCreateUser(portal);
     head.appendChild(h); head.appendChild(create);
@@ -447,7 +447,7 @@
   function lockChecklist(host, lockedHrefs, onChange) {
     const locked = new Set(lockedHrefs || []);
     LOCKABLE_PAGES.forEach((pg) => {
-      const row = el("label"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;cursor:pointer;border-top:1px solid var(--line,#eee)";
+      const row = el("label"); row.classList.add("adm-row-click");
       const cb = el("input"); cb.type = "checkbox"; cb.checked = pg.hrefs.every((h) => !locked.has(h));
       cb.onchange = () => { pg.hrefs.forEach((h) => { if (cb.checked) locked.delete(h); else locked.add(h); }); if (onChange) onChange(Array.from(locked)); };
       row.appendChild(cb); row.appendChild(document.createTextNode(" " + pg.label));
@@ -463,14 +463,14 @@
     const sec = el("div");
     const h = el("h2", "settings-h", "Pages");
     sec.appendChild(h);
-    const hint = el("p", "cell-muted"); hint.style.cssText = "font-size:12.5px;margin:0 0 8px";
+    const hint = el("p", "cell-muted"); hint.classList.add("adm-hint");
     hint.textContent = "Checked = the page is on and available for this tenant. Uncheck a page to LOCK it — a locked page is hidden from everyone in the tenant, including its Portal Admin, and can't be reached by direct link or API until an admin unlocks it here. (Record-type sections are managed as Modules, chosen when the tenant is created and toggled under Settings → Modules & Fields.)";
     sec.appendChild(hint);
-    const card = el("div", "card"); card.style.cssText = "padding:20px";
+    const card = el("div", "card"); card.classList.add("adm-card2");
     const listHost = el("div");
     const getLocked = lockChecklist(listHost, portal.lockedPages || []);
     card.appendChild(listHost);
-    const save = el("button", "btn btn-primary btn-sm", "Save page access"); save.style.marginTop = "12px";
+    const save = el("button", "btn btn-primary btn-sm u-mt-12", "Save page access");
     save.onclick = async () => {
       save.disabled = true;
       try {
@@ -497,10 +497,10 @@
     // visible error state instead.
     try {
       const wrap = el("div", "fade-in");
-      const bar = el("div", "page-actions"); bar.style.alignItems = "center";
+      const bar = el("div", "page-actions adm-bar-center");
       const back = el("button", "btn btn-ghost btn-sm", "← Back to tenants");
       back.onclick = () => renderPortals();
-      const title = el("div", "page-title", esc(portal.name)); title.style.cssText = "flex:1;font-weight:600";
+      const title = el("div", "page-title", esc(portal.name)); title.classList.add("adm-title2");
       // statusBadge() returns an HTML STRING (built for innerHTML / table cells), NOT a DOM
       // node — so it must go through innerHTML, not appendChild. (This mismatch was the
       // cause of the permanent "Loading…": appendChild(string) threw before the view swap.)
@@ -515,19 +515,19 @@
       bar.appendChild(back); bar.appendChild(title); bar.appendChild(status); bar.appendChild(toggle);
       wrap.appendChild(bar);
 
-      const caption = el("p", "cell-muted"); caption.style.cssText = "margin:-4px 0 16px;font-size:12.5px";
+      const caption = el("p", "cell-muted"); caption.classList.add("adm-caption2");
       caption.textContent = "Configure this tenant’s page access, users, and status. This does not enter the portal.";
       wrap.appendChild(caption);
 
       wrap.appendChild(pageAccessSection(portal));
 
-      const usersHost = el("div"); usersHost.style.marginTop = "22px";
-      usersHost.innerHTML = `<h2 class="settings-h">Users</h2><div class="cell-muted" style="padding:6px">Loading users…</div>`;
+      const usersHost = el("div", "u-mt-22");
+      usersHost.innerHTML = `<h2 class="settings-h">Users</h2><div class="cell-muted adm-t3">Loading users…</div>`;
       wrap.appendChild(usersHost);
 
       // Per-tenant Billing & Usage drill-in (KPIs + charts + editable billing status above).
-      const usageHost = el("div"); usageHost.style.marginTop = "26px";
-      usageHost.innerHTML = `<h2 class="settings-h">Billing &amp; Usage</h2><div class="cell-muted" style="padding:6px">Loading usage…</div>`;
+      const usageHost = el("div", "u-mt-26");
+      usageHost.innerHTML = `<h2 class="settings-h">Billing &amp; Usage</h2><div class="cell-muted adm-t3">Loading usage…</div>`;
       wrap.appendChild(usageHost);
 
       // Render the shell (Back + Suspend + Page access) IMMEDIATELY, then fill Users async
@@ -563,7 +563,7 @@
       ["steel", "Steel Blue"], ["contrast", "High Contrast"], ["dark", "Dark"], ["midnight", "Midnight"],
     ];
 
-    function elNote(text) { const d = el("div", "cell-muted"); d.style.cssText = "margin-top:8px;font-size:13px;"; d.textContent = text; return d; }
+    function elNote(text) { const d = el("div", "cell-muted"); d.classList.add("adm-d"); d.textContent = text; return d; }
     function leave(toList) {
       App.state.currentPortalId = prior.id;
       App.state.currentPortalName = prior.name;
@@ -571,11 +571,11 @@
     }
     function sectionCard(n, title, desc) {
       const card = el("div", "card");
-      card.style.cssText = "margin-bottom:16px;padding:20px;";
-      const head = el("div"); head.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:12px;";
+      card.classList.add("adm-card3");
+      const head = el("div"); head.classList.add("adm-head3");
       const num = el("div", null, String(n));
-      num.style.cssText = "flex:0 0 28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;background:var(--accent,#3257d6);color:#fff;";
-      const tt = el("div"); tt.innerHTML = `<div style="font-weight:600">${esc(title)}</div><div class="cell-muted" style="font-size:13px">${esc(desc)}</div>`;
+      num.classList.add("adm-step-num");
+      const tt = el("div"); tt.innerHTML = `<div class="adm-t1">${esc(title)}</div><div class="cell-muted adm-t4">${esc(desc)}</div>`;
       head.appendChild(num); head.appendChild(tt);
       card.appendChild(head);
       return card;
@@ -593,8 +593,8 @@
     f1.innerHTML = `
       <label class="field-label">Business name *</label><input id="sp-name" class="input" placeholder="Acme Plumbing" />
       <label class="field-label">Notify email</label><input id="sp-email" class="input" placeholder="owner@acme.com" />
-      <p class="cell-muted" style="font-size:12.5px;margin:8px 0 0">Notify email is optional — it's where call summaries and notifications go.</p>
-      <label class="field-label" style="margin-top:12px">Billing status *</label>
+      <p class="cell-muted adm-t5">Notify email is optional — it's where call summaries and notifications go.</p>
+      <label class="field-label adm-t6">Billing status *</label>
       <select id="sp-billing" class="input">
         <option value="">Select a billing status…</option>
         <option value="free">Free</option>
@@ -602,27 +602,27 @@
         <option value="paid">Paid</option>
         <option value="exception">Exception</option>
       </select>
-      <p class="cell-muted" style="font-size:12.5px;margin:8px 0 0">Required — pick how this tenant is billed. You can change it later from the tenant's detail panel.</p>`;
+      <p class="cell-muted adm-t5">Required — pick how this tenant is billed. You can change it later from the tenant's detail panel.</p>`;
     s1.appendChild(f1);
     wrap.appendChild(s1);
 
     // ---- Step 2: add users (queued into the draft; invited on Finish) ----
     const s2 = sectionCard(2, "Add users", "Queue teammates to invite. Each gets an invite link when you finish. You can add none, one, or several.");
-    const uForm = el("div"); uForm.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;";
+    const uForm = el("div"); uForm.classList.add("adm-uform");
     uForm.innerHTML = `
-      <div style="flex:1 1 220px"><label class="field-label">Email</label><input id="sp-user-email" class="input" type="email" placeholder="teammate@company.com" style="margin-bottom:0" /></div>
-      <div style="flex:0 0 170px"><label class="field-label">Role</label><select id="sp-user-role" class="input" style="margin-bottom:0"><option value="CLIENT_USER">Client user</option><option value="PORTAL_ADMIN">Portal admin</option></select></div>`;
+      <div class="adm-t7"><label class="field-label">Email</label><input id="sp-user-email" class="input adm-t8" type="email" placeholder="teammate@company.com" /></div>
+      <div class="adm-t9"><label class="field-label">Role</label><select id="sp-user-role" class="input adm-t8"><option value="CLIENT_USER">Client user</option><option value="PORTAL_ADMIN">Portal admin</option></select></div>`;
     const addUserBtn = el("button", "btn btn-ghost btn-sm", "+ Add to list");
     uForm.appendChild(addUserBtn);
     s2.appendChild(uForm);
-    const uList = el("div"); uList.style.marginTop = "10px";
+    const uList = el("div", "u-mt-10");
     s2.appendChild(uList);
     function paintUsers() {
       uList.innerHTML = "";
       if (!draft.users.length) { uList.appendChild(elNote("No users queued yet — that's fine, you can invite people later too.")); return; }
       draft.users.forEach((u, i) => {
-        const row = el("div"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line,#eee)";
-        row.innerHTML = `<span style="flex:1">${esc(u.email)}</span><span class="pill" style="font-size:11px">${u.role === "PORTAL_ADMIN" ? "Portal admin" : "Client user"}</span>`;
+        const row = el("div"); row.classList.add("adm-row-line");
+        row.innerHTML = `<span class="u-flex-1">${esc(u.email)}</span><span class="pill adm-t10">${u.role === "PORTAL_ADMIN" ? "Portal admin" : "Client user"}</span>`;
         const rm = el("button", "btn btn-ghost btn-sm", "Remove");
         rm.onclick = () => { draft.users.splice(i, 1); paintUsers(); };
         row.appendChild(rm); uList.appendChild(row);
@@ -658,13 +658,13 @@
     vSel.innerHTML = voiceOptionsHtml("OFF"); vSel.value = "OFF";
     vSel.onchange = () => { draft.voiceMode = vSel.value; };
     vWrap.appendChild(vSel);
-    const vCap = el("p", "cell-muted"); vCap.style.cssText = "margin:8px 0 0;font-size:13px;";
+    const vCap = el("p", "cell-muted"); vCap.classList.add("adm-vcap");
     vCap.textContent = "Off declines inbound calls. Standard voice is the basic back-and-forth receptionist. Premium voice uses the smooth ElevenLabs voice.";
     s4.appendChild(vWrap); s4.appendChild(vCap);
     // Pages (owner hard-lock) — fixed app pages only; sets the INITIAL locked set.
-    const lockHost = el("div"); lockHost.style.marginTop = "16px";
-    const lockLab = el("label", "field-label", "Pages"); lockLab.style.cssText = "margin:0 0 2px";
-    const lockNote = el("p", "cell-muted"); lockNote.style.cssText = "margin:0 0 4px;font-size:12.5px;";
+    const lockHost = el("div", "u-mt-16");
+    const lockLab = el("label", "field-label", "Pages"); lockLab.classList.add("adm-locklab");
+    const lockNote = el("p", "cell-muted"); lockNote.classList.add("adm-locknote");
     lockNote.textContent = "Checked = the page is on and available (all pages start on). Uncheck a page to LOCK it — a locked page is blocked for everyone in the tenant, including its Portal Admin, and can't be reached by menu, direct link, or API unless an admin unlocks it later. (Record-type sections are managed under Modules below.)";
     lockHost.appendChild(lockLab); lockHost.appendChild(lockNote);
     lockChecklist(lockHost, draft.lockedPages, (arr) => { draft.lockedPages = arr; });
@@ -677,9 +677,9 @@
     // its nav item — the type is still created, so it can be turned back on later
     // under Settings → Modules & Fields with no data risk. Default: everything checked.
     // This is VISIBILITY only (reversible hide), distinct from the hard-lock above.
-    const secHost = el("div"); secHost.style.marginTop = "16px";
-    const secLab = el("label", "field-label", "Modules"); secLab.style.cssText = "margin:0 0 2px";
-    const secNote = el("p", "cell-muted"); secNote.style.cssText = "margin:0 0 4px;font-size:12.5px;";
+    const secHost = el("div", "u-mt-16");
+    const secLab = el("label", "field-label", "Modules"); secLab.classList.add("adm-locklab");
+    const secNote = el("p", "cell-muted"); secNote.classList.add("adm-locknote");
     secNote.textContent = "Checked = the module is on and visible in this portal (all modules start on). Uncheck one to hide it — it's still created, so you can turn it back on anytime under Settings → Modules & Fields with no data risk.";
     secHost.appendChild(secLab); secHost.appendChild(secNote);
     const secList = el("div"); secList.appendChild(el("p", "cell-muted", "Loading…"));
@@ -689,12 +689,12 @@
       const options = (r && r.options) || [];
       secList.innerHTML = "";
       options.forEach((opt) => {
-        const row = el("label"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;cursor:pointer;border-top:1px solid var(--line,#eee)";
+        const row = el("label"); row.classList.add("adm-row-click");
         const cb = el("input"); cb.type = "checkbox"; cb.checked = true;
         const name = opt.labelPlural || opt.label || opt.key;
         if (!opt.togglable) {
           // Contact (core): always on, not editable.
-          cb.disabled = true; row.style.cursor = "default";
+          cb.disabled = true; row.classList.add("u-cursor-default");
           row.appendChild(cb); row.appendChild(document.createTextNode(" " + name + " (always on)"));
         } else {
           // Every togglable module starts ON (checked) so a new portal has everything
@@ -717,7 +717,7 @@
 
     // ---- Footer: Finish creates the tenant, then applies the draft, then enters it ----
     const footer = el("div", "page-actions");
-    footer.style.cssText = "margin-top:8px;display:flex;gap:8px;";
+    footer.classList.add("adm-footer");
     const finish = el("button", "btn btn-primary btn-sm", "Finish — go to tenant");
     finish.onclick = async () => {
       const nameEl = document.querySelector("#sp-name");
@@ -839,7 +839,7 @@
       const pencil = el("button", null, "\u270E"); // pencil glyph
       pencil.title = "Edit name";
       pencil.setAttribute("aria-label", "Edit name");
-      pencil.style.cssText = "margin-left:6px;background:none;border:none;cursor:pointer;color:var(--ink-soft);font-size:13px;padding:0";
+      pencil.classList.add("adm-pencil");
       pencil.onclick = () => startNameEdit(cell, u, canEdit);
       cell.appendChild(pencil);
     }
@@ -849,11 +849,11 @@
     cell.innerHTML = "";
     const input = el("input", "input");
     input.value = u.name || "";
-    input.style.cssText = "display:inline-block;max-width:170px;padding:4px 8px";
+    input.classList.add("adm-input");
     const save = el("button", "btn btn-primary btn-sm", "Save");
-    save.style.marginLeft = "6px";
+    save.classList.add("u-ml-6");
     const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
-    cancel.style.marginLeft = "4px";
+    cancel.classList.add("u-ml-4");
     cell.appendChild(input); cell.appendChild(save); cell.appendChild(cancel);
     input.focus();
     cancel.onclick = () => renderNameCell(cell, u, canEdit);
@@ -889,9 +889,9 @@
         <label class="field-label">Email *</label><input id="cu-email" class="input" placeholder="jane@acme.com" />
         <label class="field-label">Role *</label>
         <select id="cu-role" class="input">${roleOptions}</select>
-        <p class="sub" style="margin:10px 0 0">We'll email them an invite link automatically — or write a custom email and place the link yourself.</p>
-        <button id="cu-go" class="btn btn-primary btn-block" style="margin-top:14px">Send invite</button>
-        <button id="cu-custom" class="btn btn-ghost btn-block" style="margin-top:8px">Write custom email</button>
+        <p class="sub adm-t11">We'll email them an invite link automatically — or write a custom email and place the link yourself.</p>
+        <button id="cu-go" class="btn btn-primary btn-block adm-t12">Send invite</button>
+        <button id="cu-custom" class="btn btn-ghost btn-block u-mt-8">Write custom email</button>
       </div>`;
     const overlay = modal(inner);
     const roleSel = inner.querySelector("#cu-role");
@@ -949,10 +949,10 @@
       : "Email couldn't be delivered right now, so copy this link and send it to " + esc(email) + " yourself.";
     inner.innerHTML = `<div class="modal-head"><h2>Invite sent</h2><button class="icon-btn" id="ir-close">&times;</button></div>
       <div class="modal-body">
-        <p class="sub" style="margin:0 0 12px">${note}</p>
+        <p class="sub adm-t13">${note}</p>
         <label class="field-label">Activation link</label>
         <input id="ir-link" class="input" type="text" readonly value="${esc(link || "")}" />
-        <button id="ir-copy" class="btn btn-primary btn-block" style="margin-top:12px">Copy link</button>
+        <button id="ir-copy" class="btn btn-primary btn-block adm-t6">Copy link</button>
       </div>`;
     const overlay = modal(inner);
     inner.querySelector("#ir-close").onclick = () => overlay.remove();
@@ -985,7 +985,7 @@
       { key: "type", label: "Type", type: "text", get: (r) => r.type, cellClass: "cell-strong", render: (r) => esc(r.type || "—") },
       { key: "description", label: "Description", type: "text", get: (r) => r.description, render: (r) => esc(r.description || "—") },
     ];
-    const empty = `<div class="card cell-muted" style="padding:18px">No changes logged yet.</div>`;
+    const empty = `<div class="card cell-muted adm-t14">No changes logged yet.</div>`;
     App.table.mount({
       container: host, columns, rows,
       tableId: "admin-changelog",
@@ -1025,7 +1025,7 @@
     loading();
     let rows;
     try { rows = await App.api("/api/admin/email-logs"); }
-    catch (e) { view().innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+    catch (e) { view().innerHTML = `<div class="card cell-muted adm-t14">${esc(e.message)}</div>`; return; }
     if (!Array.isArray(rows)) rows = [];
 
     view().innerHTML = "";
@@ -1044,7 +1044,7 @@
       // Status at this level is a SIMPLE COUNT SUMMARY — per-recipient statuses live in the drill-in.
       { key: "status", label: "Status", type: "text", get: (r) => recipientsLabel(r.recipientCount), render: (r) => `<span class="cell-muted">${esc(recipientsLabel(r.recipientCount))}</span>` },
     ];
-    const empty = `<div class="card cell-muted" style="padding:18px">No emails sent yet.</div>`;
+    const empty = `<div class="card cell-muted adm-t14">No emails sent yet.</div>`;
     App.table.mount({
       container: host, columns, rows,
       rowId: (r) => r.groupKey,
@@ -1056,7 +1056,7 @@
     });
 
     const caption = el("p", "cell-muted");
-    caption.style.cssText = "font-size:12.5px;margin:4px 0 10px 18px";
+    caption.classList.add("adm-caption");
     caption.textContent = "Every email send across all tenants (one row per send). Click a send to see its recipients and delivery status.";
     const tbEl = host.querySelector(".table-toolbar");
     if (tbEl) tbEl.insertAdjacentElement("afterend", caption); else host.insertBefore(caption, host.firstChild);
@@ -1068,7 +1068,7 @@
     loading();
     let rows;
     try { rows = await App.api("/api/admin/email-logs/recipients?group=" + encodeURIComponent(group.groupKey)); }
-    catch (e) { view().innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+    catch (e) { view().innerHTML = `<div class="card cell-muted adm-t14">${esc(e.message)}</div>`; return; }
     if (!Array.isArray(rows)) rows = [];
 
     view().innerHTML = "";
@@ -1078,10 +1078,10 @@
     back.onclick = () => renderEmail();
     wrap.appendChild(back);
 
-    const hd = el("div"); hd.style.cssText = "margin:12px 0 8px";
+    const hd = el("div"); hd.classList.add("adm-hd");
     const count = group.recipientCount != null ? group.recipientCount : rows.length;
-    hd.innerHTML = `<h2 style="margin:0;font-size:18px">${esc(group.subject || "(no subject)")}</h2>` +
-      `<div class="cell-muted" style="font-size:12.5px;margin-top:2px">${esc(group.tenantName || "—")} \u00b7 ${count} recipient${count === 1 ? "" : "s"}${group.sentByName ? " \u00b7 sent by " + esc(group.sentByName) : ""}</div>`;
+    hd.innerHTML = `<h2 class="adm-t15">${esc(group.subject || "(no subject)")}</h2>` +
+      `<div class="cell-muted adm-t16">${esc(group.tenantName || "—")} \u00b7 ${count} recipient${count === 1 ? "" : "s"}${group.sentByName ? " \u00b7 sent by " + esc(group.sentByName) : ""}</div>`;
     wrap.appendChild(hd);
 
     const host = el("div");
@@ -1091,7 +1091,7 @@
       { key: "status", label: "Status", type: "status", get: (r) => emailStatusText(r), render: (r) => emailStatusBadge(r) },
       { key: "date", label: "Sent at", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${esc(fmtDate(r.createdAt))}</span>` },
     ];
-    const empty = `<div class="card cell-muted" style="padding:18px">No recipients recorded for this send.</div>`;
+    const empty = `<div class="card cell-muted adm-t14">No recipients recorded for this send.</div>`;
     App.table.mount({
       container: host, columns, rows,
       rowId: (r) => r.id,
@@ -1114,14 +1114,14 @@
     wrap.appendChild(back);
 
     const card = el("div", "card");
-    card.style.cssText = "padding:22px;margin-top:12px;max-width:760px";
-    const head = el("div"); head.style.cssText = "display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap";
-    const title = el("h2", null, esc(r.subject || "(no subject)")); title.style.cssText = "margin:0;font-size:18px";
+    card.classList.add("adm-card4");
+    const head = el("div"); head.classList.add("adm-head4");
+    const title = el("h2", null, esc(r.subject || "(no subject)")); title.classList.add("adm-title3");
     head.appendChild(title);
     const badge = el("span"); badge.innerHTML = emailStatusBadge(r); head.appendChild(badge);
     card.appendChild(head);
 
-    const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:150px 1fr;gap:9px 16px;font-size:13.5px;align-items:start";
+    const grid = el("div"); grid.classList.add("adm-grid");
     const line = (label, html) => {
       const l = el("div", "cell-muted", esc(label));
       const v = el("div"); v.innerHTML = (html == null || html === "") ? "\u2014" : html;
@@ -1139,8 +1139,8 @@
     line("Sent at", esc(fmtDate(r.createdAt)));
     line("Last event", esc(r.lastEventAt ? fmtDate(r.lastEventAt) : "—"));
     line("Opened at", esc(r.openedAt ? fmtDate(r.openedAt) : "—"));
-    if (r.errorMessage) line("Error", `<span style="color:var(--red)">${esc(r.errorMessage)}</span>`);
-    if (r.providerMessageId) line("Message ID", `<span class="cell-muted" style="font-family:monospace;font-size:12px">${esc(r.providerMessageId)}</span>`);
+    if (r.errorMessage) line("Error", `<span class="adm-t17">${esc(r.errorMessage)}</span>`);
+    if (r.providerMessageId) line("Message ID", `<span class="cell-muted adm-t18">${esc(r.providerMessageId)}</span>`);
     card.appendChild(grid);
     wrap.appendChild(card);
   }
@@ -1150,20 +1150,20 @@
   // endpoint (GET/PUT /api/admin/billing-rates) — no duplicate store. Brand logos reuse the
   // same /img assets the Integrations cards use.
   async function billingRatesInto(host) {
-    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading rates…</div>`;
+    host.innerHTML = `<div class="cell-muted u-pad-8">Loading rates…</div>`;
     let rates;
     try { rates = await App.api("/api/admin/billing-rates"); }
-    catch (e) { host.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+    catch (e) { host.innerHTML = `<div class="card cell-muted adm-t14">${esc(e.message)}</div>`; return; }
     rates = rates || {};
     host.innerHTML = "";
 
     const intro = el("p", "cell-muted");
-    intro.style.cssText = "font-size:12.5px;margin:0 0 14px";
+    intro.classList.add("adm-intro");
     intro.textContent = "Editable cost rates used to estimate dollar costs from recorded usage. Changing these does not bill anyone — it only affects future estimates.";
     host.appendChild(intro);
 
     const card = el("div", "card");
-    card.style.cssText = "padding:22px;max-width:600px";
+    card.classList.add("adm-card5");
     const OPENAI = "/img/openai.webp", TWILIO = "/img/twilio.png";
     const fields = [
       ["openAiInputPer1kTokens", "OpenAI input — $ per 1K tokens", OPENAI],
@@ -1173,18 +1173,18 @@
       ["twilioPerSms", "Twilio — $ per SMS", TWILIO],
     ];
     const inputs = {};
-    const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:24px 1fr 140px;gap:12px 14px;align-items:center";
+    const grid = el("div"); grid.classList.add("adm-grid2");
     fields.forEach(([key, label, logo]) => {
-      const ic = el("span"); ic.innerHTML = `<img src="${logo}" alt="" style="width:20px;height:20px;object-fit:contain;border-radius:4px;display:block">`;
-      const l = el("label", "field-label", label); l.style.cssText = "margin:0";
-      const inp = el("input", "input"); inp.type = "number"; inp.min = "0"; inp.step = "0.0001"; inp.style.cssText = "margin:0";
+      const ic = el("span"); ic.innerHTML = `<img src="${logo}" alt="" class="adm-t19">`;
+      const l = el("label", "field-label", label); l.classList.add("adm-l");
+      const inp = el("input", "input"); inp.type = "number"; inp.min = "0"; inp.step = "0.0001"; inp.classList.add("adm-l");
       inp.value = rates[key] != null ? String(rates[key]) : "0";
       inputs[key] = inp;
       grid.appendChild(ic); grid.appendChild(l); grid.appendChild(inp);
     });
     card.appendChild(grid);
 
-    const foot = el("div"); foot.style.cssText = "margin-top:18px;display:flex;gap:8px;align-items:center";
+    const foot = el("div"); foot.classList.add("adm-foot");
     const save = el("button", "btn btn-primary btn-sm", "Save rates");
     save.onclick = async () => {
       const body = {};
@@ -1201,8 +1201,8 @@
     foot.appendChild(save);
     card.appendChild(foot);
     // Task 6c: rates card + notifications card sit side by side (wrap on narrow screens).
-    const row = el("div"); row.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start";
-    card.style.flex = "1 1 340px"; card.style.minWidth = "300px";
+    const row = el("div"); row.classList.add("adm-row");
+    card.classList.add("adm-flexcard");
     row.appendChild(card);
     host.appendChild(row);
 
@@ -1211,11 +1211,11 @@
 
   // Approval-notification settings (global): recipients, lead days, cadence, enabled.
   async function billingNotifySettingsInto(host) {
-    const card = el("div", "card"); card.style.cssText = "padding:20px;flex:1 1 340px;min-width:300px";
-    card.appendChild(el("h3", null, "Approval notifications")).style.cssText = "margin:0 0 4px;font-size:15px";
-    const note = el("p", "cell-muted"); note.style.cssText = "margin:0 0 14px;font-size:12.5px"; note.textContent = "Who gets emailed to approve auto-drafted charges, and how far ahead of the due date.";
+    const card = el("div", "card"); card.classList.add("adm-card6");
+    card.appendChild(el("h3", "adm-h3 u-mb-4x", "Approval notifications"));
+    const note = el("p", "cell-muted"); note.classList.add("adm-note"); note.textContent = "Who gets emailed to approve auto-drafted charges, and how far ahead of the due date.";
     card.appendChild(note);
-    const bodyWrap = el("div"); bodyWrap.innerHTML = `<div class="cell-muted" style="font-size:12px">Loading…</div>`; card.appendChild(bodyWrap);
+    const bodyWrap = el("div"); bodyWrap.innerHTML = `<div class="cell-muted u-meta">Loading…</div>`; card.appendChild(bodyWrap);
     host.appendChild(card);
 
     let cfg;
@@ -1224,44 +1224,44 @@
     bodyWrap.innerHTML = "";
 
     // Enabled toggle.
-    const enWrap = el("label"); enWrap.style.cssText = "display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px";
+    const enWrap = el("label"); enWrap.classList.add("adm-enwrap");
     const enCb = el("input"); enCb.type = "checkbox"; enCb.checked = !!cfg.enabled;
     enWrap.appendChild(enCb); enWrap.appendChild(document.createTextNode("Send approval reminder emails"));
     bodyWrap.appendChild(enWrap);
 
     // Recipients (add/remove).
-    bodyWrap.appendChild(el("label", "field-label", "Recipients")).style.margin = "0 0 6px";
+    bodyWrap.appendChild(el("label", "field-label adm-lbl-m6", "Recipients"));
     let recipients = (cfg.recipients || []).slice();
-    const chips = el("div"); chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px";
+    const chips = el("div"); chips.classList.add("adm-chips");
     function paintChips() {
       chips.innerHTML = "";
-      if (!recipients.length) { const e = el("span", "cell-muted", "No recipients — the owner won’t be emailed."); e.style.fontSize = "12px"; chips.appendChild(e); }
+      if (!recipients.length) { const e = el("span", "cell-muted u-meta", "No recipients — the owner won’t be emailed."); chips.appendChild(e); }
       recipients.forEach((r, i) => {
-        const chip = el("span"); chip.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:var(--panel-2);border-radius:14px;padding:3px 6px 3px 10px;font-size:12.5px";
+        const chip = el("span"); chip.classList.add("adm-chip");
         chip.appendChild(document.createTextNode(r));
-        const x = el("button", "icon-btn", "×"); x.style.cssText = "width:18px;height:18px;line-height:1"; x.onclick = () => { recipients.splice(i, 1); paintChips(); };
+        const x = el("button", "icon-btn", "×"); x.classList.add("adm-x"); x.onclick = () => { recipients.splice(i, 1); paintChips(); };
         chip.appendChild(x); chips.appendChild(chip);
       });
     }
     paintChips(); bodyWrap.appendChild(chips);
-    const addRow = el("div"); addRow.style.cssText = "display:flex;gap:8px;margin-bottom:14px";
-    const addInp = el("input", "input"); addInp.type = "email"; addInp.placeholder = "name@example.com"; addInp.style.cssText = "margin:0;max-width:280px";
+    const addRow = el("div"); addRow.classList.add("adm-addrow");
+    const addInp = el("input", "input"); addInp.type = "email"; addInp.placeholder = "name@example.com"; addInp.classList.add("adm-addinp");
     const addBtn = el("button", "btn btn-ghost btn-sm", "Add");
     function addEmail() { const v = (addInp.value || "").trim().toLowerCase(); if (!v) return; if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { toast("Enter a valid email", true); return; } if (!recipients.includes(v)) recipients.push(v); addInp.value = ""; paintChips(); }
     addBtn.onclick = addEmail; addInp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); addEmail(); } };
     addRow.appendChild(addInp); addRow.appendChild(addBtn); bodyWrap.appendChild(addRow);
 
     // Lead days + cadence.
-    const row = el("div"); row.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px";
-    const leadInp = el("input", "input"); leadInp.type = "number"; leadInp.min = "0"; leadInp.max = "365"; leadInp.step = "1"; leadInp.style.cssText = "margin:0;width:90px"; leadInp.value = String(cfg.leadDays);
-    const cadSel = el("select", "input"); cadSel.style.cssText = "margin:0;width:auto";
+    const row = el("div"); row.classList.add("adm-row2");
+    const leadInp = el("input", "input"); leadInp.type = "number"; leadInp.min = "0"; leadInp.max = "365"; leadInp.step = "1"; leadInp.classList.add("adm-leadinp"); leadInp.value = String(cfg.leadDays);
+    const cadSel = el("select", "input"); cadSel.classList.add("adm-cadsel");
     [["once", "Once"], ["daily_until_approved", "Daily until approved"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (cfg.cadence === v) o.selected = true; cadSel.appendChild(o); });
     row.appendChild(field("Lead days before due", leadInp));
     row.appendChild(field("Cadence", cadSel));
     bodyWrap.appendChild(row);
 
     // Optional customer receipt on payment (default OFF).
-    const rcpWrap = el("label"); rcpWrap.style.cssText = "display:flex;align-items:center;gap:8px;font-size:13px;margin:0 0 16px;cursor:pointer";
+    const rcpWrap = el("label"); rcpWrap.classList.add("adm-rcpwrap");
     const rcpCb = el("input"); rcpCb.type = "checkbox"; rcpCb.checked = !!cfg.emailCustomerReceipt;
     rcpWrap.appendChild(rcpCb); rcpWrap.appendChild(document.createTextNode("Email the customer a short receipt when a charge is paid (Stripe also sends its own receipt)"));
     bodyWrap.appendChild(rcpWrap);
@@ -1366,9 +1366,9 @@
 
   // A titled chart card whose body is sized so Chart.js (maintainAspectRatio:false) fills it.
   function usageChartCard(title, widgetDef, source, grouping, charts) {
-    const card = el("div", "card"); card.style.cssText = "padding:16px";
-    card.appendChild(el("div", null, esc(title))).style.cssText = "font-weight:600;font-size:13.5px;margin-bottom:10px";
-    const body = el("div"); body.style.cssText = "height:240px;position:relative";
+    const card = el("div", "card"); card.classList.add("adm-card7");
+    card.appendChild(el("div", "adm-card-title", esc(title)));
+    const body = el("div"); body.classList.add("adm-body");
     card.appendChild(body);
     const w = Object.assign({}, widgetDef);
     if (grouping && Array.isArray(w.groupBy)) w.groupBy = w.groupBy.map((d) => (d.key === "date" ? { key: "date", date: grouping } : d));
@@ -1377,9 +1377,9 @@
     return card;
   }
   function kpiCard(label, value) {
-    const card = el("div", "card"); card.style.cssText = "padding:16px 18px";
-    const v = el("div", null, String(value)); v.style.cssText = "font-size:22px;font-weight:700;line-height:1.1";
-    const l = el("div", "cell-muted", label); l.style.cssText = "font-size:12px;margin-top:4px";
+    const card = el("div", "card"); card.classList.add("adm-card8");
+    const v = el("div", null, String(value)); v.classList.add("adm-v");
+    const l = el("div", "cell-muted", label); l.classList.add("adm-l2");
     card.appendChild(v); card.appendChild(l);
     return card;
   }
@@ -1390,14 +1390,14 @@
   // Range + grouping control. Defaults to the last 30 days, grouped by day. onChange fires
   // with { from, to, grouping } whenever any input changes.
   function usageRangeControl(onChange) {
-    const wrap = el("div"); wrap.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px";
+    const wrap = el("div"); wrap.classList.add("adm-wrap");
     const today = new Date();
     const iso = (d) => d.toISOString().slice(0, 10);
     const from0 = iso(new Date(Date.now() - 29 * 86400000)), to0 = iso(today);
-    function field(label, node) { const d = el("div"); d.style.cssText = "display:flex;flex-direction:column;gap:3px"; const l = el("span", "cell-muted", label); l.style.fontSize = "11.5px"; d.appendChild(l); d.appendChild(node); return d; }
-    const fromEl = el("input", "input"); fromEl.type = "date"; fromEl.value = from0; fromEl.style.cssText = "margin:0;width:auto";
-    const toEl = el("input", "input"); toEl.type = "date"; toEl.value = to0; toEl.style.cssText = "margin:0;width:auto";
-    const grpEl = el("select", "input"); grpEl.style.cssText = "margin:0;width:auto";
+    function field(label, node) { const d = el("div"); d.classList.add("adm-aiwrap"); const l = el("span", "cell-muted u-meta", label); d.appendChild(l); d.appendChild(node); return d; }
+    const fromEl = el("input", "input"); fromEl.type = "date"; fromEl.value = from0; fromEl.classList.add("adm-cadsel");
+    const toEl = el("input", "input"); toEl.type = "date"; toEl.value = to0; toEl.classList.add("adm-cadsel");
+    const grpEl = el("select", "input"); grpEl.classList.add("adm-cadsel");
     [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]].forEach(([v, lbl]) => { const o = el("option", null, lbl); o.value = v; grpEl.appendChild(o); });
     const fire = () => onChange({ from: fromEl.value, to: toEl.value, grouping: grpEl.value });
     [fromEl, toEl, grpEl].forEach((n) => n.addEventListener("change", fire));
@@ -1458,7 +1458,7 @@
   }
   function renderTenantUsageInto(host, tenantId, tenantName) {
     host.innerHTML = "";
-    const sub = el("div", "tabs"); sub.style.marginBottom = "12px";
+    const sub = el("div", "tabs u-mb-12");
     const body = el("div", "tab-body");
     let active = "usage";
     const SUB = [["usage", "Usage"], ["billing", "Billing"]];
@@ -1489,81 +1489,81 @@
   // ---- Billing subtab: terms (BillingConfig + billingStatus) + charge/payment ledger ----
   async function renderTenantBillingInto(host, tenantId, tenantName) {
     host.dataset.billingHost = tenantId;
-    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading billing…</div>`;
+    host.innerHTML = `<div class="cell-muted u-pad-8">Loading billing…</div>`;
     let cfg, ledger;
     try { [cfg, ledger] = await Promise.all([App.api(`/api/admin/billing-config/${encodeURIComponent(tenantId)}`), App.api(`/api/admin/charges/tenant/${encodeURIComponent(tenantId)}`)]); }
-    catch (e) { host.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+    catch (e) { host.innerHTML = `<div class="card cell-muted adm-t14">${esc(e.message)}</div>`; return; }
     host.innerHTML = "";
     host.appendChild(billingTermsCard(tenantId, cfg));
     host.appendChild(chargesLedgerCard(tenantId, tenantName, ledger));
   }
 
-  function field(label, node) { const d = el("div"); d.style.cssText = "display:flex;flex-direction:column;gap:3px;min-width:150px"; const l = el("span", "cell-muted", label); l.style.fontSize = "11.5px"; d.appendChild(l); d.appendChild(node); return d; }
-  function checkRow(label, checked) { const w = el("label"); w.style.cssText = "display:flex;align-items:center;gap:8px;font-size:13px"; const cb = el("input"); cb.type = "checkbox"; cb.checked = !!checked; w.appendChild(cb); w.appendChild(document.createTextNode(label)); return { el: w, cb }; }
-  function dateInput(v) { const i = el("input", "input"); i.type = "date"; i.style.cssText = "margin:0;width:auto"; if (v) i.value = String(v).slice(0, 10); return i; }
-  function numInput(v, step) { const i = el("input", "input"); i.type = "number"; i.step = step || "0.01"; i.min = "0"; i.style.cssText = "margin:0;width:130px"; i.value = v == null ? "" : String(v); return i; }
+  function field(label, node) { const d = el("div"); d.classList.add("adm-d2"); const l = el("span", "cell-muted u-meta", label); d.appendChild(l); d.appendChild(node); return d; }
+  function checkRow(label, checked) { const w = el("label"); w.classList.add("adm-w"); const cb = el("input"); cb.type = "checkbox"; cb.checked = !!checked; w.appendChild(cb); w.appendChild(document.createTextNode(label)); return { el: w, cb }; }
+  function dateInput(v) { const i = el("input", "input"); i.type = "date"; i.classList.add("adm-cadsel"); if (v) i.value = String(v).slice(0, 10); return i; }
+  function numInput(v, step) { const i = el("input", "input"); i.type = "number"; i.step = step || "0.01"; i.min = "0"; i.classList.add("adm-i"); i.value = v == null ? "" : String(v); return i; }
 
   function openTermsHistory(tenantId, tenantName) {
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Terms history</h2><button class="icon-btn" id="th-close">&times;</button></div>
-      <div class="modal-body"><div class="cell-muted" style="font-size:12.5px">Loading…</div></div>`;
+      <div class="modal-body"><div class="cell-muted adm-t20">Loading…</div></div>`;
     const overlay = modal(inner); const body = inner.querySelector(".modal-body");
     inner.querySelector("#th-close").onclick = () => overlay.remove();
     App.api(`/api/admin/billing-config/${encodeURIComponent(tenantId)}/audit`).then((rows) => {
-      if (!rows || !rows.length) { body.innerHTML = `<div class="cell-muted" style="font-size:12.5px">No terms changes recorded yet.</div>`; return; }
-      body.innerHTML = `<div style="border-left:2px solid var(--line);padding-left:12px">${rows.map((a) => `
-        <div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0">
-          <span style="width:9px;height:9px;border-radius:50%;background:#0ea5e9;margin-top:5px;flex:0 0 auto"></span>
-          <div style="flex:1"><div style="font-size:13px;font-weight:600">${esc(a.note)}</div>
-          <div class="cell-muted" style="font-size:12px">${esc(a.actorName || "Unknown")} · ${esc(fmtDate(a.createdAt))}</div></div>
+      if (!rows || !rows.length) { body.innerHTML = `<div class="cell-muted adm-t20">No terms changes recorded yet.</div>`; return; }
+      body.innerHTML = `<div class="adm-t21">${rows.map((a) => `
+        <div class="adm-t22">
+          <span class="adm-dot-info"></span>
+          <div class="u-flex-1"><div class="adm-t23">${esc(a.note)}</div>
+          <div class="cell-muted u-meta">${esc(a.actorName || "Unknown")} · ${esc(fmtDate(a.createdAt))}</div></div>
         </div>`).join("")}</div>`;
     }).catch((e) => { body.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; });
   }
 
   function billingTermsCard(tenantId, cfg) {
-    const card = el("div", "card"); card.style.cssText = "padding:18px;margin-bottom:16px";
-    const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin:0 0 12px";
-    head.appendChild(el("h3", null, "Billing terms")).style.cssText = "margin:0;font-size:15px";
+    const card = el("div", "card"); card.classList.add("adm-card9");
+    const head = el("div"); head.classList.add("adm-head5");
+    head.appendChild(el("h3", "adm-h3", "Billing terms"));
     const hist = el("button", "btn btn-ghost btn-sm", "History"); hist.onclick = () => openTermsHistory(tenantId, cfg.tenantName);
     head.appendChild(hist);
     card.appendChild(head);
 
     // billingStatus (updated via the portals endpoint).
-    const statusSel = el("select", "input"); statusSel.style.cssText = "margin:0;width:auto";
+    const statusSel = el("select", "input"); statusSel.classList.add("adm-cadsel");
     [["free", "Free"], ["trial", "Trial"], ["paid", "Paid"], ["exception", "Exception"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if ((cfg.billingStatus || "") === v) o.selected = true; statusSel.appendChild(o); });
     if (!cfg.billingStatus) { const o = el("option", null, "—"); o.value = ""; o.selected = true; statusSel.insertBefore(o, statusSel.firstChild); }
     statusSel.onchange = async () => { try { await App.api(`/api/admin/portals/${encodeURIComponent(tenantId)}`, { method: "PATCH", body: JSON.stringify({ billingStatus: statusSel.value }) }); toast("Billing status updated"); } catch (e) { toast(e.message, true); statusSel.value = cfg.billingStatus || ""; } };
 
     const flat = checkRow("Flat fee", cfg.hasFlatFee); const flatAmt = numInput(cfg.flatFeeAmount);
     const pass = checkRow("Passthrough (usage cost + markup)", cfg.hasPassthrough); const markup = numInput(cfg.passthroughMarkupPct, "0.1");
-    const periodSel = el("select", "input"); periodSel.style.cssText = "margin:0;width:auto";
+    const periodSel = el("select", "input"); periodSel.classList.add("adm-cadsel");
     [["monthly", "Monthly"], ["annual", "Annual"], ["custom", "Custom (days)"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (cfg.billingPeriod === v) o.selected = true; periodSel.appendChild(o); });
-    const customDays = numInput(cfg.customPeriodDays, "1"); customDays.step = "1"; customDays.style.width = "90px";
+    const customDays = numInput(cfg.customPeriodDays, "1"); customDays.step = "1"; customDays.classList.add("adm-w-90");
     const customWrap = field("Custom days", customDays);
-    function syncCustom() { customWrap.style.display = periodSel.value === "custom" ? "flex" : "none"; }
+    function syncCustom() { customWrap.classList.toggle("u-hidden", periodSel.value !== "custom"); }
     periodSel.onchange = syncCustom;
     const cStart = dateInput(cfg.contractStart), cEnd = dateInput(cfg.contractEnd);
-    const curr = el("input", "input"); curr.style.cssText = "margin:0;width:80px"; curr.value = cfg.currency || "USD"; curr.maxLength = 3;
+    const curr = el("input", "input"); curr.classList.add("adm-curr"); curr.value = cfg.currency || "USD"; curr.maxLength = 3;
 
-    const row1 = el("div"); row1.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px";
+    const row1 = el("div"); row1.classList.add("adm-row1");
     row1.appendChild(field("Billing status", statusSel));
     row1.appendChild(field("Period", periodSel));
     row1.appendChild(customWrap);
     row1.appendChild(field("Currency", curr));
     card.appendChild(row1);
 
-    const row2 = el("div"); row2.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px";
-    const flatCell = el("div"); flatCell.style.cssText = "display:flex;flex-direction:column;gap:6px"; flatCell.appendChild(flat.el); flatCell.appendChild(field("Amount", flatAmt));
-    const passCell = el("div"); passCell.style.cssText = "display:flex;flex-direction:column;gap:6px"; passCell.appendChild(pass.el); passCell.appendChild(field("Markup %", markup));
+    const row2 = el("div"); row2.classList.add("adm-row1");
+    const flatCell = el("div"); flatCell.classList.add("adm-flatcell"); flatCell.appendChild(flat.el); flatCell.appendChild(field("Amount", flatAmt));
+    const passCell = el("div"); passCell.classList.add("adm-flatcell"); passCell.appendChild(pass.el); passCell.appendChild(field("Markup %", markup));
     row2.appendChild(flatCell); row2.appendChild(passCell);
     card.appendChild(row2);
 
-    const row3 = el("div"); row3.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end";
+    const row3 = el("div"); row3.classList.add("adm-row3");
     row3.appendChild(field("Contract start", cStart)); row3.appendChild(field("Contract end", cEnd));
     card.appendChild(row3);
 
     syncCustom();
-    const save = el("button", "btn btn-primary btn-sm", "Save terms"); save.style.marginTop = "14px";
+    const save = el("button", "btn btn-primary btn-sm u-mt-14", "Save terms");
     save.onclick = async () => {
       const body = {
         hasFlatFee: flat.cb.checked, flatFeeAmount: Number(flatAmt.value || 0),
@@ -1577,26 +1577,26 @@
     card.appendChild(save);
 
     // ---- Payments (Stripe) — connection status + billing email + connect button ----
-    const sep = el("div"); sep.style.cssText = "border-top:1px solid var(--line);margin:16px 0 12px"; card.appendChild(sep);
-    const sh = el("div"); sh.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
-    sh.appendChild(el("h4", null, "Payments (Stripe)")).style.cssText = "margin:0;font-size:13.5px";
-    if (cfg.stripeConfigured && cfg.stripeMode === "test") { const t = el("span", null, "TEST"); t.style.cssText = "font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:6px;padding:1px 6px"; sh.appendChild(t); }
-    if (cfg.stripeConfigured && cfg.stripeMode === "live") { const t = el("span", null, "LIVE"); t.style.cssText = "font-size:10px;font-weight:700;color:#fff;background:#dc2626;border-radius:6px;padding:1px 6px"; sh.appendChild(t); }
+    const sep = el("div"); sep.classList.add("adm-sep"); card.appendChild(sep);
+    const sh = el("div"); sh.classList.add("adm-sh");
+    sh.appendChild(el("h4", "adm-h4", "Payments (Stripe)"));
+    if (cfg.stripeConfigured && cfg.stripeMode === "test") { const t = el("span", null, "TEST"); t.classList.add("adm-minitag", "adm-minitag-warn"); sh.appendChild(t); }
+    if (cfg.stripeConfigured && cfg.stripeMode === "live") { const t = el("span", null, "LIVE"); t.classList.add("adm-minitag", "adm-minitag-danger"); sh.appendChild(t); }
     card.appendChild(sh);
 
     const short = (id) => (id && id.length > 14 ? id.slice(0, 10) + "…" + id.slice(-4) : id);
-    const statusLine = el("div"); statusLine.style.cssText = "font-size:12.5px;margin-bottom:10px";
+    const statusLine = el("div"); statusLine.classList.add("adm-statusline");
     function paintStatus(customerId) {
-      if (!cfg.stripeConfigured) { statusLine.innerHTML = `<span style="color:#b45309">● Stripe not configured</span> <span class="cell-muted">— add STRIPE_SECRET_KEY to enable.</span>`; return; }
-      if (customerId) statusLine.innerHTML = `<span style="color:#16a34a">● Connected</span> <span class="cell-muted">${esc(short(customerId))}</span>`;
-      else statusLine.innerHTML = `<span style="color:#6b7280">○ Not connected</span>`;
+      if (!cfg.stripeConfigured) { statusLine.innerHTML = `<span class="txt-amber">● Stripe not configured</span> <span class="cell-muted">— add STRIPE_SECRET_KEY to enable.</span>`; return; }
+      if (customerId) statusLine.innerHTML = `<span class="txt-green">● Connected</span> <span class="cell-muted">${esc(short(customerId))}</span>`;
+      else statusLine.innerHTML = `<span class="txt-faint">○ Not connected</span>`;
     }
     paintStatus(cfg.stripeCustomerId);
     card.appendChild(statusLine);
 
     // Billing email (saved to BillingConfig.billingEmail).
-    const emailWrap = el("div"); emailWrap.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px";
-    const emailInp = el("input", "input"); emailInp.type = "email"; emailInp.placeholder = "billing@portal.com"; emailInp.style.cssText = "margin:0;max-width:260px"; emailInp.value = cfg.billingEmail || "";
+    const emailWrap = el("div"); emailWrap.classList.add("adm-emailwrap");
+    const emailInp = el("input", "input"); emailInp.type = "email"; emailInp.placeholder = "billing@portal.com"; emailInp.classList.add("adm-emailinp"); emailInp.value = cfg.billingEmail || "";
     const emailBtn = el("button", "btn btn-ghost btn-sm", "Save email");
     emailBtn.onclick = async () => {
       const v = (emailInp.value || "").trim();
@@ -1630,13 +1630,13 @@
 
   function chargeStatusBadge(c) {
     const map = { draft: "#6b7280", approved: "#2563eb", paid: "#16a34a", unpaid: "#dc2626", void: "#9ca3af" };
-    const b = el("span", null, cap(c.status)); b.style.cssText = `display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;color:#fff;background:${map[c.status] || "#6b7280"}`;
+    const b = el("span", "adm-badge", cap(c.status)); if (map[c.status]) b.style.setProperty("--badge-bg", map[c.status]);
     return b;
   }
 
   function chargeStatusBadgeHTML(c) {
     const map = { draft: "#6b7280", approved: "#2563eb", paid: "#16a34a", unpaid: "#dc2626", void: "#9ca3af" };
-    return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;color:#fff;background:${map[c.status] || "#6b7280"}">${esc(cap(c.status))}</span>`;
+    return `<span class="adm-badge" style="--badge-bg:${map[c.status] || "var(--ink-faint)"}">${esc(cap(c.status))}</span>`;
   }
 
   // Stripe invoice status pill (+ optional hosted-link). "Not invoiced" when none.
@@ -1654,15 +1654,15 @@
   function chargeStatePillHTML(c) {
     const label = chargeStateLabel(c);
     const color = { Void: "#9ca3af", Paid: "#16a34a", Failed: "#dc2626", Overdue: "#b45309", Draft: "#6b7280", Approved: "#2563eb", Unpaid: "#dc2626" }[label] || "#6b7280";
-    return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;color:#fff;background:${color}">${esc(label)}</span>`;
+    return `<span class="adm-badge" style="--badge-bg:${color}">${esc(label)}</span>`;
   }
 
   function invoiceStatusHTML(c) {
     if (!c.stripeInvoiceId) return `<span class="cell-muted">Not invoiced</span>`;
     const map = { draft: "#6b7280", open: "#2563eb", paid: "#16a34a", void: "#9ca3af", uncollectible: "#dc2626" };
     const st = c.stripeInvoiceStatus || "open";
-    const badge = `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;color:#fff;background:${map[st] || "#6b7280"}">${esc(cap(st))}</span>`;
-    const link = c.stripeInvoiceUrl ? ` <a href="${esc(c.stripeInvoiceUrl)}" target="_blank" rel="noopener" class="link-btn" style="color:var(--accent,#2563eb);text-decoration:underline;font-size:12px">payment link</a>` : "";
+    const badge = `<span class="adm-badge" style="--badge-bg:${map[st] || "var(--ink-faint)"}">${esc(cap(st))}</span>`;
+    const link = c.stripeInvoiceUrl ? ` <a href="${esc(c.stripeInvoiceUrl)}" target="_blank" rel="noopener" class="link-btn" class="adm-link">payment link</a>` : "";
     return badge + link;
   }
 
@@ -1717,14 +1717,14 @@
   }
 
   function chargesLedgerCard(tenantId, tenantName, ledger) {
-    const card = el("div", "card"); card.style.cssText = "padding:18px";
-    const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px";
-    head.appendChild(el("h3", null, "Charges")).style.cssText = "margin:0;font-size:15px";
+    const card = el("div", "card"); card.classList.add("adm-card10");
+    const head = el("div"); head.classList.add("adm-head6");
+    head.appendChild(el("h3", "adm-h3", "Charges"));
     card.appendChild(head);
 
     const t = ledger.totals || { billed: 0, paid: 0, outstanding: 0 };
-    const totals = el("div"); totals.style.cssText = "display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px";
-    [["Billed", t.billed], ["Paid", t.paid], ["Outstanding", t.outstanding]].forEach(([l, v]) => { const d = el("div"); d.innerHTML = `<div style="font-size:19px;font-weight:700">${esc(fmtMoney(v))}</div><div class="cell-muted" style="font-size:11.5px">${l}</div>`; totals.appendChild(d); });
+    const totals = el("div"); totals.classList.add("adm-totals");
+    [["Billed", t.billed], ["Paid", t.paid], ["Outstanding", t.outstanding]].forEach(([l, v]) => { const d = el("div"); d.innerHTML = `<div class="adm-t24">${esc(fmtMoney(v))}</div><div class="cell-muted adm-t25">${l}</div>`; totals.appendChild(d); });
     card.appendChild(totals);
 
     const charges = ledger.charges || [];
@@ -1749,7 +1749,7 @@
     const defaultKeys = ["period", "amount", "state", "paid", "outstanding", "due"];
     const actionsCol = {
       key: "__act", label: "", type: "text", filterable: false, get: () => "",
-      render: (c) => (c.status !== "void" ? `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button></div>` : ""),
+      render: (c) => (c.status !== "void" ? `<div class="adm-t26"><button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button></div>` : ""),
     };
 
     let layout = loadChargesLayout();
@@ -1761,7 +1761,7 @@
       tableId: "admin-tenant-charges",
       defaultSort: "period", defaultSortDir: "desc",
       onRowClick: (c) => openChargeDetail(tenantId, tenantName, c),
-      emptyHtml: `<div class="card cell-muted" style="padding:18px">No charges yet. Click “+ Create charge”.</div>`,
+      emptyHtml: `<div class="card cell-muted adm-t14">No charges yet. Click “+ Create charge”.</div>`,
       onRender: () => {
         App.util.$$("button[data-act]", tableHost).forEach((btn) => {
           btn.onclick = (e) => { e.stopPropagation(); const c = byId[btn.dataset.id]; if (!c) return; openPaymentModal(tenantId, tenantName, c); };
@@ -1812,16 +1812,16 @@
     inner.innerHTML = `<div class="modal-head"><h2>${existing ? "Edit charge" : "Create charge"}</h2><button class="icon-btn" id="c-close">&times;</button></div>
       <div class="modal-body">
         ${tenantPickerHTML}
-        ${locked ? `<div class="cell-muted" style="font-size:12px;margin:0 0 10px;padding:8px 10px;background:var(--panel-2);border-left:3px solid #f59e0b;border-radius:4px">This charge is <b>${esc(existing.status)}</b>, so the amount and period are locked. To bill a different amount, void this charge and create a new one. You can still edit the note and due date.</div>` : ""}
-        <div style="display:flex;gap:12px;flex-wrap:wrap">
-          <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period start</label><input id="c-start" class="input" type="date" value="${d0}" ${dis}></div>
-          <div style="display:flex;flex-direction:column;gap:3px"><label class="field-label">Period end</label><input id="c-end" class="input" type="date" value="${d1}" ${dis}></div>
+        ${locked ? `<div class="cell-muted" class="adm-note-warn">This charge is <b>${esc(existing.status)}</b>, so the amount and period are locked. To bill a different amount, void this charge and create a new one. You can still edit the note and due date.</div>` : ""}
+        <div class="adm-t27">
+          <div class="adm-t28"><label class="field-label">Period start</label><input id="c-start" class="input" type="date" value="${d0}" ${dis}></div>
+          <div class="adm-t28"><label class="field-label">Period end</label><input id="c-end" class="input" type="date" value="${d1}" ${dis}></div>
         </div>
-        ${hideSuggest ? "" : `<div style="margin:8px 0"><button id="c-suggest" class="btn btn-ghost btn-sm">✨ Suggest amount from terms</button> <span id="c-sugnote" class="cell-muted" style="font-size:11.5px"></span></div>`}
+        ${hideSuggest ? "" : `<div class="adm-t29"><button id="c-suggest" class="btn btn-ghost btn-sm">✨ Suggest amount from terms</button> <span id="c-sugnote" class="cell-muted adm-t25"></span></div>`}
         <label class="field-label">Amount</label><input id="c-amount" class="input" type="number" step="0.01" min="0" value="${existing ? money2(existing.amount) : ""}" placeholder="0.00" ${dis}>
         <label class="field-label">Due date (optional)</label><input id="c-due" class="input" type="date" value="${existing && existing.dueDate ? String(existing.dueDate).slice(0, 10) : ""}">
         <label class="field-label">Notes</label><input id="c-notes" class="input" value="${existing ? esc(existing.notes || "") : ""}" placeholder="optional">
-        <div id="c-breakdown" class="cell-muted" style="font-size:12px;margin:8px 0"></div>
+        <div id="c-breakdown" class="cell-muted adm-t30"></div>
         <button id="c-save" class="btn btn-primary btn-block">${existing ? "Save changes" : "Save as draft"}</button>
       </div>`;
     const overlay = modal(inner); const $ = (s) => inner.querySelector(s);
@@ -1854,7 +1854,7 @@
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Record payment</h2><button class="icon-btn" id="p-close">&times;</button></div>
       <div class="modal-body">
-        <div class="cell-muted" style="font-size:12px;margin-bottom:8px">Outstanding: ${esc(fmtMoney(charge.outstanding))} of ${esc(fmtMoney(charge.amount))}</div>
+        <div class="cell-muted adm-t31">Outstanding: ${esc(fmtMoney(charge.outstanding))} of ${esc(fmtMoney(charge.amount))}</div>
         <label class="field-label">Amount</label><input id="p-amount" class="input" type="number" step="0.01" min="0" value="${money2(charge.outstanding || charge.amount)}">
         <label class="field-label">Paid on</label><input id="p-date" class="input" type="date" value="${new Date().toISOString().slice(0, 10)}">
         <label class="field-label">Method (optional)</label><input id="p-method" class="input" placeholder="card / check / wire">
@@ -1885,11 +1885,11 @@
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Confirm approval</h2><button class="icon-btn" id="ca-close">&times;</button></div>
       <div class="modal-body">
-        <p class="cell-muted" style="font-size:13px;margin:0 0 10px">Approving finalizes this charge as owed. Enter your password to confirm.</p>
+        <p class="cell-muted adm-t32">Approving finalizes this charge as owed. Enter your password to confirm.</p>
         <label class="field-label">Your password</label>
         <input id="ca-pw" class="input" type="password" autocomplete="current-password" placeholder="Password">
-        <div id="ca-err" style="color:#dc2626;font-size:12.5px;margin:6px 0 0;display:none"></div>
-        <div style="display:flex;gap:8px;margin-top:14px">
+        <div id="ca-err" class="adm-form-err u-hidden"></div>
+        <div class="adm-t33">
           <button id="ca-ok" class="btn btn-primary btn-sm">Confirm &amp; approve</button>
           <button id="ca-cancel" class="btn btn-ghost btn-sm">Cancel</button>
         </div>
@@ -1900,13 +1900,13 @@
     const pw = $("#ca-pw"); setTimeout(() => pw.focus(), 30);
     async function submit() {
       const password = pw.value;
-      if (!password) { $("#ca-err").style.display = "block"; $("#ca-err").textContent = "Enter your password."; return; }
-      $("#ca-ok").disabled = true; $("#ca-err").style.display = "none";
+      if (!password) { $("#ca-err").classList.remove("u-hidden"); $("#ca-err").textContent = "Enter your password."; return; }
+      $("#ca-ok").disabled = true; $("#ca-err").classList.add("u-hidden");
       try {
         await App.api(`/api/admin/charges/${encodeURIComponent(chargeId)}/approve`, { method: "POST", body: JSON.stringify({ password }) });
         toast("Charge approved"); close(); if (onDone) onDone();
       } catch (e) {
-        $("#ca-ok").disabled = false; $("#ca-err").style.display = "block";
+        $("#ca-ok").disabled = false; $("#ca-err").classList.remove("u-hidden");
         $("#ca-err").textContent = /confirmation failed|password/i.test(e.message || "") ? "Incorrect password — approval blocked." : (e.message || "Approval failed");
         pw.select();
       }
@@ -1951,38 +1951,38 @@
       const stripeOn = !!(sstatus && sstatus.configured);
       const events = buildEvents(charge, audit);
       const timelineHTML = events.map((e) => `
-        <div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0">
-          <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};margin-top:5px;flex:0 0 auto"></span>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600">${esc(e.label)} <span class="cell-muted" style="font-weight:400">· ${esc(e.t ? fmtDate(e.t) : "—")}${e.who ? " · " + esc(e.who) : ""}</span></div>
-            ${e.sub ? `<div class="cell-muted" style="font-size:12px">${esc(e.sub)}</div>` : ""}
+        <div class="adm-t22">
+          <span class="adm-dot" style="--dot:${e.dot}"></span>
+          <div class="u-flex-1">
+            <div class="adm-t23">${esc(e.label)} <span class="cell-muted adm-t34">· ${esc(e.t ? fmtDate(e.t) : "—")}${e.who ? " · " + esc(e.who) : ""}</span></div>
+            ${e.sub ? `<div class="cell-muted u-meta">${esc(e.sub)}</div>` : ""}
           </div>
-        </div>`).join("") || `<div class="cell-muted" style="font-size:12.5px">No activity yet.</div>`;
+        </div>`).join("") || `<div class="cell-muted adm-t20">No activity yet.</div>`;
 
       inner.innerHTML = `<div class="modal-head"><h2>Charge detail</h2><button class="icon-btn" id="d-close">&times;</button></div>
         <div class="modal-body">
-          <div style="margin-bottom:6px"><b>${esc(fmtDateOnly(charge.periodStart))} – ${esc(fmtDateOnly(charge.periodEnd))}</b> · ${esc(fmtMoney(charge.amount))} ${esc(charge.currency || "")} · ${chargeStatusBadgeHTML(charge)}${(charge.paymentFailed || charge.overdue) ? " " + chargeStatePillHTML(charge) : ""}</div>
-          <div class="cell-muted" style="font-size:12.5px;margin-bottom:4px">Breakdown — flat ${esc(fmtMoney(b.flatFee || 0))}, passthrough base ${esc(fmtMoney(b.passthroughBaseCost || 0))} × (1 + ${esc(String(b.markupPct || 0))}%) = ${esc(fmtMoney(b.passthroughAmount || 0))}.<br>Usage snapshot: ${us.calls || 0} calls · ${us.minutes || 0} min · ${us.tokens || 0} tokens · ${us.emails || 0} emails.</div>
-          ${charge.dueDate ? `<div class="cell-muted" style="font-size:12.5px">Due ${esc(fmtDateOnly(charge.dueDate))}</div>` : ""}
-          ${charge.notes ? `<div style="font-size:12.5px;margin-top:4px">Notes: ${esc(charge.notes)}</div>` : ""}
-          <label class="field-label" style="margin-top:12px">Timeline</label>
-          <div style="border-left:2px solid var(--line);padding-left:12px;margin:2px 0 6px">${timelineHTML}</div>
-          <div class="cell-muted" style="font-size:12px;margin-bottom:8px">${esc(fmtMoney(charge.paidTotal))} paid · ${esc(fmtMoney(charge.outstanding))} outstanding${charge.paidAt ? ` · fully paid ${esc(fmtDateOnly(charge.paidAt))}` : ""}</div>
+          <div class="adm-t35"><b>${esc(fmtDateOnly(charge.periodStart))} – ${esc(fmtDateOnly(charge.periodEnd))}</b> · ${esc(fmtMoney(charge.amount))} ${esc(charge.currency || "")} · ${chargeStatusBadgeHTML(charge)}${(charge.paymentFailed || charge.overdue) ? " " + chargeStatePillHTML(charge) : ""}</div>
+          <div class="cell-muted adm-t36">Breakdown — flat ${esc(fmtMoney(b.flatFee || 0))}, passthrough base ${esc(fmtMoney(b.passthroughBaseCost || 0))} × (1 + ${esc(String(b.markupPct || 0))}%) = ${esc(fmtMoney(b.passthroughAmount || 0))}.<br>Usage snapshot: ${us.calls || 0} calls · ${us.minutes || 0} min · ${us.tokens || 0} tokens · ${us.emails || 0} emails.</div>
+          ${charge.dueDate ? `<div class="cell-muted adm-t20">Due ${esc(fmtDateOnly(charge.dueDate))}</div>` : ""}
+          ${charge.notes ? `<div class="adm-t37">Notes: ${esc(charge.notes)}</div>` : ""}
+          <label class="field-label adm-t6">Timeline</label>
+          <div class="adm-t38">${timelineHTML}</div>
+          <div class="cell-muted adm-t31">${esc(fmtMoney(charge.paidTotal))} paid · ${esc(fmtMoney(charge.outstanding))} outstanding${charge.paidAt ? ` · fully paid ${esc(fmtDateOnly(charge.paidAt))}` : ""}</div>
           <label class="field-label">Status</label>
-          <select id="d-status" class="input" style="width:auto">${STATUSES.map((s) => `<option value="${s}"${charge.status === s ? " selected" : ""}>${cap(s)}</option>`).join("")}</select>
-          <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <select id="d-status" class="input adm-t39">${STATUSES.map((s) => `<option value="${s}"${charge.status === s ? " selected" : ""}>${cap(s)}</option>`).join("")}</select>
+          <div class="adm-t40">
             ${charge.status === "draft" ? `<button id="d-approve" class="btn btn-primary btn-sm">Approve</button>` : ""}
             <button id="d-edit" class="btn btn-ghost btn-sm">Edit</button>
             <button id="d-pay" class="btn btn-ghost btn-sm">Record payment</button>
             ${(!charge.isPaid && charge.status !== "draft" && charge.status !== "void") ? `<button id="d-markpaid" class="btn btn-ghost btn-sm">Mark paid manually</button>` : ""}
-            <button id="d-void" class="btn btn-ghost btn-sm" style="color:#dc2626">Void</button>
+            <button id="d-void" class="btn btn-ghost btn-sm" class="txt-danger">Void</button>
           </div>
-          <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+          <div class="adm-t41"></div>
           <label class="field-label">Invoice (Stripe)</label>
-          ${!stripeOn ? `<div class="cell-muted" style="font-size:12.5px">Stripe not connected — configure Stripe to invoice this charge.</div>`
-            : (charge.status === "draft" ? `<div class="cell-muted" style="font-size:12.5px">Approve the charge to create its invoice.</div>`
-            : `<div style="font-size:12.5px;margin-bottom:8px">${invoiceStatusHTML(charge)}</div>
-               <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${!stripeOn ? `<div class="cell-muted adm-t20">Stripe not connected — configure Stripe to invoice this charge.</div>`
+            : (charge.status === "draft" ? `<div class="cell-muted adm-t20">Approve the charge to create its invoice.</div>`
+            : `<div class="adm-t42">${invoiceStatusHTML(charge)}</div>
+               <div class="adm-t43">
                  ${charge.stripeInvoiceUrl ? `<button id="d-copylink" class="btn btn-ghost btn-sm">Copy payment link</button><button id="d-openlink" class="btn btn-ghost btn-sm">Open</button>` : ""}
                  ${(!charge.stripeInvoiceId || charge.stripeInvoiceStatus === "void") ? `<button id="d-invoice" class="btn btn-primary btn-sm">Create invoice</button>` : `<button id="d-invoice" class="btn btn-ghost btn-sm">Retry invoice</button>`}
                  ${charge.stripeInvoiceId ? `<button id="d-send" class="btn btn-ghost btn-sm">Send to customer</button>` : ""}
@@ -2027,7 +2027,7 @@
   const saveCentralChargesLayout = (l) => { try { localStorage.setItem(CENTRAL_CHARGES_COLS_KEY, JSON.stringify(l || {})); } catch (e) {} };
 
   async function renderCentralCharges(host) {
-    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading charges…</div>`;
+    host.innerHTML = `<div class="cell-muted u-pad-8">Loading charges…</div>`;
     let layout = loadCentralChargesLayout();
     const period = (c) => `${fmtDateOnly(c.periodStart)} – ${fmtDateOnly(c.periodEnd)}`;
 
@@ -2050,7 +2050,7 @@
     const defaultKeys = ["tenant", "period", "amount", "state", "paid", "outstanding", "due", "created"];
     const actionsCol = {
       key: "__act", label: "", type: "text", filterable: false, get: () => "",
-      render: (c) => `<div style="display:flex;gap:4px;flex-wrap:wrap">${c.status === "draft" ? `<button class="btn btn-ghost btn-sm" data-act="approve" data-id="${esc(c.id)}">Approve</button>` : ""}${c.status !== "void" ? `<button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button><button class="btn btn-ghost btn-sm" data-act="void" data-id="${esc(c.id)}" style="color:#dc2626">Void</button>` : ""}</div>`,
+      render: (c) => `<div class="adm-t26">${c.status === "draft" ? `<button class="btn btn-ghost btn-sm" data-act="approve" data-id="${esc(c.id)}">Approve</button>` : ""}${c.status !== "void" ? `<button class="btn btn-ghost btn-sm" data-act="pay" data-id="${esc(c.id)}">Payment</button><button class="btn btn-ghost btn-sm" data-act="void" data-id="${esc(c.id)}" class="txt-danger">Void</button>` : ""}</div>`,
     };
     const applied = () => App.table.applyColumnLayout(manageable, layout, defaultKeys).concat([actionsCol]);
 
@@ -2059,7 +2059,7 @@
       const prev = handle ? handle.getState() : null;
       let data;
       try { data = await App.api("/api/admin/charges/all"); }
-      catch (e) { host.innerHTML = `<div class="card cell-muted" style="padding:18px">${esc(e.message)}</div>`; return; }
+      catch (e) { host.innerHTML = `<div class="card cell-muted adm-t14">${esc(e.message)}</div>`; return; }
       const charges = data.charges || [];
       const byId = {}; charges.forEach((c) => (byId[c.id] = c));
       host.innerHTML = "";
@@ -2068,7 +2068,7 @@
         tableId: "admin-central-charges",
         defaultSort: "created", defaultSortDir: "desc",
         onRowClick: (c) => openChargeDetail(c.tenantId, c.tenant, c, load),
-        emptyHtml: `<div class="card cell-muted" style="padding:18px">No charges yet.</div>`,
+        emptyHtml: `<div class="card cell-muted adm-t14">No charges yet.</div>`,
         onRender: () => {
           App.util.$$("button[data-act]", host).forEach((btn) => {
             btn.onclick = async (e) => {
@@ -2124,8 +2124,8 @@
     // Header block: heading + Stripe mode pill share ONE container so their left edges are the
     // same origin (no reliance on default h1 margins). h1 gets a fixed bottom margin for the
     // gap; the pill sits flush-left directly beneath it.
-    const head = el("div"); head.style.cssText = "margin-bottom:18px";
-    const h1 = el("h1", "page-title", "Billing & Usage"); h1.style.cssText = "margin:0 0 10px";
+    const head = el("div"); head.classList.add("adm-head7");
+    const h1 = el("h1", "page-title", "Billing & Usage"); h1.classList.add("adm-h1");
     head.appendChild(h1);
     wrap.appendChild(head);
     // Stripe mode badge (TEST/LIVE) so the operator always knows if real money is in play.
@@ -2138,7 +2138,7 @@
         badge.textContent = live ? "Stripe: LIVE mode" : "Stripe: TEST mode";
         // Block + fit-content + zero left margin => the pill's left edge sits exactly under the
         // heading text's left edge (same container content-left).
-        badge.style.cssText = `display:block;width:fit-content;margin:0;font-size:12px;font-weight:700;border-radius:999px;padding:3px 12px;color:${live ? "#fff" : "#92400e"};background:${live ? "#dc2626" : "#fef3c7"};border:1px solid ${live ? "#dc2626" : "#fde68a"}`;
+        badge.className = "adm-mode-pill" + (live ? " live" : "");
         badge.title = live ? "Live keys — real charges and payments." : "Test keys — no real money moves.";
         head.appendChild(badge);
       } catch (e) { /* ignore */ }
