@@ -137,9 +137,18 @@
      via their body[data-theme] blocks; Design-your-own can override per-user. The base
      values below ARE the "soft / standard / hairline / soft" personality (Clean Light).
      Pills/badges/stat-pill stay 999px ALWAYS; the eyebrow/type system never changes. */
-  --card-border: var(--line);      /* card-family border COLOR (borders=strong -> --line-strong; generalizes the Dusk precedent) */
-  --card-border-w: 1px;            /* card-family border WIDTH (never 2px anywhere) */
-  --btn-pad-x: 14px;               /* button horizontal padding (pill personalities widen to 18px) */
+  --card-border: var(--line);      /* card-family border COLOR (the borders slider drives it; a.k.a. the spec's --card-border-c) */
+  --card-border-w: 1px;            /* card-family border WIDTH (borders slider: 0..100 -> up to 2px at the silly end) */
+  --btn-pad-x: 14px;               /* button horizontal padding (buttons slider: 12px..20px) */
+
+  /* ============ DESIGN PHASE 9b.2 — personality-slider tokens ============
+     Seven sliders (theme.js personalityTokens) drive these live; the defaults below ARE
+     the untouched Clean Light experience (slider defaults reproduce them exactly). */
+  --nav-active-bg: var(--accent-soft);   /* active nav fill (sidebar + top page-nav) */
+  --nav-active-ink: var(--accent);       /* active nav text */
+  --nav-active-bar: 0px;                 /* accent edge bar: left bar on sidebar, extra underline on top tabs */
+  --nav-active-glow: none;               /* the silly end: accent glow */
+  --list-row-pad: 8px;                   /* list-row vertical padding (density slider, scaled off --table-row-pad) */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -189,7 +198,9 @@ body {
   transition: background var(--transition), color var(--transition);
 }
 .nav-item:hover { background: var(--gray-soft); color: var(--ink); }
-.nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nav-item.active { background: var(--nav-active-bg); color: var(--nav-active-ink); font-weight: 600; border-left: var(--nav-active-bar) solid var(--accent); box-shadow: var(--nav-active-glow); } /* 9b.2: token-driven active state (nav-highlight slider) */
+/* Top page-nav tabs (Analytics etc.): the SAME tokens; the bar renders as an underline. */
+.portal-pages-row .nav-item.active { border-left: 0; border-bottom: var(--nav-active-bar) solid var(--accent); }
 .nav-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--ink-faint); transition: background var(--transition);
@@ -613,7 +624,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 
 /* per-column popover */
 .col-popover { position: absolute; z-index: 70; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow-lg); padding: 8px; width: 220px; display: flex; flex-direction: column; gap: var(--sp-1); }
-.pop-item { text-align: left; background: none; border: none; padding: 8px 8px; border-radius: 6px; font-size: var(--text-sm); cursor: pointer; color: var(--ink); }
+.pop-item { text-align: left; background: none; border: none; padding: var(--list-row-pad) 8px; border-radius: 6px; font-size: var(--text-sm); cursor: pointer; color: var(--ink); }
 .pop-item:hover { background: var(--row-hover); }
 .pop-sep { height: 1px; background: var(--line); margin: 4px 0; }
 .pop-input { min-width: 0; font-size: var(--text-sm); padding: 8px 8px; border: 1px solid var(--line-strong); border-radius: 6px; font-family: var(--font-ui); }
@@ -1103,8 +1114,7 @@ body[data-theme="dark"] {
   --accent: #8482f5; --accent-soft: #26263a; --accent-strong: #9391f6;
   --green: #34c98a; --green-soft: #16281f; --amber: #d8a23c; --amber-soft: #2a2113; --red: #e0685a; --red-soft: #2c1715;
   --row-hover: #23232f; --scrim: rgba(0,0,0,0.55); --on-accent: #14120e;
-  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4);
-  --shadow-lg: 0 10px 40px rgba(0,0,0,0.6);}
+}
 body[data-theme="dark"] .brand-mark { background: var(--accent); color: #fff; }
 
 /* ---- Neutral / professional (basic) ---- */
@@ -1114,9 +1124,6 @@ body[data-theme="neutral"] {
   --line: #e6e8ea; --line-strong: #898d92;
   --accent: #2f6f8f; --accent-soft: #e9f1f5; --accent-strong: #2b6380;
   --row-hover: #f1f5f7;
-  /* Phase 9b personality: soft / crisp / hairline / rect */
-  --shadow: 0 1px 2px rgba(20,20,30,0.10); --shadow-lg: 0 6px 24px rgba(20,20,30,0.14);
-  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Frutiger Aero (fun, flagship) ---- */
@@ -1132,11 +1139,6 @@ body[data-theme="aero"] {
   --sidebar-bg: #eef8fe; --topbar-bg: #eaf6fe;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
   --font-display: "Nunito", "Segoe UI", system-ui, sans-serif;
-/* Phase 9b personality:round / blended / hairline / PILL — its 18/13 ad-hoc radii converge onto the
-     canonical round steps; the glossy card/button flourishes below stay untouched on top. */
-  --radius: 16px; --radius-sm: 12px;
-  --shadow: 0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06); --shadow-lg: 0 18px 60px rgba(20,20,30,0.16);
-  --btn-radius: 999px; --btn-weight: 600; --btn-pad-x: 18px;
   background: url("/themes/bubbles.svg") repeat, radial-gradient(120% 90% at 50% -10%, #b6f3ff 0%, rgba(182,243,255,0) 55%), linear-gradient(165deg, #36b6f5 0%, #6fd6ff 28%, #a7efe2 62%, #c8ffdd 100%) fixed;
 }
 /* solid surfaces (legibility): opaque panels with a soft aero shadow, no blur */
@@ -1177,13 +1179,6 @@ body[data-theme="dusk"] {
   --topbar-bg: #140f33;
   --font-ui: "Poppins", "Segoe UI", system-ui, sans-serif;
   --font-display: "Orbitron", "Poppins", system-ui, sans-serif;
-/* Phase 9b personality:sharp / crisp / STRONG / rect (user-specified; glow flourishes stay untouched on top;
-     the crisp dark shadow keeps its signature 1px neon ring layer) */
-  --radius: 3px; --radius-sm: 2px;
-  --shadow: 0 0 0 1px rgba(255,61,240,0.10), 0 1px 2px rgba(0,0,0,0.45);
-  --shadow-lg: 0 6px 24px rgba(0,0,0,0.55);
-  --card-border: var(--line-strong);
-  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
   background:
     radial-gradient(120% 70% at 50% 120%, rgba(255,61,240,0.28) 0%, rgba(255,61,240,0) 55%),
     radial-gradient(90% 60% at 50% -10%, rgba(34,224,255,0.18) 0%, rgba(34,224,255,0) 60%),
@@ -1196,7 +1191,7 @@ body[data-theme="dusk"] .btn-primary {
   background: #1a1145; color: #22e0ff; border: 1px solid #22e0ff;
   box-shadow: 0 0 14px rgba(34,224,255,0.6), inset 0 0 10px rgba(34,224,255,0.22);
 }
-body[data-theme="dusk"] .nav-item.active { box-shadow: 0 0 14px rgba(255,61,240,0.5); border: 1px solid rgba(255,61,240,0.5); }
+/* 9b.2: dusk's nav glow is now expressed by its Nav-highlight slider position (90). */
 /* Phase 9b: dusk's strong card border now flows from --card-border (the generalized precedent). */
 
 /* ---- Cottage Warm (fun, cottagecore) ---- */
@@ -1209,9 +1204,6 @@ body[data-theme="cottage"] {
   --row-hover: #f1e8d6; --on-accent: #fff;
   --font-ui: "Segoe UI", Candara, "Trebuchet MS", system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
-/* Phase 9b personality:soft / standard / hairline / soft — its 12/9 ad-hoc radii converge onto the
-     soft base steps; its warm-tinted STANDARD shadow stays (palette-derived alphas, the dark-theme precedent). */
-  --shadow: 0 1px 2px rgba(120,90,50,0.06), 0 6px 18px rgba(120,90,50,0.10);
 }
 body[data-theme="cottage"] .page-title,
 body[data-theme="cottage"] .settings-h { font-family: var(--font-display); font-weight: 600; }
@@ -1235,7 +1227,14 @@ body[data-theme="cottage"] .brand-mark { background: var(--accent); color: #fff;
 .theme-custom-row label { font-size: var(--text-sm); color: var(--ink-soft); }
 .theme-custom input[type="color"] { width: 48px; height: 30px; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; padding: 0; }
 .theme-custom select.input { max-width: 220px; }
-/* Phase 9b — Design-your-own COMPONENT STYLE group (inside the designer card). */
+/* Phase 9b.2 — Design-your-own COMPONENT STYLE group: slider rows (Fun-slider styling
+   for now; the segmented-rectangle slider restyle is the 9c page-redesign's job). */
+.theme-slider-row { gap: var(--sp-3); }
+.theme-slider-row .th-p-slider { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.th-p-hint { min-width: 86px; text-align: right; font-size: var(--text-xs); color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-shadowc-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.th-shadowc-row input[type="color"] { width: 48px; height: 30px; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; padding: 0; }
+/* (9b legacy comment kept for history) Design-your-own COMPONENT STYLE group. */
 .theme-comp-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 6px 0 0; padding-top: 10px; border-top: 1px solid var(--line); }
 .th-comp-reset { background: none; border: none; color: var(--ink-faint); font-size: var(--text-xs); cursor: pointer; text-decoration: underline; padding: 2px 4px; }
 .th-comp-reset:hover { color: var(--accent); }
@@ -1271,10 +1270,6 @@ body[data-theme="slate"] {
   --line: #e1e6eb; --line-strong: #89919b;
   --accent: #4a6076; --accent-soft: #e7edf2; --accent-strong: #43566a;
   --gray-soft: #eef1f4; --row-hover: #f1f4f7;
-  /* Phase 9b personality: sharp / crisp / hairline / rect */
-  --radius: 3px; --radius-sm: 2px;
-  --shadow: 0 1px 2px rgba(20,20,30,0.10); --shadow-lg: 0 6px 24px rgba(20,20,30,0.14);
-  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Basic: Steel Blue ---- */
@@ -1284,10 +1279,6 @@ body[data-theme="steel"] {
   --line: #e2e7ee; --line-strong: #88919c;
   --accent: #2a4d7a; --accent-soft: #e6edf6; --accent-strong: #26456d;
   --gray-soft: #eef2f7; --row-hover: #eef3f9;
-  /* Phase 9b personality: sharp / crisp / hairline / rect */
-  --radius: 3px; --radius-sm: 2px;
-  --shadow: 0 1px 2px rgba(20,20,30,0.10); --shadow-lg: 0 6px 24px rgba(20,20,30,0.14);
-  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Basic: Sand ---- */
@@ -1297,9 +1288,6 @@ body[data-theme="sand"] {
   --line: #e6dcc8; --line-strong: #938873;
   --accent: #936737; --accent-soft: #f1e6d5; --accent-strong: #825c33;
   --amber: #b07a25; --amber-soft: #f5e8d2; --gray-soft: #efe6d6; --row-hover: #f3ead9;
-  /* Phase 9b personality: round / blended / hairline / soft */
-  --radius: 16px; --radius-sm: 12px;
-  --shadow: 0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06); --shadow-lg: 0 18px 60px rgba(20,20,30,0.16);
 }
 
 /* ---- Basic: High Contrast (accessibility-friendly) ---- */
@@ -1310,12 +1298,6 @@ body[data-theme="contrast"] {
   --accent: #0b5bd3; --accent-soft: #d6e4fb; --accent-strong: #0b52bc;
   --green: #0a7a3f; --green-soft: #d8f0e2; --amber: #8a5a00; --amber-soft: #f6e6c8;
   --red: #b00000; --red-soft: #ffd9d9; --gray-soft: #ededed; --row-hover: #eef3fc; --on-accent: #ffffff;
-  /* Phase 9b personality: sharp / crisp / STRONG / rect (accessibility-first: maximum edge definition;
-     the old 2px card/input borders converge onto the 1px-at-black strong bundle — no 2px borders anywhere) */
-  --radius: 3px; --radius-sm: 2px;
-  --shadow: 0 1px 2px rgba(20,20,30,0.10); --shadow-lg: 0 6px 24px rgba(20,20,30,0.14);
-  --card-border: var(--line-strong);
-  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 body[data-theme="contrast"] .input:focus { box-shadow: 0 0 0 3px #0b5bd3; border-color: #0b5bd3; }
 body[data-theme="contrast"] .btn-primary:disabled { opacity: 0.55; }
@@ -1328,9 +1310,6 @@ body[data-theme="graphite"] {
   --accent: #9b99f2; --accent-soft: #2f3140; --accent-strong: #a7a5f4;
   --green: #46c98f; --green-soft: #1c2e26; --amber: #d6a23a; --amber-soft: #2a2414; --red: #df6f61; --red-soft: #2a1614;
   --gray-soft: #383b41; --row-hover: #393c42; --scrim: rgba(0,0,0,0.5); --on-accent: #14120e;
-  /* Phase 9b personality: soft / crisp / hairline / rect (dark: alphas derive from black) */
-  --shadow: 0 1px 2px rgba(0,0,0,0.45); --shadow-lg: 0 6px 24px rgba(0,0,0,0.55);
-  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Basic: Midnight (deep true-dark) ---- */
@@ -1341,10 +1320,6 @@ body[data-theme="midnight"] {
   --accent: #7674f1; --accent-soft: #181830; --accent-strong: #8785f2;
   --green: #2fbf86; --green-soft: #0f241b; --amber: #cf9a3a; --amber-soft: #241d10; --red: #df6557; --red-soft: #281312;
   --gray-soft: #14141e; --row-hover: #15151f; --scrim: rgba(0,0,0,0.65); --on-accent: #14120e;
-  /* Phase 9b personality: sharp / crisp / hairline / rect (dark: alphas derive from black) */
-  --radius: 3px; --radius-sm: 2px;
-  --shadow: 0 1px 2px rgba(0,0,0,0.45); --shadow-lg: 0 6px 24px rgba(0,0,0,0.55);
-  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Fun: Vaporwave (bg: grid over gradient) ---- */
@@ -1358,11 +1333,6 @@ body[data-theme="vaporwave"] {
   --topbar-bg: #1f1442;
   --font-ui: "Poppins", "Segoe UI", system-ui, sans-serif;
   --font-display: "Poppins", system-ui, sans-serif;
-/* Phase 9b personality:SHARP / crisp / STRONG / PILL (deliberate retro clash) — 16/11 converge onto sharp. */
-  --radius: 3px; --radius-sm: 2px;
-  --shadow: 0 1px 2px rgba(0,0,0,0.45); --shadow-lg: 0 6px 24px rgba(0,0,0,0.55);
-  --card-border: var(--line-strong);
-  --btn-radius: 999px; --btn-weight: 600; --btn-pad-x: 18px;
   background:
     url("/themes/vapor-grid.svg") repeat,
     radial-gradient(90% 70% at 15% 10%, rgba(255,106,213,0.35) 0%, rgba(255,106,213,0) 55%),
@@ -1383,8 +1353,6 @@ body[data-theme="forest"] {
   --gray-soft: #21342a; --row-hover: #21342a; --scrim: rgba(8,16,12,0.6); --on-accent: #14120e;
   --font-ui: "Segoe UI", Candara, system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, serif;
-  /* Phase 9b personality: soft / blended / hairline / soft (dark: alphas derive from black) */
-  --shadow: 0 8px 30px rgba(0,0,0,0.35), 0 2px 10px rgba(0,0,0,0.25); --shadow-lg: 0 18px 60px rgba(0,0,0,0.5);
   background: url("/themes/leaves.svg") repeat, #1c2a22 fixed;
 }
 body[data-theme="forest"] .page-title, body[data-theme="forest"] .settings-h { font-family: var(--font-display); }
@@ -1401,9 +1369,6 @@ body[data-theme="sunset"] {
   --gray-soft: #f7e6d8; --row-hover: #fdeedd; --on-accent: #fff;
   --sidebar-bg: #fff2e4; --topbar-bg: #fff2e4;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
-/* Phase 9b personality:round / blended / hairline / soft — its 14/10 ad-hoc radii converge onto the round steps. */
-  --radius: 16px; --radius-sm: 12px;
-  --shadow: 0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06); --shadow-lg: 0 18px 60px rgba(20,20,30,0.16);
   background: linear-gradient(160deg, #ffd9a8 0%, #ffb98f 35%, #f5907a 65%, #b98fd0 100%) fixed;
 }
 
@@ -1418,10 +1383,6 @@ body[data-theme="dreamcore"] {
   --sidebar-bg: #f7effb; --topbar-bg: #f7effb;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
   --font-display: "Nunito", "Segoe UI", system-ui, sans-serif;
-/* Phase 9b personality:round / blended / hairline / PILL (user-specified) — 18/13 converge onto the round steps. */
-  --radius: 16px; --radius-sm: 12px;
-  --shadow: 0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06); --shadow-lg: 0 18px 60px rgba(20,20,30,0.16);
-  --btn-radius: 999px; --btn-weight: 600; --btn-pad-x: 18px;
   background: linear-gradient(180deg, #d6f5ec 0%, #cfe8ff 22%, #e3d4f7 52%, #ffd9ec 82%, #ffe6d4 100%) fixed;
 }
 
@@ -1436,11 +1397,6 @@ body[data-theme="academia"] {
   --sidebar-bg: #201710; --topbar-bg: #201710;
   --font-ui: "Segoe UI", Candara, system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
-/* Phase 9b personality:sharp / standard / STRONG / rect — its black-derived STANDARD shadow stays. */
-  --radius: 3px; --radius-sm: 2px;
-  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.5);
-  --card-border: var(--line-strong);
-  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
   background: radial-gradient(120% 90% at 50% 40%, #2a1e14 0%, #1a130d 60%, #120c07 100%) fixed;
 }
 
@@ -2305,7 +2261,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .bulk-wrap { position: relative; display: inline-flex; align-items: center; gap: var(--sp-2); }
 .bulk-menu { position: absolute; top: 100%; left: 0; margin-top: 4px; min-width: 180px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); z-index: 40; padding: 4px; }
 .bulk-menu.hidden { display: none; }
-.bulk-item { display: block; width: 100%; text-align: left; background: none; border: none; padding: 8px 10px; border-radius: 6px; font-size: var(--text-sm); color: var(--ink); cursor: pointer; }
+.bulk-item { display: block; width: 100%; text-align: left; background: none; border: none; padding: var(--list-row-pad) 10px; border-radius: 6px; font-size: var(--text-sm); color: var(--ink); cursor: pointer; }
 .bulk-item:hover { background: var(--row-hover); }
 .bulk-empty { padding: 8px 10px; font-size: var(--text-sm); color: var(--ink-soft); }
 .bulk-count { font-size: var(--text-xs); color: var(--ink-soft); }

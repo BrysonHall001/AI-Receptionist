@@ -115,7 +115,7 @@ for (const rm2 of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
   if (sel.includes("data-theme") || sel.includes(":root") || sel.includes("#theme-scene") || sel.includes(".sc-") || /^(from|to|\d)/.test(sel)) continue;
   for (const d of rm2[2].matchAll(/box-shadow:\s*([^;]+)/g)) {
     const v = d[1].trim();
-    if (v === "none" || v.includes("var(--shadow)") || v.includes("var(--shadow-lg)") || v.includes("var(--card-shadow)") /* Phase 0 indirection; defaults to --shadow */ || v.includes("var(--focus-ring)") || insetOnly(v) || ringOk(v)) continue;
+    if (v === "none" || v.includes("var(--shadow)") || v.includes("var(--shadow-lg)") || v.includes("var(--card-shadow)") /* Phase 0 indirection; defaults to --shadow */ || v.includes("var(--focus-ring)") || v.includes("var(--nav-active-glow)") /* 9b.2 nav-highlight slider glow token */ || insetOnly(v) || ringOk(v)) continue;
     shadowOffenders.push(`${sel.split(",")[0].trim()} -> ${v}`);
   }
 }

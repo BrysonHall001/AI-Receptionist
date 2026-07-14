@@ -162,3 +162,45 @@ place and count as the pattern: `.table-toolbar` (+ `.toolbar-left`/`.toolbar-ri
 map) stay bespoke; primitives are for the repeated generic patterns only.
 
 The five anti-patterns are counted by `designAudit.ts` and ratcheted like every other counter.
+
+## Phase 9b.2 — personality sliders (revises 9b in place)
+
+The 9b segmented enums became seven 0–100 sliders plus a shadow-color picker, all applied
+live via `theme.js personalityTokens()` — ONE pure deterministic positions→tokens map — with
+9b's exact precedence (custom fields override the active preset's positions; "Reset to theme
+default" restores them). Legacy 9b enum saves map on read (`sharp→8 / soft→35 / round→85`;
+`crisp→20 / standard→40 / blended→75`; `hairline→40 / strong→80`; `rect→10 / soft→35 /
+pill→90`); saves write the numeric format.
+
+### The formulas (all lerps linear; px rounded)
+
+- **Corners** — `--radius = lerp(0px, 28px, t)`; `--radius-sm = 0.7×` (0.85× at ≥90 so
+  controls go bubble). Default **35** → 10px/7px (today, exactly).
+- **Buttons** — `--btn-radius = lerp(2px, 24px, t)`, snapping to **999px at ≥85**;
+  `--btn-pad-x = lerp(12px, 20px, t)`. Default **23** → 7px/14px — the spec's 35 would give
+  10px/15px, a visible change, so the default is the position that reproduces today.
+- **Shadows** — keyframed dual-layer interpolation with exact anchors (light track):
+  `0=off`, `25 = 0 1px 2px α.10`, `40 = the 9a standard verbatim`, `70 = 0 8px 30px α.10 +
+  0 2px 10px α.06`, `100 = 0 24px 80px α.20 + 0 6px 30px α.12` (lg: 6/24·.14 → 10/40·.16 →
+  18/60·.16 → 32/110·.26). Dark track anchors derive from black per the Dark-preset
+  precedent (40 = the Dark preset's exact values).
+- **Shadow color** — the picked hex replaces the neutral base (`rgb(20,20,30)` light /
+  black dark) at the slider's current alphas. Neutral = today.
+- **Borders** — bands: 0–19 borderless cards (`--card-border: transparent`, controls
+  `--line`); 20–59 today (`--line` cards / `--line-strong` controls, 1px); 60–89 both
+  `--line-strong`; 90–100 the 2px silly end. **Zero-zero floor:** borders 0 + shadows 0
+  forces a 1px `--line` card hairline so surfaces never vanish.
+- **Nav highlight** — five bands styling `.nav-item.active` (sidebar AND the top page-nav
+  row) via `--nav-active-bg/-ink/-bar/-glow`; band starts extend the previous band's end
+  state (bar lerps 0→3px across 40–59; bg color-mixes toward `--accent` across 60–79 with
+  the ink flipping at the 50% mix; glow radius lerps 0→18px across 80–100). Default **40**
+  = soft pill + 0px bar = today exactly. The bar renders as a left border on sidebar items
+  and an underline on top tabs.
+- **Table density** — `--table-row-pad = lerp(4px, 18px, t)`; `--list-row-pad =
+  clamp(round(pad × 8/13), 3, 12)` nudges the shared list rows. Default **64** → 13px/8px
+  (today, including the test-pinned 13px; the spec's 40 would give 10px).
+
+Preset personalities now live in `theme.js PRESET_PERSONALITIES` as slider positions
+(single source; the 9b CSS token bundles were removed from the theme blocks). Fun intensity
+still means scenic strength only. Pills/badges stay 999px; the eyebrow/type system is
+untouched.

@@ -37,14 +37,18 @@ export interface UserTheme {
   // Optional per-portal white-label logo, stored as a PNG/JPEG data URL (same
   // base64-in-DB approach the custom-field image type uses). Absent = default branding.
   logo?: string | null;
-  // Phase 9b — Design-your-own COMPONENT STYLE choices. Four optional string fields;
-  // absent = the active preset's own personality (backward compatible: legacy saves
-  // load unchanged). When present they override the preset's personality client-side,
-  // exactly mirroring how custom colors override preset colors.
-  corners?: string;  // "sharp" | "soft" | "round"
-  shadows?: string;  // "crisp" | "standard" | "blended"
-  borders?: string;  // "hairline" | "strong"
-  buttons?: string;  // "rect" | "soft" | "pill"
+  // Phase 9b.2 — Design-your-own COMPONENT STYLE sliders. Six optional 0..100 ints plus
+  // an optional shadow-color hex; absent = the active preset's exaggerated personality.
+  // Legacy 9b enum strings ("sharp"/"crisp"/…) are mapped to positions ON SAVE here and
+  // on read in theme.js, so old saves load correctly forever; saves write the numeric
+  // format. Overrides mirror the custom-color precedence exactly (client-side).
+  corners?: number;
+  shadows?: number;
+  borders?: number;
+  buttons?: number;
+  navHighlight?: number;
+  density?: number;
+  shadowColor?: string;
 }
 
 // ---- Legacy per-portal shape (kept only to import old Tenant.theme data) ----
@@ -90,14 +94,18 @@ export const FONTS = [
 
 export const FONT_IDS: string[] = FONTS.map((f) => f.id);
 
-// Phase 9b — the valid values for the four component-personality dimensions.
-export const COMPONENT_OPTIONS: Record<string, readonly string[]> = {
-  corners: ["sharp", "soft", "round"],
-  shadows: ["crisp", "standard", "blended"],
-  borders: ["hairline", "strong"],
-  buttons: ["rect", "soft", "pill"],
-} as const;
-export const COMPONENT_KEYS = Object.keys(COMPONENT_OPTIONS) as Array<"corners" | "shadows" | "borders" | "buttons">;
+// Phase 9b.2 — the slider dimensions and the legacy 9b enum -> position mapping.
+// (Mirrored in public/js/theme.js LEGACY_MAP; the self-test asserts they agree.)
+export const PERSONALITY_SLIDER_KEYS = ["corners", "shadows", "borders", "buttons", "navHighlight", "density"] as const;
+export const LEGACY_PERSONALITY_MAP: Record<string, Record<string, number>> = {
+  corners: { sharp: 8, soft: 35, round: 85 },
+  shadows: { crisp: 20, standard: 40, blended: 75 },
+  borders: { hairline: 40, strong: 80 },
+  buttons: { rect: 10, soft: 35, pill: 90 },
+};
+// Kept as an alias so older imports keep compiling (the enum sets live on as the legacy
+// mapping's keys).
+export const COMPONENT_KEYS = PERSONALITY_SLIDER_KEYS.slice(0, 4) as unknown as Array<"corners" | "shadows" | "borders" | "buttons">;
 
 export const MAX_CUSTOMS = 24;
 export const MAX_NAME_LEN = 40;
@@ -170,13 +178,17 @@ export function sanitizeUserTheme(input: unknown): UserTheme {
   const logo = sanitizeLogo(obj.logo);
   const funLevel = clampFunLevel(obj.funLevel);
   const outBase: UserTheme = { active, customs, funLevel };
-  // Phase 9b component-style fields: keep ONLY valid values; anything else (absent,
-  // wrong type, unknown value) is dropped — absent means "use the preset's personality",
-  // so legacy payloads round-trip byte-identical and a bad value can never stick.
-  for (const k of COMPONENT_KEYS) {
-    const v = obj[k];
-    if (typeof v === "string" && COMPONENT_OPTIONS[k].includes(v)) (outBase as any)[k] = v;
+  // Phase 9b.2 personality sliders: ints clamped 0..100; legacy 9b enum strings map to
+  // their positions ON SAVE (write the new format); anything else is dropped — absent
+  // means "use the preset's personality", so legacy payloads without the fields
+  // round-trip byte-identical and a bad value can never stick.
+  for (const k of PERSONALITY_SLIDER_KEYS) {
+    let v: unknown = obj[k];
+    if (typeof v === "string" && LEGACY_PERSONALITY_MAP[k] && LEGACY_PERSONALITY_MAP[k][v] != null) v = LEGACY_PERSONALITY_MAP[k][v];
+    const n = typeof v === "number" ? v : Number(v);
+    if ((k in obj) && Number.isFinite(n)) (outBase as any)[k] = Math.max(0, Math.min(100, Math.round(n)));
   }
+  if (isValidHex(obj.shadowColor)) (outBase as any).shadowColor = String(obj.shadowColor).trim();
   return logo ? { ...outBase, logo } : outBase;
 }
 

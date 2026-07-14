@@ -36,47 +36,156 @@
   const CUSTOM_VARS = ["--bg", "--ink", "--sidebar-bg", "--topbar-bg", "--panel", "--panel-2", "--line", "--line-strong", "--row-hover", "--font-ui"];
   function clearCustom() { const s = document.body.style; CUSTOM_VARS.forEach((v) => s.removeProperty(v)); }
 
-  // ---- Phase 9b: component-personality overrides (Design-your-own COMPONENT STYLE) ----
-  // The four optional fields (corners/shadows/borders/buttons) on the saved theme override
-  // the active preset's personality via body.style.setProperty — the SAME precedence
-  // mechanism custom colors use (inline style beats the data-theme block). Absent field =
-  // the preset's own personality shows through. Values mirror docs/design-system.md.
-  const COMPONENT_VARS = ["--radius", "--radius-sm", "--shadow", "--shadow-lg", "--card-border", "--btn-radius", "--btn-weight", "--btn-pad-x"];
+  // ---- Phase 9b.2: personality SLIDERS (revises 9b's segmented enums in place) ----
+  // Seven dimensions, each a 0..100 int (plus shadowColor, a hex or null=neutral), applied
+  // live via body.style.setProperty — the SAME precedence custom colors use. The shared
+  // interpolation map below is the single deterministic slider->tokens function; every
+  // formula is documented in docs/design-system.md. PRESET_PERSONALITIES expresses each
+  // theme's exaggerated personality as positions; custom fields override per 9b precedence.
+  const COMPONENT_VARS = ["--radius", "--radius-sm", "--shadow", "--shadow-lg", "--card-border", "--card-border-w", "--control-border", "--btn-radius", "--btn-pad-x", "--nav-active-bg", "--nav-active-ink", "--nav-active-bar", "--nav-active-glow", "--table-row-pad", "--list-row-pad"];
   function clearComponents() { const s = document.body.style; COMPONENT_VARS.forEach((v) => s.removeProperty(v)); }
-  const COMPONENT_DEFAULTS = { corners: "soft", shadows: "standard", borders: "hairline", buttons: "soft" };
+
+  // Defaults chosen so the formulas REPRODUCE the untouched Clean Light values exactly:
+  // corners 35 -> 10px/7px; buttons 23 -> 7px radius + 14px pad (the spec's 35 would give
+  // 10px/15px — a visible change, so the default is the position that lands on today);
+  // shadows 40 -> the 9a standard verbatim; borders 40 -> 1px --line cards + --line-strong
+  // controls; nav 40 -> soft pill with a 0px bar (band start = today); density 64 ->
+  // 13px --table-row-pad + 8px list rows (the spec's 40 would give 10px — visibly denser).
+  const PERSONALITY_DEFAULTS = { corners: 35, buttons: 23, shadows: 40, borders: 40, navHighlight: 40, density: 64, shadowColor: null };
+
+  // 9b enum -> 9b.2 position mapping (legacy saves load correctly forever; map on read,
+  // write the numeric format on save).
+  const LEGACY_MAP = {
+    corners: { sharp: 8, soft: 35, round: 85 },
+    shadows: { crisp: 20, standard: 40, blended: 75 },
+    borders: { hairline: 40, strong: 80 },
+    buttons: { rect: 10, soft: 35, pill: 90 },
+  };
+  function normalizePersonality(ut) {
+    ut = ut || {};
+    const out = {};
+    for (const k of ["corners", "shadows", "borders", "buttons", "navHighlight", "density"]) {
+      let v = ut[k];
+      if (typeof v === "string" && LEGACY_MAP[k] && LEGACY_MAP[k][v] != null) v = LEGACY_MAP[k][v];
+      v = Number(v);
+      if (Number.isFinite(v) && (k in ut)) out[k] = Math.max(0, Math.min(100, Math.round(v)));
+    }
+    if (typeof ut.shadowColor === "string" && isHex(ut.shadowColor)) out.shadowColor = ut.shadowColor.trim();
+    return out;
+  }
+
+  // Exaggerated preset personalities (Phase 9b.2 assignment): positions per theme.
+  const PRESET_PERSONALITIES = {
+    light:     {},
+    warm:      {},
+    neutral:   { corners: 35, shadows: 20, borders: 40, buttons: 10, navHighlight: 35, density: 40 },
+    slate:     { corners: 8,  shadows: 18, borders: 40, buttons: 10, navHighlight: 32, density: 30 },
+    steel:     { corners: 6,  shadows: 15, borders: 40, buttons: 8,  navHighlight: 30, density: 28 },
+    contrast:  { corners: 5,  shadows: 15, borders: 82, buttons: 8,  navHighlight: 40, density: 32 },
+    dark:      {},
+    midnight:  { corners: 8,  shadows: 20, borders: 40, buttons: 10, navHighlight: 35, density: 40 },
+    graphite:  { corners: 35, shadows: 20, borders: 40, buttons: 10, navHighlight: 35, density: 50 },
+    sand:      { corners: 82, shadows: 72, borders: 40, buttons: 45, navHighlight: 45, density: 58 },
+    forest:    { corners: 38, shadows: 75, borders: 40, buttons: 35, navHighlight: 45, density: 55 },
+    aero:      { corners: 85, shadows: 78, borders: 40, buttons: 92, navHighlight: 55, density: 55 },
+    dusk:      { corners: 8,  shadows: 22, borders: 80, buttons: 10, navHighlight: 90, density: 45, shadowColor: "#ff3df0" },
+    cottage:   { corners: 38, shadows: 42, borders: 40, buttons: 30, navHighlight: 38, density: 55, shadowColor: "#785a32" },
+    sunset:    { corners: 84, shadows: 74, borders: 40, buttons: 50, navHighlight: 48, density: 60 },
+    dreamcore: { corners: 90, shadows: 85, borders: 40, buttons: 90, navHighlight: 82, density: 62 },
+    academia:  { corners: 10, shadows: 40, borders: 78, buttons: 10, navHighlight: 40, density: 45 },
+    vaporwave: { corners: 7,  shadows: 20, borders: 82, buttons: 90, navHighlight: 92, density: 42, shadowColor: "#ff6ad5" },
+  };
+
   function isDarkSurface() {
-    // Shadows derive alphas from black on dark surfaces (the Dark preset's precedent).
     const panel = getComputedStyle(document.body).getPropertyValue("--panel").trim();
     return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(panel) ? luminance(panel) <= 0.5 : false;
   }
-  const SHADOWS = {
-    light: {
-      crisp: ["0 1px 2px rgba(20,20,30,0.10)", "0 6px 24px rgba(20,20,30,0.14)"],
-      standard: ["0 1px 2px rgba(20,20,30,0.05), 0 2px 8px rgba(20,20,30,0.08)", "0 10px 40px rgba(20,20,30,0.16)"],
-      blended: ["0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06)", "0 18px 60px rgba(20,20,30,0.16)"],
-    },
-    dark: {
-      crisp: ["0 1px 2px rgba(0,0,0,0.45)", "0 6px 24px rgba(0,0,0,0.55)"],
-      standard: ["0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4)", "0 10px 40px rgba(0,0,0,0.6)"],
-      blended: ["0 8px 30px rgba(0,0,0,0.35), 0 2px 10px rgba(0,0,0,0.25)", "0 18px 60px rgba(0,0,0,0.5)"],
-    },
+
+  const lerp = (a, b, t) => a + (b - a) * t;
+  // Shadow keyframes: [pos, layer1(y,blur,alpha), layer2(y,blur,alpha)] and lg [pos, (y,blur,alpha)].
+  // pos 40 reproduces today's strings VERBATIM (light: the 9a standard; dark: the Dark preset).
+  const SHADOW_KEYS = {
+    light: { s: [[0,[0,0,0],[0,0,0]], [25,[1,2,0.10],[2,8,0]], [40,[1,2,0.05],[2,8,0.08]], [70,[8,30,0.10],[2,10,0.06]], [100,[24,80,0.20],[6,30,0.12]]],
+             lg: [[0,[0,0,0]], [25,[6,24,0.14]], [40,[10,40,0.16]], [70,[18,60,0.16]], [100,[32,110,0.26]]] },
+    dark:  { s: [[0,[0,0,0],[0,0,0]], [25,[1,2,0.45],[4,16,0]], [40,[1,2,0.30],[4,16,0.40]], [70,[8,30,0.35],[2,10,0.25]], [100,[24,80,0.55],[6,30,0.35]]],
+             lg: [[0,[0,0,0]], [25,[6,24,0.55]], [40,[10,40,0.60]], [70,[18,60,0.50]], [100,[32,110,0.65]]] },
   };
-  function applyComponents(ut) {
-    clearComponents();
-    ut = ut || {};
-    const s = document.body.style;
-    if (ut.corners === "sharp") { s.setProperty("--radius", "3px"); s.setProperty("--radius-sm", "2px"); }
-    else if (ut.corners === "soft") { s.setProperty("--radius", "10px"); s.setProperty("--radius-sm", "7px"); }
-    else if (ut.corners === "round") { s.setProperty("--radius", "16px"); s.setProperty("--radius-sm", "12px"); }
-    if (ut.shadows === "crisp" || ut.shadows === "standard" || ut.shadows === "blended") {
-      const pair = SHADOWS[isDarkSurface() ? "dark" : "light"][ut.shadows];
-      s.setProperty("--shadow", pair[0]); s.setProperty("--shadow-lg", pair[1]);
+  function keyLerp(keys, pos) {
+    let lo = keys[0], hi = keys[keys.length - 1];
+    for (let i = 0; i < keys.length - 1; i++) if (pos >= keys[i][0] && pos <= keys[i + 1][0]) { lo = keys[i]; hi = keys[i + 1]; break; }
+    const t = hi[0] === lo[0] ? 0 : (pos - lo[0]) / (hi[0] - lo[0]);
+    return lo.slice(1).map((layer, li) => layer.map((v, vi) => lerp(v, hi[li + 1][vi], t)));
+  }
+  const rA = (x) => Math.round(x * 100) / 100;
+  function shadowLayer(l, rgb) { return "0 " + Math.round(l[0]) + "px " + Math.round(l[1]) + "px rgba(" + rgb[0] + ", " + rgb[1] + ", " + rgb[2] + ", " + rA(l[2]) + ")"; }
+
+  // THE shared interpolation map: positions -> token values. Pure + deterministic.
+  function personalityTokens(p, dark) {
+    const t = {};
+    const P = Object.assign({}, PERSONALITY_DEFAULTS, p);
+    // Corners: 0 brutally square -> 100 silly-bubble. radius = lerp(0,28); sm = 0.7x
+    // (0.85x at >=90 so inputs/controls go bubble too). Default 35 -> 10px / 7px.
+    const cr = lerp(0, 28, P.corners / 100);
+    t["--radius"] = Math.round(cr) + "px";
+    t["--radius-sm"] = Math.round(cr * (P.corners >= 90 ? 0.85 : 0.7)) + "px";
+    // Buttons: radius lerp(2,24), snapping to the full 999px pill at >=85; pad-x lerp(12,20).
+    // Default 23 -> 7px / 14px (today).
+    t["--btn-radius"] = P.buttons >= 85 ? "999px" : Math.round(lerp(2, 24, P.buttons / 100)) + "px";
+    t["--btn-pad-x"] = Math.round(lerp(12, 20, P.buttons / 100)) + "px";
+    // Shadows: keyframed dual-layer; 0 = OFF; base color = shadowColor hex or the neutral
+    // base (ink-family rgb(20,20,30) on light, black on dark — the Dark-preset precedent).
+    const rgb = P.shadowColor ? hexToRgb(P.shadowColor) : (dark ? [0, 0, 0] : [20, 20, 30]);
+    if (P.shadows === 0) { t["--shadow"] = "none"; t["--shadow-lg"] = "none"; }
+    else {
+      const K = SHADOW_KEYS[dark ? "dark" : "light"];
+      const layers2 = keyLerp(K.s, P.shadows);
+      const parts = [shadowLayer(layers2[0], rgb)];
+      if (layers2[1][2] > 0.001) parts.push(shadowLayer(layers2[1], rgb));
+      t["--shadow"] = parts.join(", ");
+      t["--shadow-lg"] = shadowLayer(keyLerp(K.lg, P.shadows)[0], rgb);
     }
-    if (ut.borders === "hairline") s.setProperty("--card-border", "var(--line)");
-    else if (ut.borders === "strong") s.setProperty("--card-border", "var(--line-strong)");
-    if (ut.buttons === "rect") { s.setProperty("--btn-radius", "4px"); s.setProperty("--btn-weight", "600"); s.setProperty("--btn-pad-x", "14px"); }
-    else if (ut.buttons === "soft") { s.setProperty("--btn-radius", "var(--radius-sm)"); s.setProperty("--btn-weight", "650"); s.setProperty("--btn-pad-x", "14px"); }
-    else if (ut.buttons === "pill") { s.setProperty("--btn-radius", "999px"); s.setProperty("--btn-weight", "600"); s.setProperty("--btn-pad-x", "18px"); }
+    // Borders: banded prominence. 0-19 borderless cards; 20-59 today (1px --line cards,
+    // --line-strong controls); 60-89 both --line-strong; 90-100 the 2px silly end.
+    // ZERO-ZERO FLOOR: shadows 0 + borders 0 would erase all structure — cards keep a
+    // minimum 1px --line hairline so surfaces never vanish (documented safety floor).
+    let cardC, ctrlC, w = "1px";
+    if (P.borders < 20) { cardC = "transparent"; ctrlC = "var(--line)"; }
+    else if (P.borders < 60) { cardC = "var(--line)"; ctrlC = "var(--line-strong)"; }
+    else if (P.borders < 90) { cardC = "var(--line-strong)"; ctrlC = "var(--line-strong)"; }
+    else { cardC = "var(--line-strong)"; ctrlC = "var(--line-strong)"; w = "2px"; }
+    if (P.borders === 0 && P.shadows === 0) cardC = "var(--line)"; // the structure floor
+    t["--card-border"] = cardC; t["--control-border"] = ctrlC; t["--card-border-w"] = w;
+    // Nav highlight: continuous-ish bands (see docs). Band starts extend the previous
+    // band's end state so dragging never pops. Default 40 = soft pill + 0px bar = today.
+    const n = P.navHighlight;
+    let bg, ink = "var(--accent)", bar = 0, glow = "none";
+    if (n < 20) bg = "color-mix(in srgb, var(--accent-soft) " + Math.round(lerp(40, 100, n / 20)) + "%, transparent)";
+    else if (n < 40) bg = "var(--accent-soft)";
+    else if (n < 60) { bg = "var(--accent-soft)"; bar = Math.round(lerp(0, 3, (n - 40) / 20)); }
+    else if (n < 80) { const q = Math.round(lerp(0, 100, (n - 60) / 20)); bg = "color-mix(in srgb, var(--accent) " + q + "%, var(--accent-soft))"; ink = q >= 50 ? "var(--on-accent)" : "var(--accent)"; bar = 3; }
+    else { bg = "var(--accent)"; ink = "var(--on-accent)"; bar = 3; const g = Math.round(lerp(0, 18, (n - 80) / 20)); glow = g > 0 ? "0 0 " + g + "px var(--accent)" : "none"; }
+    t["--nav-active-bg"] = bg; t["--nav-active-ink"] = ink; t["--nav-active-bar"] = bar + "px"; t["--nav-active-glow"] = glow;
+    // Table density: --table-row-pad lerp(4,18); list rows scale off it (8/13 ratio,
+    // clamped 3..12). Default 64 -> 13px / 8px (today, incl. the test-pinned 13px).
+    const pad = Math.round(lerp(4, 18, P.density / 100));
+    t["--table-row-pad"] = pad + "px";
+    t["--list-row-pad"] = Math.max(3, Math.min(12, Math.round((pad * 8) / 13))) + "px";
+    return t;
+  }
+  // exposed for the self-test (determinism assertions run against this same map)
+  App._personality = { personalityTokens: personalityTokens, PRESET_PERSONALITIES: PRESET_PERSONALITIES, PERSONALITY_DEFAULTS: PERSONALITY_DEFAULTS, LEGACY_MAP: LEGACY_MAP, normalizePersonality: normalizePersonality };
+
+  function applyPersonality(ut) {
+    clearComponents();
+    const active = (ut && ut.active) || {};
+    const presetId = active.mode === "preset" ? active.preset : null;
+    const base = (presetId && PRESET_PERSONALITIES[presetId]) || {};
+    // 9b precedence, unchanged: the user's custom fields override the active preset's
+    // personality exactly like custom colors override preset colors.
+    const eff = Object.assign({}, PERSONALITY_DEFAULTS, base, normalizePersonality(ut));
+    const tokens = personalityTokens(eff, isDarkSurface());
+    const s = document.body.style;
+    for (const k of Object.keys(tokens)) s.setProperty(k, tokens[k]);
   }
 
   // Apply a RESOLVED theme: {mode:"preset",preset} or {mode:"custom",custom:{...}}.
@@ -123,10 +232,10 @@
     const a = ut.active || {};
     if (a.mode === "custom") {
       const c = (ut.customs || []).find((x) => x.id === a.customId);
-      if (c) { applyResolved({ mode: "custom", custom: c }); applyComponents(ut); return; }
+      if (c) { applyResolved({ mode: "custom", custom: c }); applyPersonality(ut); return; }
     }
     applyResolved({ mode: "preset", preset: a.preset || "light" });
-    applyComponents(ut);
+    applyPersonality(ut);
   }
 
   function resetToDefault() { clearCustom(); clearComponents(); document.body.dataset.theme = "light"; if (App.scene) App.scene.mount("light"); applyFun(0); }
@@ -321,12 +430,20 @@
       wrap.appendChild(el("div", "theme-group-label", "Design your own"));
       const designer = el("div", "theme-card theme-custom-card");
       const fontOpts = fonts.map((f) => `<option value="${esc(f.id)}"${f.id === editor.font ? " selected" : ""}>${esc(f.label)}</option>`).join("");
-      // Phase 9b: the four component-style segmented rows. Selected segment = the saved
-      // field, or the dimension's default when the field is absent (preset personality).
-      const compRow = (label, key, opts) => {
-        const cur = prefs[key] || COMPONENT_DEFAULTS[key];
-        const segs = opts.map(([v, l]) => `<button type="button" class="view-toggle-btn${v === cur ? " active" : ""}" data-comp="${key}" data-val="${v}">${l}</button>`).join("");
-        return `<div class="theme-custom-row"><label>${label}</label><div class="view-toggle theme-comp-seg">${segs}</div></div>`;
+      // Phase 9b.2: the seven personality controls are SLIDERS (0..100). The shown value =
+      // the saved field, mapped from a legacy 9b enum if needed, else the ACTIVE preset's
+      // exaggerated position, else the dimension default. Sliders reuse the Fun-intensity
+      // slider's styling for now (the segmented-rectangle restyle is 9c's page redesign).
+      const presetId = prefs.active && prefs.active.mode === "preset" ? prefs.active.preset : null;
+      const presetPersona = Object.assign({}, PERSONALITY_DEFAULTS, (presetId && PRESET_PERSONALITIES[presetId]) || {});
+      const effPersona = Object.assign({}, presetPersona, normalizePersonality(prefs));
+      const HINTS = { corners: ["Square", "Soft", "Round"], buttons: ["Rect", "Soft", "Pill"], shadows: ["Flat", "Standard", "Dreamy"], borders: ["Airy", "Hairline", "Bold"], navHighlight: ["Whisper", "Pill", "Glow"], density: ["Tight", "Cozy", "Airy"] };
+      const hintFor = (key, v) => HINTS[key][v < 34 ? 0 : v < 67 ? 1 : 2] + " " + v;
+      const sliderRow = (label, key) => {
+        const v = effPersona[key];
+        return `<div class="theme-custom-row theme-slider-row"><label>${label}</label>` +
+          `<div class="fun-slider-controls th-p-slider"><input type="range" class="fun-range" min="0" max="100" step="1" value="${v}" data-dim="${key}" aria-label="${label}">` +
+          `<span class="fun-range-val th-p-hint" data-hint="${key}">${hintFor(key, v)}</span></div></div>`;
       };
       designer.innerHTML = `
         <div class="theme-custom">
@@ -337,10 +454,14 @@
           <div class="theme-custom-row"><label>Font color</label><input type="color" id="th-fg" value="${editor.fontColor}"></div>
           <div class="theme-custom-row"><label>Font</label><select id="th-font" class="input">${fontOpts}</select></div>
           <div class="theme-comp-head"><span class="eyebrow">Component style</span><button type="button" id="th-comp-reset" class="th-comp-reset">Reset to theme default</button></div>
-          ${compRow("Corners", "corners", [["sharp", "Sharp"], ["soft", "Soft"], ["round", "Round"]])}
-          ${compRow("Shadows", "shadows", [["crisp", "Crisp"], ["standard", "Standard"], ["blended", "Blended"]])}
-          ${compRow("Borders", "borders", [["hairline", "Hairline"], ["strong", "Strong"]])}
-          ${compRow("Buttons", "buttons", [["rect", "Rectangular"], ["soft", "Soft"], ["pill", "Pill"]])}
+          ${sliderRow("Corners", "corners")}
+          ${sliderRow("Buttons", "buttons")}
+          ${sliderRow("Shadows", "shadows")}
+          <div class="theme-custom-row"><label>Shadow color</label><div class="th-shadowc-row"><input type="color" id="th-shadowc" value="${esc(effPersona.shadowColor || (document.body.dataset.theme && luminance((getComputedStyle(document.body).getPropertyValue("--panel").trim() || "#ffffff")) <= 0.5 ? "#000000" : "#14141e"))}">` +
+          `<button type="button" id="th-shadowc-neutral" class="th-comp-reset">Neutral</button></div></div>
+          ${sliderRow("Borders", "borders")}
+          ${sliderRow("Nav highlight", "navHighlight")}
+          ${sliderRow("Table density", "density")}
         </div>`;
       wrap.appendChild(designer);
 
@@ -406,20 +527,26 @@
           font: host.querySelector("#th-font").value,
         };
       }
-      // Phase 9b: component-style segments apply live via setProperty AND persist
-      // immediately (same live-apply as the color pickers; same persist as the preset
-      // selects). Absent field = preset personality; a click sets the field.
-      designer.querySelectorAll(".theme-comp-seg .view-toggle-btn").forEach((b) => {
-        b.onclick = async () => {
-          prefs[b.dataset.comp] = b.dataset.val;
-          designer.querySelectorAll(`.view-toggle-btn[data-comp="${b.dataset.comp}"]`).forEach((x) => x.classList.toggle("active", x === b));
-          applyComponents(prefs); // live, over whatever theme is active
-          try { await persist(); } catch (e) { toast(e.message, true); }
+      // Phase 9b.2: sliders apply live on every input (setProperty, same as the color
+      // pickers) and persist debounced like the Fun slider. Dragging writes the numeric
+      // field (the new format); legacy enum fields are replaced the first time you drag.
+      let pSaveTimer = null;
+      const schedulePersonalitySave = () => { if (pSaveTimer) clearTimeout(pSaveTimer); pSaveTimer = setTimeout(async () => { pSaveTimer = null; try { await persist(); } catch (e) { toast(e.message, true); } }, 300); };
+      designer.querySelectorAll(".th-p-slider .fun-range").forEach((sl) => {
+        sl.oninput = () => {
+          const key = sl.dataset.dim; const v = Math.max(0, Math.min(100, Math.round(Number(sl.value) || 0)));
+          prefs[key] = v; // numeric = the new persisted format
+          const hint = designer.querySelector(`[data-hint="${key}"]`); if (hint) hint.textContent = hintFor(key, v);
+          applyPersonality(prefs); // live, over whatever theme is active
+          schedulePersonalitySave();
         };
       });
+      const shadowC = designer.querySelector("#th-shadowc");
+      shadowC.oninput = () => { prefs.shadowColor = shadowC.value; applyPersonality(prefs); schedulePersonalitySave(); };
+      designer.querySelector("#th-shadowc-neutral").onclick = () => { delete prefs.shadowColor; applyPersonality(prefs); schedulePersonalitySave(); };
       designer.querySelector("#th-comp-reset").onclick = async () => {
-        ["corners", "shadows", "borders", "buttons"].forEach((k) => { delete prefs[k]; });
-        applyComponents(prefs); // clears the overrides -> the preset's personality returns
+        ["corners", "shadows", "borders", "buttons", "navHighlight", "density", "shadowColor"].forEach((k) => { delete prefs[k]; });
+        applyPersonality(prefs); // back to the ACTIVE preset's exaggerated positions
         try { await persist(); toast("Component style reset to the theme default"); } catch (e) { toast(e.message, true); }
         render();
       };

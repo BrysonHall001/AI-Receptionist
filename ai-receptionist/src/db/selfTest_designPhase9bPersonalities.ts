@@ -27,7 +27,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { runAudit } from "./designAudit";
 import baseline from "./designBaseline.json";
-import { sanitizeUserTheme, COMPONENT_OPTIONS, COMPONENT_KEYS } from "../theme/themes";
+import { sanitizeUserTheme, LEGACY_PERSONALITY_MAP, PERSONALITY_SLIDER_KEYS } from "../theme/themes";
 
 const failures: string[] = [];
 function check(cond: boolean, label: string) { console.log(`  ${cond ? "\u2713" : "\u2717"} ${label}`); if (!cond) failures.push(label); }
@@ -64,83 +64,47 @@ for (const c of [".card {", ".stat-card {", ".portal-card {", ".widget-card {"])
 check(/\.view-toggle \{[^}]*border: 1px solid var\(--control-border\); border-radius: var\(--radius-sm\);/.test(css), "segmented controls take the corner + border dims");
 check(/\.pill, \.badge, \.state-pill, \.nav-edit-pill \{\s*padding: 3px 10px; border-radius: 999px;/.test(css) && /\.stat-pill-cap \{[^}]*text-transform: uppercase/.test(css), "pills/badges stay 999px ALWAYS; the eyebrow system carries no personality tokens (exemptions hold)");
 
-// ---------- (1) the assignment table ----------
-console.log("\n(1) assignment table (17 preset blocks; Clean Light = the base):");
-const SHARP = '--radius: 3px; --radius-sm: 2px;';
-const ROUND = '--radius: 16px; --radius-sm: 12px;';
-const CRISP_L = '--shadow: 0 1px 2px rgba(20,20,30,0.10); --shadow-lg: 0 6px 24px rgba(20,20,30,0.14);';
-const CRISP_D = '--shadow: 0 1px 2px rgba(0,0,0,0.45); --shadow-lg: 0 6px 24px rgba(0,0,0,0.55);';
-const BLEND_L = '--shadow: 0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06); --shadow-lg: 0 18px 60px rgba(20,20,30,0.16);';
-const BLEND_D = '--shadow: 0 8px 30px rgba(0,0,0,0.35), 0 2px 10px rgba(0,0,0,0.25); --shadow-lg: 0 18px 60px rgba(0,0,0,0.5);';
-const STRONG = '--card-border: var(--line-strong);';
-const RECT = '--btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;';
-const PILL = '--btn-radius: 999px; --btn-weight: 600; --btn-pad-x: 18px;';
-type Want = { has: string[]; not?: string[] };
-const TABLE: Record<string, Want> = {
-  warm:      { has: [], not: ["--radius:", "--shadow:", "--btn-radius:", "--card-border:"] }, // soft/standard/hairline/soft = base
-  neutral:   { has: [CRISP_L, RECT], not: ["--radius:"] },
-  slate:     { has: [SHARP, CRISP_L, RECT] },
-  steel:     { has: [SHARP, CRISP_L, RECT] },
-  contrast:  { has: [SHARP, CRISP_L, STRONG, RECT] },
-  dark:      { has: [], not: ["--radius:", "--btn-radius:", "--card-border:"] }, // its black STANDARD shadow is the precedent
-  midnight:  { has: [SHARP, CRISP_D, RECT] },
-  graphite:  { has: [CRISP_D, RECT], not: ["--radius:"] },
-  sand:      { has: [ROUND, BLEND_L], not: ["--btn-radius:"] },
-  forest:    { has: [BLEND_D], not: ["--radius:", "--btn-radius:"] },
-  aero:      { has: [ROUND, BLEND_L, PILL] },
-  dusk:      { has: [SHARP, STRONG, RECT, "--shadow: 0 0 0 1px rgba(255,61,240,0.10), 0 1px 2px rgba(0,0,0,0.45);", "--shadow-lg: 0 6px 24px rgba(0,0,0,0.55);"] },
-  cottage:   { has: ["--shadow: 0 1px 2px rgba(120,90,50,0.06), 0 6px 18px rgba(120,90,50,0.10);"], not: ["--radius:", "--btn-radius:"] },
-  sunset:    { has: [ROUND, BLEND_L], not: ["--btn-radius:"] },
-  dreamcore: { has: [ROUND, BLEND_L, PILL] },
-  academia:  { has: [SHARP, STRONG, RECT, "--shadow: 0 1px 2px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.5);"] },
-  vaporwave: { has: [SHARP, CRISP_D, STRONG, PILL] },
-};
-for (const [id, want] of Object.entries(TABLE)) {
+// ---------- (1) the assignment table (REVISED by 9b.2: positions in theme.js) ----------
+console.log("\n(1) personalities are slider positions (single source in theme.js):");
+// 9b expressed personalities as CSS token bundles in the theme blocks; 9b.2 re-expressed
+// them as exaggerated slider positions in PRESET_PERSONALITIES. The blocks must carry NO
+// personality token lines anymore (palette + flourishes + backgrounds only).
+const PERSONALITY_TOKENS = ["--radius:", "--radius-sm:", "--btn-radius:", "--btn-weight:", "--btn-pad-x:", "--card-border:", "--shadow:", "--shadow-lg:"];
+const THEME_IDS = ["warm", "neutral", "slate", "steel", "sand", "contrast", "graphite", "dark", "midnight", "dusk", "aero", "cottage", "vaporwave", "forest", "sunset", "dreamcore", "academia"];
+for (const id of THEME_IDS) {
   const b = themeBlock(id);
-  const okHas = want.has.every((h) => b.includes(h));
-  const okNot = (want.not || []).every((n) => !b.includes(n));
-  check(b.length > 0 && okHas && okNot, `${id}: exactly its table bundle (${want.has.length ? "overrides present" : "no overrides — base personality"})`);
+  const strays = PERSONALITY_TOKENS.filter((tk) => b.includes(tk));
+  check(b.length > 0 && strays.length === 0, `${id}: block carries NO personality tokens (strays: ${JSON.stringify(strays)})`);
 }
-check(css.indexOf('body[data-theme="light"] {') === -1, 'Clean Light ("") stays the pure :root base — no theme block, no overrides');
-// old ad-hoc hardcodes are gone
-for (const gone of ["--radius: 18px; --radius-sm: 13px;", "--radius: 12px; --radius-sm: 9px;", "--radius: 14px; --radius-sm: 10px;", "--radius: 16px; --radius-sm: 11px;"]) {
-  check(!css.includes(gone), `old ad-hoc radii removed: "${gone}"`);
-}
-// "No 2px borders anywhere" governs the personality-driven component borders (cards,
-// controls, tables, theme blocks) — functional micro-chrome (flow-canvas node handles,
-// color swatches, presence-dot rims) is not a personality surface.
-const themeRegion = css.slice(css.indexOf('THEMES'), css.indexOf('Design Phase 3: Settings surface classes'));
-check(!themeRegion.includes("border: 2px solid") && !themeRegion.includes("border-width: 2px") && !css.includes('body[data-theme="contrast"] .input { border-width: 2px; }') && !css.includes('body[data-theme="contrast"] .card, body[data-theme="contrast"] .settings-card { border: 2px solid'), "no 2px personality borders anywhere in the THEMES region (High Contrast converged onto 1px-at-black strong)");
-check(!/body\[data-theme="aero"\][^{]*\{[^}]*border-radius: 13px/.test(css), "aero's glossy button rides --btn-radius (13px literal gone)");
-check(/body\[data-theme="contrast"\] tbody td[^{]*\{ border-bottom-color: var\(--line-strong\); \}/.test(css.replace(/\n/g, " ")) || /body\[data-theme="vaporwave"\] tbody td \{ border-bottom-color: var\(--line-strong\); \}/.test(css.replace(/\n/g, " ")), "strong-border themes: tables take --line-strong on header band + row rules");
-check(/text-shadow: 0 0 14px rgba\(255,61,240,0\.45\)/.test(css) && /box-shadow: 0 0 14px rgba\(34,224,255,0\.6\)/.test(css), "dusk's glow flourishes untouched on top");
+check(css.indexOf('body[data-theme="light"] {') === -1, 'Clean Light ("") stays the pure :root base — no theme block');
+check(/const PRESET_PERSONALITIES = \{/.test(themeJs) && THEME_IDS.concat(["light"]).every((id) => new RegExp(`\\b${id}:\\s*\\{`).test(themeJs)), "PRESET_PERSONALITIES covers all 18 themes (exaggerated positions, the single source)");
+check(themeJs.includes('dusk:      { corners: 8,  shadows: 22, borders: 80, buttons: 10, navHighlight: 90, density: 45, shadowColor: "#ff3df0" }'), "dusk formalizes its glow DNA (nav 90 + magenta shadow color)");
+check(!/body\[data-theme="aero"\][^{]*\{[^}]*border-radius: 13px/.test(css), "aero's glossy button still rides --btn-radius (no 13px literal)");
+check(/text-shadow: 0 0 14px rgba\(255,61,240,0\.45\)/.test(css), "dusk's text-glow flourish untouched");
 
-// ---------- (2) round-trip persistence ----------
+// ---------- (2) round-trip persistence (9b.2 numeric format + legacy 9b mapping) ----------
 console.log("\n(2) round-trip (sanitizeUserTheme = the /api/theme chokepoint):");
 const base: any = { active: { mode: "preset", preset: "slate" }, customs: [] };
-const saved = sanitizeUserTheme({ ...base, corners: "round", shadows: "blended", borders: "strong", buttons: "pill" }) as any;
-check(saved.corners === "round" && saved.shadows === "blended" && saved.borders === "strong" && saved.buttons === "pill", "the four valid fields survive save -> reload identical");
+const saved = sanitizeUserTheme({ ...base, corners: 85, shadows: 75, borders: 80, buttons: 90, navHighlight: 92, density: 30, shadowColor: "#ff3df0" }) as any;
+check(saved.corners === 85 && saved.shadows === 75 && saved.borders === 80 && saved.buttons === 90 && saved.navHighlight === 92 && saved.density === 30 && saved.shadowColor === "#ff3df0", "the seven numeric/color fields survive save -> reload identical");
 const again = sanitizeUserTheme(saved) as any;
-check(again.corners === "round" && again.shadows === "blended" && again.borders === "strong" && again.buttons === "pill", "idempotent: sanitizing the sanitized output changes nothing");
-const legacy = sanitizeUserTheme(base) as any;
-check(COMPONENT_KEYS.every((k) => !(k in legacy)), "legacy payload (no fields) -> NO component keys added (existing saves load unchanged; absent = defaults)");
-const junk = sanitizeUserTheme({ ...base, corners: "banana", shadows: 7, borders: null, buttons: "PILL" }) as any;
-check(COMPONENT_KEYS.every((k) => !(k in junk)), "invalid values are dropped, never stored");
-const reset = sanitizeUserTheme((({ corners, shadows, borders, buttons, ...rest }) => rest)(saved)) as any;
-check(COMPONENT_KEYS.every((k) => !(k in reset)), '"Reset to theme default" semantics: deleted fields stay absent after the round-trip');
-check(COMPONENT_OPTIONS.corners.length === 3 && COMPONENT_OPTIONS.shadows.length === 3 && COMPONENT_OPTIONS.borders.length === 2 && COMPONENT_OPTIONS.buttons.length === 3, "option sets match the spec (3/3/2/3)");
+check(PERSONALITY_SLIDER_KEYS.every((k) => again[k] === saved[k]) && again.shadowColor === saved.shadowColor, "idempotent: sanitizing the sanitized output changes nothing");
+const legacy = sanitizeUserTheme({ ...base, corners: "sharp", shadows: "blended", borders: "strong", buttons: "pill" }) as any;
+check(legacy.corners === 8 && legacy.shadows === 75 && legacy.borders === 80 && legacy.buttons === 90, "legacy 9b enums map to positions ON SAVE (sharp->8, blended->75, strong->80, pill->90)");
+const empty = sanitizeUserTheme(base) as any;
+check(PERSONALITY_SLIDER_KEYS.every((k) => !(k in empty)) && !("shadowColor" in empty), "absent fields stay absent (preset personality; legacy payloads unchanged)");
+const junk = sanitizeUserTheme({ ...base, corners: "banana", shadows: 940, borders: -5, buttons: NaN, shadowColor: "red" }) as any;
+check(!("corners" in junk) && junk.shadows === 100 && junk.borders === 0 && !("buttons" in junk) && !("shadowColor" in junk), "junk dropped; out-of-range clamped 0..100");
+check(JSON.stringify(LEGACY_PERSONALITY_MAP) === JSON.stringify({ corners: { sharp: 8, soft: 35, round: 85 }, shadows: { crisp: 20, standard: 40, blended: 75 }, borders: { hairline: 40, strong: 80 }, buttons: { rect: 10, soft: 35, pill: 90 } }), "the server legacy map matches the documented spec");
 
-// ---------- (3) precedence + UI ----------
+// ---------- (3) precedence + designer UI (REVISED: sliders) ----------
 console.log("\n(3) precedence + designer UI (source assertions on theme.js):");
-check(themeJs.includes("function applyComponents(ut)") && /setProperty\("--radius", "3px"\)/.test(themeJs) && /setProperty\("--btn-radius", "999px"\)/.test(themeJs), "applyComponents applies via body.style.setProperty (the sanctioned mechanism)");
-check(/applyResolved\(\{ mode: "custom", custom: c \}\); applyComponents\(ut\); return;/.test(themeJs) && /applyResolved\(\{ mode: "preset", preset: a\.preset \|\| "light" \}\);\s*applyComponents\(ut\);/.test(themeJs), "components apply AFTER the resolved theme — same inline-beats-stylesheet precedence as custom colors");
-check(themeJs.includes("function clearComponents()") && /function applyComponents\(ut\) \{\s*clearComponents\(\);/.test(themeJs) && themeJs.includes("clearCustom(); clearComponents();"), "component vars are cleared before re-apply and on reset-to-default (no stale overrides leak across theme switches)");
-check(/isDarkSurface\(\)/.test(themeJs) && themeJs.includes('"0 1px 2px rgba(0,0,0,0.45)"') && themeJs.includes('"0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06)"'), "shadow bundles: dark surfaces derive alphas from black (Dark-preset precedent); light bundles verbatim (round+blended on light covered)");
-check(themeJs.includes('${compRow("Corners", "corners", [["sharp", "Sharp"], ["soft", "Soft"], ["round", "Round"]])}') && themeJs.includes('${compRow("Shadows", "shadows", [["crisp", "Crisp"], ["standard", "Standard"], ["blended", "Blended"]])}') && themeJs.includes('${compRow("Borders", "borders", [["hairline", "Hairline"], ["strong", "Strong"]])}') && themeJs.includes('${compRow("Buttons", "buttons", [["rect", "Rectangular"], ["soft", "Soft"], ["pill", "Pill"]])}'), "four segmented rows, exact options + defaults (Soft/Standard/Hairline/Soft via COMPONENT_DEFAULTS)");
-check(themeJs.includes('class="view-toggle-btn${v === cur ? " active" : ""}"') && /\.view-toggle-btn\.active \{ background: var\(--accent-soft\); color: var\(--accent\); \}/.test(css), "selected segment = accent-soft fill + accent text (the existing segmented pattern)");
-check(themeJs.includes('prefs[b.dataset.comp] = b.dataset.val;') && themeJs.includes("applyComponents(prefs); // live, over whatever theme is active") && /applyComponents\(prefs\);[^]*?await persist\(\);/.test(themeJs), "click applies live immediately AND persists in the same appearance payload");
-check(themeJs.includes('id="th-comp-reset"') && themeJs.includes('["corners", "shadows", "borders", "buttons"].forEach((k) => { delete prefs[k]; });'), '"Reset to theme default" clears the four fields');
-check(themeJs.includes('<span class="eyebrow">Component style</span>'), "group label uses the eyebrow standard");
+check(themeJs.includes("function personalityTokens(p, dark)") && themeJs.includes("function applyPersonality(ut)") && /s\.setProperty\(k, tokens\[k\]\)/.test(themeJs), "ONE interpolation map applies positions via body.style.setProperty (the sanctioned mechanism)");
+check(/applyResolved\(\{ mode: "custom", custom: c \}\); applyPersonality\(ut\); return;/.test(themeJs) && /applyResolved\(\{ mode: "preset", preset: a\.preset \|\| "light" \}\);\s*applyPersonality\(ut\);/.test(themeJs), "personality applies AFTER the resolved theme — 9b's exact custom-color precedence, unchanged");
+check(themeJs.includes("Object.assign({}, PERSONALITY_DEFAULTS, base, normalizePersonality(ut))"), "effective positions = defaults <- preset <- the user's custom fields (override order)");
+check(themeJs.includes('sliderRow("Corners", "corners")') && themeJs.includes('sliderRow("Nav highlight", "navHighlight")') && themeJs.includes('sliderRow("Table density", "density")') && themeJs.includes('id="th-shadowc"'), "six slider rows + the shadow-color picker row in the COMPONENT STYLE group");
+check(themeJs.includes('["corners", "shadows", "borders", "buttons", "navHighlight", "density", "shadowColor"].forEach((k) => { delete prefs[k]; })'), '"Reset to theme default" clears the seven fields (the preset\'s positions return)');
+check(themeJs.includes("clearComponents();") && /function applyPersonality\(ut\) \{\s*clearComponents\(\);/.test(themeJs), "component vars cleared before re-apply (no stale overrides leak across theme switches)");
 
 // ---------- (4) matrix: extremes across all 18 themes ----------
 console.log("\n(4) matrix (personalities on every preset):");
