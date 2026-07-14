@@ -41,7 +41,10 @@ function main() {
   check(/\.toolbar-left\s*\{[^}]*padding-left:\s*18px/.test(css), "CSS: .toolbar-left is indented 18px (Filters gutter)");
   check(/tbody td\s*\{\s*padding:\s*var\(--table-row-pad\) 18px/.test(css) && /--table-row-pad: 13px;/.test(css), "CSS: table cells use an 18px left gutter (vertical pad tokenized at the same 13px — design Phase 2)");
   check(/\.card\s*\{(?:(?!padding)[^}])*\}/.test(css), "CSS: .card has NO padding (table is flush in its container)");
-  check(has(admin, 'margin:4px 0 10px 18px'), "caption margin-left is 18px (flush with Filters + first column), not 0");
+  // STALE-TEST FIX (design Phase 8): the mop-up batch moved this from an inline style in
+  // admin.js onto the .adm-caption class; verified the old inline-string check fails against
+  // the untouched pre-Phase-8 baseline. Same alignment, asserted at its new (only) home.
+  check(has(admin, 'classList.add("adm-caption")') && /\.adm-caption \{[^}]*margin: 4px 0 10px 18px/.test(css), "caption margin-left is 18px via .adm-caption (flush with Filters + first column), not 0");
 
   console.log("\n===================================================");
   if (failures.length === 0) console.log("ALL CHECKS PASSED \u2705");

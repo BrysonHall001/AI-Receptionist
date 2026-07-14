@@ -15,6 +15,7 @@ function main() {
   console.log("=====================================");
   const admin = read("../../public/js/admin.js");
   const table = read("../../public/js/table.js");
+  const css = read("../../public/styles.css");
   const portals = slice(admin, "async function renderPortals()", "// ---------------- Per-tenant Users section");
 
   console.log("(1) saved filters:");
@@ -50,7 +51,9 @@ function main() {
   check(/view\(\)\.innerHTML = "";[\s\S]*view\(\)\.appendChild\(wrap\);[\s\S]*usersSectionInto\(usersHost, portal\)\.catch/.test(detailBody), "shell renders first, then Users fills asynchronously (with its own catch)");
 
   console.log("\n(4b) caption alignment:");
-  check(has(portals, 'margin:4px 0 10px 18px'), "caption left edge matches the 18px toolbar/table gutter (flush with Filters + first column)");
+  // STALE-TEST FIX (design Phase 8; verified failing on the untouched pre-Phase-8 baseline):
+  // the mop-up moved the caption's inline margin onto the .adm-caption class in styles.css.
+  check(has(portals, 'classList.add("adm-caption")') && /\.adm-caption \{[^}]*margin: 4px 0 10px 18px/.test(css), "caption left edge matches the 18px toolbar/table gutter via .adm-caption (flush with Filters + first column)");
 
   console.log("\n(5) removals + trimmed actions:");
   check(!has(admin, 'label: "Manage"'), "Manage column removed");
@@ -66,7 +69,9 @@ function main() {
   check(has(portals, "saveTenantsLayout(tenantsLayout)") && has(portals, "handle.setColumns(App.table.applyColumnLayout(columns, tenantsLayout"), "column changes persist to localStorage + re-apply to the live table");
   check(has(portals, "App.table.applyColumnLayout(columns, tenantsLayout"), "saved layout applied to the initial mount columns (no default-layout flash)");
   check(!has(portals, "const mark =") && !has(portals, "border-radius:50%") && !has(portals, "charAt(0).toUpperCase()"), "initials badge helper + markup removed from tenant name cells");
-  check(has(portals, 'render: (p) => `<span style="font-weight:600">${esc(p.name)}</span>`'), "name cell renders just the name (font-weight kept, no badge wrapper)");
+  // STALE-TEST FIX (design Phase 8; verified failing on the untouched baseline): the mop-up
+  // replaced the inline font-weight with the .adm-t1 class (font-weight 600 in styles.css).
+  check(has(portals, 'render: (p) => `<span class="adm-t1">${esc(p.name)}</span>`') && /\.adm-t1 \{[^}]*font-weight: 600/.test(css), "name cell renders just the name (weight via .adm-t1, no badge wrapper)");
 
   console.log("\n(7) Panel (card) view + Table/Panel toggle:");
   // onRender hook is backwards-compatible (opt-in) and fires with the filtered rows.
@@ -77,7 +82,9 @@ function main() {
   check(has(portals, 'adminview:tenants') && has(portals, "localStorage.setItem(VIEW_KEY") && has(portals, "localStorage.getItem(VIEW_KEY"), "view choice persists in localStorage (adminview:tenants), like the column layout");
   check(has(portals, "view-toggle") && has(portals, 'applyView("table")') && has(portals, 'applyView("panel")'), "compact Table | Panels toggle switches the view");
   check(has(portals, "insertBefore(manageBtn, handle.toolbarRight.firstChild)") && has(portals, "insertBefore(toggle, handle.toolbarRight.firstChild)"), "right group order is [toggle][Manage][Create][Search] (toggle inserted last, before Manage)");
-  check(has(portals, "function applyView") && has(portals, 'tableBody.style.display = isPanel ? "none"') && has(portals, 'panelGrid.style.display = isPanel ? ""'), "toggling swaps the table body for the card grid live (no reload)");
+  // STALE-TEST FIX (design Phase 8; verified failing on the untouched baseline): the mop-up
+  // replaced the .style.display writes with .u-hidden class toggles (same live swap).
+  check(has(portals, "function applyView") && has(portals, 'tableBody.classList.toggle("u-hidden", isPanel)') && has(portals, 'panelGrid.classList.toggle("u-hidden", !isPanel)'), "toggling swaps the table body for the card grid live (no reload)");
   // Cards: fresh markup, no old portal-card/grid, reuse the SAME inline controls.
   check(has(portals, "tenants-panel-grid") && has(portals, "tenants-panel-card"), "card grid + card use fresh (non-portal-card) classes");
   check(has(portals, "function buildCard") && has(portals, "renderCards(handle.getFiltered())"), "cards are built from the current filtered rows");

@@ -75,7 +75,7 @@ async function main() {
 
     const inList = (await listPortals()).find((p: any) => p.id === tId);
     check(!!inList && inList.billingStatus === "paid" && inList.phoneNumber === "+15550101010", "listPortals exposes billingStatus + phoneNumber (number count derivable)");
-    const detail = await getPortal(tId);
+    const detail = await getPortal(tId!); // tId was assigned t.id above; assertion fixes a pre-existing tsc error
     check(!!detail && (detail as any).billingStatus === "paid", "getPortal exposes billingStatus");
 
     // ---------- (3) BillingRate get/update ----------

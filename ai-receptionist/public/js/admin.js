@@ -521,12 +521,12 @@
 
       wrap.appendChild(pageAccessSection(portal));
 
-      const usersHost = el("div", "u-mt-22");
+      const usersHost = el("div", "u-mt-24");
       usersHost.innerHTML = `<h2 class="settings-h">Users</h2><div class="cell-muted adm-t3">Loading users…</div>`;
       wrap.appendChild(usersHost);
 
       // Per-tenant Billing & Usage drill-in (KPIs + charts + editable billing status above).
-      const usageHost = el("div", "u-mt-26");
+      const usageHost = el("div", "u-mt-24");
       usageHost.innerHTML = `<h2 class="settings-h">Billing &amp; Usage</h2><div class="cell-muted adm-t3">Loading usage…</div>`;
       wrap.appendChild(usageHost);
 
