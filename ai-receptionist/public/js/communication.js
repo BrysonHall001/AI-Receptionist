@@ -41,9 +41,9 @@
     const nounLower = (n) => (App.label ? App.label("contact", n === 1 ? "one" : "many").toLowerCase() : (n === 1 ? "contact" : "contacts"));
 
     // Count line (primary) + context (secondary) + pick-mode description.
-    const summary = el("div", "audience-summary cell-strong"); summary.style.cssText = "font-size:14px;margin:0 0 2px";
-    const subLine = el("div", "cell-muted"); subLine.style.cssText = "font-size:12.5px;margin:0 0 6px";
-    const desc = el("div", "cell-muted"); desc.style.cssText = "font-size:12.5px;margin:0 0 12px";
+    const summary = el("div", "audience-summary cell-strong"); summary.classList.add("cm-summary");
+    const subLine = el("div", "cell-muted"); subLine.classList.add("cm-subline");
+    const desc = el("div", "cell-muted"); desc.classList.add("cm-desc");
     desc.textContent = (Array.isArray(opts.preloadIds) && opts.preloadIds.length)
       ? "Your selected contacts are checked below — uncheck anyone, or add more by typing an address, checking people, or applying a filter."
       : "No one is added until you pick them — type an address, check people below, or apply a filter to select the matches.";
@@ -53,23 +53,23 @@
     const typedWrap = el("div", "field");
     const chipBox = el("div", "chip-box");
     if (useTyped) {
-      typedWrap.style.cssText = "margin:0 0 14px";
+      typedWrap.classList.add("cm-typedwrap");
       typedWrap.innerHTML = `<span class="field-label">Add individual email addresses</span>`;
-      chipBox.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line-strong);border-radius:8px;padding:6px 8px;background:var(--panel)";
-      chipInput = el("input"); chipInput.type = "text"; chipInput.placeholder = "name@example.com"; chipInput.style.cssText = "flex:1;min-width:160px;border:0;outline:none;background:transparent;font:inherit;color:inherit;padding:4px";
+      chipBox.classList.add("cm-chipbox");
+      chipInput = el("input"); chipInput.type = "text"; chipInput.placeholder = "name@example.com"; chipInput.classList.add("cm-chipinput");
       chipBox.appendChild(chipInput);
       typedWrap.appendChild(chipBox);
     }
-    const typedNote = el("div", "cell-muted"); typedNote.style.cssText = "font-size:12px;margin-top:4px";
+    const typedNote = el("div", "cell-muted"); typedNote.classList.add("cm-typednote");
 
     // Criteria → bulk-add control.
     let rulesHost = null;
-    const addMatchRow = el("div"); addMatchRow.style.cssText = "margin:8px 0 4px";
-    const addMatchBtn = el("button", "btn btn-ghost btn-sm", "+ Check matching"); addMatchBtn.style.display = "none";
+    const addMatchRow = el("div"); addMatchRow.classList.add("cm-addmatchrow");
+    const addMatchBtn = el("button", "btn btn-ghost btn-sm u-hidden", "+ Check matching");
     addMatchRow.appendChild(addMatchBtn);
 
     // Table (always shown — pick-mode needs the checkboxes).
-    const tableTools = el("div"); tableTools.style.cssText = "display:flex;gap:8px;align-items:center;margin:10px 0 6px;flex-wrap:wrap";
+    const tableTools = el("div"); tableTools.classList.add("cm-tabletools");
     const tableHost = el("div");
 
     function emailable(rows) { return rows.filter((c) => c.email && String(c.email).trim()); }
@@ -103,9 +103,9 @@
       Array.prototype.slice.call(chipBox.querySelectorAll(".chip")).forEach((n) => n.remove());
       state.typed.forEach((addr) => {
         const chip = el("span", "chip");
-        chip.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:3px 8px;font-size:12.5px";
+        chip.classList.add("cm-chip");
         chip.innerHTML = `<span>${esc(addr)}</span>`;
-        const x = el("button", "chip-x", "&times;"); x.type = "button"; x.style.cssText = "border:0;background:none;color:inherit;cursor:pointer;font-size:15px;line-height:1;padding:0";
+        const x = el("button", "chip-x", "&times;"); x.type = "button"; x.classList.add("cm-x");
         x.onclick = () => { state.typed = state.typed.filter((a) => a !== addr); renderChips(); renderSummary(); };
         chip.appendChild(x);
         chipBox.insertBefore(chip, chipInput);
@@ -122,7 +122,7 @@
       });
       chipInput.value = "";
       typedNote.textContent = bad.length ? `Not a valid email: ${bad.slice(0, 3).join(", ")}${bad.length > 3 ? "…" : ""}` : "";
-      typedNote.style.color = bad.length ? "var(--red)" : "";
+      typedNote.classList.toggle("txt-danger", !!bad.length);
       renderChips(); renderSummary();
     }
 
@@ -150,7 +150,7 @@
       App.table.mount({
         container: tableHost, columns: previewColumns(), rows: all,
         defaultSort: "name", defaultSortDir: "asc", pageSize: 10,
-        emptyHtml: `<div class="card cell-muted" style="padding:14px">No emailable contacts to choose from.</div>`,
+        emptyHtml: `<div class="card cell-muted cm-t1">No emailable contacts to choose from.</div>`,
       });
     }
     // Checkbox toggle — add/remove from the selection (no full re-render, keeps page).
@@ -164,7 +164,7 @@
     // ----- criteria as bulk-add -----
     function updateAddBtn() {
       const has = state.rules.length > 0;
-      addMatchBtn.style.display = has ? "" : "none";
+      addMatchBtn.classList.toggle("u-hidden", !has);
       if (!has) return;
       const n = emailable(ruleMatched()).length;
       addMatchBtn.textContent = `+ Check the ${n} matching ${nounLower(n)}`;
@@ -207,7 +207,7 @@
       }
 
       if ((saved || []).length || (audiences || []).length) {
-        const sfWrap = el("label", "field"); sfWrap.style.marginTop = "4px";
+        const sfWrap = el("label", "field u-mt-4");
         sfWrap.innerHTML = `<span class="field-label">Start from an audience or saved filter (optional)</span>`;
         const sel = el("select", "input");
         const audOpts = (audiences || []).map((f) => `<option value="aud:${esc(f.id)}">${esc(f.name)}</option>`).join("");
@@ -267,8 +267,8 @@
     const nounLower = (n) => (App.label ? App.label("contact", n === 1 ? "one" : "many").toLowerCase() : (n === 1 ? "contact" : "contacts"));
 
     const state = { audiences: [], contacts: [], columns: [], selected: new Set(Array.isArray(opts.selectedIds) ? opts.selectedIds : []), ready: false };
-    const summary = el("div", "cell-strong"); summary.style.cssText = "font-size:14px;margin:0 0 8px";
-    const listWrap = el("div"); listWrap.style.cssText = "display:flex;flex-direction:column;gap:6px";
+    const summary = el("div", "cell-strong"); summary.classList.add("cm-summary2");
+    const listWrap = el("div"); listWrap.classList.add("cm-listwrap");
     host.appendChild(summary); host.appendChild(listWrap);
 
     function rulesOf(a) { return (a && a.definition && Array.isArray(a.definition.rules)) ? a.definition.rules : []; }
@@ -297,12 +297,12 @@
       state.audiences.forEach((a) => {
         const n = matchesOf(a).length;
         const row = el("label", "audience-select-row");
-        row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;cursor:pointer";
+        row.classList.add("cm-row");
         const ck = el("input"); ck.type = "checkbox"; ck.checked = state.selected.has(a.id);
         ck.onchange = () => { if (ck.checked) state.selected.add(a.id); else state.selected.delete(a.id); renderSummary(); };
-        const mid = el("div"); mid.style.cssText = "flex:1;min-width:0";
-        mid.innerHTML = `<div style="font-weight:600">${esc(a.name)}</div>`;
-        const cnt = el("div"); cnt.style.cssText = "font-size:12.5px;" + (n === 0 ? "color:#b45309" : "color:var(--ink-faint)");
+        const mid = el("div"); mid.classList.add("cm-mid");
+        mid.innerHTML = `<div class="cm-t2">${esc(a.name)}</div>`;
+        const cnt = el("div", "u-meta " + (n === 0 ? "txt-amber" : "txt-faint"));
         cnt.textContent = n === 0 ? "0 — matches nobody right now" : `${n} ${nounLower(n)} match now`;
         mid.appendChild(cnt);
         row.appendChild(ck); row.appendChild(mid);
@@ -382,7 +382,7 @@
 
     const sub = el("div", "tabs");
     const subBody = el("div");
-    subBody.style.marginTop = "12px";
+    subBody.classList.add("u-mt-12");
     let view = "compose";
     function setSub(key) {
       view = key;
@@ -409,37 +409,37 @@
 
     // --- Panel 1: New email (Send up top, then subject + body) ---
     const card = el("div", "card");
-    card.style.cssText = "padding:22px";
-    const headRow = el("div"); headRow.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap";
+    card.classList.add("cm-card");
+    const headRow = el("div"); headRow.classList.add("cm-headrow");
     const headLeft = el("div");
     headLeft.appendChild(el("h3", "settings-sub", "New email"));
-    headLeft.appendChild(el("div", "cell-muted", "Write the subject and message your recipients will see.")).style.margin = "2px 0 0";
-    const sendWrap = el("div"); sendWrap.style.cssText = "display:flex;flex-direction:column;align-items:flex-end;gap:4px";
+    headLeft.appendChild(el("div", "cell-muted cm-sub-note", "Write the subject and message your recipients will see."));
+    const sendWrap = el("div"); sendWrap.classList.add("cm-sendwrap");
     const sendBtn = el("button", "btn btn-primary", "Send email");
-    const sendCount = el("div", "cell-muted"); sendCount.style.cssText = "font-size:12px";
+    const sendCount = el("div", "cell-muted"); sendCount.classList.add("cm-sendcount");
     sendWrap.appendChild(sendBtn); sendWrap.appendChild(sendCount);
     headRow.appendChild(headLeft); headRow.appendChild(sendWrap);
     card.appendChild(headRow);
-    const composerHost = el("div"); composerHost.style.marginTop = "14px";
+    const composerHost = el("div", "u-mt-14");
     card.appendChild(composerHost);
     const composer = App.compose.mount(composerHost, { kind: "email" });
     host.appendChild(card);
 
     // --- Panel 2: Audience ---
     const audCard = el("div", "card");
-    audCard.style.cssText = "padding:22px;margin-top:16px";
+    audCard.classList.add("cm-audcard");
     audCard.appendChild(el("h3", "settings-sub", "Audience"));
     const audIntro = hasPreload
       ? `Starting from the ${preloadIds.length} ${App.label("contact", preloadIds.length === 1 ? "one" : "many").toLowerCase()} you selected (already checked) — uncheck anyone, or add more below.`
       : "No one is emailed until you add them — type an address, check people below, or apply a filter to select matches. Only people with an email address are sent to.";
-    audCard.appendChild(el("div", "cell-muted", audIntro)).style.margin = "2px 0 14px";
+    audCard.appendChild(el("div", "cell-muted cm-aud-intro", audIntro));
     const audienceHost = el("div");
     // Primary path: pick one or more saved Audiences (resolved to their CURRENT matches at send
     // time, server-side). Shown above the manual picker; typed on-the-fly entry stays below.
     audCard.appendChild(el("div", "field-label", "Send to saved audiences"));
     const audSelHost = el("div"); audCard.appendChild(audSelHost);
     const audSelect = App.audienceSelect.mount(audSelHost, { emailableOnly: true, onChange: () => refreshCount() });
-    const orLabel = el("div", "field-label", "Or add people manually"); orLabel.style.marginTop = "16px"; audCard.appendChild(orLabel);
+    const orLabel = el("div", "field-label u-mt-16", "Or add people manually"); audCard.appendChild(orLabel);
     audCard.appendChild(audienceHost);
     const audOpts = { tablePreview: true, allowTypedEmails: true };
     if (hasPreload) audOpts.preloadIds = preloadIds;
@@ -498,7 +498,7 @@
 
   function emailSent(host) {
     const { el, esc, fmtDate, toast } = App.util;
-    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    host.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
     App.portalApi("/api/communication/sends").then((rows) => {
       rows = Array.isArray(rows) ? rows : [];
       host.innerHTML = "";
@@ -516,10 +516,10 @@
         container: tableHost, columns, rows,
         defaultSort: "createdAt", defaultSortDir: "desc",
         onRowClick: (r) => openSendDetail(r),
-        emptyHtml: `<div class="card cell-muted" style="padding:18px">No emails sent yet.</div>`,
+        emptyHtml: `<div class="card cell-muted u-pad-18">No emails sent yet.</div>`,
         pageSize: 50,
       });
-    }).catch((e) => { host.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; });
+    }).catch((e) => { host.innerHTML = `<div class="cell-muted u-pad-8">${esc(e.message)}</div>`; });
   }
 
   // Read-only detail for one past send.
@@ -530,11 +530,11 @@
     modal.innerHTML = `<div class="modal-head"><h2>${esc(r.subject || "(no subject)")}</h2><button class="icon-btn" id="sd-close">&times;</button></div>`;
     const body = el("div", "modal-body");
     const meta = el("div", "cell-muted");
-    meta.style.marginBottom = "10px";
+    meta.classList.add("u-mb-10");
     meta.innerHTML = `Sent ${esc(fmtDate(r.createdAt))} by ${esc(r.createdByName || "—")} · ${r.recipientCount} recipient${r.recipientCount === 1 ? "" : "s"} · ${r.sentCount} sent${r.failCount ? ` · ${r.failCount} failed` : ""}`;
     body.appendChild(meta);
     const bodyBox = el("div", "card");
-    bodyBox.style.cssText = "padding:14px;max-height:50vh;overflow:auto";
+    bodyBox.classList.add("cm-bodybox");
     bodyBox.innerHTML = r.body && r.body.trim() ? r.body : `<span class="cell-muted">(no message body)</span>`;
     body.appendChild(bodyBox);
 
@@ -542,12 +542,12 @@
     // the EmailLog table (one row per address, real delivery status incl. "mock") via a
     // tenant-scoped endpoint, loaded on demand once the modal is open.
     const rcpSection = el("div");
-    rcpSection.style.marginTop = "14px";
+    rcpSection.classList.add("u-mt-14");
     const rcpHead = el("div", "", "Recipients");
-    rcpHead.style.cssText = "font-weight:600;margin-bottom:6px";
+    rcpHead.classList.add("cm-rcphead");
     rcpSection.appendChild(rcpHead);
     const rcpBody = el("div", "cell-muted", "Loading…");
-    rcpBody.style.fontSize = "12.5px";
+    rcpBody.classList.add("u-meta");
     rcpSection.appendChild(rcpBody);
     body.appendChild(rcpSection);
 
@@ -563,16 +563,16 @@
       rcpHead.textContent = `Recipients (${rcps.length})`;
       rcpBody.remove();
       const listBox = el("div", "card");
-      listBox.style.cssText = "padding:4px 0;max-height:34vh;overflow:auto";
+      listBox.classList.add("cm-listbox");
       rcps.forEach((p) => {
         const hasName = !!(p && p.toName && String(p.toName).trim());
         const primary = hasName ? p.toName : (p && p.toEmail ? p.toEmail : "—");
         const row = el("div");
-        row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 14px";
+        row.classList.add("cm-row2");
         const who = el("div");
-        who.style.minWidth = "0";
-        who.innerHTML = `<div style="font-size:13.5px;overflow:hidden;text-overflow:ellipsis">${esc(primary)}</div>` +
-          (hasName ? `<div class="cell-muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis">${esc(p.toEmail || "")}</div>` : "");
+        who.classList.add("cm-minw-0");
+        who.innerHTML = `<div class="cm-t3">${esc(primary)}</div>` +
+          (hasName ? `<div class="cell-muted cm-t4">${esc(p.toEmail || "")}</div>` : "");
         const badge = el("div");
         // sent -> green, failed -> red, mock (dev/test, not actually delivered) -> muted.
         const cls = p && p.status === "failed" ? "pill failed" : (p && p.status === "mock" ? "pill report" : "pill success");
@@ -607,7 +607,7 @@
   async function audiencesTab(host) {
     const { el, esc, toast } = App.util;
     const nounLower = (n) => (App.label ? App.label("contact", n === 1 ? "one" : "many").toLowerCase() : (n === 1 ? "contact" : "contacts"));
-    host.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    host.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
     let contacts = [], fields = [], audiences = [], columns = [];
     try {
       [contacts, fields, audiences] = await Promise.all([
@@ -626,29 +626,29 @@
 
     function renderList() {
       host.innerHTML = "";
-      const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px";
+      const head = el("div"); head.classList.add("cm-head");
       const hl = el("div");
       hl.appendChild(el("h3", "settings-sub", "Audiences"));
-      hl.appendChild(el("div", "cell-muted", "Named, saved contact filters — each one always reflects the contacts that match right now.")).style.cssText = "font-size:12.5px;margin-top:2px";
+      hl.appendChild(el("div", "cell-muted u-meta u-mt-2", "Named, saved contact filters — each one always reflects the contacts that match right now."));
       const newBtn = el("button", "btn btn-primary btn-sm", "+ New audience");
       newBtn.onclick = () => renderEditor(null);
       head.appendChild(hl); head.appendChild(newBtn);
       host.appendChild(head);
 
       if (!audiences.length) { host.appendChild(el("div", "card cell-muted", "No audiences yet. Create one to reuse a contact filter across emails.")); return; }
-      const list = el("div"); list.style.cssText = "display:flex;flex-direction:column;gap:8px";
+      const list = el("div"); list.classList.add("cm-list");
       audiences.forEach((a) => {
         const n = countFor(a);
-        const row = el("div", "card"); row.style.cssText = "padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap";
+        const row = el("div", "card"); row.classList.add("cm-row3");
         const left = el("div");
-        left.innerHTML = `<div style="font-weight:600">${esc(a.name)}</div><div class="cell-muted" style="font-size:12.5px">${n} ${esc(nounLower(n))} match now</div>`;
-        const btns = el("div"); btns.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+        left.innerHTML = `<div class="cm-t2">${esc(a.name)}</div><div class="cell-muted cm-t5">${n} ${esc(nounLower(n))} match now</div>`;
+        const btns = el("div"); btns.classList.add("cm-btns");
         const use = el("button", "btn btn-primary btn-sm", "Use in email");
         use.onclick = () => { const ids = App.table.pipeline(contacts, columns, { rules: rulesOf(a) }).filter((c) => c.email).map((c) => c.id); App.communication.composeTo(ids); };
         const edit = el("button", "btn btn-ghost btn-sm", "Edit"); edit.onclick = () => renderEditor(a);
         const ren = el("button", "btn btn-ghost btn-sm", "Rename");
         ren.onclick = async () => { const name = await App.ui.promptModal({ title: "Rename audience", label: "Audience name", value: a.name, okText: "Rename" }); if (!name || !name.trim()) return; try { await App.portalApi("/api/audiences/" + a.id, { method: "PATCH", body: JSON.stringify({ name: name.trim() }) }); toast("Renamed"); reload(); } catch (e) { toast(e.message, true); } };
-        const del = el("button", "btn btn-ghost btn-sm", "Delete"); del.style.color = "#dc2626";
+        const del = el("button", "btn btn-ghost btn-sm txt-danger", "Delete");
         del.onclick = async () => { if (!(await App.ui.confirmModal({ title: "Delete audience", message: `Delete the audience \u201c${a.name}\u201d? This only deletes the saved filter — no contacts are affected.`, confirmText: "Delete" }))) return; try { await App.portalApi("/api/audiences/" + a.id, { method: "DELETE" }); toast("Audience deleted"); reload(); } catch (e) { toast(e.message, true); } };
         btns.appendChild(use); btns.appendChild(edit); btns.appendChild(ren); btns.appendChild(del);
         row.appendChild(left); row.appendChild(btns);
@@ -659,18 +659,18 @@
 
     function renderEditor(aud) {
       host.innerHTML = "";
-      const card = el("div", "card"); card.style.cssText = "padding:18px";
+      const card = el("div", "card"); card.classList.add("cm-card2");
       card.appendChild(el("h3", "settings-sub", aud ? "Edit audience" : "New audience"));
-      const nameWrap = el("label", "field"); nameWrap.style.display = "block"; nameWrap.innerHTML = `<span class="field-label">Audience name *</span>`;
+      const nameWrap = el("label", "field u-block"); nameWrap.innerHTML = `<span class="field-label">Audience name *</span>`;
       const nameInp = el("input", "input"); nameInp.value = aud ? aud.name : ""; nameInp.placeholder = "e.g. HVAC leads, VIP customers";
       nameWrap.appendChild(nameInp); card.appendChild(nameWrap);
       card.appendChild(el("div", "field-label", "Who's in this audience"));
       const rules = rulesOf(aud).map((r) => ({ ...r }));
-      const countLine = el("div", "cell-muted"); countLine.style.cssText = "font-size:12.5px;margin:6px 0 0";
+      const countLine = el("div", "cell-muted"); countLine.classList.add("cm-countline");
       const updateCount = () => { const n = App.table.pipeline(contacts, columns, { rules }).length; countLine.textContent = `${n} ${nounLower(n)} match right now.`; };
       const rulesHost = el("div"); rulesHost.appendChild(App.table.ruleEditor(columns, contacts, rules, updateCount)); card.appendChild(rulesHost);
       card.appendChild(countLine); updateCount();
-      const bar = el("div"); bar.style.cssText = "display:flex;gap:10px;margin-top:14px";
+      const bar = el("div"); bar.classList.add("cm-bar");
       const save = el("button", "btn btn-primary", "Save audience");
       const cancel = el("button", "btn btn-ghost", "Cancel"); cancel.onclick = () => renderList();
       save.onclick = async () => {
@@ -706,36 +706,36 @@
 
     // ----- create / edit form ON TOP (reuses the rich-text composer for the body) -----
     const card = el("div", "card");
-    card.style.cssText = "padding:18px";
-    const headRow = el("div"); headRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px";
-    const heading = el("h3", "settings-sub", "New template"); heading.style.margin = "0";
-    const newBtn = el("button", "btn btn-ghost btn-sm", "New template"); newBtn.style.display = "none";
+    card.classList.add("cm-card2");
+    const headRow = el("div"); headRow.classList.add("cm-headrow2");
+    const heading = el("h3", "settings-sub u-m-0", "New template");
+    const newBtn = el("button", "btn btn-ghost btn-sm u-hidden", "New template");
     headRow.appendChild(heading); headRow.appendChild(newBtn);
     card.appendChild(headRow);
 
-    const nameRow = el("div"); nameRow.style.cssText = "display:flex;gap:12px;flex-wrap:wrap";
-    const nameWrap = el("label", "field"); nameWrap.style.cssText = "flex:1;min-width:200px;margin:0";
+    const nameRow = el("div"); nameRow.classList.add("cm-namerow");
+    const nameWrap = el("label", "field"); nameWrap.classList.add("cm-namewrap");
     nameWrap.innerHTML = `<span class="field-label">Template name</span>`;
     const nameInput = el("input", "input"); nameInput.type = "text"; nameInput.placeholder = "e.g. Monthly newsletter";
     nameWrap.appendChild(nameInput);
-    const tagWrap = el("label", "field"); tagWrap.style.cssText = "flex:1;min-width:200px;margin:0";
+    const tagWrap = el("label", "field"); tagWrap.classList.add("cm-namewrap");
     tagWrap.innerHTML = `<span class="field-label">Tag (optional)</span>`;
     const tagInput = el("input", "input"); tagInput.type = "text"; tagInput.placeholder = "e.g. Newsletters";
     tagWrap.appendChild(tagInput);
     nameRow.appendChild(nameWrap); nameRow.appendChild(tagWrap); card.appendChild(nameRow);
 
-    const subjWrap = el("label", "field"); subjWrap.style.marginTop = "10px";
+    const subjWrap = el("label", "field u-mt-10");
     subjWrap.innerHTML = `<span class="field-label">Subject</span>`;
     const subjInput = el("input", "input"); subjInput.type = "text"; subjInput.placeholder = "Email subject";
     subjWrap.appendChild(subjInput); card.appendChild(subjWrap);
 
-    const bodyWrap = el("div", "field"); bodyWrap.style.marginTop = "10px";
+    const bodyWrap = el("div", "field u-mt-10");
     bodyWrap.appendChild(el("span", "field-label", "Body"));
     const bodyHost = el("div"); bodyWrap.appendChild(bodyHost);
     card.appendChild(bodyWrap);
     const bodyApi = App.compose.mount(bodyHost, { kind: "richtext" });
 
-    const actions = el("div"); actions.style.cssText = "margin-top:14px";
+    const actions = el("div"); actions.classList.add("cm-actions");
     const saveBtn = el("button", "btn btn-primary", "Save template");
     actions.appendChild(saveBtn); card.appendChild(actions);
     // (form `card` is mounted into the right pane below)
@@ -744,13 +744,13 @@
     // Surveys library so both panels share identical outer width, top alignment, and
     // height treatment via the shared .survey-split container -----
     const leftPane = el("div", "card survey-master");
-    const libHeadRow = el("div"); libHeadRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px";
-    const libHead = el("h3", "settings-sub", "Template Library"); libHead.style.margin = "0";
+    const libHeadRow = el("div"); libHeadRow.classList.add("cm-libheadrow");
+    const libHead = el("h3", "settings-sub u-m-0", "Template Library");
     const libNewBtn = el("button", "btn btn-primary btn-sm", "+ New template");
     libHeadRow.appendChild(libHead); libHeadRow.appendChild(libNewBtn);
     leftPane.appendChild(libHeadRow);
     const libNote = el("div", "cell-muted", "Click a template to edit it. Filter or search — including by tag — to find one.");
-    libNote.style.cssText = "font-size:12.5px;margin-bottom:10px"; leftPane.appendChild(libNote);
+    libNote.classList.add("cm-libnote"); leftPane.appendChild(libNote);
     const listHost = el("div"); leftPane.appendChild(listHost);
 
     // ----- Master-detail: library left (~1/3), editor right (~2/3) — mirrors Surveys -----
@@ -763,7 +763,7 @@
     function setEdit(t) {
       state.id = t ? t.id : null;
       heading.textContent = t ? "Edit template" : "New template";
-      newBtn.style.display = t ? "" : "none";
+      newBtn.classList.toggle("u-hidden", !t);
       nameInput.value = t ? (t.name || "") : "";
       tagInput.value = t ? (t.tag || "") : "";
       subjInput.value = t ? (t.subject || "") : "";
@@ -801,8 +801,8 @@
     });
 
     async function load() {
-      listHost.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
-      try { rows = await App.portalApi("/api/templates?kind=email"); } catch (e) { listHost.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
+      listHost.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
+      try { rows = await App.portalApi("/api/templates?kind=email"); } catch (e) { listHost.innerHTML = `<div class="cell-muted u-pad-8">${esc(e.message)}</div>`; return; }
       rows = Array.isArray(rows) ? rows : [];
       listHost.innerHTML = "";
       const columns = [
@@ -819,7 +819,7 @@
         // Clicking a row opens that template into the right pane (bound to its id);
         // the Edit/Delete buttons still work (onRowClick ignores button clicks).
         onRowClick: (r) => { setEdit(r); card.scrollIntoView({ behavior: "smooth", block: "start" }); },
-        emptyHtml: `<div class="card cell-muted" style="padding:18px">No templates yet — create one below or save one from a draft in the Email tab.</div>`,
+        emptyHtml: `<div class="card cell-muted u-pad-18">No templates yet — create one below or save one from a draft in the Email tab.</div>`,
         pageSize: 50,
       });
     }
@@ -883,72 +883,72 @@
 
     // ---- builder card (ON TOP) ----
     const card = el("div", "card");
-    card.style.cssText = "padding:18px";
-    const headRow = el("div"); headRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:8px";
-    const heading = el("h3", "settings-sub", "New survey"); heading.style.margin = "0";
-    const newBtn = el("button", "btn btn-ghost btn-sm", "New survey"); newBtn.style.display = "none";
+    card.classList.add("cm-card2");
+    const headRow = el("div"); headRow.classList.add("cm-headrow3");
+    const heading = el("h3", "settings-sub u-m-0", "New survey");
+    const newBtn = el("button", "btn btn-ghost btn-sm u-hidden", "New survey");
     headRow.appendChild(heading); headRow.appendChild(newBtn);
     card.appendChild(headRow);
 
-    const top = el("div"); top.style.cssText = "display:grid;gap:12px;grid-template-columns:1fr 160px;align-items:end";
+    const top = el("div"); top.classList.add("cm-top");
     const nameWrap = el("label", "field"); nameWrap.innerHTML = `<span class="field-label">Survey name</span>`;
     const nameInput = el("input", "input"); nameInput.type = "text"; nameInput.placeholder = "e.g. Post-visit feedback"; nameWrap.appendChild(nameInput);
     const statusWrap = el("label", "field"); statusWrap.innerHTML = `<span class="field-label">Status</span>`;
     const statusSel = el("select", "input"); statusSel.innerHTML = `<option value="draft">Draft</option><option value="active">Active</option><option value="closed">Closed</option>`; statusWrap.appendChild(statusSel);
     top.appendChild(nameWrap); top.appendChild(statusWrap); card.appendChild(top);
 
-    const descWrap = el("label", "field"); descWrap.style.marginTop = "10px"; descWrap.innerHTML = `<span class="field-label">Description (optional)</span>`;
+    const descWrap = el("label", "field u-mt-10"); descWrap.innerHTML = `<span class="field-label">Description (optional)</span>`;
     const descInput = el("input", "input"); descInput.type = "text"; descInput.placeholder = "Shown to recipients on the survey"; descWrap.appendChild(descInput);
     card.appendChild(descWrap);
 
     // Start from an existing survey (prefill only — saving still creates a NEW row).
-    const startWrap = el("label", "field"); startWrap.style.marginTop = "10px";
+    const startWrap = el("label", "field u-mt-10");
     startWrap.innerHTML = `<span class="field-label">Start from an existing survey (optional)</span>`;
     const startSel = el("select", "input"); startSel.innerHTML = `<option value="">— blank —</option>`;
     startWrap.appendChild(startSel); card.appendChild(startWrap);
 
-    card.appendChild(el("div", "field-label", "Questions")).style.marginTop = "14px";
+    card.appendChild(el("div", "field-label u-mt-14", "Questions"));
     // Shown when any question is mapped: mapping only writes for per-recipient email sends.
     const mapWarn = el("div", "audience-summary cell-muted");
-    mapWarn.style.cssText = "display:none;font-size:12.5px;margin:0 0 8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px";
+    mapWarn.classList.add("cm-mapwarn"); mapWarn.classList.add("u-hidden");
     card.appendChild(mapWarn);
-    const qListHost = el("div"); qListHost.style.cssText = "display:flex;flex-direction:column;gap:10px"; card.appendChild(qListHost);
-    const addBtn = el("button", "btn btn-ghost btn-sm", "+ Add question"); addBtn.style.marginTop = "10px"; card.appendChild(addBtn);
+    const qListHost = el("div"); qListHost.classList.add("cm-qlisthost"); card.appendChild(qListHost);
+    const addBtn = el("button", "btn btn-ghost btn-sm u-mt-10", "+ Add question"); card.appendChild(addBtn);
 
-    const saveRow = el("div"); saveRow.style.cssText = "margin-top:16px";
+    const saveRow = el("div"); saveRow.classList.add("cm-saverow");
     const saveBtn = el("button", "btn btn-primary", "Save survey"); saveRow.appendChild(saveBtn); card.appendChild(saveRow);
 
     // Share + responses (shown when editing an existing survey).
-    const shareWrap = el("div"); shareWrap.style.cssText = "margin-top:18px;display:none";
-    shareWrap.appendChild(el("div", "field-label", "Share")).style.marginTop = "0";
-    const shareNote = el("div", "cell-muted"); shareNote.style.cssText = "font-size:13px;margin-bottom:6px"; shareWrap.appendChild(shareNote);
-    const linkRow = el("div"); linkRow.style.cssText = "display:flex;gap:8px;align-items:center";
-    const linkInput = el("input", "input"); linkInput.type = "text"; linkInput.readOnly = true; linkInput.style.flex = "1";
+    const shareWrap = el("div"); shareWrap.classList.add("cm-sharewrap"); shareWrap.classList.add("u-hidden");
+    shareWrap.appendChild(el("div", "field-label u-mt-0", "Share"));
+    const shareNote = el("div", "cell-muted"); shareNote.classList.add("cm-sharenote"); shareWrap.appendChild(shareNote);
+    const linkRow = el("div"); linkRow.classList.add("cm-linkrow");
+    const linkInput = el("input", "input u-flex-1"); linkInput.type = "text"; linkInput.readOnly = true;
     const copyBtn = el("button", "btn btn-ghost btn-sm", "Copy");
     copyBtn.onclick = () => { linkInput.select(); try { document.execCommand("copy"); App.util.toast("Link copied."); } catch (e) { /* noop */ } };
     linkRow.appendChild(linkInput); linkRow.appendChild(copyBtn); shareWrap.appendChild(linkRow);
-    const sendRowWrap = el("div"); sendRowWrap.style.cssText = "margin-top:10px";
+    const sendRowWrap = el("div"); sendRowWrap.classList.add("cm-sendrowwrap");
     const sendSurveyBtn = el("button", "btn btn-primary btn-sm", "Send survey");
-    const activateHint = el("span", "cell-muted"); activateHint.style.cssText = "font-size:13px";
+    const activateHint = el("span", "cell-muted"); activateHint.classList.add("cm-activatehint");
     sendRowWrap.appendChild(sendSurveyBtn); sendRowWrap.appendChild(activateHint);
     shareWrap.appendChild(sendRowWrap);
-    const respHead = el("div", "field-label", "Responses"); respHead.style.marginTop = "16px"; shareWrap.appendChild(respHead);
+    const respHead = el("div", "field-label u-mt-16", "Responses"); shareWrap.appendChild(respHead);
     const responsesHost = el("div"); shareWrap.appendChild(responsesHost);
     card.appendChild(shareWrap);
 
     // ---- Master-detail layout: Surveys Library (left) + workspace (right) ----
-    const resultsCard = el("div", "card"); resultsCard.style.cssText = "padding:18px;display:none";
+    const resultsCard = el("div", "card"); resultsCard.classList.add("cm-resultscard"); resultsCard.classList.add("u-hidden");
 
     // Right-pane tab strip — ONLY Build/Results, and only while a survey is open.
     // In create mode it's hidden entirely (never a dead/disabled tab).
-    const tabStrip = el("div", "tabs"); tabStrip.style.cssText = "margin-bottom:12px;display:none";
+    const tabStrip = el("div", "tabs"); tabStrip.classList.add("cm-tabstrip"); tabStrip.classList.add("u-hidden");
     function setView(v) {
       if (v === "new") setEdit(null); // start clean — no stale id / carried-over questions
       App.util.$$(".tab", tabStrip).forEach((t) => t.classList.toggle("active", t.dataset.v === v));
       const open = !!state.id; // a saved survey is loaded
-      tabStrip.style.display = open ? "" : "none";
-      card.style.display = v === "results" ? "none" : "";
-      resultsCard.style.display = v === "results" ? "" : "none";
+      tabStrip.classList.toggle("u-hidden", !open);
+      card.classList.toggle("u-hidden", v === "results");
+      resultsCard.classList.toggle("u-hidden", v !== "results");
       if (v === "results" && state.survey) renderResults(resultsCard, state.survey);
     }
     [["build", "Build"], ["results", "Results"]].forEach(([v, label]) => {
@@ -959,14 +959,14 @@
 
     // Left pane — the library list with a clear "+ New survey" affordance.
     const leftPane = el("div", "card survey-master");
-    const leftHead = el("div"); leftHead.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px";
-    leftHead.appendChild(el("h3", "settings-sub", "Surveys Library")).style.margin = "0";
+    const leftHead = el("div"); leftHead.classList.add("cm-libheadrow");
+    leftHead.appendChild(el("h3", "settings-sub u-m-0", "Surveys Library"));
     const newSurveyBtn = el("button", "btn btn-primary btn-sm", "+ New survey");
     newSurveyBtn.onclick = () => setView("new");
     leftHead.appendChild(newSurveyBtn);
     leftPane.appendChild(leftHead);
     const libNote = el("div", "cell-muted", "Click a survey to edit it, view results, or send. Duplicate one to start from it.");
-    libNote.style.cssText = "font-size:12.5px;margin-bottom:10px"; leftPane.appendChild(libNote);
+    libNote.classList.add("cm-libnote"); leftPane.appendChild(libNote);
     leftPane.appendChild(listHost);
 
     // Right pane — the context-driven workspace.
@@ -990,15 +990,15 @@
 
     function updateWarn() {
       if (!mapWarn) return;
-      if (anyMapped()) { mapWarn.style.display = ""; mapWarn.textContent = "This survey maps answers to fields. Mapped answers are written only when you send it as an email blast (each recipient gets a personal link). An anonymous/public link still collects answers but won't write them to any record."; }
-      else mapWarn.style.display = "none";
+      if (anyMapped()) { mapWarn.classList.remove("u-hidden"); mapWarn.textContent = "This survey maps answers to fields. Mapped answers are written only when you send it as an email blast (each recipient gets a personal link). An anonymous/public link still collects answers but won't write them to any record."; }
+      else mapWarn.classList.add("u-hidden");
     }
     function paintQuestions() {
       qListHost.innerHTML = "";
       updateWarn();
       if (!state.qs.length) { qListHost.appendChild(el("div", "cell-muted", "No questions yet — add one below.")); return; }
       state.qs.forEach((q, idx) => {
-        const row = el("div", "card"); row.style.cssText = "padding:12px;background:var(--panel-2)"; row.draggable = true; row.dataset.lid = String(q.lid);
+        const row = el("div", "card"); row.classList.add("cm-row4"); row.draggable = true; row.dataset.lid = String(q.lid);
         row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.setData("text/plain", String(q.lid)); });
         row.addEventListener("dragend", () => row.classList.remove("dragging"));
         row.addEventListener("dragover", (e) => e.preventDefault());
@@ -1013,15 +1013,15 @@
           paintQuestions();
         });
 
-        const hdr = el("div"); hdr.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:8px";
-        const left = el("div"); left.style.cssText = "display:flex;align-items:center;gap:8px";
+        const hdr = el("div"); hdr.classList.add("cm-hdr");
+        const left = el("div"); left.classList.add("cm-left");
         left.appendChild(el("span", "mc-drag", "⠿"));
         left.appendChild(el("span", "cell-strong", `Question ${idx + 1}`));
         const rm = el("button", "btn btn-ghost btn-sm", "Remove");
         rm.onclick = () => { state.qs = state.qs.filter((x) => x.lid !== q.lid); paintQuestions(); };
         hdr.appendChild(left); hdr.appendChild(rm); row.appendChild(hdr);
 
-        const grid = el("div"); grid.style.cssText = "display:grid;gap:10px;grid-template-columns:200px 1fr";
+        const grid = el("div"); grid.classList.add("cm-grid");
         // type
         const typeWrap = el("label", "field"); typeWrap.innerHTML = `<span class="field-label">Type</span>`;
         const typeSel = el("select", "input");
@@ -1037,11 +1037,11 @@
         row.appendChild(grid);
 
         // help + required
-        const hr = el("div"); hr.style.cssText = "display:grid;gap:10px;grid-template-columns:1fr 140px;align-items:end;margin-top:8px";
+        const hr = el("div"); hr.classList.add("cm-hr");
         const helpWrap = el("label", "field"); helpWrap.innerHTML = `<span class="field-label">Help text (optional)</span>`;
         const helpInput = el("input", "input"); helpInput.type = "text"; helpInput.value = q.helpText || ""; helpInput.oninput = () => { q.helpText = helpInput.value; };
         helpWrap.appendChild(helpInput);
-        const reqWrap = el("label", "ex-field"); reqWrap.style.cssText = "display:flex;align-items:center;gap:7px";
+        const reqWrap = el("label", "ex-field"); reqWrap.classList.add("cm-reqwrap");
         const reqCb = el("input"); reqCb.type = "checkbox"; reqCb.checked = !!q.required; reqCb.onchange = () => { q.required = reqCb.checked; };
         reqWrap.appendChild(reqCb); reqWrap.appendChild(el("span", null, "Required"));
         hr.appendChild(helpWrap); hr.appendChild(reqWrap); row.appendChild(hr);
@@ -1050,7 +1050,7 @@
         if (q.type === "single_select" || q.type === "multi_select") {
           row.appendChild(optionsEditor(q));
         } else if (q.type === "rating") {
-          const rg = el("div"); rg.style.cssText = "display:grid;gap:10px;grid-template-columns:repeat(3,1fr);margin-top:8px";
+          const rg = el("div"); rg.classList.add("cm-rg");
           ["min", "max", "step"].forEach((k) => {
             const w = el("label", "field"); w.innerHTML = `<span class="field-label">${k[0].toUpperCase() + k.slice(1)}</span>`;
             const inp = el("input", "input"); inp.type = "number"; inp.value = (q.config && q.config[k] != null) ? q.config[k] : (k === "min" ? 1 : k === "max" ? 5 : 1);
@@ -1059,27 +1059,27 @@
           });
           row.appendChild(rg);
         } else if (q.type === "nps") {
-          row.appendChild(el("div", "cell-muted", "Scored 0–10 (Net Promoter Score).")).style.marginTop = "8px";
+          row.appendChild(el("div", "cell-muted u-mt-8", "Scored 0–10 (Net Promoter Score)."));
         } else if (q.type === "yes_no") {
-          row.appendChild(el("div", "cell-muted", "Answer is Yes or No.")).style.marginTop = "8px";
+          row.appendChild(el("div", "cell-muted u-mt-8", "Answer is Yes or No."));
         }
 
         // field mapping — granular: record type + field, grouped so it's unambiguous.
-        const mapWrap = el("div", "field"); mapWrap.style.marginTop = "8px";
+        const mapWrap = el("div", "field u-mt-8");
         mapWrap.appendChild(el("span", "field-label", "Saves answer to"));
-        const mapRow = el("div"); mapRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
-        const rtSel = el("select", "input"); rtSel.style.cssText = "flex:0 0 160px";
+        const mapRow = el("div"); mapRow.classList.add("cm-maprow");
+        const rtSel = el("select", "input"); rtSel.classList.add("cm-rtsel");
         const noMap = el("option", null, "— don't map (collect only) —"); noMap.value = ""; rtSel.appendChild(noMap);
         mapTypeList().forEach(([key, label]) => { const o = el("option", null, label); o.value = key; rtSel.appendChild(o); });
         rtSel.value = q.mapRecordType || (q.mapFieldKey ? "contact" : "");
-        const fieldSel = el("select", "input"); fieldSel.style.cssText = "flex:1;min-width:170px";
-        const jbNote = el("div", "cell-muted"); jbNote.style.cssText = "font-size:12px;margin-top:6px;display:none";
+        const fieldSel = el("select", "input"); fieldSel.classList.add("cm-fieldsel");
+        const jbNote = el("div", "cell-muted"); jbNote.classList.add("cm-jbnote"); jbNote.classList.add("u-hidden");
         jbNote.textContent = "Job/booking answers are saved with the response and will write to the record when a survey is sent from a specific job or booking (coming soon).";
         // Selecting a record type fetches THAT type's fields (lazily, cached) and fills
         // the field dropdown in place — no full repaint, so the choice sticks.
         async function fillFields() {
           const rt = rtSel.value;
-          jbNote.style.display = (rt === "job" || rt === "booking") ? "" : "none";
+          jbNote.classList.toggle("u-hidden", !(rt === "job" || rt === "booking"));
           if (!rt) { fieldSel.innerHTML = ""; const o = el("option", null, "Collect only (not saved to a field)"); o.value = ""; fieldSel.appendChild(o); fieldSel.disabled = true; return; }
           fieldSel.disabled = true; fieldSel.innerHTML = `<option>Loading…</option>`;
           await ensureFields(rt);
@@ -1103,13 +1103,13 @@
 
     function optionsEditor(q) {
       q.config = q.config || {}; if (!Array.isArray(q.config.options)) q.config.options = ["Option 1", "Option 2"];
-      const box = el("div"); box.style.marginTop = "8px";
+      const box = el("div", "u-mt-8");
       box.appendChild(el("div", "field-label", "Choices"));
-      const listEl = el("div"); listEl.style.cssText = "display:flex;flex-direction:column;gap:6px"; box.appendChild(listEl);
+      const listEl = el("div"); listEl.classList.add("cm-listwrap"); box.appendChild(listEl);
       function repaint() {
         listEl.innerHTML = "";
         q.config.options.forEach((opt, i) => {
-          const r = el("div"); r.style.cssText = "display:flex;gap:8px;align-items:center";
+          const r = el("div"); r.classList.add("cm-linkrow");
           const inp = el("input", "input"); inp.type = "text"; inp.value = opt; inp.oninput = () => { q.config.options[i] = inp.value; };
           const del = el("button", "btn btn-ghost btn-sm", "✕"); del.title = "Remove choice";
           del.onclick = () => { q.config.options.splice(i, 1); repaint(); };
@@ -1127,7 +1127,7 @@
       state.id = survey ? survey.id : null;
       state.survey = survey || null;
       heading.textContent = survey ? "Edit survey" : "New survey";
-      newBtn.style.display = survey ? "" : "none";
+      newBtn.classList.toggle("u-hidden", !survey);
       nameInput.value = survey ? (survey.name || "") : "";
       descInput.value = survey ? (survey.description || "") : "";
       statusSel.value = (survey && survey.status) || "draft";
@@ -1141,7 +1141,7 @@
       if (survey && survey.id) {
         qLabelById = {};
         (survey.questions || []).forEach((q) => { qLabelById[q.id] = q.label; });
-        shareWrap.style.display = "";
+        shareWrap.classList.remove("u-hidden");
         if (survey.publicId) {
           linkInput.value = location.origin + "/survey.html?s=" + encodeURIComponent(survey.publicId);
           shareNote.textContent = survey.status === "active"
@@ -1150,26 +1150,26 @@
         }
         // Send is only available on an active survey (server re-checks too).
         if (survey.status === "active") {
-          sendSurveyBtn.style.display = ""; activateHint.textContent = "";
+          sendSurveyBtn.classList.remove("u-hidden"); activateHint.textContent = "";
           sendSurveyBtn.onclick = () => openSendFlow(survey);
         } else {
-          sendSurveyBtn.style.display = "none";
+          sendSurveyBtn.classList.add("u-hidden");
           activateHint.textContent = "Set the survey to Active and save to send it to contacts.";
         }
         loadResponses(survey.id);
       } else {
-        shareWrap.style.display = "none";
+        shareWrap.classList.add("u-hidden");
         responsesHost.innerHTML = "";
-        resultsCard.style.display = "none";
-        card.style.display = "";
+        resultsCard.classList.add("u-hidden");
+        card.classList.remove("u-hidden");
       }
     }
     let qLabelById = {};
     async function loadResponses(id) {
-      responsesHost.innerHTML = `<div class="cell-muted" style="padding:6px 0">Loading responses…</div>`;
+      responsesHost.innerHTML = `<div class="cell-muted cm-t6">Loading responses…</div>`;
       let rows;
       try { rows = await App.portalApi("/api/surveys/" + encodeURIComponent(id) + "/responses"); }
-      catch (e) { responsesHost.innerHTML = `<div class="cell-muted" style="padding:6px 0">${esc(e.message)}</div>`; return; }
+      catch (e) { responsesHost.innerHTML = `<div class="cell-muted cm-t6">${esc(e.message)}</div>`; return; }
       rows = Array.isArray(rows) ? rows : [];
       responsesHost.innerHTML = "";
       if (!rows.length) { responsesHost.appendChild(el("div", "cell-muted", "No responses yet.")); return; }
@@ -1225,11 +1225,11 @@
 
     // ---- results view ----
     function bar(pct) {
-      return `<div style="background:var(--panel-2,#eef1f6);border-radius:6px;height:10px;overflow:hidden;flex:1"><div style="background:var(--accent,#3257d6);height:10px;width:${Math.max(0, Math.min(100, pct))}%"></div></div>`;
+      return `<div class="cm-t7"><div class="cm-result-bar" style="--pw:${Math.max(0, Math.min(100, pct))}%"></div></div>`;
     }
     function optionBars(opts) {
-      return `<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">` + (opts || []).map((o) =>
-        `<div style="display:flex;align-items:center;gap:10px"><div style="width:160px" class="cell-muted">${esc(String(o.value))}</div>${bar(o.pct)}<div style="width:90px;text-align:right" class="cell-muted">${o.count} · ${o.pct}%</div></div>`
+      return `<div class="cm-t8">` + (opts || []).map((o) =>
+        `<div class="cm-t9"><div class="cm-t10 cell-muted">${esc(String(o.value))}</div>${bar(o.pct)}<div class="cm-t11 cell-muted">${o.count} · ${o.pct}%</div></div>`
       ).join("") + `</div>`;
     }
     function renderResults(host, survey) {
@@ -1242,9 +1242,9 @@
         responses = Array.isArray(responses) ? responses : [];
 
         // header summary
-        const head = el("div"); head.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap";
-        const stat = (label, val) => `<div style="min-width:120px"><div class="cell-muted" style="font-size:12px">${esc(label)}</div><div class="cell-strong" style="font-size:18px">${esc(String(val))}</div></div>`;
-        const summary = el("div"); summary.style.cssText = "display:flex;gap:18px;flex-wrap:wrap";
+        const head = el("div"); head.classList.add("cm-headrow");
+        const stat = (label, val) => `<div class="cm-t12"><div class="cell-muted u-meta">${esc(label)}</div><div class="cell-strong cm-t13">${esc(String(val))}</div></div>`;
+        const summary = el("div"); summary.classList.add("cm-summary3");
         let summaryHtml = stat("Responses", r.total) + stat("Tied to a contact", r.tied) + stat("Anonymous", r.anonymous);
         if (r.sent > 0) summaryHtml += stat("Sent", r.sent) + stat("Response rate", r.responseRate != null ? r.responseRate + "%" : "—");
         if (r.firstAt) summaryHtml += stat("First / last", fmtDate(r.firstAt) + " → " + fmtDate(r.lastAt));
@@ -1252,7 +1252,7 @@
         head.appendChild(summary);
 
         // lifecycle controls
-        const life = el("div"); life.style.cssText = "display:flex;gap:8px;align-items:center";
+        const life = el("div"); life.classList.add("cm-linkrow");
         const pill = el("span", "pill " + (r.status === "active" ? "success" : r.status === "closed" ? "skipped" : ""), r.status.charAt(0).toUpperCase() + r.status.slice(1));
         life.appendChild(pill);
         const lifeBtn = (label, to) => { const b = el("button", "btn btn-ghost btn-sm", label); b.onclick = () => changeStatus(survey, to); return b; };
@@ -1263,36 +1263,36 @@
         host.appendChild(head);
 
         // export
-        const exportRow = el("div"); exportRow.style.cssText = "margin-top:12px";
+        const exportRow = el("div"); exportRow.classList.add("cm-exportrow");
         const exportBtn = el("button", "btn btn-ghost btn-sm", "Export responses");
         exportBtn.onclick = () => exportResponses(survey);
         exportRow.appendChild(exportBtn); host.appendChild(exportRow);
 
-        if (!r.total) { host.appendChild(el("div", "cell-muted", "No responses yet.")).style.marginTop = "16px"; return; }
+        if (!r.total) { host.appendChild(el("div", "cell-muted u-mt-16", "No responses yet.")); return; }
 
         // per-question breakdown
-        const qWrap = el("div"); qWrap.style.cssText = "margin-top:18px;display:flex;flex-direction:column;gap:18px";
+        const qWrap = el("div"); qWrap.classList.add("cm-qwrap");
         (r.questions || []).forEach((q) => {
-          const block = el("div", "card"); block.style.cssText = "padding:14px;background:var(--panel-2)";
-          const qh = el("div"); qh.style.cssText = "display:flex;justify-content:space-between;align-items:baseline";
-          qh.innerHTML = `<div class="cell-strong">${esc(q.label)}</div><div class="cell-muted" style="font-size:12px">${q.answered} answered</div>`;
+          const block = el("div", "card"); block.classList.add("cm-block");
+          const qh = el("div"); qh.classList.add("cm-qh");
+          qh.innerHTML = `<div class="cell-strong">${esc(q.label)}</div><div class="cell-muted u-meta">${q.answered} answered</div>`;
           block.appendChild(qh);
           if (q.type === "single_select" || q.type === "yes_no" || q.type === "multi_select") {
             block.insertAdjacentHTML("beforeend", optionBars(q.options));
           } else if (q.type === "rating") {
-            block.insertAdjacentHTML("beforeend", `<div class="cell-muted" style="margin:6px 0">Average: <span class="cell-strong">${q.average}</span></div>` + optionBars((q.distribution || []).map((d) => ({ value: d.value, count: d.count, pct: q.answered ? Math.round((d.count / q.answered) * 100) : 0 }))));
+            block.insertAdjacentHTML("beforeend", `<div class="cell-muted cm-t14">Average: <span class="cell-strong">${q.average}</span></div>` + optionBars((q.distribution || []).map((d) => ({ value: d.value, count: d.count, pct: q.answered ? Math.round((d.count / q.answered) * 100) : 0 }))));
           } else if (q.type === "nps") {
             block.insertAdjacentHTML("beforeend",
-              `<div style="display:flex;gap:18px;margin:8px 0"><div><div class="cell-muted" style="font-size:12px">NPS score</div><div class="cell-strong" style="font-size:22px">${q.score}</div></div>` +
-              `<div class="cell-muted" style="align-self:center">Promoters ${q.promoters} · Passives ${q.passives} · Detractors ${q.detractors} · Avg ${q.average}</div></div>` +
+              `<div class="cm-t15"><div><div class="cell-muted u-meta">NPS score</div><div class="cell-strong cm-t16">${q.score}</div></div>` +
+              `<div class="cell-muted cm-t17">Promoters ${q.promoters} · Passives ${q.passives} · Detractors ${q.detractors} · Avg ${q.average}</div></div>` +
               optionBars((q.distribution || []).map((d) => ({ value: d.value, count: d.count, pct: q.answered ? Math.round((d.count / q.answered) * 100) : 0 }))));
           } else if (q.type === "short_text" || q.type === "long_text") {
-            const list = el("div"); list.style.cssText = "margin-top:8px;max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:6px";
-            (q.texts || []).forEach((t) => { const row = el("div"); row.style.cssText = "border-left:2px solid var(--line);padding:2px 0 2px 10px"; row.innerHTML = `<div>${esc(t.value)}</div><div class="cell-muted" style="font-size:11.5px">${esc(t.contactName)}</div>`; list.appendChild(row); });
+            const list = el("div"); list.classList.add("cm-list2");
+            (q.texts || []).forEach((t) => { const row = el("div"); row.classList.add("cm-row5"); row.innerHTML = `<div>${esc(t.value)}</div><div class="cell-muted cm-t18">${esc(t.contactName)}</div>`; list.appendChild(row); });
             if (!(q.texts || []).length) list.appendChild(el("div", "cell-muted", "No text answers."));
             block.appendChild(list);
           } else if (q.type === "date") {
-            const list = el("div"); list.style.cssText = "margin-top:8px;max-height:180px;overflow:auto";
+            const list = el("div"); list.classList.add("cm-list3");
             (q.dates || []).forEach((t) => { const row = el("div", "cell-muted"); row.textContent = t.value + " — " + t.contactName; list.appendChild(row); });
             if (!(q.dates || []).length) list.appendChild(el("div", "cell-muted", "No dates."));
             block.appendChild(list);
@@ -1302,14 +1302,14 @@
         host.appendChild(qWrap);
 
         // individual responses table
-        host.appendChild(el("div", "field-label", "Individual responses")).style.marginTop = "18px";
-        const tableHost = el("div", "card"); tableHost.style.cssText = "padding:14px;background:var(--panel-2)"; host.appendChild(tableHost);
+        host.appendChild(el("div", "field-label cm-mt-18", "Individual responses"));
+        const tableHost = el("div", "card"); tableHost.classList.add("cm-block"); host.appendChild(tableHost);
         const cols = [
           { key: "submittedAt", label: "Submitted", type: "date", get: (x) => x.submittedAt, text: (x) => fmtDate(x.submittedAt), render: (x) => `<span class="cell-muted">${fmtDate(x.submittedAt)}</span>` },
           { key: "who", label: "Respondent", type: "text", get: (x) => x.contactName, render: (x) => `<span class="${x.contactId ? "cell-strong" : "cell-muted"}">${esc(x.contactName)}</span>` },
           { key: "n", label: "Answered", type: "text", get: (x) => String((x.answers || []).length), render: (x) => `<span class="cell-muted">${(x.answers || []).length}</span>` },
         ];
-        App.table.mount({ container: tableHost, columns: cols, rows: responses, defaultSort: "submittedAt", defaultSortDir: "desc", onRowClick: (x) => openRespDetail(x), pageSize: 25, emptyHtml: `<div class="cell-muted" style="padding:10px">No responses yet.</div>` });
+        App.table.mount({ container: tableHost, columns: cols, rows: responses, defaultSort: "submittedAt", defaultSortDir: "desc", onRowClick: (x) => openRespDetail(x), pageSize: 25, emptyHtml: `<div class="cell-muted cm-t19">No responses yet.</div>` });
       }).catch((e) => { host.innerHTML = `<div class="cell-muted">${esc(e.message)}</div>`; });
     }
 
@@ -1328,14 +1328,14 @@
       const modal = el("div", "modal");
       modal.innerHTML = `<div class="modal-head"><h2>Response</h2><button class="icon-btn" id="rd-close">&times;</button></div>`;
       const body = el("div", "modal-body");
-      const meta = el("div", "cell-muted"); meta.style.marginBottom = "10px";
+      const meta = el("div", "cell-muted u-mb-10");
       meta.innerHTML = `${esc(fmtDate(resp.submittedAt))} · ${resp.contactId ? esc(resp.contactName) : "Anonymous"}`;
       if (resp.contactId) { const a = el("a", "link"); a.href = "#/contact/" + encodeURIComponent(resp.contactId); a.textContent = " — view contact"; a.onclick = () => overlay.remove(); meta.appendChild(a); }
       body.appendChild(meta);
       const fmtVal = (v) => Array.isArray(v) ? v.join(", ") : (v === true ? "Yes" : v === false ? "No" : String(v));
       (resp.answers || []).forEach((a) => {
-        const row = el("div"); row.style.cssText = "padding:8px 0;border-top:1px solid var(--line)";
-        row.innerHTML = `<div class="cell-muted" style="font-size:12px">${esc(qLabelById[a.questionId] || "Question")}</div><div>${esc(fmtVal(a.value))}</div>`;
+        const row = el("div"); row.classList.add("cm-row6");
+        row.innerHTML = `<div class="cell-muted u-meta">${esc(qLabelById[a.questionId] || "Question")}</div><div>${esc(fmtVal(a.value))}</div>`;
         body.appendChild(row);
       });
       if (!(resp.answers || []).length) body.appendChild(el("div", "cell-muted", "No answers recorded."));
@@ -1367,11 +1367,11 @@
     // ---- send flow (audience -> email with per-recipient link -> confirm) ----
     function openSendFlow(survey) {
       const overlay = el("div", "modal-overlay");
-      const modal = el("div", "modal"); modal.style.maxWidth = "640px";
+      const modal = el("div", "modal cm-modal-640");
       modal.innerHTML = `<div class="modal-head"><h2>Send “${esc(survey.name)}”</h2><button class="icon-btn" id="sf-close">&times;</button></div>`;
       const body = el("div", "modal-body");
 
-      body.appendChild(el("div", "cell-muted", "Each recipient gets their own personal link, so their answers tie back to them and fill their fields. Pick who to send to, write the email, and include the survey link.")).style.marginBottom = "12px";
+      body.appendChild(el("div", "cell-muted u-mb-12", "Each recipient gets their own personal link, so their answers tie back to them and fill their fields. Pick who to send to, write the email, and include the survey link."));
 
       // audience — pick one or more saved Audiences (resolved to current contacts at send time,
       // each gets their own personal link). Shared selector, same one the Email tab uses.
@@ -1380,22 +1380,22 @@
       const audSelect = App.audienceSelect.mount(audienceHost, { emailableOnly: true });
 
       // email composer (reuse App.compose; its Templates menu = start-from / save-as)
-      const composerHost = el("div"); composerHost.style.marginTop = "12px"; body.appendChild(composerHost);
+      const composerHost = el("div", "u-mt-12"); body.appendChild(composerHost);
       const composer = App.compose.mount(composerHost, { kind: "email", surveyLinkMode: "token" });
 
       // insert {{survey_link}} merge token
-      const linkBar = el("div"); linkBar.style.cssText = "margin-top:8px;display:flex;gap:8px;align-items:center";
+      const linkBar = el("div"); linkBar.classList.add("cm-linkbar");
       const insertBtn = el("button", "btn btn-ghost btn-sm", "Insert survey link");
       insertBtn.onclick = () => { composer.appendHtml("<p>" + SURVEY_LINK_TOKEN + "</p>"); composer.focus(); };
       linkBar.appendChild(insertBtn);
-      linkBar.appendChild(el("span", "cell-muted", "Adds " + SURVEY_LINK_TOKEN + " — replaced with each person's unique link at send time.")).style.fontSize = "12.5px";
+      linkBar.appendChild(el("span", "cell-muted u-meta", "Adds " + SURVEY_LINK_TOKEN + " — replaced with each person's unique link at send time."));
       body.appendChild(linkBar);
 
-      const foot = el("div", "modal-foot"); foot.style.cssText = "display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap";
+      const foot = el("div", "modal-foot"); foot.classList.add("cm-foot");
       const leftFoot = el("div");
       const testBtn = el("button", "btn btn-ghost btn-sm", "Send test to myself");
       leftFoot.appendChild(testBtn);
-      const rightFoot = el("div"); rightFoot.style.cssText = "display:flex;gap:8px";
+      const rightFoot = el("div"); rightFoot.classList.add("cm-rightfoot");
       const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
       const send = el("button", "btn btn-primary btn-sm", "Send survey");
       rightFoot.appendChild(cancel); rightFoot.appendChild(send);
@@ -1473,7 +1473,7 @@
     }
 
     async function load() {
-      listHost.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+      listHost.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
       try {
         const [sv, fContact, fJob, fBooking, rTypes] = await Promise.all([
           App.portalApi("/api/surveys"),
@@ -1488,7 +1488,7 @@
         fieldCache.job = Array.isArray(fJob) ? fJob : [];
         fieldCache.booking = Array.isArray(fBooking) ? fBooking : [];
         void rTypes;
-      } catch (e) { listHost.innerHTML = `<div class="cell-muted" style="padding:8px">${esc(e.message)}</div>`; return; }
+      } catch (e) { listHost.innerHTML = `<div class="cell-muted u-pad-8">${esc(e.message)}</div>`; return; }
       listHost.innerHTML = "";
       const statusPill = (s) => `<span class="pill ${s === "active" ? "success" : s === "closed" ? "skipped" : ""}">${esc(s.charAt(0).toUpperCase() + s.slice(1))}</span>`;
       const columns = [
@@ -1503,7 +1503,7 @@
         container: listHost, columns, rows: surveys,
         defaultSort: "updatedAt", defaultSortDir: "desc",
         onRowClick: (r) => openEdit(r.id),
-        emptyHtml: `<div class="card cell-muted" style="padding:18px">No surveys yet.</div>`,
+        emptyHtml: `<div class="card cell-muted u-pad-18">No surveys yet.</div>`,
         pageSize: 50,
       });
     }

@@ -31,9 +31,9 @@
       "inlineStyle": 140
     },
     "js/communication.js": {
-      "rawHex": 5,
-      "offScaleFontSize": 15,
-      "inlineStyle": 175
+      "rawHex": 0,
+      "offScaleFontSize": 0,
+      "inlineStyle": 1
     },
     "js/compose.js": {
       "rawHex": 0,
@@ -127,9 +127,9 @@
     }
   },
   "totals": {
-    "rawHex": 55,
-    "offScaleFontSize": 67,
-    "inlineStyle": 406
+    "rawHex": 50,
+    "offScaleFontSize": 52,
+    "inlineStyle": 232
   },
   "info": {
     "distinctSpacingValues": 31

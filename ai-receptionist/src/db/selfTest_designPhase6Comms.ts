@@ -86,7 +86,7 @@ function main() {
 
   console.log("\n(5) Seam — deferred to Phase 6b (named, not hidden):");
   const cHits = hits(comm);
-  check(cHits === 175, `communication.js untouched this batch: 175 inventoried sites (found ${cHits}) — surveysTab 100, templatesTab 17, mountAudiencePicker 16, audiencesTab 13, openSendDetail 10, emailCompose 9, mountAudienceSelect 6, emailSent 3, emailTab 1`);
+  check(cHits === 1, `communication.js completed by Phase 6b (2026-07-13): 1 sanctioned dynamic remains (survey results bar --pw); was 175 inventoried at the Phase-6 seam (found ${cHits})`);
 
   console.log("\n" + (failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`));
   if (failures > 0) process.exit(1);
