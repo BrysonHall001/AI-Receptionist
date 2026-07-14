@@ -316,15 +316,15 @@
     const editable = !!data.editable;
 
     const sec = el("div", "card ai-instructions-card");
-    sec.style.cssText = "margin-top:18px;padding:18px;";
+    sec.classList.add("pt-sec");
     const head = el("div");
-    head.style.cssText = "display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;margin:0 0 12px;";
+    head.classList.add("pt-head");
 
     const headLeft = el("div");
-    headLeft.style.cssText = "flex:1 1 340px;min-width:260px;";
+    headLeft.classList.add("pt-headleft");
     headLeft.innerHTML =
-      `<h3 style="margin:0 0 6px;">AI Instructions</h3>` +
-      `<p class="cell-muted" style="margin:0;">Tell your AI receptionist about your business — organized into sections. Use the tabs on the left to jump to a part. This is added on top of its built-in ability to stay helpful and capture caller details automatically.</p>`;
+      `<h3 class="pt-t1">AI Instructions</h3>` +
+      `<p class="cell-muted u-m-0">Tell your AI receptionist about your business — organized into sections. Use the tabs on the left to jump to a part. This is added on top of its built-in ability to stay helpful and capture caller details automatically.</p>`;
 
     const VOICE_FALLBACK = [
       { id: "uIZsnBL0YK1S5j69bAih", label: "Warm & Friendly" },
@@ -336,12 +336,12 @@
     const voiceOptions = (data.voiceOptions && data.voiceOptions.length) ? data.voiceOptions : VOICE_FALLBACK;
 
     const headRight = el("div");
-    headRight.style.cssText = "flex:0 1 260px;min-width:210px;display:flex;flex-direction:column;gap:5px;";
+    headRight.classList.add("pt-headright");
     const voiceLabel = el("label", "cell-muted");
-    voiceLabel.style.cssText = "font-size:13px;font-weight:600;";
+    voiceLabel.classList.add("pt-voicelabel");
     voiceLabel.textContent = "Receptionist voice";
     const voiceSel = el("select", "input");
-    voiceSel.style.cssText = "width:100%;";
+    voiceSel.classList.add("pt-voicesel");
     voiceOptions.forEach((o) => {
       const opt = el("option");
       opt.value = o.id; opt.textContent = o.label;
@@ -350,11 +350,11 @@
     });
     if (!editable) voiceSel.disabled = true;
     const voiceNote = el("p", "cell-muted");
-    voiceNote.style.cssText = "margin:0;font-size:12px;";
+    voiceNote.classList.add("pt-voicenote");
     voiceNote.textContent = "Applies on Premium voice.";
-    if ((data.voiceMode || "OFF") === "SMOOTH") voiceNote.style.display = "none";
+    if ((data.voiceMode || "OFF") === "SMOOTH") voiceNote.classList.add("u-hidden");
     const voiceStatus = el("span", "cell-muted");
-    voiceStatus.style.cssText = "font-size:12px;min-height:14px;";
+    voiceStatus.classList.add("pt-voicestatus");
 
     voiceSel.onchange = async () => {
       voiceSel.disabled = true; voiceStatus.textContent = "Saving…";
@@ -377,7 +377,7 @@
     let uploadBtn = null;
     if (editable) {
       const upWrap = el("div");
-      upWrap.style.cssText = "margin-top:4px;";
+      upWrap.classList.add("pt-upwrap");
       uploadBtn = el("button", "btn btn-ghost btn-sm", "\u2191 Upload a document");
       upWrap.appendChild(uploadBtn);
       headRight.appendChild(upWrap);
@@ -389,20 +389,20 @@
 
     // Read-only note: hours are managed in Settings -> Scheduling (NOT here).
     const hoursNote = el("div", "cell-muted");
-    hoursNote.style.cssText = "font-size:12.5px;margin:0 0 12px;padding:8px 12px;background:var(--panel-2);border-left:3px solid var(--accent,#c7d2fe);border-radius:4px;";
-    hoursNote.innerHTML = `Business hours &amp; availability aren't set here — the receptionist reads them from <a href="#/settings/scheduling" style="color:#2563eb;text-decoration:underline;">Settings &rarr; Scheduling</a>, so they always match your calendar.`;
+    hoursNote.classList.add("pt-hoursnote");
+    hoursNote.innerHTML = `Business hours &amp; availability aren't set here — the receptionist reads them from <a href="#/settings/scheduling" class="adm-link">Settings &rarr; Scheduling</a>, so they always match your calendar.`;
     sec.appendChild(hoursNote);
 
     // ----- Sectioned editor: left tabs + one document textarea -----
     const editor = el("div");
-    editor.style.cssText = "display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;";
+    editor.classList.add("pt-editor");
     const tabsCol = el("div", "ai-tabs");
-    tabsCol.style.cssText = "flex:0 0 210px;min-width:180px;display:flex;flex-direction:column;gap:6px;";
+    tabsCol.classList.add("pt-tabscol");
     const rightCol = el("div");
-    rightCol.style.cssText = "flex:1 1 360px;min-width:280px;display:flex;flex-direction:column;gap:8px;";
+    rightCol.classList.add("pt-rightcol");
 
     const ta = el("textarea", "input");
-    ta.style.cssText = "width:100%;resize:vertical;min-height:300px;font-family:inherit;line-height:1.5;";
+    ta.classList.add("pt-ta");
     ta.spellcheck = true;
     ta.placeholder = "## Overview\n\nWe're a plumbing company serving the metro area…";
     // Seed: existing content is preserved (parse handles no-marker + preamble); empty -> defaults.
@@ -439,13 +439,13 @@
       const sections = currentSections();
       if (activeIdx >= sections.length) activeIdx = Math.max(0, sections.length - 1);
       tabsCol.innerHTML = "";
-      const label = el("div", "cell-muted"); label.style.cssText = "font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:0 0 2px;"; label.textContent = "Sections";
+      const label = el("div", "cell-muted"); label.classList.add("pt-label"); label.textContent = "Sections";
       tabsCol.appendChild(label);
       sections.forEach((s, i) => {
         const tab = el("div", "ai-tab" + (i === activeIdx ? " active" : ""));
-        tab.style.cssText = "display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid " + (i === activeIdx ? "var(--accent)" : "transparent") + ";background:" + (i === activeIdx ? "var(--panel-2)" : "transparent") + ";";
+        tab.className = "pt-ai-tab" + (i === activeIdx ? " active" : "");
         if (editable) {
-          const grip = el("span", "cell-muted"); grip.textContent = "\u2630"; grip.style.cssText = "cursor:grab;font-size:11px;opacity:.6;";
+          const grip = el("span", "cell-muted"); grip.textContent = "\u2630"; grip.classList.add("pt-grip");
           tab.appendChild(grip);
           tab.draggable = true;
           tab.ondragstart = (e) => { dragIdx = i; try { e.dataTransfer.effectAllowed = "move"; } catch (er) {} };
@@ -460,18 +460,18 @@
             setSections(list, i);
           };
         }
-        const name = el("span"); name.textContent = s.name || "(untitled)"; name.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        const name = el("span"); name.textContent = s.name || "(untitled)"; name.classList.add("pt-name");
         tab.appendChild(name);
         tab.onclick = (e) => { if (e.target.tagName === "BUTTON") return; jumpTo(i); };
         if (editable) {
-          const ren = el("button", "icon-btn"); ren.title = "Rename"; ren.textContent = "\u270e"; ren.style.cssText = "font-size:12px;padding:0 3px;line-height:1;background:none;border:none;cursor:pointer;color:inherit;";
+          const ren = el("button", "icon-btn"); ren.title = "Rename"; ren.textContent = "\u270e"; ren.classList.add("pt-ren");
           ren.onclick = async (e) => {
             e.stopPropagation();
             const nm = await promptModal({ title: "Rename section", label: "Section name", value: s.name, okText: "Rename" });
             if (!nm || !nm.trim()) return;
             const list = currentSections(); list[i].name = nm.trim(); setSections(list, i);
           };
-          const del = el("button", "icon-btn"); del.title = "Remove"; del.textContent = "\u00d7"; del.style.cssText = "font-size:15px;padding:0 3px;line-height:1;background:none;border:none;cursor:pointer;color:#dc2626;";
+          const del = el("button", "icon-btn"); del.title = "Remove"; del.textContent = "\u00d7"; del.classList.add("pt-del-x");
           del.onclick = async (e) => {
             e.stopPropagation();
             if (!(await confirmModal({ title: "Remove section", message: `Remove the "${s.name}" section? Its heading and everything written under it will be deleted from your instructions.`, confirmText: "Remove section" }))) return;
@@ -485,7 +485,7 @@
       });
       if (editable) {
         const add = el("button", "btn btn-ghost btn-sm", "+ Add section");
-        add.style.cssText = "margin-top:4px;justify-content:flex-start;";
+        add.classList.add("pt-add");
         add.onclick = async () => {
           const nm = await promptModal({ title: "Add a section", label: "Section name", placeholder: "e.g. Booking policy, Insurance", okText: "Add" });
           if (!nm || !nm.trim()) return;
@@ -504,9 +504,9 @@
 
     if (editable) {
       const bar = el("div");
-      bar.style.cssText = "display:flex;gap:10px;align-items:center;";
+      bar.classList.add("pt-bar");
       const save = el("button", "btn btn-primary", "Save");
-      const status = el("span", "cell-muted"); status.style.fontSize = "13px";
+      const status = el("span", "cell-muted pt-fs-sm");
       save.onclick = async () => {
         // Compile from the current document (normalizes headings/spacing) then PATCH the SAME field.
         const compiled = aiCompileSections(currentSections());
@@ -522,7 +522,7 @@
       bar.appendChild(save); bar.appendChild(status);
       rightCol.appendChild(bar);
     } else {
-      const ro = el("p", "cell-muted"); ro.style.cssText = "font-size:12px;margin:0;"; ro.textContent = "You have view-only access to these instructions.";
+      const ro = el("p", "cell-muted"); ro.classList.add("pt-ro"); ro.textContent = "You have view-only access to these instructions.";
       rightCol.appendChild(ro);
     }
 
@@ -550,13 +550,13 @@
         const body = el("div", "modal-body");
 
         // Files read / skipped + caveat.
-        const meta = el("div", "cell-muted"); meta.style.cssText = "font-size:12.5px;margin:0 0 12px;";
+        const meta = el("div", "cell-muted"); meta.classList.add("pt-meta");
         const read = (result.filesRead || []);
         const skipped = (result.filesSkipped || []);
         meta.innerHTML =
           `<div><b>Read:</b> ${read.length ? read.map((f) => esc(f)).join(", ") : "none"}</div>` +
-          (skipped.length ? `<div style="margin-top:3px"><b>Skipped:</b> ${skipped.map((s) => esc(s.filename) + " (" + esc(s.reason) + ")").join(", ")}</div>` : "") +
-          `<div style="margin-top:8px;color:#b45309">These are AI suggestions from your documents — parsing is imperfect. Review and edit each one; nothing is saved until you press <b>Save</b>.</div>`;
+          (skipped.length ? `<div class="pt-t2"><b>Skipped:</b> ${skipped.map((s) => esc(s.filename) + " (" + esc(s.reason) + ")").join(", ")}</div>` : "") +
+          `<div class="u-mt-8 txt-amber">These are AI suggestions from your documents — parsing is imperfect. Review and edit each one; nothing is saved until you press <b>Save</b>.</div>`;
         body.appendChild(meta);
 
         if (!suggestions.length) {
@@ -565,21 +565,21 @@
           const cur = currentSections();
           const curBody = (name) => { const f = cur.find((s) => s.name.trim().toLowerCase() === name.trim().toLowerCase()); return f ? f.body : ""; };
           suggestions.forEach((s) => {
-            const card = el("div"); card.style.cssText = "border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:12px;margin-bottom:10px;";
-            const h = el("div"); h.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;";
-            h.innerHTML = `<b style="font-size:13.5px">${esc(s.section)}</b>`;
-            const btns = el("div"); btns.style.cssText = "display:flex;gap:6px;";
+            const card = el("div"); card.classList.add("pt-card");
+            const h = el("div"); h.classList.add("pt-h");
+            h.innerHTML = `<b class="pt-t3">${esc(s.section)}</b>`;
+            const btns = el("div"); btns.classList.add("pt-btns");
             const rep = el("button", "btn btn-primary btn-sm", "Replace");
             const app = el("button", "btn btn-ghost btn-sm", "Append");
-            const applied = el("span", "cell-muted"); applied.style.cssText = "font-size:12px;align-self:center;display:none;"; applied.textContent = "Applied";
-            rep.onclick = () => { applyOne(s.section, s.content, "replace"); rep.disabled = true; app.disabled = true; applied.style.display = ""; };
-            app.onclick = () => { applyOne(s.section, s.content, "append"); rep.disabled = true; app.disabled = true; applied.style.display = ""; };
+            const applied = el("span", "cell-muted"); applied.classList.add("pt-applied"); applied.classList.add("u-hidden"); applied.textContent = "Applied";
+            rep.onclick = () => { applyOne(s.section, s.content, "replace"); rep.disabled = true; app.disabled = true; applied.classList.remove("u-hidden"); };
+            app.onclick = () => { applyOne(s.section, s.content, "append"); rep.disabled = true; app.disabled = true; applied.classList.remove("u-hidden"); };
             btns.appendChild(rep); btns.appendChild(app); btns.appendChild(applied);
             h.appendChild(btns);
             card.appendChild(h);
             const existing = (curBody(s.section) || "").trim();
-            if (existing) { const ex = el("div", "cell-muted"); ex.style.cssText = "font-size:11.5px;margin:0 0 6px;"; ex.innerHTML = `<i>Current:</i> ${esc(existing.slice(0, 160))}${existing.length > 160 ? "…" : ""}`; card.appendChild(ex); }
-            const pre = el("div"); pre.style.cssText = "white-space:pre-wrap;font-size:12.5px;background:var(--panel-2);border-radius:6px;padding:8px 10px;max-height:160px;overflow:auto;"; pre.textContent = s.content;
+            if (existing) { const ex = el("div", "cell-muted"); ex.classList.add("pt-ex"); ex.innerHTML = `<i>Current:</i> ${esc(existing.slice(0, 160))}${existing.length > 160 ? "…" : ""}`; card.appendChild(ex); }
+            const pre = el("div"); pre.classList.add("pt-pre"); pre.textContent = s.content;
             card.appendChild(pre);
             body.appendChild(card);
           });
@@ -605,7 +605,7 @@
         });
         if (!ok) return;
         const fi = el("input"); fi.type = "file"; fi.multiple = true;
-        fi.accept = ".pdf,.docx,.xlsx,.xls,.csv,.txt,.md,.zip"; fi.style.display = "none";
+        fi.accept = ".pdf,.docx,.xlsx,.xls,.csv,.txt,.md,.zip"; fi.classList.add("u-hidden");
         fi.onchange = async () => {
           const files = Array.from(fi.files || []); fi.remove();
           if (!files.length) return;
@@ -638,18 +638,18 @@
     // Connect/Disconnect/status + per-resource calendar mapping. NO freebusy/
     // availability wiring yet. Tokens never reach the browser.
     const gWrap = el("div");
-    gWrap.style.cssText = "";
+    gWrap.classList.add("pt-gwrap");
     gWrap.innerHTML =
-      `<p class="cell-muted" style="margin:0 0 10px;">Connect your Google Calendar so Clarity can read busy times (read-only), then map each calendar to a staff member.</p>`;
+      `<p class="cell-muted pt-t4">Connect your Google Calendar so Clarity can read busy times (read-only), then map each calendar to a staff member.</p>`;
     const gStatusLine = el("p", "cell-muted");
-    gStatusLine.style.cssText = "margin:0 0 10px;font-size:13px;";
+    gStatusLine.classList.add("pt-gstatusline");
     gStatusLine.textContent = "Checking…";
     const gHealth = el("div"); // sync-health + write-scope state (populated when connected)
-    gHealth.style.cssText = "margin:0 0 10px;font-size:12px;";
+    gHealth.classList.add("pt-ghealth");
     const gBar = el("div");
-    gBar.style.cssText = "display:flex;gap:10px;align-items:center;";
+    gBar.classList.add("pt-bar");
     const gMap = el("div"); // per-resource calendar mapping (populated when connected)
-    gMap.style.cssText = "margin-top:14px;";
+    gMap.classList.add("pt-gmap");
     gWrap.appendChild(gStatusLine);
     gWrap.appendChild(gHealth);
     gWrap.appendChild(gBar);
@@ -683,10 +683,10 @@
         // ---- Sync health: last synced + status, so drift is never silent. ----
         const rows = [];
         if (data.syncStatus === "degraded") {
-          rows.push(`<span style="color:var(--red);font-weight:600;">⚠ Sync degraded</span>` +
+          rows.push(`<span class="pt-t5">⚠ Sync degraded</span>` +
             (data.lastSyncError ? ` — ${App.util.esc(data.lastSyncError)}` : ""));
         } else if (data.syncStatus === "ok") {
-          rows.push(`<span style="color:var(--green);font-weight:600;">● Sync OK</span>`);
+          rows.push(`<span class="pt-t6">● Sync OK</span>`);
         }
         if (data.lastSyncedAt) {
           rows.push(`Last synced: ${new Date(data.lastSyncedAt).toLocaleString()}`);
@@ -697,19 +697,19 @@
 
         // ---- Write-scope: prompt a one-time reconnect to enable write-back (F). ----
         if (data.writeGranted) {
-          rows.push(`<span style="color:var(--green);">Write-back ready.</span>`);
+          rows.push(`<span class="pt-t7">Write-back ready.</span>`);
         } else {
           rows.push(`<span class="cell-muted">Write-back is not enabled yet (reading still works).</span>`);
         }
-        gHealth.innerHTML = rows.map((r) => `<div style="margin:2px 0;">${r}</div>`).join("");
+        gHealth.innerHTML = rows.map((r) => `<div class="pt-t8">${r}</div>`).join("");
 
         // ---- Visible on/off control for two-way sync (replaces hidden DB flags). ----
         const toggleWrap = el("label");
-        toggleWrap.style.cssText = "display:flex;gap:8px;align-items:center;margin:8px 0 4px;font-size:13px;cursor:pointer;";
+        toggleWrap.classList.add("pt-togglewrap");
         const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!(data.syncEnabled || data.pushEnabled);
         const toggleTxt = el("span", null, "Two-way calendar sync");
         toggleWrap.appendChild(toggle); toggleWrap.appendChild(toggleTxt);
-        const toggleStat = el("span", "cell-muted"); toggleStat.style.cssText = "font-size:12px;margin-left:6px;";
+        const toggleStat = el("span", "cell-muted"); toggleStat.classList.add("pt-togglestat");
         toggleWrap.appendChild(toggleStat);
         toggle.onchange = async () => {
           const on = toggle.checked;
@@ -752,7 +752,7 @@
     // toast pattern as the voice/timezone pickers. Distinguishes "couldn't reach
     // Google" (reconnect prompt) from "connected, zero calendars" (clear note).
     async function renderMappings(mappings) {
-      gMap.innerHTML = `<div class="cell-muted" style="font-size:13px;">Loading calendars…</div>`;
+      gMap.innerHTML = `<div class="cell-muted pt-t9">Loading calendars…</div>`;
       let calendars, resources;
       try {
         [calendars, resources] = await Promise.all([
@@ -764,7 +764,7 @@
         const needsReconnect = e && e.data && e.data.needsReconnect;
         gMap.innerHTML = "";
         const warn = el("p", "cell-muted");
-        warn.style.cssText = "font-size:13px;color:var(--red);";
+        warn.classList.add("pt-warn");
         warn.textContent = needsReconnect
           ? "Google connection needs reconnecting — click Disconnect, then Connect again."
           : ((e && e.message) || "Couldn't load calendars.");
@@ -780,13 +780,13 @@
       gMap.appendChild(title);
 
       if (!resources.length) {
-        const none = el("p", "cell-muted"); none.style.cssText = "font-size:13px;";
+        const none = el("p", "cell-muted"); none.classList.add("pt-none");
         none.textContent = "Add staff/resources first, then map a calendar to each.";
         gMap.appendChild(none);
         return;
       }
       if (!cals.length) {
-        const none = el("p", "cell-muted"); none.style.cssText = "font-size:13px;";
+        const none = el("p", "cell-muted"); none.classList.add("pt-none");
         none.textContent = "Connected, but this Google account has no calendars to map.";
         gMap.appendChild(none);
         return;
@@ -794,10 +794,10 @@
 
       resources.forEach((r) => {
         const row = el("div");
-        row.style.cssText = "display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;";
-        const name = el("div"); name.style.cssText = "min-width:140px;font-size:13px;font-weight:600;";
+        row.classList.add("pt-row");
+        const name = el("div"); name.classList.add("pt-name2");
         name.textContent = r.name;
-        const sel = el("select", "input"); sel.style.cssText = "min-width:240px;";
+        const sel = el("select", "input"); sel.classList.add("pt-sel");
         const cur = byResource[r.id];
         // "Not mapped" option
         const optNone = el("option"); optNone.value = ""; optNone.textContent = "— Not mapped —"; sel.appendChild(optNone);
@@ -813,7 +813,7 @@
           if (cur && cur.googleCalendarId === c.id) opt.selected = true;
           sel.appendChild(opt);
         });
-        const stat = el("span", "cell-muted"); stat.style.cssText = "font-size:12px;min-height:14px;";
+        const stat = el("span", "cell-muted"); stat.classList.add("pt-voicestatus");
         sel.onchange = async () => {
           sel.disabled = true; stat.textContent = "Saving…";
           try {
@@ -1551,10 +1551,10 @@
   // existing filter rule editor; recipients + "Send now" + a schedule stub BELOW.
   function reportBuilder(savedReports, recordTypes, portalTz, onSent) {
     const card = el("div", "card");
-    card.style.cssText = "margin-top:18px; padding:18px";
-    const headRow = el("div"); headRow.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:6px";
-    const heading = el("h3", "settings-sub", "Create a report"); heading.style.margin = "0";
-    const newBtn = el("button", "btn btn-ghost btn-sm", "New report"); newBtn.style.display = "none";
+    card.classList.add("pt-card2");
+    const headRow = el("div"); headRow.classList.add("pt-headrow");
+    const heading = el("h3", "settings-sub u-m-0", "Create a report");
+    const newBtn = el("button", "btn btn-ghost btn-sm u-hidden", "New report");
     headRow.appendChild(heading); headRow.appendChild(newBtn);
     card.appendChild(headRow);
 
@@ -1567,7 +1567,7 @@
 
     // --- ABOVE: name, format, start-from-saved -------------------------------
     const top = el("div");
-    top.style.cssText = "display:grid; gap:12px; grid-template-columns:1fr 160px; align-items:end; margin-bottom:14px";
+    top.classList.add("pt-top");
     const nameWrap = el("label", "field");
     nameWrap.innerHTML = `<span class="field-label">Report name</span>`;
     const nameInput = el("input", "input"); nameInput.type = "text"; nameInput.placeholder = "e.g. Weekly leads";
@@ -1580,7 +1580,7 @@
     card.appendChild(top);
 
     if ((savedReports || []).length) {
-      const startWrap = el("label", "field"); startWrap.style.marginBottom = "14px";
+      const startWrap = el("label", "field u-mb-14");
       startWrap.innerHTML = `<span class="field-label">Start from a saved report (optional)</span>`;
       const sel = el("select", "input");
       sel.innerHTML = `<option value="">— start blank —</option>` + savedReports.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join("");
@@ -1598,7 +1598,7 @@
 
     // --- TABS: one per reportable type ---------------------------------------
     const tabStrip = el("div", "tabs");
-    const tabBody = el("div"); tabBody.style.marginTop = "10px";
+    const tabBody = el("div", "u-mt-10");
     let activeType = recordTypes.length ? recordTypes[0].key : null;
 
     recordTypes.forEach((t, i) => {
@@ -1634,7 +1634,7 @@
     }
 
     async function showType(typeKey) {
-      tabBody.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+      tabBody.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
       await loadType(typeKey);
       const st = state.byType[typeKey];
       tabBody.innerHTML = "";
@@ -1642,10 +1642,10 @@
 
       // Field checklist (stored as KEYS).
       const fieldsCard = el("div");
-      fieldsCard.innerHTML = `<div class="field-label" style="margin-bottom:6px">Fields to include</div>`;
-      const grid = el("div"); grid.style.cssText = "display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:6px 14px; margin-bottom:12px";
+      fieldsCard.innerHTML = `<div class="field-label pt-t10">Fields to include</div>`;
+      const grid = el("div"); grid.classList.add("pt-grid");
       st.cols.forEach((c) => {
-        const lab = el("label"); lab.style.cssText = "display:flex; gap:7px; align-items:center; font-size:13px; cursor:pointer";
+        const lab = el("label"); lab.classList.add("pt-lab");
         const cb = el("input"); cb.type = "checkbox"; cb.checked = st.fields.has(c.key);
         cb.onchange = () => { if (cb.checked) st.fields.add(c.key); else st.fields.delete(c.key); updateSummary(); };
         lab.appendChild(cb); lab.appendChild(document.createTextNode(c.label));
@@ -1655,7 +1655,7 @@
       tabBody.appendChild(fieldsCard);
 
       // Existing filter rule editor = "who to include" for this type.
-      const rulesLabel = el("div", "field-label", "Who to include (filters)"); rulesLabel.style.marginBottom = "6px";
+      const rulesLabel = el("div", "field-label u-mb-6", "Who to include (filters)");
       tabBody.appendChild(rulesLabel);
       const rulesHost = el("div");
       rulesHost.appendChild(App.table.ruleEditor(st.cols, st.rows, st.rules, () => {}));
@@ -1663,7 +1663,7 @@
     }
 
     // --- BELOW: recipients, Send now, schedule stub --------------------------
-    const summary = el("div", "cell-muted"); summary.style.cssText = "margin:14px 0 6px; font-size:13px";
+    const summary = el("div", "cell-muted"); summary.classList.add("pt-summary");
     function includedTypes() { return recordTypes.filter((t) => state.byType[t.key].fields.size > 0); }
     function updateSummary() {
       const inc = includedTypes();
@@ -1681,16 +1681,16 @@
 
     // Email body — REUSES the app's rich-text composer. Empty => executor uses its
     // default attachment-notice text. Round-trips on edit via getHTML()/setBody().
-    const bodyWrap = el("div", "field"); bodyWrap.style.marginTop = "12px";
+    const bodyWrap = el("div", "field u-mt-12");
     bodyWrap.appendChild(el("span", "field-label", "Email body (optional)"));
     const bodyHost = el("div"); bodyWrap.appendChild(bodyHost);
     card.appendChild(bodyWrap);
     const bodyApi = App.compose.mount(bodyHost, { kind: "richtext" });
 
     // --- Delivery: Send now vs Send on a schedule ----------------------------
-    const delivWrap = el("div"); delivWrap.style.cssText = "margin-top:14px";
+    const delivWrap = el("div"); delivWrap.classList.add("pt-delivwrap");
     delivWrap.appendChild(el("div", "field-label", "Delivery"));
-    const seg = el("div", "tabs"); seg.style.marginBottom = "8px";
+    const seg = el("div", "tabs u-mb-8");
     const nowTab = el("button", "tab active", "Send now");
     const schedTab = el("button", "tab", "Send on a schedule");
     seg.appendChild(nowTab); seg.appendChild(schedTab);
@@ -1698,9 +1698,9 @@
     card.appendChild(delivWrap);
 
     // --- Cadence builder (hidden until "Send on a schedule") ------------------
-    const cadPanel = el("div", "card"); cadPanel.style.cssText = "padding:14px; margin-bottom:10px; display:none";
+    const cadPanel = el("div", "card"); cadPanel.classList.add("pt-cadpanel"); cadPanel.classList.add("u-hidden");
     cadPanel.appendChild(el("div", "field-label", "Which days"));
-    const dayRow = el("div"); dayRow.style.cssText = "display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px";
+    const dayRow = el("div"); dayRow.classList.add("pt-dayrow");
     DOW.forEach(([n, label]) => {
       const b = el("button", "tab", label); b.dataset.d = String(n);
       b.onclick = () => {
@@ -1713,32 +1713,32 @@
     });
     cadPanel.appendChild(dayRow);
 
-    const intervalWrap = el("div"); intervalWrap.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:12px";
+    const intervalWrap = el("div"); intervalWrap.classList.add("pt-intervalwrap");
     intervalWrap.appendChild(el("span", "", "Every"));
-    const intervalInput = el("input", "input"); intervalInput.type = "number"; intervalInput.min = "1"; intervalInput.value = "1"; intervalInput.style.width = "70px";
+    const intervalInput = el("input", "input"); intervalInput.type = "number"; intervalInput.min = "1"; intervalInput.value = "1"; intervalInput.classList.add("pt-w-70");
     intervalInput.onchange = () => { cad.weekInterval = Math.max(1, Math.floor(Number(intervalInput.value) || 1)); intervalInput.value = String(cad.weekInterval); renderCadSummary(); };
     intervalWrap.appendChild(intervalInput);
     intervalWrap.appendChild(el("span", "cell-muted", "week(s) — week 1 is the week you save this."));
     cadPanel.appendChild(intervalWrap);
 
     const timesLabel = el("div", "field-label", "Time per day"); cadPanel.appendChild(timesLabel);
-    const timesHost = el("div"); timesHost.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-bottom:6px"; cadPanel.appendChild(timesHost);
+    const timesHost = el("div"); timesHost.classList.add("pt-timeshost"); cadPanel.appendChild(timesHost);
     function renderTimes() {
       timesHost.innerHTML = "";
       const sel = Array.from(cad.days).sort((a, b) => a - b);
       if (!sel.length) { timesHost.appendChild(el("div", "cell-muted", "Pick one or more days above.")); return; }
       const labelOf = (n) => (DOW.find((d) => d[0] === n) || [, ""])[1];
       sel.forEach((n) => {
-        const row = el("div"); row.style.cssText = "display:flex; align-items:center; gap:10px";
-        const lab = el("span"); lab.style.cssText = "width:42px"; lab.textContent = labelOf(n);
-        const ti = el("input", "input"); ti.type = "time"; ti.value = cad.times[n] || cad.lastTime; ti.style.width = "140px";
+        const row = el("div"); row.classList.add("pt-row2");
+        const lab = el("span"); lab.classList.add("pt-lab2"); lab.textContent = labelOf(n);
+        const ti = el("input", "input pt-w-140"); ti.type = "time"; ti.value = cad.times[n] || cad.lastTime;
         ti.onchange = () => { cad.times[n] = ti.value || "09:00"; cad.lastTime = cad.times[n]; renderCadSummary(); };
         const tz = el("span", "cell-muted"); tz.textContent = portalTz;
         row.appendChild(lab); row.appendChild(ti); row.appendChild(tz);
         timesHost.appendChild(row);
       });
     }
-    const cadSummary = el("div"); cadSummary.style.cssText = "font-size:13px; margin-top:8px; font-weight:600";
+    const cadSummary = el("div"); cadSummary.classList.add("pt-cadsummary");
     cadPanel.appendChild(cadSummary);
     function ord(n) { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
     function fmt12(hhmm) { const [h, m] = (hhmm || "00:00").split(":").map(Number); const ap = h < 12 ? "AM" : "PM"; const h12 = h % 12 === 0 ? 12 : h % 12; return `${h12}:${String(m).padStart(2, "0")} ${ap}`; }
@@ -1757,20 +1757,20 @@
       cad.delivery = mode;
       nowTab.classList.toggle("active", mode === "now");
       schedTab.classList.toggle("active", mode === "schedule");
-      cadPanel.style.display = mode === "schedule" ? "" : "none";
+      cadPanel.classList.toggle("u-hidden", mode !== "schedule");
       submitBtn.textContent = mode === "schedule" ? "Save schedule" : "Send now";
     }
     nowTab.onclick = () => setDelivery("now");
     schedTab.onclick = () => setDelivery("schedule");
 
-    const actions = el("div"); actions.style.cssText = "display:flex; gap:12px; align-items:center; margin-top:14px";
+    const actions = el("div"); actions.classList.add("pt-actions");
     const submitBtn = el("button", "btn btn-primary", "Send now");
     actions.appendChild(submitBtn);
     card.appendChild(actions);
 
     function setEditMode(editing) {
       heading.textContent = editing ? "Edit report" : "Create a report";
-      newBtn.style.display = editing ? "" : "none";
+      newBtn.classList.toggle("u-hidden", !editing);
     }
     function resetForm() {
       state.id = null;
@@ -4646,7 +4646,7 @@
       tiles.appendChild(tile);
     });
     const panel = el("div", "settings-panel settings-panel--full");
-    panel.innerHTML = `<div class="cell-muted" style="padding:8px">Loading…</div>`;
+    panel.innerHTML = `<div class="cell-muted u-pad-8">Loading…</div>`;
     wrap.appendChild(tiles);
     wrap.appendChild(panel);
 
@@ -4655,7 +4655,7 @@
 
     const def = SECTIONS.find((s) => s.key === active);
     try { await def.build(panel, subTab); }
-    catch (e) { panel.innerHTML = `<div class="cell-muted" style="padding:8px">Couldn’t load this section.</div>`; }
+    catch (e) { panel.innerHTML = `<div class="cell-muted u-pad-8">Couldn’t load this section.</div>`; }
 
     // ---- Section builders (existing content + behavior, relocated verbatim) ----
     async function secGeneral(panel) {
@@ -4714,9 +4714,9 @@
     // records of the checked modules feed the receptionist. "Pages" = curated non-
     // module sources (e.g. Calls history). Both awareness-only; default off.
     async function mountSystemKnowledge(host) {
-      const intro = el("div"); intro.style.cssText = "margin:0 0 14px;";
-      intro.innerHTML = `<h3 style="margin:0 0 6px;">System knowledge</h3>
-        <p class="cell-muted" style="margin:0;">Choose what the receptionist is aware of when a <b>known</b> caller phones in. It can reference these naturally in conversation, but can't create or change anything. Everything is off by default.</p>`;
+      const intro = el("div"); intro.classList.add("pt-intro");
+      intro.innerHTML = `<h3 class="pt-t1">System knowledge</h3>
+        <p class="cell-muted u-m-0">Choose what the receptionist is aware of when a <b>known</b> caller phones in. It can reference these naturally in conversation, but can't create or change anything. Everything is off by default.</p>`;
       host.appendChild(intro);
       const status = el("div"); host.appendChild(status);
       status.appendChild(el("p", "cell-muted", "Loading…"));
@@ -4737,11 +4737,11 @@
       status.innerHTML = "";
 
       function checklistCard(title, note, rows, chosen, labelOf, keyOf) {
-        const card = el("div", "card"); card.style.cssText = "padding:18px;margin-bottom:14px;";
-        card.innerHTML = `<h4 style="margin:0 0 4px;">${esc(title)}</h4><p class="cell-muted" style="margin:0 0 10px;font-size:12.5px;">${esc(note)}</p>`;
+        const card = el("div", "card"); card.classList.add("pt-card3");
+        card.innerHTML = `<h4 class="pt-t11">${esc(title)}</h4><p class="cell-muted pt-t12">${esc(note)}</p>`;
         if (!rows.length) { card.appendChild(el("p", "cell-muted", "None available yet.")); host.appendChild(card); return; }
         rows.forEach((r) => {
-          const row = el("label"); row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;cursor:" + (editable ? "pointer" : "default") + ";border-top:1px solid var(--line,#eee)";
+          const row = el("label", "adm-row-click" + (editable ? "" : " u-cursor-default"));
           const cb = el("input"); cb.type = "checkbox"; cb.checked = chosen.has(keyOf(r)); cb.disabled = !editable;
           cb.onchange = () => { if (cb.checked) chosen.add(keyOf(r)); else chosen.delete(keyOf(r)); };
           row.appendChild(cb); row.appendChild(document.createTextNode(" " + labelOf(r)));
@@ -4847,9 +4847,9 @@
         : "Email couldn't be delivered right now, so copy this link and send it to " + esc(email) + " yourself.";
       modal.innerHTML = `<div class="modal-head"><h2>Invite sent</h2><button class="icon-btn" id="tir-close">&times;</button></div>`;
       const body = el("div", "modal-body");
-      body.innerHTML = `<p class="cell-muted" style="margin:0 0 12px">${note}</p>
+      body.innerHTML = `<p class="cell-muted pt-t13">${note}</p>
         <label class="field-label">Activation link</label>
-        <input id="tir-link" class="input" type="text" readonly value="${esc(link || "")}" style="font-family:monospace;font-size:12px" />`;
+        <input id="tir-link" class="input pt-t14" type="text" readonly value="${esc(link || "")}" />`;
       const foot = el("div", "modal-foot");
       const copy = el("button", "btn btn-primary btn-sm", "Copy link");
       foot.appendChild(copy);
@@ -4877,7 +4877,7 @@
     // role definitions.
     async function renderPermissionsPanel(host) {
       if (!host) return;
-      host.innerHTML = `<h2 class="settings-h">Permissions</h2><p class="cell-muted" style="font-size:13px;margin:0 0 14px">Loading…</p>`;
+      host.innerHTML = `<h2 class="settings-h">Permissions</h2><p class="cell-muted pt-t15">Loading…</p>`;
       let data;
       try { data = await App.portalApi("/api/portal-roles"); }
       catch (e) { host.innerHTML = `<h2 class="settings-h">Permissions</h2><p class="cell-muted">${esc(e.message)}</p>`; return; }
@@ -4903,14 +4903,14 @@
 
       function roleListHtml() {
         const item = (active, label, sub, attrs) =>
-          `<div class="perm-role-item${active ? " active" : ""}" ${attrs} style="padding:8px 10px;border-radius:8px;cursor:pointer;${active ? "background:var(--accent-soft);font-weight:600" : ""}">${esc(label)}${sub ? `<span class="cell-muted" style="font-size:11px;display:block;font-weight:400">${esc(sub)}</span>` : ""}</div>`;
-        let html = `<div class="cell-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">System roles (reference)</div>`;
+          `<div class="perm-role-item pt-role-item${active ? " active" : ""}" ${attrs}>${esc(label)}${sub ? `<span class="cell-muted pt-t16">${esc(sub)}</span>` : ""}</div>`;
+        let html = `<div class="cell-muted pt-t17">System roles (reference)</div>`;
         html += data.systemRoles.map((s) => item(sel.kind === "system" && sel.role === s.role, s.label, "", `data-system="${s.role}"`)).join("");
-        html += `<div class="cell-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px">Custom roles</div>`;
+        html += `<div class="cell-muted pt-t18">Custom roles</div>`;
         html += (data.customRoles || []).length
           ? data.customRoles.map((r) => item(sel.kind === "custom" && sel.id === r.id, r.name, r.assignedCount ? `${r.assignedCount} user${r.assignedCount === 1 ? "" : "s"}` : "no users assigned", `data-custom="${r.id}"`)).join("")
-          : `<p class="cell-muted" style="font-size:12px;margin:2px 0 0">None yet.</p>`;
-        html += `<button class="btn btn-sm" id="perm-new" style="margin-top:12px;width:100%">+ New role</button>`;
+          : `<p class="cell-muted pt-t19">None yet.</p>`;
+        html += `<button class="btn btn-sm pt-t20" id="perm-new">+ New role</button>`;
         return html;
       }
 
@@ -4930,12 +4930,12 @@
           const granted = keys.every((k) => !!(role.permissions[k] && role.permissions[k][right]));
           if (!role.editable) {
             return granted
-              ? `<td style="text-align:center;color:var(--accent,#2563eb);font-weight:700" title="Granted">\u2713</td>`
-              : `<td style="text-align:center;color:var(--ink-faint);opacity:.4" title="Not granted">\u00b7</td>`;
+              ? `<td class="pt-t21" title="Granted">\u2713</td>`
+              : `<td class="pt-t22" title="Not granted">\u00b7</td>`;
           }
           const withinLevel = keys.every((k) => !!(my[k] && my[k][right] === true));
-          if (!withinLevel) return `<td style="text-align:center;color:var(--ink-faint);opacity:.3" title="Beyond your own permission level — you can't grant this">\u00b7</td>`;
-          return `<td style="text-align:center"><input type="checkbox" data-area="${esc(keys.join(","))}" data-right="${right}" ${granted ? "checked" : ""}/></td>`;
+          if (!withinLevel) return `<td class="pt-t23" title="Beyond your own permission level — you can't grant this">\u00b7</td>`;
+          return `<td class="pt-t24"><input type="checkbox" data-area="${esc(keys.join(","))}" data-right="${right}" ${granted ? "checked" : ""}/></td>`;
         }
 
         function sectionTable(section) {
@@ -4953,20 +4953,20 @@
               if (a.group) { if (seenG[a.group]) return; seenG[a.group] = true; grantableLabels.push(a.groupLabel || a.label); }
               else grantableLabels.push(a.label);
             });
-            const head = `<thead><tr><th style="text-align:left">Area</th><th>Manage Settings</th></tr></thead>`;
-            const row = `<tr><td>Manage Settings (all)<div class="cell-muted" style="font-size:11px">${esc(grantableLabels.join(", "))}</div></td>${cellFor(grantableKeys, "manage")}</tr>`;
+            const head = `<thead><tr><th class="pt-t25">Area</th><th>Manage Settings</th></tr></thead>`;
+            const row = `<tr><td>Manage Settings (all)<div class="cell-muted pt-t26">${esc(grantableLabels.join(", "))}</div></td>${cellFor(grantableKeys, "manage")}</tr>`;
             const lockNote = lockedAreas.length
-              ? `<tr><td colspan="2" class="cell-muted" style="font-size:11px;padding-top:8px">\uD83D\uDD12 ${esc(lockedAreas.map((a) => a.label).join(" and "))} are always admin-managed — not controlled by this toggle.</td></tr>`
+              ? `<tr><td colspan="2" class="cell-muted pt-t27">\uD83D\uDD12 ${esc(lockedAreas.map((a) => a.label).join(" and "))} are always admin-managed — not controlled by this toggle.</td></tr>`
               : "";
-            return `<details open style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;padding:4px 0">${esc(section)}</summary>
-              <table class="mini-table"><colgroup><col/><col style="width:150px"/></colgroup>${head}<tbody>${row}${lockNote}</tbody></table></details>`;
+            return `<details open class="u-mb-10"><summary class="pt-t28">${esc(section)}</summary>
+              <table class="mini-table"><colgroup><col/><col class="pt-t29"/></colgroup>${head}<tbody>${row}${lockNote}</tbody></table></details>`;
           }
 
           // DATA / OPERATIONS / ADMIN — one row per area, only the real columns.
           const cols = SECTION_COLS[section] || [["view", "View"]];
-          const head = `<thead><tr><th style="text-align:left">Area</th>${cols.map((c) => `<th>${c[1]}</th>`).join("")}</tr></thead>`;
+          const head = `<thead><tr><th class="pt-t25">Area</th>${cols.map((c) => `<th>${c[1]}</th>`).join("")}</tr></thead>`;
           const rows = areas.map((a) => `<tr><td>${esc(a.label)}</td>${cols.map((c) => cellFor([a.key], c[0])).join("")}</tr>`).join("");
-          return `<details open style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;padding:4px 0">${esc(section)}</summary>
+          return `<details open class="u-mb-10"><summary class="pt-t28">${esc(section)}</summary>
             <table class="mini-table">${head}<tbody>${rows}</tbody></table></details>`;
         }
 
@@ -4977,17 +4977,17 @@
         const role = selectedRole();
         if (!role) { sel = { kind: "system", role: data.systemRoles[0].role }; return render(); }
         const titleBar = role.editable
-          ? `<input id="perm-name" class="input" placeholder="Role name" value="${esc(role.name)}" style="max-width:280px;font-weight:600" />`
-          : `<h3 style="margin:0">${esc(role.name)}</h3>`;
+          ? `<input id="perm-name" class="input pt-t30" placeholder="Role name" value="${esc(role.name)}" />`
+          : `<h3 class="u-m-0">${esc(role.name)}</h3>`;
         const actions = role.editable
-          ? `<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" id="perm-save">${role.isNew ? "Create role" : "Save changes"}</button>${role.id ? `<button class="btn btn-sm" id="perm-delete">Delete</button>` : ""}</div>`
-          : `<span class="cell-muted" style="font-size:12px">Shown for reference — system roles aren't edited here.</span>`;
+          ? `<div class="pt-t31"><button class="btn btn-primary btn-sm" id="perm-save">${role.isNew ? "Create role" : "Save changes"}</button>${role.id ? `<button class="btn btn-sm" id="perm-delete">Delete</button>` : ""}</div>`
+          : `<span class="cell-muted u-meta">Shown for reference — system roles aren't edited here.</span>`;
         host.innerHTML = `<h2 class="settings-h">Permissions</h2>
-          <p class="cell-muted" style="font-size:13px;margin:0 0 14px">Each section shows only the rights its areas support: data areas (Contacts, Records, Automations, Communication, Home Dashboard, Analytics) have View / Edit / Delete; Calls, the Learning Center, and Billing have a single Access switch; Settings is one combined "Manage Settings" toggle; and User management has View / Edit / Delete. Billing is off for Client Users by default (Portal Admins have it) — grant it here to give a role the client Billing tab. Integrations and Lead capture stay admin-managed. For your own custom roles, tick what you want to grant — you can grant up to your own level.</p>
-          <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
-            <div style="width:210px;flex:0 0 auto">${roleListHtml()}</div>
-            <div style="flex:1;min-width:320px">
-              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">${titleBar}${actions}</div>
+          <p class="cell-muted pt-t15">Each section shows only the rights its areas support: data areas (Contacts, Records, Automations, Communication, Home Dashboard, Analytics) have View / Edit / Delete; Calls, the Learning Center, and Billing have a single Access switch; Settings is one combined "Manage Settings" toggle; and User management has View / Edit / Delete. Billing is off for Client Users by default (Portal Admins have it) — grant it here to give a role the client Billing tab. Integrations and Lead capture stay admin-managed. For your own custom roles, tick what you want to grant — you can grant up to your own level.</p>
+          <div class="pt-t32">
+            <div class="pt-t33">${roleListHtml()}</div>
+            <div class="pt-t34">
+              <div class="pt-t35">${titleBar}${actions}</div>
               ${gridHtml(role)}
             </div>
           </div>`;
@@ -5067,18 +5067,18 @@
       const root = el("div");
       const dayList = el("div");
       root.appendChild(dayList);
-      function timeInput(val) { const i = el("input", "input"); i.type = "time"; i.value = val || ""; i.style.cssText = "margin-bottom:0; width:130px;"; return i; }
+      function timeInput(val) { const i = el("input", "input"); i.type = "time"; i.value = val || ""; i.classList.add("pt-i"); return i; }
       function renderDay(k, label) {
         const row = el("div");
-        row.style.cssText = "display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);";
-        const name = el("div"); name.textContent = label; name.style.cssText = "width:96px; font-weight:600;";
+        row.classList.add("pt-row3");
+        const name = el("div"); name.textContent = label; name.classList.add("pt-name3");
         row.appendChild(name);
         const openWrap = el("label", "form-check");
         const openCb = el("input"); openCb.type = "checkbox"; openCb.checked = hours[k].length > 0;
         openWrap.appendChild(openCb); openWrap.appendChild(el("span", null, "Open"));
         row.appendChild(openWrap);
         const windowsHost = el("div");
-        windowsHost.style.cssText = "display:flex; flex-wrap:wrap; align-items:center; gap:10px;";
+        windowsHost.classList.add("pt-windowshost");
         row.appendChild(windowsHost);
         function paint() {
           windowsHost.innerHTML = "";
@@ -5118,8 +5118,8 @@
       const wOne = App.label("resource", "one");
       const wMany = App.label("resource", "many");
       panel.innerHTML = `<h2 class="settings-h">${esc(wMany)}</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Create the ${esc(wMany.toLowerCase())} a booking can be assigned to. Rename this word any time on the Labels page. Colors are saved now for upcoming calendar coloring.</p>
-        <div id="res-host"><div class="cell-muted" style="padding:8px">Loading…</div></div>`;
+        <p class="cell-muted pt-t36">Create the ${esc(wMany.toLowerCase())} a booking can be assigned to. Rename this word any time on the Labels page. Colors are saved now for upcoming calendar coloring.</p>
+        <div id="res-host"><div class="cell-muted u-pad-8">Loading…</div></div>`;
       const host = App.util.$("#res-host");
       let items = [];
       let bizHours = {};
@@ -5146,12 +5146,12 @@
 
       function render() {
         host.innerHTML = "";
-        const card = el("div", "card"); card.style.cssText = "padding:18px; max-width:560px;";
+        const card = el("div", "card"); card.classList.add("pt-card4");
 
         // Add row: name + color + Add
-        const addWrap = el("div"); addWrap.style.cssText = "display:flex; gap:8px; align-items:center; margin-bottom:8px;";
-        const nameInp = el("input", "input"); nameInp.type = "text"; nameInp.placeholder = wOne + " name"; nameInp.style.cssText = "margin-bottom:0; flex:1;";
-        const colorInp = el("input"); colorInp.type = "color"; colorInp.value = "#6366f1"; colorInp.title = "Color"; colorInp.style.cssText = "width:40px; height:34px; padding:2px; border:1px solid var(--line); border-radius:8px; cursor:pointer;";
+        const addWrap = el("div"); addWrap.classList.add("pt-addwrap");
+        const nameInp = el("input", "input"); nameInp.type = "text"; nameInp.placeholder = wOne + " name"; nameInp.classList.add("pt-nameinp");
+        const colorInp = el("input"); colorInp.type = "color"; colorInp.value = "#6366f1"; colorInp.title = "Color"; colorInp.classList.add("pt-colorinp");
         const addBtn = el("button", "btn btn-primary btn-sm", "Add");
         addBtn.onclick = async () => {
           const name = nameInp.value.trim();
@@ -5169,12 +5169,12 @@
           card.appendChild(el("p", "cell-muted", "No " + wMany.toLowerCase() + " yet — add one above."));
         } else {
           items.forEach((r) => {
-            const row = el("div"); row.style.cssText = "display:flex; gap:10px; align-items:center; padding:9px 0; border-top:1px solid var(--line);";
-            const sw = el("input"); sw.type = "color"; sw.value = r.color || "#6366f1"; sw.title = "Color"; sw.style.cssText = "width:34px; height:30px; padding:2px; border:1px solid var(--line); border-radius:7px; cursor:pointer; flex:0 0 auto;";
+            const row = el("div"); row.classList.add("pt-row4");
+            const sw = el("input"); sw.type = "color"; sw.value = r.color || "#6366f1"; sw.title = "Color"; sw.classList.add("pt-sw");
             sw.onchange = async () => { try { await App.portalApi("/api/resources/" + r.id, { method: "PATCH", body: JSON.stringify({ color: sw.value }) }); r.color = sw.value; toast("Saved"); } catch (e) { toast(e.message, true); sw.value = r.color || "#6366f1"; } };
-            const nm = el("div"); nm.style.cssText = "flex:1; font-weight:500;";
+            const nm = el("div"); nm.classList.add("pt-nm");
             nm.appendChild(document.createTextNode(r.name));
-            if (r.hours) { const tag = el("span", "cell-muted"); tag.textContent = " · custom hours"; tag.style.fontWeight = "400"; nm.appendChild(tag); }
+            if (r.hours) { const tag = el("span", "cell-muted pt-fw-400"); tag.textContent = " · custom hours"; nm.appendChild(tag); }
             const hrs = el("button", "btn btn-ghost btn-sm", "Hours");
             hrs.onclick = () => openResourceHours(r);
             const ren = el("button", "btn btn-ghost btn-sm", "Rename");
@@ -5184,7 +5184,7 @@
               try { await App.portalApi("/api/resources/" + r.id, { method: "PATCH", body: JSON.stringify({ name: v.trim() }) }); toast("Renamed"); await load(); }
               catch (e) { toast(e.message, true); }
             };
-            const del = el("button", "btn btn-ghost btn-sm", "Delete"); del.style.color = "var(--red)";
+            const del = el("button", "btn btn-ghost btn-sm txt-danger", "Delete");
             del.onclick = async () => {
               if (!(await confirmModal({ title: "Delete " + wOne, message: `Delete “${r.name}”?`, confirmText: "Delete" }))) return;
               try { await App.portalApi("/api/resources/" + r.id, { method: "DELETE" }); toast("Deleted"); await load(); }
@@ -5210,39 +5210,39 @@
         inner.innerHTML = `<div class="modal-head"><h2>Hours &amp; lengths · ${esc(r.name)}</h2><button class="icon-btn" id="rh-close">&times;</button></div>`;
         const body = el("div", "modal-body");
 
-        const useWrap = el("label"); useWrap.style.cssText = "display:flex; gap:8px; align-items:center; cursor:pointer; margin-bottom:12px;";
+        const useWrap = el("label"); useWrap.classList.add("pt-usewrap");
         const useCb = el("input"); useCb.type = "checkbox"; useCb.checked = usingBiz;
         useWrap.appendChild(useCb); useWrap.appendChild(el("span", null, "Use business hours"));
         body.appendChild(useWrap);
 
         const help = el("p", "cell-muted", "When on, this " + wOne.toLowerCase() + " follows the business hours. Turn off to set their own weekly hours.");
-        help.style.cssText = "font-size:12.5px; margin:-6px 0 12px;";
+        help.classList.add("pt-help");
         body.appendChild(help);
 
         // Seed the editor with the resource's custom hours, or the business hours
         // as a starting point when they have none yet.
         const ed = buildHoursEditor(r.hours || bizHours);
         const edWrap = el("div"); edWrap.appendChild(ed.root); body.appendChild(edWrap);
-        const syncVis = () => { edWrap.style.display = useCb.checked ? "none" : ""; };
+        const syncVis = () => { edWrap.classList.toggle("u-hidden", useCb.checked); };
         useCb.onchange = syncVis; syncVis();
 
         // ── Appointment lengths & buffer (optional; blank = use business value) ──
         const durHead = el("h3", null, "Appointment lengths & buffer");
-        durHead.style.cssText = "font-size:13px; font-weight:600; margin:18px 0 4px; padding-top:14px; border-top:1px solid var(--line);";
+        durHead.classList.add("pt-durhead");
         body.appendChild(durHead);
         const durHelp = el("p", "cell-muted", "Leave a box blank to use the business default (shown as the placeholder). Set a number to give this " + wOne.toLowerCase() + " their own length for that service.");
-        durHelp.style.cssText = "font-size:12.5px; margin:0 0 12px;";
+        durHelp.classList.add("pt-durhelp");
         body.appendChild(durHelp);
 
         const resDur = (r.durations && typeof r.durations === "object") ? r.durations : {};
         const durInputs = {}; // serviceKey → input
         const mkRow = (labelText, placeholder, value) => {
-          const row = el("div"); row.style.cssText = "display:flex; align-items:center; gap:10px; margin-bottom:8px;";
-          const lab = el("label", null, labelText); lab.style.cssText = "flex:1; font-size:13px;";
+          const row = el("div"); row.classList.add("pt-row5");
+          const lab = el("label", null, labelText); lab.classList.add("pt-lab3");
           const inp = el("input", "input"); inp.type = "number"; inp.min = "1"; inp.step = "1";
-          inp.placeholder = String(placeholder); inp.style.cssText = "width:110px; margin-bottom:0;";
+          inp.placeholder = String(placeholder); inp.classList.add("pt-inp");
           if (value != null && value !== "") inp.value = String(value);
-          const unit = el("span", "cell-muted", "min"); unit.style.cssText = "font-size:12px;";
+          const unit = el("span", "cell-muted", "min"); unit.classList.add("pt-unit");
           row.appendChild(lab); row.appendChild(inp); row.appendChild(unit);
           return { row, inp };
         };
@@ -5254,10 +5254,10 @@
         });
         if (!(bizServices || []).length) {
           const none = el("p", "cell-muted", "No services defined yet — add services on the Fields page to set custom lengths.");
-          none.style.cssText = "font-size:12.5px; margin:0 0 8px;"; body.appendChild(none);
+          none.classList.add("pt-none2"); body.appendChild(none);
         }
         // Buffer row (separated a touch from the per-service rows).
-        const bufWrap = el("div"); bufWrap.style.cssText = "margin-top:10px;";
+        const bufWrap = el("div"); bufWrap.classList.add("pt-bufwrap");
         const bufCur = (typeof r.bufferMin === "number") ? r.bufferMin : "";
         const { row: bufRow, inp: bufInp } = mkRow("Buffer between appointments", bizBuffer, bufCur);
         bufInp.min = "0";
@@ -5310,8 +5310,8 @@
 
     async function secScheduling(panel) {
       panel.innerHTML = `<h2 class="settings-h">Scheduling</h2>
-        <p class="cell-muted" style="font-size:13px;margin-bottom:14px">Set your open hours, how long each service takes, and a buffer between appointments. These drive the Availability Preview on the Bookings page. Services themselves are managed on the Fields page.</p>
-        <div id="sched-host"><div class="cell-muted" style="padding:8px">Loading…</div></div>`;
+        <p class="cell-muted pt-t36">Set your open hours, how long each service takes, and a buffer between appointments. These drive the Availability Preview on the Bookings page. Services themselves are managed on the Fields page.</p>
+        <div id="sched-host"><div class="cell-muted u-pad-8">Loading…</div></div>`;
       const host = App.util.$("#sched-host");
 
       let data;
@@ -5330,18 +5330,18 @@
 
       // ---- Durations + buffer ----
       const durCard = el("div", "settings-card card");
-      durCard.style.marginTop = "16px";
+      durCard.classList.add("u-mt-16");
       durCard.appendChild(el("div", "settings-h", "Appointment lengths"));
 
-      const defWrap = el("div"); defWrap.style.cssText = "display:flex; align-items:center; gap:10px; margin-bottom:12px;";
+      const defWrap = el("div"); defWrap.classList.add("pt-defwrap");
       defWrap.appendChild(el("label", "field-label", "Default length (min)"));
-      const defInp = el("input", "input"); defInp.type = "number"; defInp.min = "1"; defInp.value = cfg.defaultDurationMin || 30; defInp.style.cssText = "margin-bottom:0; width:100px;";
+      const defInp = el("input", "input"); defInp.type = "number"; defInp.min = "1"; defInp.value = cfg.defaultDurationMin || 30; defInp.classList.add("pt-definp");
       defWrap.appendChild(defInp);
       durCard.appendChild(defWrap);
 
-      const bufWrap = el("div"); bufWrap.style.cssText = "display:flex; align-items:center; gap:10px; margin-bottom:14px;";
+      const bufWrap = el("div"); bufWrap.classList.add("pt-bufwrap2");
       bufWrap.appendChild(el("label", "field-label", "Buffer between appts (min)"));
-      const bufInp = el("input", "input"); bufInp.type = "number"; bufInp.min = "0"; bufInp.value = cfg.bufferMin || 0; bufInp.style.cssText = "margin-bottom:0; width:100px;";
+      const bufInp = el("input", "input"); bufInp.type = "number"; bufInp.min = "0"; bufInp.value = cfg.bufferMin || 0; bufInp.classList.add("pt-definp");
       bufWrap.appendChild(bufInp);
       durCard.appendChild(bufWrap);
 
@@ -5349,13 +5349,13 @@
       if (services.length) {
         durCard.appendChild(el("label", "field-label", "Per-service length (min) — blank uses the default"));
         services.forEach((s) => {
-          const r = el("div"); r.style.cssText = "display:flex; align-items:center; gap:10px; margin:6px 0;";
-          const nm = el("div"); nm.textContent = s.label; nm.style.cssText = "width:200px;";
+          const r = el("div"); r.classList.add("pt-r");
+          const nm = el("div"); nm.textContent = s.label; nm.classList.add("pt-nm2");
           const inp = el("input", "input"); inp.type = "number"; inp.min = "1";
           inp.placeholder = String(cfg.defaultDurationMin || 30);
           const cur = (cfg.serviceDurations || {})[s.key];
           inp.value = cur ? String(cur) : "";
-          inp.style.cssText = "margin-bottom:0; width:100px;";
+          inp.classList.add("pt-definp");
           svcDurInputs[s.key] = inp;
           r.appendChild(nm); r.appendChild(inp);
           durCard.appendChild(r);
@@ -5365,9 +5365,9 @@
       }
 
       // Policy: allow double-booking on/off (default off = block, with manual override).
-      const dblWrap = el("div"); dblWrap.style.cssText = "margin-top:16px; padding-top:14px; border-top:1px solid var(--line);";
-      const dblL = el("label"); dblL.style.cssText = "display:flex; gap:8px; align-items:flex-start; cursor:pointer;";
-      const dblChk = el("input"); dblChk.type = "checkbox"; dblChk.checked = cfg.allowDoubleBooking === true; dblChk.style.marginTop = "2px";
+      const dblWrap = el("div"); dblWrap.classList.add("pt-dblwrap");
+      const dblL = el("label"); dblL.classList.add("pt-dbll");
+      const dblChk = el("input"); dblChk.type = "checkbox"; dblChk.checked = cfg.allowDoubleBooking === true; dblChk.classList.add("u-mt-2");
       const dblTxt = el("div");
       dblTxt.appendChild(el("div", "field-label", "Allow double-booking"));
       dblTxt.appendChild(el("p", "cell-muted", "When off, overlapping bookings are blocked. You can still override a manual booking with a warning; the AI receptionist never double-books."));
@@ -5376,7 +5376,7 @@
       durCard.appendChild(dblWrap);
 
       const saveBtn = el("button", "btn btn-primary btn-sm", "Save scheduling");
-      saveBtn.style.marginTop = "16px";
+      saveBtn.classList.add("u-mt-16");
       saveBtn.onclick = async () => {
         // Build the hours payload: every day explicit ([] = closed).
         const hoursOut = hoursEd.getHours();

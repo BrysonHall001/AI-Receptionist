@@ -92,7 +92,7 @@ check("state-pill on tokens", /\.state-pill[^}]*var\(--on-accent\)[^}]*var\(--pi
 //    196 = 171 deferred (renderSettings 82 + mountAiInstructions 41 + reportBuilder 28
 //          + mountGoogleCard 20) + 25 documented dynamics (18+3+3+1).
 const total = count(js);
-check(`portal.js total inline = 196 (171 deferred to 5b + 25 documented)`, total === 196, `found ${total}`);
+check(`portal.js total inline = 27 (Phase 5b completed 2026-07-13: statics 0; dynamics only — was 196 = 169 statics + 27 documented; 5a ledger note: secAccount 2 had been double-counted in the deferred bucket)`, total === 27, `found ${total}`);
 const deferred = ["renderSettings", "mountAiInstructions", "reportBuilder", "mountGoogleCard"];
 console.log(`\nDeferred to Phase 5b: ${deferred.join(", ")} (~171 sites).`);
 
