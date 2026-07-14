@@ -131,3 +131,34 @@ the Dusk strong-border precedent at token level (`.card`, `.stat-card`, `.portal
 Personalities do **not** scale with the Fun intensity slider. Intensity keeps meaning
 scenic/effect strength only; corners/shadows/borders/buttons are fixed per theme (or per the
 user's Design-your-own component choices).
+
+## Layout hardening — the primitives + defensive rules
+
+Five anti-pattern classes cause every "row escapes its card" bug: (a) flex children without
+`min-width: 0`; (b) action rows that neither wrap nor shrink; (c) fixed pixel widths inside
+flexible containers; (d) unhandled long text in constrained cells; (e) grids without
+`minmax(0, …)` floors. The fixes are systemic:
+
+**Defensive base rules** — `.input`, `.search-input`, `.pop-input` carry `min-width: 0` so form
+controls shrink inside flex rows; `.search-input` is confined to `max-width: 100%` of its
+CONTAINER (never the viewport); long-text sites (`.user-name`, `.user-role`, `.widget-title`,
+table `.cell-truncate`) ellipsize.
+
+**The primitives** (use these instead of ad-hoc flex divs):
+- `.toolbar` — filter/search/actions rows: wraps, children shrink, search-type inputs flex
+  (`flex: 1 1 auto; min-width: 0`).
+- `.actions-row` — button groups: gap + `flex-wrap: wrap`; children keep intrinsic size, the
+  row never overflows.
+- `.stack` / `.stack--tight` / `.stack--loose` — vertical, gaps on the spacing scale.
+- `.split` — space-between with safe shrinking (`min-width: 0` down the chain).
+- `.grow` — the flexible-child helper (`flex: 1 1 auto; min-width: 0`).
+
+**Documented aliases** — these long-standing shared containers carry the same declarations in
+place and count as the pattern: `.table-toolbar` (+ `.toolbar-left`/`.toolbar-right`/
+`.filter-chips`), `.modal-foot`, `.user-actions`, `.cm-libheadrow`, `.portal-actions`,
+`.intg-bar`, `.section-head`, `.rb-head`, `.reports-bar`, `.fields-section-head`.
+
+**Judgment rule** — bespoke layout engines (calendar grid, kanban lanes, flow canvas, composer,
+map) stay bespoke; primitives are for the repeated generic patterns only.
+
+The five anti-patterns are counted by `designAudit.ts` and ratcheted like every other counter.

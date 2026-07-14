@@ -359,9 +359,10 @@
         prev.src = prefs.logo;
         logoCard.appendChild(prev);
       }
-      const logoControls = el("div");
-      logoControls.style.cssText = "display:flex;align-items:center;gap:10px;margin-top:" + (prefs.logo ? "10px" : "0") + ";flex-wrap:wrap";
-      const logoFile = el("input"); logoFile.type = "file"; logoFile.accept = "image/png,image/jpeg"; logoFile.className = "input"; logoFile.style.flex = "1";
+      // layout hardening: the logo controls row is the actions-row primitive (was an
+      // ad-hoc inline flex); the conditional top margin rides the existing utility.
+      const logoControls = el("div", "actions-row" + (prefs.logo ? " u-mt-10" : ""));
+      const logoFile = el("input"); logoFile.type = "file"; logoFile.accept = "image/png,image/jpeg"; logoFile.className = "input grow"; // hardening: .grow replaces the inline flex
       logoFile.onchange = async () => {
         const f = logoFile.files[0]; if (!f) return;
         if (f.type !== "image/png" && f.type !== "image/jpeg") { toast("Logo must be a PNG or JPEG image", true); logoFile.value = ""; return; }
@@ -389,8 +390,7 @@
       logoCard.appendChild(logoControls);
       wrap.appendChild(logoCard);
 
-      const saveBar = el("div");
-      saveBar.style.marginTop = "14px";
+      const saveBar = el("div", "actions-row u-mt-14"); // hardening: actions-row primitive
       const saveBtn = el("button", "btn btn-primary btn-sm", "Save as new theme…");
       saveBar.appendChild(saveBtn);
       wrap.appendChild(saveBar);

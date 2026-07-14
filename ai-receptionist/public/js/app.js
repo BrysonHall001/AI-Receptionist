@@ -670,7 +670,7 @@
     // Admin-tier in a portal: Sign out (a little under half width) + Impersonate as an
     // equal-width button to its right. Everyone else: Sign out unchanged (full width).
     if (isPortal && isAdminTier) {
-      const actionRow = el("div", "user-actions");
+      const actionRow = el("div", "user-actions actions-row"); // layout hardening: adopts the actions-row primitive (wraps at squeeze — acceptance case 2)
       const logoutBtn = el("button", "btn btn-ghost btn-sm user-action-half", "Sign out");
       logoutBtn.id = "logout-btn";
       const imp = buildImpersonationControl();

@@ -15,6 +15,19 @@
 //                    (12, 13, 14, 16, 18, 22, 28). Same exempt blocks in styles.css.
 //   inlineStyle      style.cssText assignments, .style.<prop> = assignments, and style="
 //                    attributes inside JS-built HTML strings (and static HTML files).
+// Layout-hardening counters (ratcheted; CSS-only, styles.css; deterministic best-effort
+// static heuristics — determinism matters more than perfection, like the rawHex line rule):
+//   flexControlNoShrink  base control rules (.input / .search-input / .pop-input) missing the
+//                        defensive min-width: 0 (anti-pattern a: flex children that refuse to shrink).
+//   actionsRowNoWrap     flex rules whose selector names an actions/foot/toolbar row but whose
+//                        body lacks flex-wrap (anti-pattern b: button rows that overflow).
+//   fixedWidthNoEscape   rules with a fixed width >= 100px and NO max-width and NO flex basis —
+//                        a fixed child with no escape hatch inside flexible parents (anti-pattern c).
+//   nowrapNoEllipsis     white-space: nowrap with neither overflow nor text-overflow — long text
+//                        with no truncation strategy (anti-pattern d).
+//   frTrackNoFloor       grid-template-columns using bare fr tracks without a minmax() floor
+//                        (anti-pattern e; the benign single full-width "1fr" track is excluded).
+// THEMES preset rules and #theme-scene/.sc- scenic rules are exempt, same as the color counters.
 // Informational (NOT ratcheted yet):
 //   distinctSpacingValues  distinct px values across padding/margin/gap in styles.css.
 //
@@ -33,10 +46,56 @@ import { resolve, join, basename } from "path";
 export const TYPE_SCALE_PX = [12, 13, 14, 16, 18, 22, 28];
 
 export interface FileCounts { rawHex: number; offScaleFontSize: number; inlineStyle: number; }
+export interface LayoutCounts {
+  flexControlNoShrink: number;
+  actionsRowNoWrap: number;
+  fixedWidthNoEscape: number;
+  nowrapNoEllipsis: number;
+  frTrackNoFloor: number;
+}
+export const LAYOUT_COUNTERS: (keyof LayoutCounts)[] = ["flexControlNoShrink", "actionsRowNoWrap", "fixedWidthNoEscape", "nowrapNoEllipsis", "frTrackNoFloor"];
 export interface AuditResult {
   files: Record<string, FileCounts>;
   totals: FileCounts;
+  layout: LayoutCounts;
   info: { distinctSpacingValues: number };
+}
+
+// ---- Layout anti-pattern scan (styles.css). Exported standalone so tests can run it on
+// synthetic CSS (e.g. the negative check: inject an offender, confirm the count rises). ----
+export function auditLayoutPatterns(css: string): LayoutCounts {
+  const out: LayoutCounts = { flexControlNoShrink: 0, actionsRowNoWrap: 0, fixedWidthNoEscape: 0, nowrapNoEllipsis: 0, frTrackNoFloor: 0 };
+  // Strip comments first so a comment above a rule never merges into its "selector".
+  css = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const seenControls = new Set<string>();
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const sel = m[1].trim(); const body = m[2];
+    if (sel.includes("data-theme") || sel.includes("#theme-scene") || sel.includes(".sc-") || /^(from|to|\d)/.test(sel)) continue;
+    // (a) the base control rules must carry min-width: 0
+    for (const ctrl of [".input", ".search-input", ".pop-input"]) {
+      if (sel === ctrl && !seenControls.has(ctrl)) {
+        seenControls.add(ctrl);
+        if (!body.includes("min-width: 0")) out.flexControlNoShrink++;
+      }
+    }
+    const isFlex = /display:\s*(inline-)?flex/.test(body);
+    // (b) named action/footer/toolbar rows that are flex but never wrap. A descendant
+    // BUTTON/element inside such a row (e.g. ".x-toolbar button.y") is not itself a row —
+    // only selectors whose LAST compound names the actions/foot/toolbar class count.
+    const last = sel.split(",")[0].trim().split(/\s+/).pop() || "";
+    if (isFlex && /(actions|foot\b|-foot|toolbar)/.test(last) && !body.includes("flex-wrap")) out.actionsRowNoWrap++;
+    // (c) fixed width >= 100px with no escape hatch (no max-width, no flex basis)
+    if (/(?:^|;)\s*width:\s*\d{3,}px/.test(body) && !body.includes("max-width") && !/flex\s*:/.test(body)) out.fixedWidthNoEscape++;
+    // (d) nowrap text with no truncation strategy
+    if (body.includes("white-space: nowrap") && !body.includes("overflow") && !body.includes("text-overflow")) out.nowrapNoEllipsis++;
+    // (e) bare fr grid tracks without a minmax() floor (single full-width "1fr" excluded)
+    for (const g of body.matchAll(/grid-template-columns:\s*([^;]+)/g)) {
+      const v = g[1].trim();
+      if (v === "1fr") continue;
+      if (/\bfr\b|\dfr/.test(v) && !v.includes("minmax(")) out.frTrackNoFloor++;
+    }
+  }
+  return out;
 }
 
 const pub = resolve(__dirname, "../../public");
@@ -143,7 +202,7 @@ export function runAudit(): AuditResult {
     add(name, countJsOrHtml(readFileSync(join(pub, name), "utf8"), false));
   }
 
-  return { files, totals, info: { distinctSpacingValues: cssCounts.spacing.size } };
+  return { files, totals, layout: auditLayoutPatterns(css), info: { distinctSpacingValues: cssCounts.spacing.size } };
 }
 
 export const BASELINE_PATH = resolve(__dirname, "designBaseline.json");
@@ -156,7 +215,7 @@ export function readBaseline(): AuditResult | null {
 function sortedBaseline(r: AuditResult): string {
   const files: Record<string, FileCounts> = {};
   Object.keys(r.files).sort().forEach((k) => (files[k] = r.files[k]));
-  return JSON.stringify({ files, totals: r.totals, info: r.info }, null, 2) + "\n";
+  return JSON.stringify({ files, totals: r.totals, layout: r.layout, info: r.info }, null, 2) + "\n";
 }
 
 if (require.main === module) {
@@ -171,6 +230,7 @@ if (require.main === module) {
   }
   console.log("  " + "-".repeat(70));
   console.log(`  ${"TOTAL".padEnd(24)} rawHex=${String(r.totals.rawHex).padStart(4)}  offScaleFontSize=${String(r.totals.offScaleFontSize).padStart(3)}  inlineStyle=${String(r.totals.inlineStyle).padStart(4)}`);
+  console.log(`  layout anti-patterns (ratcheted): ` + LAYOUT_COUNTERS.map((k) => `${k}=${r.layout[k]}`).join("  "));
   console.log(`  (informational, not ratcheted) distinctSpacingValues in styles.css: ${r.info.distinctSpacingValues}`);
   if (process.argv.includes("--write-baseline")) {
     writeFileSync(BASELINE_PATH, sortedBaseline(r));

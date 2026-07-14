@@ -131,6 +131,13 @@
     "offScaleFontSize": 10,
     "inlineStyle": 60
   },
+  "layout": {
+    "flexControlNoShrink": 0,
+    "actionsRowNoWrap": 0,
+    "fixedWidthNoEscape": 17,
+    "nowrapNoEllipsis": 16,
+    "frTrackNoFloor": 0
+  },
   "info": {
     "distinctSpacingValues": 21
   }

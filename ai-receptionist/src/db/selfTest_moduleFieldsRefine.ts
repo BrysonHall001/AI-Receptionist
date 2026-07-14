@@ -43,7 +43,9 @@ check(/\.mf-modules-row \{ display: flex; flex-wrap: wrap/.test(css), "modules r
 
 // (3) Two-column field library.
 console.log("\n(3) Field library is two columns:");
-check(/\.mf-lib-list \{ display: grid; grid-template-columns: 1fr 1fr/.test(css), "field library list is a 2-column grid");
+// LAYOUT-HARDENING UPDATE: the same 2-column grid, with minmax(0, …) floors so a long
+// field name can't blow the columns out (anti-pattern e fix — not a layout change).
+check(/\.mf-lib-list \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css), "field library list is a 2-column grid (blowout-safe floors)");
 
 // (4) Per-module Terms + caption fix (static).
 console.log("\n(4) Terms are per-module + caption fixed:");

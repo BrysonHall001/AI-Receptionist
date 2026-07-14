@@ -10,7 +10,7 @@
 // prints the reminder to lower the baseline. Lowering is always MANUAL and deliberate:
 //   npx tsx src/db/designAudit.ts --write-baseline
 // The test itself never rewrites the baseline.
-import { runAudit, readBaseline, FileCounts } from "./designAudit";
+import { runAudit, readBaseline, FileCounts, LAYOUT_COUNTERS, LayoutCounts } from "./designAudit";
 
 const failures: string[] = [];
 function check(cond: boolean, label: string) { console.log(`  ${cond ? "\u2713" : "\u2717"} ${label}`); if (!cond) failures.push(label); }
@@ -43,9 +43,23 @@ for (const f of [...allFiles].sort()) {
   }
 }
 
+// Layout-hardening counters (anti-patterns a-e): same one-way rule, totals-level.
+const baseLayout = (baseline as any).layout as LayoutCounts | undefined;
+if (!baseLayout) {
+  check(false, "baseline has no layout counters — run: npx tsx src/db/designAudit.ts --write-baseline");
+} else {
+  for (const k of LAYOUT_COUNTERS) {
+    if (now.layout[k] > baseLayout[k]) {
+      anyIncrease = true;
+      check(false, `layout anti-pattern ${k} increased ${baseLayout[k]} -> ${now.layout[k]} (see docs/design-system.md, Layout hardening)`);
+    } else if (now.layout[k] < baseLayout[k]) anyDecrease = true;
+  }
+}
+
 if (!anyIncrease) {
   check(true, `no counter increased anywhere (baseline totals: rawHex=${baseline.totals.rawHex}, offScaleFontSize=${baseline.totals.offScaleFontSize}, inlineStyle=${baseline.totals.inlineStyle})`);
   console.log(`  current totals: rawHex=${now.totals.rawHex}, offScaleFontSize=${now.totals.offScaleFontSize}, inlineStyle=${now.totals.inlineStyle}`);
+  console.log(`  layout anti-patterns: ` + LAYOUT_COUNTERS.map((k) => `${k}=${now.layout[k]}`).join("  "));
   if (anyDecrease) {
     console.log("  \u2193 counts DECREASED — baseline can be lowered: run npx tsx src/db/designAudit.ts --write-baseline (and commit it)");
   }
