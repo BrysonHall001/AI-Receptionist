@@ -218,7 +218,7 @@
       } else if (def.type === "image") {
         node = el("div", "form-image");
         const preview = el("img", "form-img-preview");
-        if (values[def.key]) preview.src = values[def.key]; else preview.style.display = "none";
+        if (values[def.key]) preview.src = values[def.key]; else preview.classList.add("u-hidden");
         node.appendChild(preview);
         if (!readOnly) {
           const file = el("input"); file.type = "file"; file.accept = "image/*"; file.className = "input";
@@ -226,13 +226,13 @@
             const f = file.files[0]; if (!f) return;
             if (f.size > 1024 * 1024) { App.util.toast("Image must be under 1 MB", true); file.value = ""; return; }
             const r = new FileReader();
-            r.onload = () => { setVal(String(r.result)); preview.src = String(r.result); preview.style.display = "block"; };
+            r.onload = () => { setVal(String(r.result)); preview.src = String(r.result); preview.classList.remove("u-hidden"); preview.classList.add("u-block"); };
             r.readAsDataURL(f);
           };
           node.appendChild(file);
           if (values[def.key]) {
             const rm = el("button", "link-danger", "Remove image");
-            rm.onclick = () => { setVal(""); preview.style.display = "none"; rm.remove(); };
+            rm.onclick = () => { setVal(""); preview.classList.add("u-hidden"); rm.remove(); };
             node.appendChild(rm);
           }
         }

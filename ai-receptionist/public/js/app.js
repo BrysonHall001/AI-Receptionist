@@ -314,7 +314,7 @@
 
   function attachNavBurger(burger, rowEl, href, label, kind) {
     let sx = null, sy = null, dragging = false;
-    burger.style.touchAction = "none";
+    burger.classList.add("u-touch-none");
     // Absorb the click so a burger interaction never navigates the parent link.
     burger.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
     burger.addEventListener("pointerdown", (e) => {
@@ -736,7 +736,7 @@
 
       const pagesRight = el("div", "pages-row-right");
       const presenceStrip = el("div", "presence-strip");
-      presenceStrip.style.cssText = "display:flex;align-items:center;margin-right:2px;";
+      presenceStrip.classList.add("app-presence-strip");
       pagesRight.appendChild(presenceStrip);
       if (App.presence) App.presence.mount(presenceStrip);
       // Settings gear — relocated here (upper-right of the top row) now that the old

@@ -102,8 +102,8 @@
     t.appendChild(el("span", null, esc(message)));
     host.appendChild(t);
     setTimeout(() => {
-      t.style.transition = "opacity .2s ease";
-      t.style.opacity = "0";
+      t.classList.add("toast-fading");
+      
       setTimeout(() => t.remove(), 200);
     }, 2800);
   }

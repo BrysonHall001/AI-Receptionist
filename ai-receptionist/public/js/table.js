@@ -317,7 +317,7 @@
             saveSort();
             render();
           };
-        } else { label.style.cursor = "default"; }
+        } else { label.classList.add("u-cursor-default"); }
         wrap.appendChild(label);
         if (c.sortable !== false && state.sortKey === c.key) wrap.appendChild(el("span", "th-caret", state.sortDir === "asc" ? "▲" : "▼"));
         if (c.filterable !== false) {
@@ -337,8 +337,8 @@
         const tr = el("tr");
         const td = el("td", "cell-muted", "No results match your filters.");
         td.colSpan = span;
-        td.style.textAlign = "center";
-        td.style.padding = "32px";
+        td.classList.add("tbl-empty-cell");
+        
         tr.appendChild(td);
         tb.appendChild(tr);
       } else {
@@ -402,11 +402,11 @@
       // Pager controls (only when pagination is active).
       if (pageSize > 0) {
         const pager = el("div", "table-pager");
-        pager.style.cssText = "display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 0 2px;";
+        pager.classList.add("tbl-pager");
         const prev = el("button", "btn btn-ghost btn-sm", "‹ Prev");
         const next = el("button", "btn btn-ghost btn-sm", "Next ›");
         const ind = el("span", "table-pager-info", `Page ${state.page + 1} of ${totalPages}`);
-        ind.style.cssText = "color:var(--ink-faint);font-size:13px;";
+        ind.classList.add("txt-faint", "pt-fs-sm");
         prev.disabled = state.page <= 0;
         next.disabled = state.page >= totalPages - 1;
         prev.onclick = () => { if (state.page > 0) { state.page--; render(); } };
@@ -618,7 +618,7 @@
     const modal = el("div", "modal");
     modal.innerHTML = `<div class="modal-head"><h2>${esc(options.title || "Manage columns")}</h2><button class="icon-btn" id="mc-close">&times;</button></div>`;
     const body = el("div", "modal-body");
-    const help = el("p", "cell-muted", options.help || (noReorder ? "Check to show." : "Check to show, drag to reorder.")); help.style.marginBottom = "10px";
+    const help = el("p", "cell-muted", options.help || (noReorder ? "Check to show." : "Check to show, drag to reorder.")); help.classList.add("u-mb-10");
     body.appendChild(help);
     const list = el("div", "mc-list"); body.appendChild(list);
     function paint() {

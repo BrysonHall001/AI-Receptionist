@@ -100,6 +100,8 @@ function countJsOrHtml(src: string, isThemeJs: boolean): FileCounts {
   // the feature. Exempt ONLY when the file carries the explicit <scene-exempt> marker,
   // so the exemption is visible in the file itself rather than silently configured here.
   if (src.includes("// <scene-exempt>")) return { rawHex: 0, offScaleFontSize: 0, inlineStyle: 0 };
+  // Plumbing exemption (mop-up): theme.js's style writes ARE the theming mechanism.
+  if (src.includes("// <plumbing-exempt>")) return { rawHex: 0, offScaleFontSize: 0, inlineStyle: 0 };
   let rawHex = 0;
   if (!isThemeJs) {
     for (const line of src.split("\n")) {

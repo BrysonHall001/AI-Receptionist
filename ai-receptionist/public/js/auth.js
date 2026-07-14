@@ -85,7 +85,7 @@
       <p class="auth-sub">Enter a new password for your account.</p>
       <label class="field-label">New password</label>
       <input id="reset-pass" class="input" type="password" placeholder="At least 10 characters" />
-      <p class="auth-sub" style="margin-top:6px">Use at least 10 characters, mixing at least two of: lowercase, uppercase, numbers, or symbols.</p>
+      <p class="auth-sub u-mt-6">Use at least 10 characters, mixing at least two of: lowercase, uppercase, numbers, or symbols.</p>
       <button id="reset-btn" class="btn btn-primary btn-block">Update password</button>
       <a class="auth-link" href="#/login">Back to sign in</a>`;
     shell(form);

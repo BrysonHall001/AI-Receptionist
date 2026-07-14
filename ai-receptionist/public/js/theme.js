@@ -1,3 +1,6 @@
+// <plumbing-exempt> theme.js IS the theming plumbing: its style/setProperty work applies
+// tenant Appearance and theme tokens at runtime (the sanctioned mechanism itself). Exempt
+// from the design ratchet by this marker, honored by designAudit.ts. Deleting it re-enables counting.
 // Per-PORTAL theming on the client (branding shared by everyone in the portal).
 // The Appearance pane loads/saves the PORTAL's theme via /api/theme; the server
 // resolves it by tenant. Only PORTAL_ADMIN/SUPER_ADMIN see the editing controls

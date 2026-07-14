@@ -14,7 +14,7 @@
     s.textContent = `
       .ib-card{border:1px solid var(--line);border-radius:var(--radius-sm);padding:16px;margin:0 0 14px;background:var(--panel)}
       .ib-head{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:10px}
-      .ib-name{font-weight:600;font-size:15px;border:1px solid transparent;border-radius:6px;padding:4px 6px;background:transparent;color:inherit;min-width:200px}
+      .ib-name{font-weight:600;font-size:var(--text-base);border:1px solid transparent;border-radius:6px;padding:4px 6px;background:transparent;color:inherit;min-width:200px}
       .ib-name:focus{border-color:var(--line);background:var(--gray-soft);outline:none}
       .ib-row{display:flex;align-items:center;gap:8px;margin:6px 0}
       .ib-label{font-size:12px;color:var(--ink-faint);width:90px;flex:0 0 auto}
@@ -31,13 +31,13 @@
       .ib-toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-faint)}
       .ib-calls{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;font-size:12px}
       .ib-call{display:flex;gap:8px;align-items:center;padding:3px 0;color:var(--ink-faint)}
-      .ib-pill{font-size:11px;padding:1px 7px;border-radius:999px;font-weight:600}
+      .ib-pill{font-size:var(--text-xs);padding:1px 7px;border-radius:999px;font-weight:600}
       .ib-pill.ok{background:color-mix(in srgb,var(--green) 18%,transparent);color:var(--green)}
       .ib-pill.no{background:color-mix(in srgb,var(--amber) 20%,transparent);color:var(--amber)}
       .ib-adv{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
       .ib-adv summary{cursor:pointer;font-size:12px;color:var(--ink-faint)}
       .ib-adv .ib-adv-body{font-size:12px;color:var(--ink-faint);margin-top:8px}
-      .ib-adv pre{background:var(--gray-soft);border-radius:var(--radius-sm);padding:8px;overflow:auto;font-size:11px;margin:6px 0}
+      .ib-adv pre{background:var(--gray-soft);border-radius:var(--radius-sm);padding:8px;overflow:auto;font-size:var(--text-xs);margin:6px 0}
     `;
     document.head.appendChild(s);
   }
@@ -129,10 +129,10 @@
       } catch (e) { toast(e.message, true); }
     };
     const viewCalls = el("button", "btn btn-ghost btn-sm", "Recent activity");
-    const callsBox = el("div", "ib-calls"); callsBox.style.display = "none";
+    const callsBox = el("div", "ib-calls u-hidden");
     viewCalls.onclick = async () => {
       if (callsBox.style.display === "none") {
-        callsBox.style.display = "block"; callsBox.innerHTML = "<div class='muted'>Loading…</div>";
+        callsBox.classList.remove("u-hidden"); callsBox.classList.add("u-block"); callsBox.innerHTML = "<div class='muted'>Loading…</div>";
         try {
           const calls = await App.portalApi(`/api/inbound/${ep.id}/calls`);
           callsBox.innerHTML = "";
@@ -146,10 +146,10 @@
             row.appendChild(pill); row.appendChild(txt); callsBox.appendChild(row);
           });
         } catch (e) { callsBox.innerHTML = ""; callsBox.appendChild(el("div", "muted", esc(e.message))); }
-      } else { callsBox.style.display = "none"; }
+      } else { callsBox.classList.add("u-hidden"); }
     };
     const del = el("button", "btn btn-ghost btn-sm", "Delete link");
-    del.style.marginLeft = "auto";
+    del.classList.add("u-ml-auto");
     del.onclick = async () => {
       if (!(await App.ui.confirmModal({ title: "Delete link", message: "Delete this lead capture link? It will stop working immediately.", confirmText: "Delete link" }))) return;
       try { await App.portalApi(`/api/inbound/${ep.id}`, { method: "DELETE" }); rerender(); toast("Link deleted."); }
@@ -190,7 +190,7 @@
 
     const wrap = el("div");
     const add = el("button", "btn btn-primary btn-sm", "+ New lead capture link");
-    add.style.marginBottom = "12px";
+    add.classList.add("u-mb-12");
     add.onclick = async () => {
       try { await App.portalApi("/api/inbound", { method: "POST", body: JSON.stringify({ name: "New lead capture link", mapping: {} }) }); render(host); }
       catch (e) { toast(e.message, true); }

@@ -18,12 +18,12 @@
     "js/app.js": {
       "rawHex": 0,
       "offScaleFontSize": 0,
-      "inlineStyle": 10
+      "inlineStyle": 8
     },
     "js/auth.js": {
       "rawHex": 0,
       "offScaleFontSize": 0,
-      "inlineStyle": 1
+      "inlineStyle": 0
     },
     "js/automations.js": {
       "rawHex": 0,
@@ -53,7 +53,7 @@
     "js/fields.js": {
       "rawHex": 0,
       "offScaleFontSize": 0,
-      "inlineStyle": 4
+      "inlineStyle": 1
     },
     "js/flowPreview.js": {
       "rawHex": 0,
@@ -62,8 +62,8 @@
     },
     "js/inbound.js": {
       "rawHex": 0,
-      "offScaleFontSize": 3,
-      "inlineStyle": 5
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
     },
     "js/learn.js": {
       "rawHex": 0,
@@ -82,8 +82,8 @@
     },
     "js/presence.js": {
       "rawHex": 0,
-      "offScaleFontSize": 1,
-      "inlineStyle": 2
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
     },
     "js/reports.js": {
       "rawHex": 0,
@@ -93,12 +93,12 @@
     "js/table.js": {
       "rawHex": 0,
       "offScaleFontSize": 0,
-      "inlineStyle": 8
+      "inlineStyle": 2
     },
     "js/theme.js": {
       "rawHex": 0,
-      "offScaleFontSize": 1,
-      "inlineStyle": 9
+      "offScaleFontSize": 0,
+      "inlineStyle": 0
     },
     "js/themeScene.js": {
       "rawHex": 0,
@@ -108,12 +108,12 @@
     "js/util.js": {
       "rawHex": 0,
       "offScaleFontSize": 0,
-      "inlineStyle": 2
+      "inlineStyle": 0
     },
     "js/webgl-sunset.js": {
-      "rawHex": 1,
+      "rawHex": 0,
       "offScaleFontSize": 0,
-      "inlineStyle": 2
+      "inlineStyle": 0
     },
     "styles.css": {
       "rawHex": 43,
@@ -127,9 +127,9 @@
     }
   },
   "totals": {
-    "rawHex": 44,
-    "offScaleFontSize": 15,
-    "inlineStyle": 92
+    "rawHex": 43,
+    "offScaleFontSize": 10,
+    "inlineStyle": 60
   },
   "info": {
     "distinctSpacingValues": 31

@@ -1942,6 +1942,17 @@ body[data-theme="academia"] {
 .chip-on { background: var(--green-soft); color: var(--green); }
 .chip-off { background: var(--gray-soft); color: var(--ink-faint); }
 
+/* ===== Design mop-up: shared infrastructure ===== */
+.u-touch-none { touch-action: none; }
+.app-presence-strip { display: flex; align-items: center; margin-right: 2px; }
+.tbl-empty-cell { text-align: center; padding: 32px; }
+.tbl-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 0 2px; }
+.pres-dot { width: 27px; height: 27px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: 700; user-select: none; flex: 0 0 auto; background: var(--swatch); color: var(--dot-ink, var(--ink)); border: 2px solid var(--topbar-bg); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.pres-dot.overlap { margin-left: -8px; }
+.pres-dot.pres-more { background: var(--gray-soft); color: var(--ink); box-shadow: none; }
+.toast-fading { transition: opacity .2s ease; opacity: 0; }
+.u-mt-6 { margin-top: 6px; }
+
 /* (Deep Sea, Cherry Blossom, Terminal, and Brutalist themes retired.) */
 
 

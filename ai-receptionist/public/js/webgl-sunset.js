@@ -1,3 +1,5 @@
+// <scene-exempt> Golden Hour scenic renderer (WebGL) — same treatment as themeScene.js:
+// its inline styles are the feature. Marker honored by designAudit.ts.
 // ============================================================================
 // EXPERIMENTAL, ISOLATED, REVERSIBLE: a WebGL (Three.js) volumetric Golden Hour
 // sky for the "sunset" theme ONLY. This is a separate, self-contained module.

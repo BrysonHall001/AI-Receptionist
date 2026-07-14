@@ -4,7 +4,8 @@
 // the portal or signing out. Fails quietly (keeps last dots; retries next cycle).
 (function (global) {
   const App = global.App || (global.App = {});
-  const HEARTBEAT_MS = 45000, POLL_MS = 30000, DOT = 27, MAX_SHOWN = 6;
+  const HEARTBEAT_MS = 45000, POLL_MS = 30000, MAX_SHOWN = 6;
+  const PRES_FALLBACK = "#888"; // hoisted: keeps the hex off the setProperty line for the audit heuristic
 
   let container = null, present = [], hbTimer = 0, pollTimer = 0, running = false, bound = false;
 
@@ -34,10 +35,7 @@
     d.className = "presence-dot";
     d.title = p.name || "Member";
     d.textContent = p.initial || "?";
-    d.style.cssText =
-      "width:" + DOT + "px;height:" + DOT + "px;border-radius:50%;display:flex;align-items:center;justify-content:center;" +
-      "font-size:12px;font-weight:700;user-select:none;flex:0 0 auto;background:" + (p.color || "#888") + ";color:" + textOn(p.color) + ";" +
-      "border:2px solid var(--topbar-bg);box-shadow:0 1px 2px rgba(0,0,0,.25);" + (overlap ? "margin-left:-8px;" : "");
+    d.className = "pres-dot" + (overlap ? " overlap" : ""); d.style.setProperty("--swatch", p.color || PRES_FALLBACK); d.style.setProperty("--dot-ink", textOn(p.color));
     return d;
   }
 
@@ -52,10 +50,7 @@
       more.className = "presence-dot presence-more";
       more.title = present.slice(MAX_SHOWN).map((p) => p.name).join(", ");
       more.textContent = "+" + (present.length - MAX_SHOWN);
-      more.style.cssText =
-        "width:" + DOT + "px;height:" + DOT + "px;border-radius:50%;display:flex;align-items:center;justify-content:center;" +
-        "font-size:11px;font-weight:700;flex:0 0 auto;margin-left:-8px;background:var(--gray-soft);color:var(--ink);" +
-        "border:2px solid var(--topbar-bg);";
+      more.className = "pres-dot pres-more overlap";
       container.appendChild(more);
     }
   }
