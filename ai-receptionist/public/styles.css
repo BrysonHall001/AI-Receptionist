@@ -129,8 +129,17 @@
   --rule-accent: var(--accent);    /* the short section-signature accent rule */
   --rule-w: 28px;                  /* accent-rule length */
   --heading-weight: 800;           /* confident page/section headline weight */
-  --modal-radius: 14px;            /* migrated off a hardcoded 14px literal */
+  --modal-radius: calc(var(--radius) + 4px); /* 10+4 = the same 14px; modals now FOLLOW the corners dimension */
   --modal-width: 460px;            /* migrated off a hardcoded 460px literal */
+
+  /* ============ DESIGN PHASE 9b — personality dimension tokens ============
+     Theme presets bundle these four dimensions (corners / shadows / borders / buttons)
+     via their body[data-theme] blocks; Design-your-own can override per-user. The base
+     values below ARE the "soft / standard / hairline / soft" personality (Clean Light).
+     Pills/badges/stat-pill stay 999px ALWAYS; the eyebrow/type system never changes. */
+  --card-border: var(--line);      /* card-family border COLOR (borders=strong -> --line-strong; generalizes the Dusk precedent) */
+  --card-border-w: 1px;            /* card-family border WIDTH (never 2px anywhere) */
+  --btn-pad-x: 14px;               /* button horizontal padding (pill personalities widen to 18px) */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -262,7 +271,7 @@ body {
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
   font-family: var(--font-ui); font-size: var(--text-sm); font-weight: var(--btn-weight);
-  padding: 8px 14px; border-radius: var(--btn-radius);
+  padding: 8px var(--btn-pad-x); border-radius: var(--btn-radius);
   min-height: var(--control-h); line-height: var(--leading-tight);
   border: 1px solid transparent; cursor: pointer;
   transition: transform var(--transition), background var(--transition), border var(--transition);
@@ -291,7 +300,7 @@ body {
 /* ---------- Stat cards ---------- */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
 .stat-card {
-  background: var(--panel); border: 1px solid var(--line);
+  background: var(--panel); border: var(--card-border-w) solid var(--card-border);
   border-radius: var(--radius); padding: var(--card-pad);
   box-shadow: var(--shadow);
 }
@@ -316,7 +325,7 @@ body {
 .section-head .muted { color: var(--ink-faint); font-size: var(--text-sm); }
 
 .card {
-  background: var(--panel); border: 1px solid var(--line);
+  background: var(--panel); border: var(--card-border-w) solid var(--card-border);
   border-radius: var(--card-radius); overflow: hidden; box-shadow: var(--card-shadow);
 }
 
@@ -328,7 +337,7 @@ body {
 @media (max-width: 640px) { .tenants-panel-grid { grid-template-columns: 1fr; } }
 
 /* Compact Table | Panels segmented toggle (master-hub Tenants toolbar). */
-.view-toggle { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.view-toggle { display: inline-flex; border: 1px solid var(--control-border); border-radius: var(--radius-sm); overflow: hidden; background: var(--panel); } /* Phase 9b: segmented controls take corner+border dims (8px -> the 7px token; convergence intended) */
 .view-toggle-btn { border: 0; background: transparent; color: var(--ink-soft); font-size: var(--text-xs); font-weight: 600; padding: 4px 12px; cursor: pointer; line-height: 1.2; }
 .view-toggle-btn + .view-toggle-btn { border-left: 1px solid var(--line); }
 .view-toggle-btn:hover { background: var(--gray-soft); color: var(--ink); }
@@ -538,7 +547,7 @@ tbody tr:hover { background: var(--row-hover); }
 .input {
   width: 100%; font-family: var(--font-ui); font-size: var(--text-base);
   padding: 8px 12px; border: 1px solid var(--control-border);
-  border-radius: var(--btn-radius); background: var(--control-bg); color: var(--ink);
+  border-radius: var(--radius-sm); background: var(--control-bg); color: var(--ink); /* Phase 9b: inputs take corners via the --radius-sm path (same 7px default; pill BUTTONS no longer round the inputs) */
   min-height: var(--control-h); line-height: var(--leading-tight);
   margin-bottom: var(--form-gap);
 }
@@ -660,7 +669,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 
 /* ---------- Master portal grid ---------- */
 .portal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(244px, 1fr)); gap: 14px; }
-.portal-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
+.portal-card { background: var(--panel); border: var(--card-border-w) solid var(--card-border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
 .portal-card-head { display: flex; align-items: center; justify-content: space-between; }
 .portal-mark { width: 36px; height: 36px; border-radius: 9px; background: var(--ink); color: var(--on-accent); display: grid; place-items: center; font-weight: 800; font-size: var(--text-md); }
 .portal-name { font-weight: 700; font-size: var(--text-base); }
@@ -979,7 +988,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 .widget-card .drag-handle { cursor: grab; opacity: 0.35; transition: opacity var(--transition); }
 .widget-card:hover .drag-handle { opacity: 0.7; }
 .widget-card .drag-handle:active { cursor: grabbing; }
-.widget-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; display: flex; flex-direction: column; overflow: hidden; }
+.widget-card { background: var(--panel); border: var(--card-border-w) solid var(--card-border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; display: flex; flex-direction: column; overflow: hidden; }
 .widget-kpi { min-height: 150px; }
 .widget-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .widget-title { font-weight: 700; font-size: var(--text-base); }
@@ -1103,6 +1112,9 @@ body[data-theme="neutral"] {
   --line: #e6e8ea; --line-strong: #898d92;
   --accent: #2f6f8f; --accent-soft: #e9f1f5; --accent-strong: #2b6380;
   --row-hover: #f1f5f7;
+  /* Phase 9b personality: soft / crisp / hairline / rect */
+  --shadow: 0 1px 2px rgba(20,20,30,0.10); --shadow-lg: 0 6px 24px rgba(20,20,30,0.14);
+  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Frutiger Aero (fun, flagship) ---- */
@@ -1118,8 +1130,11 @@ body[data-theme="aero"] {
   --sidebar-bg: #eef8fe; --topbar-bg: #eaf6fe;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
   --font-display: "Nunito", "Segoe UI", system-ui, sans-serif;
-  --radius: 18px; --radius-sm: 13px;
-  --shadow: 0 6px 22px rgba(20,110,160,0.16), inset 0 1px 0 rgba(255,255,255,0.85);
+/* Phase 9b personality:round / blended / hairline / PILL — its 18/13 ad-hoc radii converge onto the
+     canonical round steps; the glossy card/button flourishes below stay untouched on top. */
+  --radius: 16px; --radius-sm: 12px;
+  --shadow: 0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06); --shadow-lg: 0 18px 60px rgba(20,20,30,0.16);
+  --btn-radius: 999px; --btn-weight: 600; --btn-pad-x: 18px;
   background: url("/themes/bubbles.svg") repeat, radial-gradient(120% 90% at 50% -10%, #b6f3ff 0%, rgba(182,243,255,0) 55%), linear-gradient(165deg, #36b6f5 0%, #6fd6ff 28%, #a7efe2 62%, #c8ffdd 100%) fixed;
 }
 /* solid surfaces (legibility): opaque panels with a soft aero shadow, no blur */
@@ -1135,7 +1150,7 @@ body[data-theme="aero"] .sidebar { background: var(--sidebar-bg); }
 /* glossy candy buttons with a glassy top highlight */
 body[data-theme="aero"] .btn-primary {
   background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
-  color: var(--on-accent); border: none; border-radius: 13px; position: relative; overflow: hidden;
+  color: var(--on-accent); border: none; border-radius: var(--btn-radius); position: relative; overflow: hidden;
   box-shadow: 0 4px 12px rgba(10,130,190,0.45), inset 0 1px 0 rgba(255,255,255,0.55);
 }
 body[data-theme="aero"] .btn-primary::before {
@@ -1160,8 +1175,13 @@ body[data-theme="dusk"] {
   --topbar-bg: #140f33;
   --font-ui: "Poppins", "Segoe UI", system-ui, sans-serif;
   --font-display: "Orbitron", "Poppins", system-ui, sans-serif;
-  --shadow: 0 0 0 1px rgba(255,61,240,0.10), 0 4px 18px rgba(0,0,0,0.55);
-  --shadow-lg: 0 10px 40px rgba(0,0,0,0.7);
+/* Phase 9b personality:sharp / crisp / STRONG / rect (user-specified; glow flourishes stay untouched on top;
+     the crisp dark shadow keeps its signature 1px neon ring layer) */
+  --radius: 3px; --radius-sm: 2px;
+  --shadow: 0 0 0 1px rgba(255,61,240,0.10), 0 1px 2px rgba(0,0,0,0.45);
+  --shadow-lg: 0 6px 24px rgba(0,0,0,0.55);
+  --card-border: var(--line-strong);
+  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
   background:
     radial-gradient(120% 70% at 50% 120%, rgba(255,61,240,0.28) 0%, rgba(255,61,240,0) 55%),
     radial-gradient(90% 60% at 50% -10%, rgba(34,224,255,0.18) 0%, rgba(34,224,255,0) 60%),
@@ -1175,8 +1195,7 @@ body[data-theme="dusk"] .btn-primary {
   box-shadow: 0 0 14px rgba(34,224,255,0.6), inset 0 0 10px rgba(34,224,255,0.22);
 }
 body[data-theme="dusk"] .nav-item.active { box-shadow: 0 0 14px rgba(255,61,240,0.5); border: 1px solid rgba(255,61,240,0.5); }
-body[data-theme="dusk"] .card,
-body[data-theme="dusk"] .settings-card { border: 1px solid var(--line-strong); }
+/* Phase 9b: dusk's strong card border now flows from --card-border (the generalized precedent). */
 
 /* ---- Cottage Warm (fun, cottagecore) ---- */
 body[data-theme="cottage"] {
@@ -1188,7 +1207,8 @@ body[data-theme="cottage"] {
   --row-hover: #f1e8d6; --on-accent: #fff;
   --font-ui: "Segoe UI", Candara, "Trebuchet MS", system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
-  --radius: 12px; --radius-sm: 9px;
+/* Phase 9b personality:soft / standard / hairline / soft — its 12/9 ad-hoc radii converge onto the
+     soft base steps; its warm-tinted STANDARD shadow stays (palette-derived alphas, the dark-theme precedent). */
   --shadow: 0 1px 2px rgba(120,90,50,0.06), 0 6px 18px rgba(120,90,50,0.10);
 }
 body[data-theme="cottage"] .page-title,
@@ -1213,6 +1233,11 @@ body[data-theme="cottage"] .brand-mark { background: var(--accent); color: #fff;
 .theme-custom-row label { font-size: var(--text-sm); color: var(--ink-soft); }
 .theme-custom input[type="color"] { width: 48px; height: 30px; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; padding: 0; }
 .theme-custom select.input { max-width: 220px; }
+/* Phase 9b — Design-your-own COMPONENT STYLE group (inside the designer card). */
+.theme-comp-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 6px 0 0; padding-top: 10px; border-top: 1px solid var(--line); }
+.th-comp-reset { background: none; border: none; color: var(--ink-faint); font-size: var(--text-xs); cursor: pointer; text-decoration: underline; padding: 2px 4px; }
+.th-comp-reset:hover { color: var(--accent); }
+.theme-comp-seg { flex: 0 0 auto; }
 
 /* Fun intensity slider (Appearance settings, beneath the Fun dropdown) */
 .fun-slider-row { max-width: 420px; margin: 2px 0 6px; }
@@ -1244,6 +1269,10 @@ body[data-theme="slate"] {
   --line: #e1e6eb; --line-strong: #89919b;
   --accent: #4a6076; --accent-soft: #e7edf2; --accent-strong: #43566a;
   --gray-soft: #eef1f4; --row-hover: #f1f4f7;
+  /* Phase 9b personality: sharp / crisp / hairline / rect */
+  --radius: 3px; --radius-sm: 2px;
+  --shadow: 0 1px 2px rgba(20,20,30,0.10); --shadow-lg: 0 6px 24px rgba(20,20,30,0.14);
+  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Basic: Steel Blue ---- */
@@ -1253,6 +1282,10 @@ body[data-theme="steel"] {
   --line: #e2e7ee; --line-strong: #88919c;
   --accent: #2a4d7a; --accent-soft: #e6edf6; --accent-strong: #26456d;
   --gray-soft: #eef2f7; --row-hover: #eef3f9;
+  /* Phase 9b personality: sharp / crisp / hairline / rect */
+  --radius: 3px; --radius-sm: 2px;
+  --shadow: 0 1px 2px rgba(20,20,30,0.10); --shadow-lg: 0 6px 24px rgba(20,20,30,0.14);
+  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Basic: Sand ---- */
@@ -1262,6 +1295,9 @@ body[data-theme="sand"] {
   --line: #e6dcc8; --line-strong: #938873;
   --accent: #936737; --accent-soft: #f1e6d5; --accent-strong: #825c33;
   --amber: #b07a25; --amber-soft: #f5e8d2; --gray-soft: #efe6d6; --row-hover: #f3ead9;
+  /* Phase 9b personality: round / blended / hairline / soft */
+  --radius: 16px; --radius-sm: 12px;
+  --shadow: 0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06); --shadow-lg: 0 18px 60px rgba(20,20,30,0.16);
 }
 
 /* ---- Basic: High Contrast (accessibility-friendly) ---- */
@@ -1272,10 +1308,14 @@ body[data-theme="contrast"] {
   --accent: #0b5bd3; --accent-soft: #d6e4fb; --accent-strong: #0b52bc;
   --green: #0a7a3f; --green-soft: #d8f0e2; --amber: #8a5a00; --amber-soft: #f6e6c8;
   --red: #b00000; --red-soft: #ffd9d9; --gray-soft: #ededed; --row-hover: #eef3fc; --on-accent: #ffffff;
+  /* Phase 9b personality: sharp / crisp / STRONG / rect (accessibility-first: maximum edge definition;
+     the old 2px card/input borders converge onto the 1px-at-black strong bundle — no 2px borders anywhere) */
+  --radius: 3px; --radius-sm: 2px;
+  --shadow: 0 1px 2px rgba(20,20,30,0.10); --shadow-lg: 0 6px 24px rgba(20,20,30,0.14);
+  --card-border: var(--line-strong);
+  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
-body[data-theme="contrast"] .input { border-width: 2px; }
 body[data-theme="contrast"] .input:focus { box-shadow: 0 0 0 3px #0b5bd3; border-color: #0b5bd3; }
-body[data-theme="contrast"] .card, body[data-theme="contrast"] .settings-card { border: 2px solid var(--line-strong); }
 body[data-theme="contrast"] .btn-primary:disabled { opacity: 0.55; }
 
 /* ---- Basic: Graphite (dim) ---- */
@@ -1286,7 +1326,9 @@ body[data-theme="graphite"] {
   --accent: #9b99f2; --accent-soft: #2f3140; --accent-strong: #a7a5f4;
   --green: #46c98f; --green-soft: #1c2e26; --amber: #d6a23a; --amber-soft: #2a2414; --red: #df6f61; --red-soft: #2a1614;
   --gray-soft: #383b41; --row-hover: #393c42; --scrim: rgba(0,0,0,0.5); --on-accent: #14120e;
-  --shadow: 0 1px 2px rgba(0,0,0,0.25), 0 4px 16px rgba(0,0,0,0.35);
+  /* Phase 9b personality: soft / crisp / hairline / rect (dark: alphas derive from black) */
+  --shadow: 0 1px 2px rgba(0,0,0,0.45); --shadow-lg: 0 6px 24px rgba(0,0,0,0.55);
+  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Basic: Midnight (deep true-dark) ---- */
@@ -1297,7 +1339,10 @@ body[data-theme="midnight"] {
   --accent: #7674f1; --accent-soft: #181830; --accent-strong: #8785f2;
   --green: #2fbf86; --green-soft: #0f241b; --amber: #cf9a3a; --amber-soft: #241d10; --red: #df6557; --red-soft: #281312;
   --gray-soft: #14141e; --row-hover: #15151f; --scrim: rgba(0,0,0,0.65); --on-accent: #14120e;
-  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.5);
+  /* Phase 9b personality: sharp / crisp / hairline / rect (dark: alphas derive from black) */
+  --radius: 3px; --radius-sm: 2px;
+  --shadow: 0 1px 2px rgba(0,0,0,0.45); --shadow-lg: 0 6px 24px rgba(0,0,0,0.55);
+  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
 }
 
 /* ---- Fun: Vaporwave (bg: grid over gradient) ---- */
@@ -1311,7 +1356,11 @@ body[data-theme="vaporwave"] {
   --topbar-bg: #1f1442;
   --font-ui: "Poppins", "Segoe UI", system-ui, sans-serif;
   --font-display: "Poppins", system-ui, sans-serif;
-  --radius: 16px; --radius-sm: 11px;
+/* Phase 9b personality:SHARP / crisp / STRONG / PILL (deliberate retro clash) — 16/11 converge onto sharp. */
+  --radius: 3px; --radius-sm: 2px;
+  --shadow: 0 1px 2px rgba(0,0,0,0.45); --shadow-lg: 0 6px 24px rgba(0,0,0,0.55);
+  --card-border: var(--line-strong);
+  --btn-radius: 999px; --btn-weight: 600; --btn-pad-x: 18px;
   background:
     url("/themes/vapor-grid.svg") repeat,
     radial-gradient(90% 70% at 15% 10%, rgba(255,106,213,0.35) 0%, rgba(255,106,213,0) 55%),
@@ -1332,6 +1381,8 @@ body[data-theme="forest"] {
   --gray-soft: #21342a; --row-hover: #21342a; --scrim: rgba(8,16,12,0.6); --on-accent: #14120e;
   --font-ui: "Segoe UI", Candara, system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, serif;
+  /* Phase 9b personality: soft / blended / hairline / soft (dark: alphas derive from black) */
+  --shadow: 0 8px 30px rgba(0,0,0,0.35), 0 2px 10px rgba(0,0,0,0.25); --shadow-lg: 0 18px 60px rgba(0,0,0,0.5);
   background: url("/themes/leaves.svg") repeat, #1c2a22 fixed;
 }
 body[data-theme="forest"] .page-title, body[data-theme="forest"] .settings-h { font-family: var(--font-display); }
@@ -1348,7 +1399,9 @@ body[data-theme="sunset"] {
   --gray-soft: #f7e6d8; --row-hover: #fdeedd; --on-accent: #fff;
   --sidebar-bg: #fff2e4; --topbar-bg: #fff2e4;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
-  --radius: 14px; --radius-sm: 10px;
+/* Phase 9b personality:round / blended / hairline / soft — its 14/10 ad-hoc radii converge onto the round steps. */
+  --radius: 16px; --radius-sm: 12px;
+  --shadow: 0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06); --shadow-lg: 0 18px 60px rgba(20,20,30,0.16);
   background: linear-gradient(160deg, #ffd9a8 0%, #ffb98f 35%, #f5907a 65%, #b98fd0 100%) fixed;
 }
 
@@ -1363,7 +1416,10 @@ body[data-theme="dreamcore"] {
   --sidebar-bg: #f7effb; --topbar-bg: #f7effb;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
   --font-display: "Nunito", "Segoe UI", system-ui, sans-serif;
-  --radius: 18px; --radius-sm: 13px;
+/* Phase 9b personality:round / blended / hairline / PILL (user-specified) — 18/13 converge onto the round steps. */
+  --radius: 16px; --radius-sm: 12px;
+  --shadow: 0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06); --shadow-lg: 0 18px 60px rgba(20,20,30,0.16);
+  --btn-radius: 999px; --btn-weight: 600; --btn-pad-x: 18px;
   background: linear-gradient(180deg, #d6f5ec 0%, #cfe8ff 22%, #e3d4f7 52%, #ffd9ec 82%, #ffe6d4 100%) fixed;
 }
 
@@ -1378,9 +1434,17 @@ body[data-theme="academia"] {
   --sidebar-bg: #201710; --topbar-bg: #201710;
   --font-ui: "Segoe UI", Candara, system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+/* Phase 9b personality:sharp / standard / STRONG / rect — its black-derived STANDARD shadow stays. */
+  --radius: 3px; --radius-sm: 2px;
   --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.5);
+  --card-border: var(--line-strong);
+  --btn-radius: 4px; --btn-weight: 600; --btn-pad-x: 14px;
   background: radial-gradient(120% 90% at 50% 40%, #2a1e14 0%, #1a130d 60%, #120c07 100%) fixed;
 }
+
+/* Phase 9b — Borders=strong themes: tables take the stronger rules too (header band + row rules). */
+body[data-theme="contrast"] thead th, body[data-theme="dusk"] thead th, body[data-theme="academia"] thead th, body[data-theme="vaporwave"] thead th,
+body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[data-theme="academia"] tbody td, body[data-theme="vaporwave"] tbody td { border-bottom-color: var(--line-strong); }
 
 /* ===== Design Phase 3: Settings surface classes =====
    Migrated from inline styles in portal.js's Settings renderers. Values preserved 1:1

@@ -80,13 +80,13 @@ check(/\.btn-primary \{ background: var\(--accent\); color: var\(--on-accent\); 
 check(/\.btn-ghost \{ background: var\(--panel\); color: var\(--ink-soft\); border-color: var\(--control-border\); \}/.test(css), "ghost borders share --control-border with inputs");
 const btnRule = css.slice(css.indexOf(".btn {"), css.indexOf("}", css.indexOf(".btn {")));
 const inputRule = css.slice(css.indexOf(".input {"), css.indexOf("}", css.indexOf(".input {")));
-check(btnRule.includes("min-height: var(--control-h)") && inputRule.includes("min-height: var(--control-h)") && inputRule.includes("border-radius: var(--btn-radius)"), "controls still match buttons in height + radius (form rows align)");
+check(btnRule.includes("min-height: var(--control-h)") && inputRule.includes("min-height: var(--control-h)") && inputRule.includes("border-radius: var(--radius-sm)"), "controls match buttons in height; inputs corner via the --radius-sm path (9b: pill buttons don't round inputs)");
 
 // ---------- (4) cards & modals ----------
 console.log("\n(4) cards & modals:");
 check(/--shadow: 0 1px 2px rgba\(20, 20, 30, 0\.05\), 0 2px 8px rgba\(20, 20, 30, 0\.08\);/.test(css), "level-1 --shadow retuned crisper (all cards inherit)");
-check(/\.card \{\s*background: var\(--panel\); border: 1px solid var\(--line\);/.test(css), "cards: hairline --line border on --panel");
-check(/--modal-radius: 14px;/.test(css) && /--modal-width: 460px;/.test(css), "--modal-radius / --modal-width minted");
+check(/\.card \{\s*background: var\(--panel\); border: var\(--card-border-w\) solid var\(--card-border\);/.test(css), "cards: hairline border on the card-border tokens (9b routed the color/width through the personality layer)");
+check(/--modal-radius: calc\(var\(--radius\) \+ 4px\);/.test(css) && /--modal-width: 460px;/.test(css), "--modal-radius / --modal-width minted (radius follows the corners dimension since 9b; same 14px default)");
 const modalRule = css.slice(css.indexOf("\n.modal {") + 1, css.indexOf("}", css.indexOf("\n.modal {")));
 check(modalRule.includes("max-width: var(--modal-width)") && modalRule.includes("border-radius: var(--modal-radius)") && !modalRule.includes("460px") && !modalRule.includes("14px"), ".modal metrics on tokens — NO hardcoded 14px/460px literals remain in the rule");
 check(/\.modal-foot \{ display: flex; justify-content: flex-end; gap: var\(--sp-2\);/.test(css), "consistent modal footer button alignment (.modal-foot)");

@@ -37,6 +37,14 @@ export interface UserTheme {
   // Optional per-portal white-label logo, stored as a PNG/JPEG data URL (same
   // base64-in-DB approach the custom-field image type uses). Absent = default branding.
   logo?: string | null;
+  // Phase 9b — Design-your-own COMPONENT STYLE choices. Four optional string fields;
+  // absent = the active preset's own personality (backward compatible: legacy saves
+  // load unchanged). When present they override the preset's personality client-side,
+  // exactly mirroring how custom colors override preset colors.
+  corners?: string;  // "sharp" | "soft" | "round"
+  shadows?: string;  // "crisp" | "standard" | "blended"
+  borders?: string;  // "hairline" | "strong"
+  buttons?: string;  // "rect" | "soft" | "pill"
 }
 
 // ---- Legacy per-portal shape (kept only to import old Tenant.theme data) ----
@@ -81,6 +89,15 @@ export const FONTS = [
 ] as const;
 
 export const FONT_IDS: string[] = FONTS.map((f) => f.id);
+
+// Phase 9b — the valid values for the four component-personality dimensions.
+export const COMPONENT_OPTIONS: Record<string, readonly string[]> = {
+  corners: ["sharp", "soft", "round"],
+  shadows: ["crisp", "standard", "blended"],
+  borders: ["hairline", "strong"],
+  buttons: ["rect", "soft", "pill"],
+} as const;
+export const COMPONENT_KEYS = Object.keys(COMPONENT_OPTIONS) as Array<"corners" | "shadows" | "borders" | "buttons">;
 
 export const MAX_CUSTOMS = 24;
 export const MAX_NAME_LEN = 40;
@@ -152,7 +169,14 @@ export function sanitizeUserTheme(input: unknown): UserTheme {
   }
   const logo = sanitizeLogo(obj.logo);
   const funLevel = clampFunLevel(obj.funLevel);
-  const outBase = { active, customs, funLevel };
+  const outBase: UserTheme = { active, customs, funLevel };
+  // Phase 9b component-style fields: keep ONLY valid values; anything else (absent,
+  // wrong type, unknown value) is dropped — absent means "use the preset's personality",
+  // so legacy payloads round-trip byte-identical and a bad value can never stick.
+  for (const k of COMPONENT_KEYS) {
+    const v = obj[k];
+    if (typeof v === "string" && COMPONENT_OPTIONS[k].includes(v)) (outBase as any)[k] = v;
+  }
   return logo ? { ...outBase, logo } : outBase;
 }
 

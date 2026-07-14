@@ -71,3 +71,63 @@ zero component edits, and it composes with themes exactly like every existing to
 - `public/js/theme.js` — its whole job is color plumbing (hex validation, luminance math,
   `setProperty` on tokens); `setProperty` on tokens is the sanctioned styling mechanism and is
   never counted as an inline style.
+
+## Phase 9b — theme component personalities
+
+Each theme preset carries a **personality bundle**: component-level token overrides along four
+dimensions, expressed inside its existing `body[data-theme="…"]` block (same override mechanism
+as its palette). The base `:root` values ARE the `soft / standard / hairline / soft` personality,
+so Clean Light (`""`) needs no overrides and stays pixel-identical.
+
+### The four dimensions — canonical token values
+
+**Corners** (sets `--radius` / `--radius-sm`; `--btn-radius` and `--card-radius` follow via the
+indirection layer unless the Buttons dimension overrides `--btn-radius`):
+- `sharp` — `--radius: 3px; --radius-sm: 2px`
+- `soft` — the base (`10px` / `7px`)
+- `round` — `--radius: 16px; --radius-sm: 12px` (buttons ride `--radius-sm` = 12px unless Buttons=pill)
+- `--modal-radius: calc(var(--radius) + 4px)` — modals follow corners automatically (base = the same 14px).
+
+**Shadows** (sets `--shadow` / `--shadow-lg`; `--card-shadow` follows). Light themes derive
+alphas from the ink-family `rgba(20,20,30,…)`; **dark themes derive from black**, per the
+original Dark preset's precedent:
+- `crisp` (hairline-dominant, lean on borders) — light: `0 1px 2px rgba(20,20,30,0.10)` /
+  lg `0 6px 24px rgba(20,20,30,0.14)`; dark: `0 1px 2px rgba(0,0,0,0.45)` / lg `0 6px 24px rgba(0,0,0,0.55)`
+- `standard` — the 9a base (dark presets keep their existing black-derived standard; Cottage keeps
+  its warm-tinted standard — palette-derived alphas are the sanctioned variation)
+- `blended` (large-blur, low-alpha, dual-layer, airy) — light: `0 8px 30px rgba(20,20,30,0.10),
+  0 2px 10px rgba(20,20,30,0.06)` / lg `0 18px 60px rgba(20,20,30,0.16)`; dark: `0 8px 30px
+  rgba(0,0,0,0.35), 0 2px 10px rgba(0,0,0,0.25)` / lg `0 18px 60px rgba(0,0,0,0.5)`
+
+**Borders** (sets `--card-border` + `--card-border-w`; controls already read `--control-border`):
+- `hairline` — the base: cards on `--line`, 1px
+- `strong` — `--card-border: var(--line-strong)` (the Dusk precedent, generalized), plus the
+  strong themes' tables take `--line-strong` on the header band + row rules (one grouped rule).
+- **No 2px borders anywhere** — High Contrast's old 2px card/input borders converged onto the
+  1px-at-black strong bundle.
+
+**Buttons** (sets `--btn-radius` / `--btn-weight` / `--btn-pad-x`):
+- `rect` — `4px / 600 / 14px`
+- `soft` — the base (`--btn-radius: var(--radius-sm)` / `650` / `14px`)
+- `pill` — `999px / 600 / 18px` (extra x-pad so pills don't look pinched)
+
+### Minted tokens
+
+`--card-border-w` (card-family border width, always 1px), `--btn-pad-x` (button horizontal
+padding), plus `--card-border` — the card-family border *color* channel, needed to generalize
+the Dusk strong-border precedent at token level (`.card`, `.stat-card`, `.portal-card`,
+`.widget-card` all read it).
+
+### Exemptions (personality-independent)
+
+- **Pills / badges / stat-pill end caps stay `999px` ALWAYS** — status chips don't sharpen.
+- **The eyebrow / type system never changes** with personality.
+- Tables take **borders only, never shadows**.
+- Scenic renderers and per-theme flourishes (Dusk glows/text-shadows, Aero gloss, Vaporwave's
+  neon card ring) sit untouched **on top of** the bundles.
+
+### Fun intensity
+
+Personalities do **not** scale with the Fun intensity slider. Intensity keeps meaning
+scenic/effect strength only; corners/shadows/borders/buttons are fixed per theme (or per the
+user's Design-your-own component choices).

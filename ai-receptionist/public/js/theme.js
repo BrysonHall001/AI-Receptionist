@@ -36,6 +36,49 @@
   const CUSTOM_VARS = ["--bg", "--ink", "--sidebar-bg", "--topbar-bg", "--panel", "--panel-2", "--line", "--line-strong", "--row-hover", "--font-ui"];
   function clearCustom() { const s = document.body.style; CUSTOM_VARS.forEach((v) => s.removeProperty(v)); }
 
+  // ---- Phase 9b: component-personality overrides (Design-your-own COMPONENT STYLE) ----
+  // The four optional fields (corners/shadows/borders/buttons) on the saved theme override
+  // the active preset's personality via body.style.setProperty — the SAME precedence
+  // mechanism custom colors use (inline style beats the data-theme block). Absent field =
+  // the preset's own personality shows through. Values mirror docs/design-system.md.
+  const COMPONENT_VARS = ["--radius", "--radius-sm", "--shadow", "--shadow-lg", "--card-border", "--btn-radius", "--btn-weight", "--btn-pad-x"];
+  function clearComponents() { const s = document.body.style; COMPONENT_VARS.forEach((v) => s.removeProperty(v)); }
+  const COMPONENT_DEFAULTS = { corners: "soft", shadows: "standard", borders: "hairline", buttons: "soft" };
+  function isDarkSurface() {
+    // Shadows derive alphas from black on dark surfaces (the Dark preset's precedent).
+    const panel = getComputedStyle(document.body).getPropertyValue("--panel").trim();
+    return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(panel) ? luminance(panel) <= 0.5 : false;
+  }
+  const SHADOWS = {
+    light: {
+      crisp: ["0 1px 2px rgba(20,20,30,0.10)", "0 6px 24px rgba(20,20,30,0.14)"],
+      standard: ["0 1px 2px rgba(20,20,30,0.05), 0 2px 8px rgba(20,20,30,0.08)", "0 10px 40px rgba(20,20,30,0.16)"],
+      blended: ["0 8px 30px rgba(20,20,30,0.10), 0 2px 10px rgba(20,20,30,0.06)", "0 18px 60px rgba(20,20,30,0.16)"],
+    },
+    dark: {
+      crisp: ["0 1px 2px rgba(0,0,0,0.45)", "0 6px 24px rgba(0,0,0,0.55)"],
+      standard: ["0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4)", "0 10px 40px rgba(0,0,0,0.6)"],
+      blended: ["0 8px 30px rgba(0,0,0,0.35), 0 2px 10px rgba(0,0,0,0.25)", "0 18px 60px rgba(0,0,0,0.5)"],
+    },
+  };
+  function applyComponents(ut) {
+    clearComponents();
+    ut = ut || {};
+    const s = document.body.style;
+    if (ut.corners === "sharp") { s.setProperty("--radius", "3px"); s.setProperty("--radius-sm", "2px"); }
+    else if (ut.corners === "soft") { s.setProperty("--radius", "10px"); s.setProperty("--radius-sm", "7px"); }
+    else if (ut.corners === "round") { s.setProperty("--radius", "16px"); s.setProperty("--radius-sm", "12px"); }
+    if (ut.shadows === "crisp" || ut.shadows === "standard" || ut.shadows === "blended") {
+      const pair = SHADOWS[isDarkSurface() ? "dark" : "light"][ut.shadows];
+      s.setProperty("--shadow", pair[0]); s.setProperty("--shadow-lg", pair[1]);
+    }
+    if (ut.borders === "hairline") s.setProperty("--card-border", "var(--line)");
+    else if (ut.borders === "strong") s.setProperty("--card-border", "var(--line-strong)");
+    if (ut.buttons === "rect") { s.setProperty("--btn-radius", "4px"); s.setProperty("--btn-weight", "600"); s.setProperty("--btn-pad-x", "14px"); }
+    else if (ut.buttons === "soft") { s.setProperty("--btn-radius", "var(--radius-sm)"); s.setProperty("--btn-weight", "650"); s.setProperty("--btn-pad-x", "14px"); }
+    else if (ut.buttons === "pill") { s.setProperty("--btn-radius", "999px"); s.setProperty("--btn-weight", "600"); s.setProperty("--btn-pad-x", "18px"); }
+  }
+
   // Apply a RESOLVED theme: {mode:"preset",preset} or {mode:"custom",custom:{...}}.
   function applyResolved(t) {
     t = t || {};
@@ -71,19 +114,22 @@
     if (App.scene) App.scene.mount(id);
   }
 
-  // Resolve a UserTheme {active, customs, funLevel} and apply it.
+  // Resolve a UserTheme {active, customs, funLevel, components} and apply it.
+  // Component choices are applied AFTER the resolved theme so they override the active
+  // preset's personality — the same precedence order custom colors already use.
   function applyUserTheme(ut) {
     ut = ut || {};
     applyFun(ut.funLevel);
     const a = ut.active || {};
     if (a.mode === "custom") {
       const c = (ut.customs || []).find((x) => x.id === a.customId);
-      if (c) { applyResolved({ mode: "custom", custom: c }); return; }
+      if (c) { applyResolved({ mode: "custom", custom: c }); applyComponents(ut); return; }
     }
     applyResolved({ mode: "preset", preset: a.preset || "light" });
+    applyComponents(ut);
   }
 
-  function resetToDefault() { clearCustom(); document.body.dataset.theme = "light"; if (App.scene) App.scene.mount("light"); applyFun(0); }
+  function resetToDefault() { clearCustom(); clearComponents(); document.body.dataset.theme = "light"; if (App.scene) App.scene.mount("light"); applyFun(0); }
 
   // Fun-theme decoration intensity. Validates to a finite 0..1 before touching the
   // CSSOM. Only fun-preset CSS reads --fun, so this is a no-op for basic/custom themes.
@@ -275,6 +321,13 @@
       wrap.appendChild(el("div", "theme-group-label", "Design your own"));
       const designer = el("div", "theme-card theme-custom-card");
       const fontOpts = fonts.map((f) => `<option value="${esc(f.id)}"${f.id === editor.font ? " selected" : ""}>${esc(f.label)}</option>`).join("");
+      // Phase 9b: the four component-style segmented rows. Selected segment = the saved
+      // field, or the dimension's default when the field is absent (preset personality).
+      const compRow = (label, key, opts) => {
+        const cur = prefs[key] || COMPONENT_DEFAULTS[key];
+        const segs = opts.map(([v, l]) => `<button type="button" class="view-toggle-btn${v === cur ? " active" : ""}" data-comp="${key}" data-val="${v}">${l}</button>`).join("");
+        return `<div class="theme-custom-row"><label>${label}</label><div class="view-toggle theme-comp-seg">${segs}</div></div>`;
+      };
       designer.innerHTML = `
         <div class="theme-custom">
           <div class="theme-custom-row"><label>Background color</label><input type="color" id="th-bg" value="${editor.background}"></div>
@@ -283,6 +336,11 @@
           <div class="theme-custom-row"><label>Sidebar color</label><input type="color" id="th-side" value="${editor.sidebar}"></div>
           <div class="theme-custom-row"><label>Font color</label><input type="color" id="th-fg" value="${editor.fontColor}"></div>
           <div class="theme-custom-row"><label>Font</label><select id="th-font" class="input">${fontOpts}</select></div>
+          <div class="theme-comp-head"><span class="eyebrow">Component style</span><button type="button" id="th-comp-reset" class="th-comp-reset">Reset to theme default</button></div>
+          ${compRow("Corners", "corners", [["sharp", "Sharp"], ["soft", "Soft"], ["round", "Round"]])}
+          ${compRow("Shadows", "shadows", [["crisp", "Crisp"], ["standard", "Standard"], ["blended", "Blended"]])}
+          ${compRow("Borders", "borders", [["hairline", "Hairline"], ["strong", "Strong"]])}
+          ${compRow("Buttons", "buttons", [["rect", "Rectangular"], ["soft", "Soft"], ["pill", "Pill"]])}
         </div>`;
       wrap.appendChild(designer);
 
@@ -348,6 +406,24 @@
           font: host.querySelector("#th-font").value,
         };
       }
+      // Phase 9b: component-style segments apply live via setProperty AND persist
+      // immediately (same live-apply as the color pickers; same persist as the preset
+      // selects). Absent field = preset personality; a click sets the field.
+      designer.querySelectorAll(".theme-comp-seg .view-toggle-btn").forEach((b) => {
+        b.onclick = async () => {
+          prefs[b.dataset.comp] = b.dataset.val;
+          designer.querySelectorAll(`.view-toggle-btn[data-comp="${b.dataset.comp}"]`).forEach((x) => x.classList.toggle("active", x === b));
+          applyComponents(prefs); // live, over whatever theme is active
+          try { await persist(); } catch (e) { toast(e.message, true); }
+        };
+      });
+      designer.querySelector("#th-comp-reset").onclick = async () => {
+        ["corners", "shadows", "borders", "buttons"].forEach((k) => { delete prefs[k]; });
+        applyComponents(prefs); // clears the overrides -> the preset's personality returns
+        try { await persist(); toast("Component style reset to the theme default"); } catch (e) { toast(e.message, true); }
+        render();
+      };
+
       // live preview while designing (not persisted until "Save as new theme")
       const preview = () => { readEditor(); applyResolved({ mode: "custom", custom: editor }); };
       ["#th-bg", "#th-panel", "#th-top", "#th-side", "#th-fg"].forEach((id) => { host.querySelector(id).oninput = preview; });
