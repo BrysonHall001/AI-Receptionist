@@ -289,6 +289,8 @@
 
     // prefs is the live, editable PORTAL theme state.
     let prefs = data.theme && data.theme.active ? data.theme : { active: { mode: "preset", preset: "light" }, customs: [] };
+    // Phase 9c: the preview cards scope each theme's full token set; parse it once.
+    const themeVars = await loadThemeVars();
     // editor working colors (live preview only until saved)
     let editor = activeCustomColors() || { ...DEFAULT_CUSTOM };
 
@@ -301,6 +303,16 @@
       const res = await App.portalApi("/api/theme", { method: "PATCH", body: JSON.stringify({ theme: prefs }) });
       prefs = res.theme;
       return prefs;
+    }
+
+    // THE preset-selection path (Phase 9c): extracted verbatim from the old dropdown's
+    // onchange so the coverflow carousels fire the EXACT same select -> apply -> persist
+    // -> re-render sequence. There is exactly one selection path.
+    async function selectPreset(id) {
+      prefs.active = { mode: "preset", preset: id };
+      applyUserTheme(prefs);
+      try { await persist(); } catch (e) { toast(e.message, true); }
+      render();
     }
 
     const clampFun = (v) => { let n = Number(v); if (!isFinite(n)) n = 0; return Math.max(0, Math.min(100, Math.round(n))); };
@@ -318,52 +330,204 @@
     // Continuous "Fun intensity" slider. Lives beneath the Fun dropdown; drives the
     // --fun CSS variable live (0..1) so fun-theme decoration animates smoothly, and
     // only affects fun presets. Persisted (clamped 0..100) via the debounced save.
+    // Phase 9c: the intensity control is a row of 12 segment rectangles (filled = accent,
+    // unfilled = --gray-soft), mapping linearly onto the SAME 0..100 prefs.funLevel field
+    // with the SAME live path (App.theme.applyFun) and the SAME debounced persistence as
+    // the old range input. Click or drag across to fill; keyboard arrows adjust when the
+    // row has focus; the fill animation rides the motion token (reduced-motion = instant).
+    const FUN_SEGS = 12;
     function funSlider() {
       const lvl = clampFun(prefs.funLevel);
       const row = el("div", "fun-slider-row");
+      let segsHtml = "";
+      for (let i = 0; i < FUN_SEGS; i++) segsHtml += `<span class="fun-seg-i" data-i="${i}"></span>`;
       row.innerHTML =
-        `<label class="fun-slider-label" for="fun-range">Fun intensity ` +
+        `<label class="fun-slider-label" for="fun-seg">Fun intensity ` +
         `<span class="cell-muted" style="font-weight:400">— only affects Fun themes</span></label>` +
         `<div class="fun-slider-controls">` +
         `<span class="fun-range-end">Calm</span>` +
-        `<input type="range" id="fun-range" class="fun-range" min="0" max="100" step="1" value="${lvl}" aria-label="Fun intensity">` +
+        `<div class="fun-seg" id="fun-seg" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${lvl}" aria-label="Fun intensity">${segsHtml}</div>` +
         `<span class="fun-range-end">Extra</span>` +
         `<span class="fun-range-val" id="fun-val">${lvl}</span>` +
         `</div>`;
-      const range = row.querySelector("#fun-range");
+      const seg = row.querySelector("#fun-seg");
       const valEl = row.querySelector("#fun-val");
-      range.oninput = () => {
-        const v = clampFun(range.value);
+      const cells = Array.from(row.querySelectorAll(".fun-seg-i"));
+      function paint(v) {
+        const filled = Math.round((v / 100) * FUN_SEGS);
+        cells.forEach((c, i) => c.classList.toggle("fun-seg-i--on", i < filled));
         valEl.textContent = String(v);
+        seg.setAttribute("aria-valuenow", String(v));
+      }
+      function setLevel(v, saveNow) {
+        v = clampFun(v);
         prefs.funLevel = v;
-        App.theme.applyFun(v);   // live, cheap (just sets --fun)
-        scheduleFunSave();       // debounced server save
+        paint(v);
+        App.theme.applyFun(v);   // live, cheap (just sets --fun) — the SAME path as before
+        scheduleFunSave(saveNow ? 0 : undefined); // the SAME debounced server save
+      }
+      const idxToLevel = (i) => Math.round(((i + 1) / FUN_SEGS) * 100);
+      const fromEvent = (e) => {
+        const cell = e.target.closest ? e.target.closest(".fun-seg-i") : null;
+        if (cell) return idxToLevel(Number(cell.dataset.i));
+        const r = seg.getBoundingClientRect();
+        return clampFun(Math.round(((e.clientX - r.left) / Math.max(1, r.width)) * 100));
       };
-      range.onchange = () => { prefs.funLevel = clampFun(range.value); scheduleFunSave(0); }; // save promptly on release
+      let dragging = false;
+      seg.onpointerdown = (e) => { dragging = true; seg.setPointerCapture(e.pointerId); setLevel(fromEvent(e)); };
+      seg.onpointermove = (e) => { if (dragging) setLevel(fromEvent(e)); };
+      seg.onpointerup = (e) => { dragging = false; setLevel(fromEvent(e), true); };
+      seg.onkeydown = (e) => {
+        const step = Math.round(100 / FUN_SEGS);
+        if (e.key === "ArrowLeft") { e.preventDefault(); setLevel(clampFun(prefs.funLevel) - step, true); }
+        else if (e.key === "ArrowRight") { e.preventDefault(); setLevel(clampFun(prefs.funLevel) + step, true); }
+      };
+      paint(lvl);
       return row;
+    }
+
+    // ================= Phase 9c: coverflow carousels + live preview cards =================
+    // The preview card scopes a theme's COMPLETE token set (palette from the THEMES block
+    // in styles.css + that preset's 9b.2 personality tokens) onto the card root, so the
+    // mock renders in ITS theme no matter which theme the app is running.
+    const PALETTE_KEYS = ["--bg", "--panel", "--panel-2", "--ink", "--ink-soft", "--ink-faint", "--line", "--line-strong", "--accent", "--accent-soft", "--accent-strong", "--green", "--green-soft", "--amber", "--amber-soft", "--red", "--red-soft", "--gray-soft", "--row-hover", "--on-accent", "--sidebar-bg", "--topbar-bg", "--font-ui", "--font-display", "--pill-bg"];
+    let _themeVarsCache = null;
+    async function loadThemeVars() {
+      if (_themeVarsCache) return _themeVarsCache;
+      let cssText = "";
+      try { cssText = await fetch("/styles.css").then((r) => r.text()); } catch (e) { cssText = ""; }
+      function blockVars(sel) {
+        const i = cssText.indexOf(sel); const out = {}; if (i < 0) return out;
+        const st = cssText.indexOf("{", i); let d = 1, j = st + 1;
+        while (j < cssText.length && d > 0) { if (cssText[j] === "{") d++; else if (cssText[j] === "}") d--; j++; }
+        const body = cssText.slice(st + 1, j - 1);
+        const re = /(--[\w-]+):\s*([^;]+);/g; let m;
+        while ((m = re.exec(body))) out[m[1]] = m[2].trim();
+        return out;
+      }
+      const root = blockVars(":root {");
+      const perTheme = {};
+      (App._presetIds || []).forEach((id) => { perTheme[id] = id === "light" ? {} : blockVars('body[data-theme="' + id + '"] {'); });
+      _themeVarsCache = { root, perTheme };
+      return _themeVarsCache;
+    }
+
+    // Fun scenic STAND-INS: scenic/WebGL renderers never run in cards — each fun theme's
+    // card background is a static CSS gradient echoing its scenery palette, composed from
+    // that theme's own tokens (scoped on the card, so no raw values here).
+    const GRADIENT_STANDINS = {
+      aero: "linear-gradient(165deg, var(--accent-soft) 0%, var(--bg) 60%, var(--panel-2) 100%)",
+      dusk: "linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--accent) 30%, var(--bg)) 100%)",
+      cottage: "linear-gradient(170deg, var(--panel-2) 0%, var(--bg) 100%)",
+      vaporwave: "linear-gradient(160deg, color-mix(in srgb, var(--accent) 22%, var(--bg)) 0%, var(--bg) 55%, color-mix(in srgb, var(--green) 18%, var(--bg)) 100%)",
+      forest: "linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--accent) 14%, var(--bg)) 100%)",
+      sunset: "linear-gradient(160deg, var(--amber-soft) 0%, var(--accent-soft) 55%, var(--bg) 100%)",
+      dreamcore: "linear-gradient(180deg, var(--green-soft) 0%, var(--accent-soft) 45%, var(--amber-soft) 100%)",
+      academia: "radial-gradient(120% 90% at 50% 40%, var(--panel-2) 0%, var(--bg) 70%)",
+    };
+
+    function hexLum(v) { return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test((v || "").trim()) ? luminance(v.trim()) : 1; }
+
+    // ONE shared preview template: a compact Home-Dashboard mock, pure static markup,
+    // built from the REAL component classes (nav-item/active, stat-pill, thead th, pill,
+    // btn-primary) so it inherits palette AND personality from the scoped tokens.
+    function themePreviewCard(p, vars) {
+      const eff = Object.assign({}, vars.root, vars.perTheme[p.id] || {});
+      const wrap = el("div", "thc-card");
+      wrap.setAttribute("role", "option");
+      wrap.setAttribute("aria-label", p.label);
+      const scope = el("div", "thc-scope");
+      // scope the palette…
+      PALETTE_KEYS.forEach((k) => { if (eff[k]) scope.style.setProperty(k, eff[k]); });
+      // …and the preset's personality tokens (the 9b.2 map, evaluated for THIS theme)
+      const persona = personalityTokens(Object.assign({}, PERSONALITY_DEFAULTS, PRESET_PERSONALITIES[p.id] || {}), hexLum(eff["--panel"]) <= 0.5);
+      Object.keys(persona).forEach((k) => scope.style.setProperty(k, persona[k]));
+      scope.style.background = GRADIENT_STANDINS[p.id] || "var(--bg)";
+      scope.innerHTML =
+        '<div class="thc-app">' +
+        '<div class="thc-topbar"><span class="thc-dot-sm"></span><span class="thc-topline"></span></div>' +
+        '<div class="thc-cols">' +
+        '<div class="thc-side"><span class="nav-item">Home</span><span class="nav-item active">Contacts</span><span class="nav-item">Analytics</span></div>' +
+        '<div class="thc-main">' +
+        '<div class="stat-pill thc-kpi"><div class="stat-pill-value">128</div><div class="stat-pill-cap">Clients</div></div>' +
+        '<div class="card thc-table"><table><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>' +
+        '<tr><td>Avery Lane</td><td><span class="pill success">Done</span></td></tr>' +
+        '<tr><td>Sam Reyes</td><td><span class="pill">Open</span></td></tr>' +
+        '<tr><td>Kai Moss</td><td><span class="pill skipped">Hold</span></td></tr>' +
+        "</tbody></table></div>" +
+        '<span class="btn btn-primary btn-sm thc-btn">New contact</span>' +
+        "</div></div></div>";
+      wrap.appendChild(scope);
+      const name = el("div", "eyebrow thc-name", p.label);
+      wrap.appendChild(name);
+      return wrap;
+    }
+
+    // The coverflow carousel (built once, used for Basic and Fun). Geometry: center flat
+    // scale 1; ±1 rotateY(∓38deg) scale .8; ±2 rotateY(∓55deg) scale .65 (a sliver at the
+    // page edge); |d|>=3 hidden. Five visible max. Transitions ride the motion token;
+    // the global prefers-reduced-motion block makes moves instant snaps. Under 700px the
+    // coverflow flattens to a horizontal snap-scroll row (CSS class thc-flat).
+    function coverflowCarousel(group, items, selectedId, vars) {
+      const root = el("div", "thc-carousel");
+      root.tabIndex = 0;
+      root.setAttribute("role", "listbox");
+      root.setAttribute("aria-label", (group === "basic" ? "Basic" : "Fun") + " themes");
+      const stage = el("div", "thc-stage");
+      let cur = Math.max(0, items.findIndex((p) => p.id === selectedId));
+      const cards = items.map((p, i) => {
+        const c = themePreviewCard(p, vars);
+        c.onclick = () => { if (i !== cur) pick(i); };
+        stage.appendChild(c);
+        return c;
+      });
+      const leftBtn = el("button", "icon-btn thc-arrow thc-arrow-left", "\u2039");
+      leftBtn.type = "button"; leftBtn.setAttribute("aria-label", "Previous theme");
+      const rightBtn = el("button", "icon-btn thc-arrow thc-arrow-right", "\u203a");
+      rightBtn.type = "button"; rightBtn.setAttribute("aria-label", "Next theme");
+      const dots = el("div", "thc-dots");
+      const dotEls = items.map((p, i) => {
+        const d = el("button", "thc-dot");
+        d.type = "button"; d.title = p.label; d.setAttribute("aria-label", p.label);
+        d.onclick = () => pick(i);
+        dots.appendChild(d);
+        return d;
+      });
+      function layout() {
+        cards.forEach((c, i) => {
+          const d = i - cur;
+          c.className = "thc-card " + (d === 0 ? "thc-d0" : d === -1 ? "thc-dm1" : d === 1 ? "thc-dp1" : d === -2 ? "thc-dm2" : d === 2 ? "thc-dp2" : "thc-dhide");
+          c.setAttribute("aria-selected", d === 0 ? "true" : "false");
+        });
+        dotEls.forEach((d, i) => d.classList.toggle("thc-dot--on", i === cur));
+        leftBtn.disabled = cur === 0; rightBtn.disabled = cur === items.length - 1;
+      }
+      function pick(i) {
+        i = Math.max(0, Math.min(items.length - 1, i));
+        if (i === cur) return;
+        cur = i;
+        layout(); // the card rotates to center…
+        selectPreset(items[i].id); // …and centering IS selecting (the ONE shared path)
+      }
+      leftBtn.onclick = () => pick(cur - 1);
+      rightBtn.onclick = () => pick(cur + 1);
+      root.onkeydown = (e) => {
+        if (e.key === "ArrowLeft") { e.preventDefault(); pick(cur - 1); }
+        else if (e.key === "ArrowRight") { e.preventDefault(); pick(cur + 1); }
+      };
+      // <700px: flatten to a snap-scroll row (same click-to-select, same labels)
+      const fit = () => root.classList.toggle("thc-flat", root.clientWidth > 0 && root.clientWidth < 700);
+      if (typeof ResizeObserver !== "undefined") new ResizeObserver(fit).observe(root);
+      setTimeout(fit, 0);
+      root.appendChild(leftBtn); root.appendChild(stage); root.appendChild(rightBtn); root.appendChild(dots);
+      layout();
+      return root;
     }
 
     function swatchHTML(sw) { return (sw || []).map((s) => `<span class="theme-swatch" style="background:${isHex(s) ? s : "transparent"}"></span>`).join(""); }
 
-    function presetSelect(group) {
-      const row = el("div", "theme-dd-row");
-      const sel = document.createElement("select");
-      sel.className = "input theme-dd"; sel.dataset.group = group;
-      const ph = document.createElement("option");
-      ph.value = ""; ph.textContent = group === "basic" ? "Choose a basic theme…" : "Choose a fun theme…";
-      sel.appendChild(ph);
-      presets.filter((p) => p.group === group).forEach((p) => { const o = document.createElement("option"); o.value = p.id; o.textContent = p.label; sel.appendChild(o); });
-      const sw = el("div", "theme-swatches theme-dd-swatches");
-      sel.onchange = async () => {
-        if (!sel.value) return;
-        prefs.active = { mode: "preset", preset: sel.value };
-        applyUserTheme(prefs);
-        try { await persist(); } catch (e) { toast(e.message, true); }
-        render();
-      };
-      row.appendChild(sel); row.appendChild(sw);
-      return row;
-    }
+    // Phase 9c: presetSelect (the two dropdowns) is GONE — the carousels are the only
+    // preset pickers, wired to the same selectPreset path.
 
     function savedSelect() {
       const row = el("div", "theme-dd-row");
@@ -403,13 +567,8 @@
           sel.value = prefs.customs.some((c) => c.id === val) ? val : "";
           const c = prefs.customs.find((x) => x.id === sel.value);
           if (sw) sw.innerHTML = c ? swatchHTML([c.background, c.panel, c.fontColor]) : "";
-        } else {
-          const group = sel.dataset.group;
-          const inGroup = prefs.active.mode === "preset" && presets.some((p) => p.group === group && p.id === prefs.active.preset);
-          sel.value = inGroup ? prefs.active.preset : "";
-          const p = presets.find((x) => x.id === sel.value);
-          if (sw) sw.innerHTML = p ? swatchHTML(p.swatches) : "";
         }
+        // (Phase 9c: the preset-dropdown branch is gone with the dropdowns themselves.)
       });
     }
 
@@ -417,17 +576,30 @@
       host.innerHTML = "";
       const wrap = el("div", "theme-section");
 
-      if (prefs.customs.length) {
-        wrap.appendChild(el("div", "theme-group-label", "Your saved themes"));
-        wrap.appendChild(savedSelect());
-      }
+      // Phase 9c: page intro -> Basic carousel -> Fun carousel + intensity -> two-column
+      // lower zone. The carousels are the ONLY preset pickers (the dropdowns are gone);
+      // the roster + grouping still come from the same source (the /api/theme presets
+      // list), and centering a card fires the same selectPreset path the dropdowns used.
+      wrap.appendChild(el("p", "settings-intro cell-muted", "Pick a theme — the cards are live previews of each theme's colors and component personality. Centering a card applies and saves it."));
+      const activePreset = prefs.active.mode === "preset" ? prefs.active.preset : null;
       wrap.appendChild(el("div", "theme-group-label", "Basic"));
-      wrap.appendChild(presetSelect("basic"));
+      wrap.appendChild(coverflowCarousel("basic", presets.filter((p) => p.group === "basic"), activePreset, themeVars));
       wrap.appendChild(el("div", "theme-group-label", "Fun"));
-      wrap.appendChild(presetSelect("fun"));
+      wrap.appendChild(coverflowCarousel("fun", presets.filter((p) => p.group === "fun"), activePreset, themeVars));
       wrap.appendChild(funSlider());
 
-      wrap.appendChild(el("div", "theme-group-label", "Design your own"));
+      // Two-column lower zone (stacks under ~900px): Design-your-own | Logo/white-label.
+      const lower = el("div", "thc-lower");
+      const lowerLeft = el("div", "thc-lower-col");
+      const lowerRight = el("div", "thc-lower-col");
+      lower.appendChild(lowerLeft); lower.appendChild(lowerRight);
+
+      if (prefs.customs.length) {
+        lowerLeft.appendChild(el("div", "theme-group-label", "Your saved themes"));
+        lowerLeft.appendChild(savedSelect());
+      }
+      // the existing builders are untouched; they just mount into the columns now
+      lowerLeft.appendChild(el("div", "theme-group-label", "Design your own"));
       const designer = el("div", "theme-card theme-custom-card");
       const fontOpts = fonts.map((f) => `<option value="${esc(f.id)}"${f.id === editor.font ? " selected" : ""}>${esc(f.label)}</option>`).join("");
       // Phase 9b.2: the seven personality controls are SLIDERS (0..100). The shown value =
@@ -463,12 +635,12 @@
           ${sliderRow("Nav highlight", "navHighlight")}
           ${sliderRow("Table density", "density")}
         </div>`;
-      wrap.appendChild(designer);
+      lowerLeft.appendChild(designer);
 
       // ---- Logo / White-label (below the Font row). Applies to this portal for
       // everyone, regardless of which theme is active. Reuses the same base64
       // image approach as custom-field images; stored in the portal theme. ----
-      wrap.appendChild(el("div", "theme-group-label", "Logo / White-label"));
+      lowerRight.appendChild(el("div", "theme-group-label", "Logo / White-label"));
       const logoCard = el("div", "theme-card");
       logoCard.style.padding = "14px";
       const logoCap = el("p", "cell-muted");
@@ -509,12 +681,13 @@
         logoControls.appendChild(rm);
       }
       logoCard.appendChild(logoControls);
-      wrap.appendChild(logoCard);
+      lowerRight.appendChild(logoCard);
 
       const saveBar = el("div", "actions-row u-mt-14"); // hardening: actions-row primitive
       const saveBtn = el("button", "btn btn-primary btn-sm", "Save as new theme…");
       saveBar.appendChild(saveBtn);
-      wrap.appendChild(saveBar);
+      lowerLeft.appendChild(saveBar);
+      wrap.appendChild(lower);
       host.appendChild(wrap);
 
       function readEditor() {
