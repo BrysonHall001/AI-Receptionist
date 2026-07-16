@@ -101,6 +101,12 @@ for (const t of THEMES) {
   pair("--green", "--green-soft", "badge text --green on --green-soft");
   pair("--amber", "--amber-soft", "badge text --amber on --amber-soft");
   pair("--red", "--red-soft", "badge text --red on --red-soft");
+  // (c2) MOTION & BRANDING: the default brand is token-driven SVG — the C mark
+  //      (var(--accent)) and wordmark (var(--ink)) must be legible on the surfaces the
+  //      brand renders on: the sidebar header and the auth card panel.
+  if (acc) need(contrast(over(acc, SIDE), SIDE) >= 3, `${t}: brand C mark --accent on sidebar = ${contrast(over(acc, SIDE), SIDE).toFixed(2)}:1 (< 3)`);
+  if (acc) need(contrast(over(acc, PANEL), PANEL) >= 3, `${t}: brand C mark --accent on auth panel = ${contrast(over(acc, PANEL), PANEL).toFixed(2)}:1 (< 3)`);
+  if (ink) need(contrast(over(ink, SIDE), SIDE) >= 4.5, `${t}: brand wordmark --ink on sidebar = ${contrast(over(ink, SIDE), SIDE).toFixed(2)}:1 (< 4.5)`);
   // (c) eyebrow/muted labels over the SCENIC backdrop: fun themes paint literal gradient
   //     stops behind the content; muted text must clear 4.5 against EVERY stop (this is
   //     the Vaporwave "THEMES label barely visible" case the old suite missed).

@@ -411,7 +411,7 @@
     }
 
     async function boot() {
-      host.innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`;
+      App.util.showSkeleton(host, "widgets"); // motion & branding: widget-shaped skeleton (150ms appearance delay)
       // Billing / custom engine path: dashboards + sources come from opts hooks.
       if (opts.loadDashboards || opts.buildSources) {
         try {

@@ -129,7 +129,7 @@
     if (handle.toolbarRight) handle.toolbarRight.insertBefore(manageBtn, handle.toolbarRight.firstChild);
   }
 
-  function loading() { view().innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`; }
+  function loading() { App.util.showSkeleton(view(), "table"); } // motion & branding: shared table skeleton (150ms appearance delay)
 
   // ---------------- Dashboard ----------------
   // (Old hand-built Dashboard page retired — the "#/dashboard" view now renders the persistent Home Dashboard via App.reports.mountHome.)

@@ -933,6 +933,18 @@
   }
 
   async function boot() {
+    // MOTION & BRANDING — full-page first load: the centered brand with the animated C
+    // (slides left, rebounds off the wordmark, settles; ~600ms loop; token-colored;
+    // static under reduced motion). Same 150ms delay rule as skeletons, and the first
+    // route render clears #app, so it can never linger past real content.
+    const loaderT = setTimeout(function () {
+      const app = document.getElementById("app");
+      if (!app || app.childElementCount) return;
+      const l = el("div", "brand-loader");
+      l.id = "boot-loader";
+      l.innerHTML = App.brandLogoSvg;
+      app.appendChild(l);
+    }, 150);
     try {
       const res = await fetch("/api/auth/me", { credentials: "same-origin" });
       const j = res.ok ? await res.json() : null;
@@ -940,10 +952,31 @@
       App.state.features = (j && j.features) || {};
     } catch (e) { App.state.me = null; }
     await App.loadImpersonation(); // so the banner/control reflect state on first paint + after refresh
-    route();
+    clearTimeout(loaderT);
+    const bl = document.getElementById("boot-loader"); if (bl) bl.remove();
+    routeWithMotion(); // first paint is a page change too
   }
 
-  window.addEventListener("hashchange", route);
+  // MOTION & BRANDING — staggered page materialization, ROUTE CHANGES ONLY.
+  // The .page-stagger class is added to the content host right after a navigation and
+  // removed ~400ms later, so blocks inserted by the incoming page (including fast async
+  // fetches) fade-slide in with a 25ms/item stagger capped at 150ms — while re-renders,
+  // re-sorts, and filters inside a page (which happen after the window closes, on the
+  // same route) never re-trigger it. Opacity/transform only; nothing blocks pointers;
+  // the global prefers-reduced-motion block turns it off entirely.
+  function routeWithMotion() {
+    route();
+    requestAnimationFrame(function () {
+      const c = document.querySelector(".content");
+      if (!c) return;
+      c.classList.remove("page-stagger");
+      void c.offsetWidth; // restart the animation window for the new page
+      c.classList.add("page-stagger");
+      clearTimeout(App._staggerT);
+      App._staggerT = setTimeout(function () { c.classList.remove("page-stagger"); }, 400);
+    });
+  }
+  window.addEventListener("hashchange", routeWithMotion);
   App._route = route;
   boot();
 })(typeof window !== "undefined" ? window : globalThis);

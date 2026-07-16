@@ -8,28 +8,84 @@
   // static-file serving or caching, and always sizes correctly). Used by the
   // sidebar header (default branding) and the login page. Sizing is handled in
   // CSS (.brand-logo--full svg / .brand-logo--icon svg / .auth-logo svg).
+  // MOTION & BRANDING: the default brand is THEME-AWARE — the C phone-mark takes
+  // var(--accent) and the "larity" wordmark takes var(--ink), so every preset (and any
+  // custom accent) re-tints the logo instantly. Same geometry as the original asset.
+  // White-label is untouched: an uploaded tenant logo still REPLACES this entirely
+  // (renderBrand's `if (logo)` branch never reaches these constants).
   App.brandLogoSvg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 372 96" role="img" aria-label="Clarity">` +
-    `<g transform="translate(8,12)" fill="#4F4DCA">` +
+    `<g transform="translate(8,12)" fill="var(--accent)" class="brand-c">` +
     `<path d="M58.06 19.94 A27 27 0 1 0 58.06 60.06 L52.04 53.37 A18 18 0 1 1 52.04 26.63 Z"/>` +
     `<ellipse cx="55.05" cy="23.28" rx="13" ry="9" transform="rotate(-48 55.05 23.28)"/>` +
     `<ellipse cx="55.05" cy="56.72" rx="13" ry="9" transform="rotate(48 55.05 56.72)"/>` +
-    `<path d="M58.68 9.76 A14 14 0 0 1 68.36 18.95" fill="none" stroke="#4F4DCA" stroke-width="2.6" stroke-linecap="round"/>` +
-    `<path d="M59.71 5.90 A18 18 0 0 1 72.17 17.72" fill="none" stroke="#4F4DCA" stroke-width="2.6" stroke-linecap="round" opacity="0.6"/>` +
+    `<path d="M58.68 9.76 A14 14 0 0 1 68.36 18.95" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round"/>` +
+    `<path d="M59.71 5.90 A18 18 0 0 1 72.17 17.72" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" opacity="0.6"/>` +
     `</g>` +
-    `<text x="92" y="78" font-family="'Plus Jakarta Sans', 'Helvetica Neue', Arial, sans-serif" font-size="76" font-weight="700" letter-spacing="-2" fill="#211E5C">larity</text>` +
+    `<text x="92" y="78" font-family="'Plus Jakarta Sans', 'Helvetica Neue', Arial, sans-serif" font-size="76" font-weight="700" letter-spacing="-2" fill="var(--ink)" class="brand-word">larity</text>` +
     `</svg>`;
   App.brandIconSvg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="Clarity">` +
-    `<rect width="240" height="240" rx="54" fill="#4F4DCA"/>` +
-    `<g transform="translate(14.7,16) scale(2.6)" fill="#FFFFFF">` +
+    `<rect width="240" height="240" rx="54" fill="var(--accent)"/>` +
+    `<g transform="translate(14.7,16) scale(2.6)" fill="var(--on-accent)">` +
     `<path d="M58.06 19.94 A27 27 0 1 0 58.06 60.06 L52.04 53.37 A18 18 0 1 1 52.04 26.63 Z"/>` +
     `<ellipse cx="55.05" cy="23.28" rx="13" ry="9" transform="rotate(-48 55.05 23.28)"/>` +
     `<ellipse cx="55.05" cy="56.72" rx="13" ry="9" transform="rotate(48 55.05 56.72)"/>` +
-    `<path d="M58.68 9.76 A14 14 0 0 1 68.36 18.95" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" opacity="0.9"/>` +
-    `<path d="M59.71 5.90 A18 18 0 0 1 72.17 17.72" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" opacity="0.6"/>` +
+    `<path d="M58.68 9.76 A14 14 0 0 1 68.36 18.95" fill="none" stroke="var(--on-accent)" stroke-width="2.4" stroke-linecap="round" opacity="0.9"/>` +
+    `<path d="M59.71 5.90 A18 18 0 0 1 72.17 17.72" fill="none" stroke="var(--on-accent)" stroke-width="2.4" stroke-linecap="round" opacity="0.6"/>` +
     `</g>` +
     `</svg>`;
+
+  // MOTION & BRANDING: the small standalone C mark (same geometry as the logo's C),
+  // decorative, token-colored — used inside the shared search box.
+  App.brandCSvg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 8 68 84" aria-hidden="true" focusable="false">` +
+    `<g transform="translate(8,12)" fill="var(--accent)">` +
+    `<path d="M58.06 19.94 A27 27 0 1 0 58.06 60.06 L52.04 53.37 A18 18 0 1 1 52.04 26.63 Z"/>` +
+    `<ellipse cx="55.05" cy="23.28" rx="13" ry="9" transform="rotate(-48 55.05 23.28)"/>` +
+    `<ellipse cx="55.05" cy="56.72" rx="13" ry="9" transform="rotate(48 55.05 56.72)"/>` +
+    `<path d="M58.68 9.76 A14 14 0 0 1 68.36 18.95" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round"/>` +
+    `<path d="M59.71 5.90 A18 18 0 0 1 72.17 17.72" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" opacity="0.6"/>` +
+    `</g></svg>`;
+  // MOTION & BRANDING — shared skeletons. showSkeleton(host, kind) waits
+  // SKELETON_DELAY_MS (150) and only inserts the shimmer if the host is STILL empty —
+  // fast fetches never flash one; the real render simply replaces innerHTML, so the
+  // skeleton can never outlive the data. Shapes match the incoming content: "table" =
+  // a header band + rows; "widgets" = a grid of widget-sized blocks. Shimmer colors
+  // are tokens (--gray-soft / --panel-2); the global reduced-motion block freezes the
+  // sweep into static shapes.
+  App.util.SKELETON_DELAY_MS = 150;
+  App.util.showSkeleton = function (host, kind) {
+    host.innerHTML = "";
+    const t = setTimeout(function () {
+      if (host.childElementCount) return; // data beat the delay — never flash
+      const wrap = document.createElement("div");
+      if (kind === "widgets") {
+        wrap.className = "skel-widgets";
+        wrap.innerHTML = new Array(4).fill('<div class="skel-shimmer skel-widget" aria-hidden="true"></div>').join("");
+      } else {
+        wrap.className = "card skel-table";
+        wrap.setAttribute("aria-busy", "true");
+        wrap.innerHTML = '<div class="skel-shimmer skel-head" aria-hidden="true"></div>' + new Array(6).fill('<div class="skel-shimmer skel-line" aria-hidden="true"></div>').join("");
+      }
+      host.appendChild(wrap);
+    }, App.util.SKELETON_DELAY_MS);
+    return { cancel: function () { clearTimeout(t); } };
+  };
+
+  // THE shared search box: magnifier left (currentColor -> --ink-faint via CSS),
+  // the C mark right (decorative, hidden while the input is non-empty via the pure-CSS
+  // :placeholder-shown sibling rule — no JS state to drift). Wraps the given input;
+  // the input keeps its .search-input class so every existing selector still matches.
+  App.util.searchBox = function (input) {
+    const box = document.createElement("span");
+    box.className = "search-box";
+    box.innerHTML =
+      `<span class="search-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4.2-4.2"/></svg></span>`;
+    box.appendChild(input);
+    box.insertAdjacentHTML("beforeend", `<span class="search-c" aria-hidden="true">${App.brandCSvg}</span>`);
+    return box;
+  };
 
   App.state = { me: null, currentPortalId: null, currentPortalName: null, labels: { types: {}, generic: {} }, features: {} };
   // Client-visible feature flags come from /api/auth/me (features). Texting/SMS is

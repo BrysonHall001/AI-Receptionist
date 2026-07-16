@@ -226,7 +226,7 @@
     const search = el("input", "search-input");
     search.type = "search";
     search.placeholder = "Search…";
-    right.appendChild(search);
+    right.appendChild(App.util.searchBox(search)); // motion & branding: the ONE shared search box (icon + C mark)
     toolbar.appendChild(left);
     toolbar.appendChild(right);
 

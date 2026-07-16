@@ -179,13 +179,9 @@ body {
 }
 
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 24px; }
-.brand-mark {
-  width: 28px; height: 28px; border-radius: 8px;
-  background: var(--accent); color: var(--on-accent);
-  display: grid; place-items: center;
-  font-weight: 800; font-size: var(--text-base);
-}
-.brand-name { font-weight: 700; font-size: var(--text-base); letter-spacing: var(--tracking-tight); }
+/* (motion & branding: the old .brand-mark/.brand-name letter tile and its per-theme
+   overrides were removed — the inline SVG brand is token-driven, so themes re-tint it
+   for free: mark = var(--accent), wordmark = var(--ink), icon glyph = var(--on-accent).) */
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
@@ -477,7 +473,7 @@ tbody tr:hover { background: var(--row-hover); }
 
 @media (max-width: 860px) {
   .sidebar { width: 64px; padding: 16px 8px; }
-  .brand-name, .nav-item span:not(.nav-dot), .mode-badge { display: none; }
+  .nav-item span:not(.nav-dot), .mode-badge { display: none; }
   .brand-context { display: none; }
   .brand-logo--full { display: none; }
   .brand-logo--icon { display: inline-flex; }
@@ -1112,7 +1108,6 @@ body[data-theme="dark"] {
   --green: #34c98a; --green-soft: #16281f; --amber: #d8a23c; --amber-soft: #2a2113; --red: #e0685a; --red-soft: #2c1715;
   --row-hover: #23232f; --scrim: rgba(0,0,0,0.55); --on-accent: #14120e;
 }
-body[data-theme="dark"] .brand-mark { background: var(--accent); color: #fff; }
 
 /* ---- Neutral / professional (basic) ---- */
 body[data-theme="neutral"] {
@@ -1159,10 +1154,6 @@ body[data-theme="aero"] .btn-primary::before {
   background: linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.03));
   pointer-events: none;
 }
-body[data-theme="aero"] .brand-mark {
-  background: linear-gradient(180deg, var(--accent), var(--accent-strong)); color: var(--on-accent);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 2px 6px rgba(10,130,190,0.4);
-}
 
 /* ---- Neon Dusk (fun, synthwave) ---- */
 body[data-theme="dusk"] {
@@ -1180,7 +1171,6 @@ body[data-theme="dusk"] {
     radial-gradient(120% 70% at 50% 120%, rgba(255,61,240,0.28) 0%, rgba(255,61,240,0) 55%),
     radial-gradient(90% 60% at 50% -10%, rgba(34,224,255,0.18) 0%, rgba(34,224,255,0) 60%),
     linear-gradient(180deg, #0d0a26 0%, #1a1145 60%, #241b4d 100%) fixed;}
-body[data-theme="dusk"] .brand-mark { background: var(--accent); color: #0f0c29; box-shadow: 0 0 14px rgba(255,61,240,0.8); }
 body[data-theme="dusk"] .page-title,
 body[data-theme="dusk"] .settings-h,
 body[data-theme="dusk"] .brand-name { font-family: var(--font-display); letter-spacing: 0.03em; text-shadow: 0 0 14px rgba(255,61,240,0.45); }
@@ -1205,7 +1195,6 @@ body[data-theme="cottage"] {
 body[data-theme="cottage"] .page-title,
 body[data-theme="cottage"] .settings-h { font-family: var(--font-display); font-weight: 600; }
 body[data-theme="cottage"] .btn-primary { background: var(--accent); color: var(--on-accent); }
-body[data-theme="cottage"] .brand-mark { background: var(--accent); color: #fff; }
 
 /* ---- Theme picker (Appearance settings) ---- */
 .theme-group-label { font-size: var(--text-xs); font-weight: var(--eyebrow-weight); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--ink-faint); margin: 14px 0 8px; }
@@ -3050,3 +3039,69 @@ select.input {
 /* Micro-animation 3: button press micro-depress (the base .btn already transitions
    transform on the motion token; this adds only the pressed state — no layout shift). */
 .btn:active:not(:disabled) { transform: translateY(1px); }
+
+/* ======================================================================
+   MOTION & BRANDING — the shared search box + route materialization
+   ====================================================================== */
+/* Search box: magnifier left (--ink-faint), the brand C right (decorative,
+   var(--accent), hidden while typing via :placeholder-shown — pure CSS). */
+.search-box { position: relative; display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; max-width: 100%; }
+.search-box .search-input { padding-left: 32px; padding-right: 28px; width: 100%; }
+.search-ico { position: absolute; left: 10px; display: inline-flex; width: 14px; height: 14px; color: var(--ink-faint); pointer-events: none; }
+.search-ico svg { width: 14px; height: 14px; }
+.search-c { position: absolute; right: 10px; display: none; width: 14px; height: 16px; pointer-events: none; }
+.search-c svg { width: 14px; height: 16px; display: block; }
+.search-box .search-input:placeholder-shown ~ .search-c { display: inline-flex; }
+
+/* Route-change materialization: top-level page blocks fade-slide up 7px, 25ms/item,
+   capped at 150ms (items past the cap appear together). Opacity/transform only —
+   content is interactive immediately; modals/scenic layers live outside .content;
+   the global prefers-reduced-motion block disables it. */
+@keyframes pageIn { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+.page-stagger > * { animation: pageIn 160ms ease-out both; }
+.page-stagger > *:nth-child(2) { animation-delay: 25ms; }
+.page-stagger > *:nth-child(3) { animation-delay: 50ms; }
+.page-stagger > *:nth-child(4) { animation-delay: 75ms; }
+.page-stagger > *:nth-child(5) { animation-delay: 100ms; }
+.page-stagger > *:nth-child(6) { animation-delay: 125ms; }
+.page-stagger > *:nth-child(n+7) { animation-delay: 150ms; } /* the cap: the rest appear together */
+.page-stagger .widget-grid > .widget-card { animation: pageIn 160ms ease-out both; }
+.page-stagger .widget-grid > .widget-card:nth-child(2) { animation-delay: 25ms; }
+.page-stagger .widget-grid > .widget-card:nth-child(3) { animation-delay: 50ms; }
+.page-stagger .widget-grid > .widget-card:nth-child(4) { animation-delay: 75ms; }
+.page-stagger .widget-grid > .widget-card:nth-child(n+5) { animation-delay: 100ms; }
+
+/* Skeleton loading (shared: portal/admin loading() + the dashboard engine). Shapes
+   match the incoming content; shimmer = token gradient sweeping over --gray-soft;
+   the global prefers-reduced-motion block freezes it to static shapes. Skeletons
+   only appear after a 150ms delay (App.util.SKELETON_DELAY_MS) — fast fetches never
+   flash one. */
+@keyframes skelSweep { to { transform: translateX(100%); } }
+.skel-shimmer { position: relative; overflow: hidden; background: var(--gray-soft); border-radius: var(--radius-sm); }
+.skel-shimmer::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, var(--panel-2), transparent); animation: skelSweep 1.2s ease-in-out infinite; }
+.skel-table { display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; }
+.skel-head { height: 12px; width: 34%; }
+.skel-line { height: 14px; }
+.skel-line:nth-child(2) { width: 96%; }
+.skel-line:nth-child(3) { width: 88%; }
+.skel-line:nth-child(4) { width: 93%; }
+.skel-line:nth-child(5) { width: 80%; }
+.skel-line:nth-child(6) { width: 90%; }
+.skel-line:nth-child(7) { width: 72%; }
+.skel-widgets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; min-width: 0; }
+@media (max-width: 1100px) { .skel-widgets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.skel-widget { height: 120px; }
+
+/* The boot loader: centered brand; the C slides left, rebounds off the wordmark,
+   settles — one crisp ~600ms loop (transform only, token-colored; the reduced-motion
+   block leaves a static mark). */
+.brand-loader { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 60; }
+.brand-loader svg { width: 200px; max-width: 60vw; height: auto; }
+@keyframes cBounce {
+  0% { transform: translateX(-24px); }
+  48% { transform: translateX(4px); }
+  66% { transform: translateX(-5px); }
+  84% { transform: translateX(1px); }
+  100% { transform: translateX(0); }
+}
+.brand-loader .brand-c { animation: cBounce 600ms cubic-bezier(0.3, 0.7, 0.3, 1) infinite; }

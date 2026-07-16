@@ -6,7 +6,7 @@
   let portalsCache = [];
 
   function view() { return App.util.$("#view"); }
-  function loading() { view().innerHTML = `<div class="card"><div class="skeleton">Loading…</div></div>`; }
+  function loading() { App.util.showSkeleton(view(), "table"); } // motion & branding: shared table skeleton (150ms appearance delay)
 
   // ---- Voice mode (AI Receptionist 3-way choice) ----
   // OFF = decline calls; WALKIE = Standard voice (cheap Say/Gather); SMOOTH =
