@@ -391,7 +391,7 @@
     // in styles.css + that preset's 9b.2 personality tokens) onto the card root, so the
     // mock renders in ITS theme no matter which theme the app is running.
     const PALETTE_KEYS = ["--bg", "--panel", "--panel-2", "--ink", "--ink-soft", "--ink-faint", "--line", "--line-strong", "--accent", "--accent-soft", "--accent-strong", "--green", "--green-soft", "--amber", "--amber-soft", "--red", "--red-soft", "--gray-soft", "--row-hover", "--on-accent", "--sidebar-bg", "--topbar-bg", "--font-ui", "--font-display", "--pill-bg"];
-    let _themeVarsCache = null;
+    var _themeVarsCache = null; // was `let`: hoisting fix — mountSettings can run before this line executes (TDZ crash)
     async function loadThemeVars() {
       if (_themeVarsCache) return _themeVarsCache;
       let cssText = "";
