@@ -68,7 +68,7 @@ check(/grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/.test(css) && /grid-
 // ---------- (3) scanner + negative check ----------
 console.log("\n(3) scanner (five counters, baselined, ratcheted):");
 const audit = runAudit();
-check(LAYOUT_COUNTERS.length === 5 && LAYOUT_COUNTERS.join(",") === "flexControlNoShrink,actionsRowNoWrap,fixedWidthNoEscape,nowrapNoEllipsis,frTrackNoFloor", "the five anti-pattern counters exist");
+check(LAYOUT_COUNTERS.length === 6 && LAYOUT_COUNTERS.join(",") === "flexControlNoShrink,actionsRowNoWrap,fixedWidthNoEscape,nowrapNoEllipsis,frTrackNoFloor,inkSurfaceMismatch", "the anti-pattern counters exist (five layout + the contrast-system ink-surface counter)");
 check(audit.layout.flexControlNoShrink === 0 && audit.layout.actionsRowNoWrap === 0 && audit.layout.frTrackNoFloor === 0, `a, b, e scan CLEAN after the batch (a=${audit.layout.flexControlNoShrink}, b=${audit.layout.actionsRowNoWrap}, e=${audit.layout.frTrackNoFloor})`);
 const bl = readBaseline() as any;
 check(!!bl && !!bl.layout && LAYOUT_COUNTERS.every((k) => typeof bl.layout[k] === "number"), "the counters are baselined in designBaseline.json");

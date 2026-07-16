@@ -61,7 +61,7 @@ check(!themeJs.includes("function presetSelect(") && !themeJs.includes("Choose a
 // REVISIONS-1 UPDATE: one carousel at a time, switched by group — same roster source.
 check(themeJs.includes('coverflowCarousel(carouselGroup, presets.filter((p) => p.group === carouselGroup)') && (themeJs.match(/coverflowCarousel\(/g) || []).length === 2 /* 1 def + 1 call */, "roster + grouping from the same /api/theme presets source (one carousel, group-switched)");
 check(themeJs.includes('e.key === "ArrowLeft"') && themeJs.includes("leftBtn.onclick = () => pick(cur - 1)") && themeJs.includes("d.onclick = () => pick(i)"), "keyboard arrows + edge buttons + clickable dots all route through pick()");
-check(themeJs.includes('const name = el("div", "eyebrow thc-name", p.label);') && /\.thc-d0 \.thc-name \{ color: var\(--ink\); \}/.test(css), "name-only eyebrow label beneath each card; the centered card's label stronger");
+check(themeJs.includes('const name = el("div", "eyebrow thc-name", p.label);') && css.includes(".thc-d0 .thc-name { color: var(--ink-on-bg); }"), "name-only eyebrow label beneath each card; the centered card's label stronger (ON-BG class, contrast system)");
 
 // ---------- (3) previews ----------
 console.log("\n(3) live preview cards:");

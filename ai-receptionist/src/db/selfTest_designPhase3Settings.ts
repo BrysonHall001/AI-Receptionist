@@ -63,7 +63,7 @@ check(/classList\.toggle\("u-hidden"/.test(fnSlice("openFieldModal")), "field-mo
 check(/btn btn-primary btn-sm/.test(fnSlice("renderBillingSettings")) && /btn btn-ghost btn-sm/.test(fnSlice("secAccount")), "Settings buttons are on the .btn variants");
 
 console.log("\n(3) the Phase-3 classes exist on tokens:");
-check(/\.settings-intro \{ font-size: var\(--text-sm\); margin: 0 0 14px; \}/.test(css), ".settings-intro composed from the type scale");
+check(/\.settings-intro \{ font-size: var\(--text-sm\); margin: 0 0 14px; color: var\(--ink-on-bg-soft\); \}/.test(css), ".settings-intro composed from the type scale (ON-BG class color, contrast system)");
 check(/\.intg-grid \{ display: grid; grid-template-columns: repeat\(auto-fill, minmax\(320px, 1fr\)\); gap: var\(--sp-4\);/.test(css), ".intg-grid on the spacing scale");
 check(/\.settings-tab \{[^}]*font-size: var\(--text-base\)/.test(css) && /\.settings-tab\.active \{ border-bottom-color: var\(--accent\)/.test(css), ".settings-tab on semantic tokens (undefined-token fallbacks retired)");
 check(/\.bill-summary-value \{ font-size: var\(--text-xl\); font-weight: 700; color: var\(--green\); \}/.test(css) && /\.bill-summary-value\.due \{ color: var\(--amber\); \}/.test(css), "billing status colors are semantic tokens (theme-following now)");

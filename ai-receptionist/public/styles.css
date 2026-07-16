@@ -144,6 +144,19 @@
   /* ============ DESIGN PHASE 9b.2 — personality-slider tokens ============
      Seven sliders (theme.js personalityTokens) drive these live; the defaults below ARE
      the untouched Clean Light experience (slider defaults reproduce them exactly). */
+  /* ============ THE CONTRAST RULE SYSTEM (class tokens) ============
+     Every text element belongs to exactly ONE surface class; each class draws from its
+     OWN palette, enforced below and by the rewritten selfTest_allThemeContrast:
+       ON-PANEL   --ink / --ink-soft / --ink-faint     (cards, tables, modals, menus)
+       ON-BG      --ink-on-bg / --ink-on-bg-soft       (titles, eyebrows, hints on the page bg)
+       ON-CONTROL --control-ink / --control-placeholder (inputs, selects)
+       ON-ACCENT  --on-accent                           (accent-filled elements)
+       ON-SOFT    the matching strong color              (badges/pills on *-soft) */
+  --content-text-inset: 18px;            /* the panels' inner text line (table cells etc.) — titles align to it */
+  --ink-on-bg: var(--ink);               /* ON-BG text (page titles etc.) — AA vs --bg per theme */
+  --ink-on-bg-soft: var(--ink-faint);    /* ON-BG secondary (eyebrows, hints) */
+  --control-ink: var(--ink);             /* ON-CONTROL text — AA vs --control-bg per theme */
+  --control-placeholder: var(--ink-faint); /* placeholders (>= the AA-large floor; in practice AA) */
   --border-w: 1px;                       /* revisions 1: the ONE global chrome-ring thickness (borders slider, 0..4px) */
   --border-c: var(--line);               /* the chrome-ring color (Border-color pick; neutral = --line) */
   --list-row-pad: 8px;                   /* list-row vertical padding (density slider, scaled off --table-row-pad) */
@@ -221,7 +234,7 @@ body {
   backdrop-filter: blur(6px);
   position: sticky; top: 0; z-index: 5;
 }
-.topbar-titles h1 { font-size: var(--text-lg); font-weight: var(--heading-weight); letter-spacing: var(--tracking-tighter); }
+.topbar-titles h1 { font-size: var(--text-lg); font-weight: var(--heading-weight); letter-spacing: var(--tracking-tighter); padding-left: var(--content-text-inset); } /* title-alignment fix: admin topbar titles share the SAME inset rule */
 .page-sub { color: var(--ink-faint); font-size: var(--text-sm); margin-top: 1px; }
 .topbar-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; min-width: 0; }
 
@@ -321,6 +334,7 @@ body {
 
 /* ---------- Section + table ---------- */
 .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 8px 0 14px; gap: var(--sp-2); min-width: 0; } /* hardening: split-pattern alias */
+.content .section-head .eyebrow, .content .fields-section-head .eyebrow, .thc-group-row .eyebrow { color: var(--ink-on-bg-soft); } /* ON-BG eyebrows */
 .section-head h2 { font-size: var(--text-base); font-weight: var(--heading-weight); letter-spacing: var(--tracking-tight); }
 /* Opt-in section signature: a short accent rule under the head's left edge (mock's eyebrow+rule). */
 .section-head--ruled { position: relative; }
@@ -367,8 +381,14 @@ tbody tr:last-child td { border-bottom: none; }
    padding and all other tables (Contacts, Records, etc.) are unchanged. */
 .tenants-table-host tbody td { padding-top: 8px; padding-bottom: 8px; }
 .tenants-table-host thead th { padding-top: 8px; padding-bottom: 8px; }
-tbody tr { cursor: pointer; transition: background var(--transition); }
-tbody tr:hover { background: var(--row-hover); }
+/* Row hover sweep (contrast-system batch): the nav underline, extended to EVERY table
+   variant (record lists, contacts, admin, mini-tables — anything with a tbody). A thin
+   accent line sweeps left -> right along the row's bottom edge, drawn as a background
+   IMAGE sized 0% -> 100% (bulletproof on <tr>, zero layout shift), composing with the
+   --row-hover background COLOR. Rides the motion token; the global reduced-motion
+   block makes it instant. */
+tbody tr { cursor: pointer; transition: background-color var(--transition), background-size var(--transition); background-image: linear-gradient(var(--accent), var(--accent)); background-repeat: no-repeat; background-position: left bottom; background-size: 0% 2px; }
+tbody tr:hover { background-color: var(--row-hover); background-size: 100% 2px; }
 .cell-strong { font-weight: 600; }
 .cell-mono { font-family: var(--mono); font-size: var(--text-xs); color: var(--ink-soft); }
 .cell-muted { color: var(--ink-faint); }
@@ -498,16 +518,16 @@ tbody tr:hover { background: var(--row-hover); }
 .brand-row--with-context > .brand-logo,
 .brand-row--with-context > .brand-logo--full,
 .brand-row--with-context > .brand-logo--icon { grid-column: 1; align-self: start; max-width: 120px; }
-.brand-row--with-context > .brand-logo--full svg { height: 26px; }
+.brand-row--with-context > .brand-logo--full svg { height: 32px; } /* +23% in the admin context row too */
 .brand-row--with-context > .brand-context { grid-column: 2; align-self: start; min-width: 0; }
 .brand-context { display: flex; flex-direction: column; gap: 1px; }
 .brand-context .back-link { white-space: nowrap; }
 .brand-portal-name { font-size: var(--text-xs); font-weight: 600; color: var(--ink); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand-logo { max-height: 34px; max-width: 160px; width: auto; height: auto; object-fit: contain; display: block; }
 .brand-logo--full { display: inline-flex; align-items: center; }
-.brand-logo--full svg { height: 30px; width: auto; display: block; }
+.brand-logo--full svg { height: 37px; width: auto; display: block; } /* logo upgrade: +23% (default mark only; the container flexes, no layout shift elsewhere) */
 .brand-logo--icon { display: none; align-items: center; }
-.brand-logo--icon svg { height: 30px; width: 30px; display: block; }
+.brand-logo--icon svg { height: 37px; width: 37px; display: block; } /* logo upgrade: +23% */
 .auth-logo { display: flex; justify-content: center; }
 .auth-logo svg { height: 40px; width: auto; display: block; }
 .brand-logo-preview { max-height: 56px; max-width: 220px; width: auto; height: auto; object-fit: contain; display: block; border-radius: 6px; }
@@ -534,11 +554,13 @@ tbody tr:hover { background: var(--row-hover); }
 .top-left { display: flex; align-items: center; gap: 14px; }
 .top-right { display: flex; align-items: center; gap: var(--sp-2); }
 .page-title { font-size: var(--text-lg); font-weight: 700; letter-spacing: var(--tracking-tighter); }
-.content { padding: 28px 40px 60px; max-width: 1600px; }
+.content { padding: 28px 40px 60px; max-width: 1600px; color: var(--ink-on-bg); } /* CONTRAST SYSTEM: text directly on the page bg is ON-BG class */
+/* …and every panel surface re-establishes the ON-PANEL palette for its subtree. */
+.card, .stat-card, .portal-card, .widget-card, .table-wrap, .modal, .auth-card, .col-popover, .bulk-menu, .imp-menu, .mf-mod-menu, .nav-burger-menu, .drawer { color: var(--ink); }
 /* Item 3 — the single consistent page/module title at the top-left of the content
    region. Sits above the page's own toolbar/content; per-page duplicate top-level
    headings were removed so this is the only one. */
-.content-page-title { margin: 0 0 18px; text-align: left; }
+.content-page-title { margin: 0 0 18px; text-align: left; color: var(--ink-on-bg); padding-left: var(--content-text-inset); } /* ON-BG; title-alignment fix: flush with the content's inner text line (ONE shared rule) */
 .back-link { color: var(--ink-soft); text-decoration: none; font-size: var(--text-sm); font-weight: 600; }
 .back-link:hover { color: var(--ink); }
 .context-banner { font-size: var(--text-sm); color: var(--ink-faint); padding-left: 14px; border-left: 1px solid var(--line-strong); }
@@ -552,13 +574,13 @@ tbody tr:hover { background: var(--row-hover); }
 .input {
   width: 100%; font-family: var(--font-ui); font-size: var(--text-base);
   padding: 8px 12px; border: 1px solid var(--control-border);
-  border-radius: var(--radius-sm); background: var(--control-bg); color: var(--ink); /* Phase 9b: inputs take corners via the --radius-sm path (same 7px default; pill BUTTONS no longer round the inputs) */
+  border-radius: var(--radius-sm); background: var(--control-bg); color: var(--control-ink); /* ON-CONTROL class (contrast system); Phase 9b: inputs take corners via --radius-sm */
   min-height: var(--control-h); line-height: var(--leading-tight);
   min-width: 0; /* layout hardening: form controls in flex parents shrink instead of overflowing (anti-pattern a) */
   margin-bottom: var(--form-gap);
 }
 .input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
-.input::placeholder, textarea.input::placeholder, .search-input::placeholder, .pop-input::placeholder, .rule-val::placeholder { color: var(--placeholder); opacity: 1; }
+.input::placeholder, textarea.input::placeholder, .search-input::placeholder, .pop-input::placeholder, .rule-val::placeholder { color: var(--control-placeholder); opacity: 1; } /* ON-CONTROL class (contrast system) */
 textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-body); padding: 10px 12px; }
 
 /* ---------- Auth screens ---------- */
@@ -626,7 +648,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 /* ---------- Settings ---------- */
 .settings-page { display: flex; flex-direction: column; gap: 18px; max-width: 1600px; }
 .settings-card { padding: var(--card-pad-lg); }
-.settings-h { font-size: var(--text-base); font-weight: 700; margin-bottom: 16px; }
+.settings-h { font-size: var(--text-base); font-weight: 700; margin-bottom: 16px; color: var(--ink-on-bg); } /* ON-BG */
 .settings-grid { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px 16px; align-items: center; margin-bottom: 16px; }
 .settings-grid .input { margin-bottom: 0; }
 .settings-card .field-label { display: block; }
@@ -1184,7 +1206,7 @@ body[data-theme="dusk"] .btn-primary {
 /* ---- Cottage Warm (fun, cottagecore) ---- */
 body[data-theme="cottage"] {
   --bg: #f4ecdd; --panel: #fbf6ec; --panel-2: #f1e8d6;
-  --ink: #4a3f33; --ink-soft: #7a6c59; --ink-faint: #716555;
+  --ink: #4a3f33; --ink-soft: #736654; /* contrast system: ON-PANEL soft clears 4.5:1 on --panel-2 */ --ink-faint: #716555;
   --line: #e4d8c3; --line-strong: #958874;
   --accent: #5f7059; --accent-soft: #eaf0e4; --accent-strong: #586953;
   --green: #537346; --green-soft: #e9f0e2; --amber: #905f2b; --amber-soft: #f6ead7; --red: #965548; --red-soft: #f3e3de;
@@ -1197,7 +1219,7 @@ body[data-theme="cottage"] .settings-h { font-family: var(--font-display); font-
 body[data-theme="cottage"] .btn-primary { background: var(--accent); color: var(--on-accent); }
 
 /* ---- Theme picker (Appearance settings) ---- */
-.theme-group-label { font-size: var(--text-xs); font-weight: var(--eyebrow-weight); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--ink-faint); margin: 14px 0 8px; }
+.theme-group-label { font-size: var(--text-xs); font-weight: var(--eyebrow-weight); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--ink-on-bg-soft); margin: 14px 0 8px; } /* ON-BG */
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .theme-card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; cursor: pointer; background: var(--panel); text-align: left; transition: border-color var(--transition), box-shadow var(--transition); }
 .theme-card:hover { border-color: var(--accent); }
@@ -1395,7 +1417,7 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
    Migrated from inline styles in portal.js's Settings renderers. Values preserved 1:1
    except the enumerated convergences (see the batch summary): the shared settings-intro
    paragraph and the billing status colors (now semantic tokens, so they theme-follow). */
-.settings-intro { font-size: var(--text-sm); margin: 0 0 14px; }
+.settings-intro { font-size: var(--text-sm); margin: 0 0 14px; color: var(--ink-on-bg-soft); } /* ON-BG (beats .cell-muted via source order + the .content default) */
 .u-hidden { display: none; }
 .u-meta { font-size: var(--text-xs); }
 .u-pad-6 { padding: 6px; }
@@ -2961,8 +2983,8 @@ select.input {
 .thc-dm2 { transform: translateX(-124%) rotateY(55deg) scale(0.65); z-index: 3; opacity: 1; }
 .thc-dp2 { transform: translateX(24%) rotateY(-55deg) scale(0.65); z-index: 3; opacity: 1; }
 .thc-dhide { transform: translateX(-50%) scale(0.5); opacity: 0; pointer-events: none; z-index: 1; }
-.thc-name { display: block; text-align: center; margin-top: 8px; }
-.thc-d0 .thc-name { color: var(--ink); }
+.thc-name { display: block; text-align: center; margin-top: 8px; color: var(--ink-on-bg-soft); } /* ON-BG (carousel labels sit on the page bg) */
+.thc-d0 .thc-name { color: var(--ink-on-bg); } /* the centered label, stronger — still ON-BG class */
 .thc-arrow { position: absolute; top: 96px; z-index: 6; background: var(--panel); border: 1px solid var(--control-border); box-shadow: var(--shadow); }
 .thc-arrow:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
 .thc-arrow-left { left: 2px; }
@@ -3105,3 +3127,32 @@ select.input {
   100% { transform: translateX(0); }
 }
 .brand-loader .brand-c { animation: cBounce 600ms cubic-bezier(0.3, 0.7, 0.3, 1) infinite; }
+
+/* ======================================================================
+   THE CONTRAST RULE SYSTEM — scenic ON-BG backstop */
+/* scenic ON-BG backstop */
+/* Seven themes paint an image/gradient behind the content (dusk, aero, vaporwave,
+   forest, sunset, dreamcore, academia). An image's local color is unpredictable, so
+   ON-BG text on those themes sits on a subtle panel-tinted, blurred, rounded chip —
+   the aero "solid surfaces" precedent, applied consistently. No raw text on imagery. */
+body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-theme="forest"],[data-theme="sunset"],[data-theme="dreamcore"],[data-theme="academia"]) :is(.content-page-title, .settings-h, .theme-group-label, .settings-intro, .thc-name, .thc-group-row .eyebrow, .section-head .eyebrow, .fields-section-head .eyebrow) {
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  width: fit-content;
+  box-decoration-break: clone;
+}
+
+/* Logo upgrades (contrast-system batch): the brand is clickable (home), and the DEFAULT
+   mark only — never uploaded white-label logos — carries two barely-there animations:
+   a soft sheen glint on the C every ~7s, and on hover the C nudges left and clicks back
+   against the wordmark (the skeleton loader's bounce at small amplitude). Token-colored;
+   the global prefers-reduced-motion block turns both off (static mark). */
+.brand-row--clickable { cursor: pointer; }
+.brand-row--clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+@keyframes brandSheen { 0%, 91%, 100% { filter: brightness(1); } 94% { filter: brightness(1.22) saturate(1.06); } 97% { filter: brightness(1); } }
+.brand-logo--full svg .brand-c { animation: brandSheen 7s ease-in-out infinite; transform-origin: left center; }
+@keyframes cNudge { 0% { transform: translateX(0); } 38% { transform: translateX(-9px); } 66% { transform: translateX(2px); } 84% { transform: translateX(-1px); } 100% { transform: translateX(0); } }
+.brand-row--clickable:hover .brand-logo--full svg .brand-c { animation: cNudge 450ms cubic-bezier(0.3, 0.7, 0.3, 1) 1, brandSheen 7s ease-in-out infinite; }

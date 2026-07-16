@@ -62,6 +62,16 @@
     App._brandOpts = opts; // remembered so App.refreshBrand repaints identically
     brandEl.innerHTML = "";
     const row = el("div", "brand-row");
+    // Logo upgrade: clicking the brand goes HOME. It's the CONTAINER's click, so
+    // uploaded white-label logos get it too. Portal home = the Home Dashboard; an
+    // admin with no tenant in context goes to the master-hub landing (Tenants).
+    row.classList.add("brand-row--clickable");
+    row.setAttribute("role", "link");
+    row.tabIndex = 0;
+    row.setAttribute("aria-label", "Go to Home Dashboard");
+    const goHome = () => { const me = App.state.me; location.hash = me && App.isAdminTier(me.role) && !App.state.currentPortalId ? "#/admin/portals" : "#/dashboard"; };
+    row.onclick = goHome;
+    row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } };
     const logo = (App.theme && App.theme.getLogo && App.theme.getLogo()) || null;
     if (logo) {
       const img = el("img", "brand-logo"); img.src = logo; img.alt = "Logo";

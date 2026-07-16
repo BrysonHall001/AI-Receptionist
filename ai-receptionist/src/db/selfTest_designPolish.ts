@@ -165,7 +165,7 @@ const btnRule = css.slice(css.indexOf(".btn {"), css.indexOf("}", css.indexOf(".
 const inputRule = css.slice(css.indexOf(".input {"), css.indexOf("}", css.indexOf(".input {")));
 check(btnRule.includes("min-height: var(--control-h)") && inputRule.includes("min-height: var(--control-h)"), ".btn and .input share --control-h (form rows line up)");
 check(/\.btn-sm \{[^}]*min-height: var\(--control-h-sm\)/.test(css) && /\.icon-btn \{\s*width: var\(--control-h-sm\); height: var\(--control-h-sm\);/.test(css), "small buttons + icon buttons share --control-h-sm");
-check(/--placeholder: var\(--ink-faint\);/.test(css) && /::placeholder[^{]*\{ color: var\(--placeholder\); opacity: 1; \}/.test(css), "placeholder color tokenized");
+check(/--control-placeholder: var\(--ink-faint\);/.test(css) && /::placeholder[^{]*\{ color: var\(--control-placeholder\); opacity: 1; \}/.test(css), "placeholder color tokenized (the ON-CONTROL class token, contrast system)");
 const chev = css.slice(css.indexOf("\nselect.input {"), css.indexOf("}", css.indexOf("\nselect.input {")));
 check(chev.includes("appearance: none") && chev.includes("currentColor") && !/#[0-9a-fA-F]{3,8}/.test(chev), "select chevron is consistent and theme-safe (currentColor, no raw values)");
 // Phase 9a made the Phase 8 convergence STRUCTURAL: one canonical family rule carries

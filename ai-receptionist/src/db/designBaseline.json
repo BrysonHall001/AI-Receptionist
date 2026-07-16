@@ -136,7 +136,8 @@
     "actionsRowNoWrap": 0,
     "fixedWidthNoEscape": 17,
     "nowrapNoEllipsis": 16,
-    "frTrackNoFloor": 0
+    "frTrackNoFloor": 0,
+    "inkSurfaceMismatch": 0
   },
   "info": {
     "distinctSpacingValues": 21

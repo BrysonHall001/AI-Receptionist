@@ -84,8 +84,8 @@ check(themeJs.includes('<div class="widget-card thc-kpi"><div class="kpi"><div c
 
 // ---------- (5) the contrast upgrade ----------
 console.log("\n(5) the upgraded 18-theme suite:");
-check(contrastSrc.includes('at(ink, CTRL, 4.5, "control text on --control-bg");') && contrastSrc.includes('pair("--green", "--green-soft", "badge text --green on --green-soft");'), "new combinations asserted: control-surface text + all four soft badge/pill pairs");
-check(contrastSrc.includes("muted/eyebrow text over scenic stop") && contrastSrc.includes('bgDecl[1].matchAll(/#[0-9a-fA-F]{6}/g)'), "new combination asserted: muted text vs EVERY literal scenic gradient stop (the Vaporwave class)");
+check(contrastSrc.includes('at(ctrlInk, CTRL, 4.5, "ON-CONTROL --control-ink on --control-bg");') && contrastSrc.includes('pair("--green", "--green-soft");'), "combinations asserted (now via the CONTRAST RULE SYSTEM matrix): control-surface text + all four soft pairs");
+check(contrastSrc.includes("ON-BG --ink-on-bg over scenic stop") && contrastSrc.includes('bgDecl[1].matchAll(/#[0-9a-fA-F]{6}/g)'), "the scenic-stop combination is asserted (now for the dedicated ON-BG tokens, chip-composited on scenic themes)");
 // PRE-FIX VERIFICATION (recorded): the upgraded suite, run before the token fixes, failed
 // 36 checks including 'vaporwave: muted/eyebrow text over scenic stop #4a1f7a = 3.94:1'
 // — the exact reported case. The fixes below are IN-THEME token changes.

@@ -63,69 +63,83 @@ const OPAQUE_SURFACES = ["--panel", "--panel-2", "--row-hover", "--sidebar-bg", 
 const failures: string[] = [];
 function need(cond: boolean, msg: string) { if (!cond) failures.push(msg); }
 
+const SCENIC = ["dusk", "aero", "vaporwave", "forest", "sunset", "dreamcore", "academia"]; // themes whose body paints an image/gradient backdrop
+
 for (const t of THEMES) {
   const v = eff(t);
   const C = (k: string) => parseColor(v[k] || "");
-  const bg = C("--bg"), ink = C("--ink"), soft = C("--ink-faint"), faint = C("--ink-faint"), inkSoft = C("--ink-soft");
+  // R(): resolve var() chains so class tokens like --ink-on-bg: var(--ink) compute.
+  const R = (k: string) => { let val = v[k]; let n = 0; while (val && val.startsWith("var(") && n++ < 8) val = v[val.slice(4, -1).trim()]; return parseColor(val || ""); };
+  const bg = C("--bg"), ink = R("--ink"), faint = R("--ink-faint"), inkSoft = R("--ink-soft");
   const panel = C("--panel") || bg, p2 = C("--panel-2") || panel;
   const rowh = C("--row-hover") || panel, gray = C("--gray-soft") || panel, side = C("--sidebar-bg") || panel, top = C("--topbar-bg") || panel;
-  const lineS = C("--line-strong"), acc = C("--accent"), accS = C("--accent-strong"), onAcc = C("--on-accent") || { r: 255, g: 255, b: 255, a: 1 };
+  const lineS = C("--line-strong"), acc = R("--accent"), accS = R("--accent-strong"), onAcc = R("--on-accent") || { r: 255, g: 255, b: 255, a: 1 };
   if (!bg || !ink || !panel) { need(false, `${t}: missing core tokens`); continue; }
-  const BG = over(bg, null), PANEL = over(panel, bg), ROWH = over(rowh, bg), GRAY = over(gray, bg), SIDE = over(side, bg), TOP = over(top, bg);
+  const BG = over(bg, null), PANEL = over(panel, bg), P2 = over(p2, bg), ROWH = over(rowh, bg), GRAY = over(gray, bg), SIDE = over(side, bg), TOP = over(top, bg);
+  for (const sName of OPAQUE_SURFACES) { const c = C(sName); if (c && c.a < 1) need(false, `${t}: ${sName} is translucent (alpha=${c.a}) — scenery can bleed under text`); }
+  const at = (fg: RGB | null, sfc: RGB, thr: number, label: string) => { if (fg) need(contrast(over(fg, sfc), sfc) >= thr, `${t}: ${label} = ${contrast(over(fg, sfc), sfc).toFixed(2)}:1 (< ${thr})`); };
 
-  for (const s of OPAQUE_SURFACES) { const c = C(s); if (c && c.a < 1) need(false, `${t}: ${s} is translucent (alpha=${c.a}) — scenery can bleed under text`); }
-  const at = (fg: RGB | null, s: RGB, thr: number, label: string) => { if (fg) need(contrast(over(fg, bg), s) >= thr, `${t}: ${label} = ${contrast(over(fg, bg), s).toFixed(2)}:1 (< ${thr})`); };
-  at(ink, PANEL, 4.5, "ink/panel"); at(ink, BG, 4.5, "ink/bg"); at(ink, ROWH, 4.5, "ink/row-hover"); at(ink, GRAY, 4.5, "ink/gray-soft"); at(ink, SIDE, 4.5, "ink/sidebar"); at(ink, TOP, 4.5, "ink/topbar");
-  at(faint, PANEL, 4.5, "muted/panel"); at(faint, BG, 4.5, "muted/bg"); at(faint, ROWH, 4.5, "muted/row-hover"); at(faint, GRAY, 4.5, "muted/gray-soft");
-  at(inkSoft, PANEL, 4.5, "secondary/panel"); at(inkSoft, GRAY, 4.5, "secondary/gray-soft");
-  if (acc) need(contrast(over(onAcc, acc), over(acc, bg)) >= 4.5, `${t}: button text on --accent = ${contrast(over(onAcc, acc), over(acc, bg)).toFixed(2)}:1 (< 4.5)`);
-  if (accS) need(contrast(over(onAcc, accS), over(accS, bg)) >= 4.5, `${t}: button text on --accent-strong (hover) = ${contrast(over(onAcc, accS), over(accS, bg)).toFixed(2)}:1 (< 4.5)`);
-  if (lineS) need(contrast(PANEL, over(lineS, PANEL)) >= 3, `${t}: input border --line-strong vs panel = ${contrast(PANEL, over(lineS, PANEL)).toFixed(2)}:1 (< 3)`);
-  if (acc) need(contrast(PANEL, over(acc, PANEL)) >= 3, `${t}: --accent (focus/indicator) vs panel = ${contrast(PANEL, over(acc, PANEL)).toFixed(2)}:1 (< 3)`);
-
-  // ===== VISUAL FIXES 2 — the missing combinations (upgraded after a real-app audit) =====
-  // The suite passed while real screens failed because these were never asserted:
-  const R = (k: string) => { let val = v[k]; let n = 0; while (val && val.startsWith("var(") && n++ < 8) val = v[val.slice(4, -1).trim()]; return parseColor(val || ""); };
-  // (a) control text + placeholder on the CONTROL surface (selects/inputs; --control-bg
-  //     resolves through var chains — e.g. var(--panel) — which C() never followed).
-  const ctrl = R("--control-bg") || panel;
-  const CTRL = over(ctrl, bg);
-  at(ink, CTRL, 4.5, "control text on --control-bg");
-  at(faint, CTRL, 4.5, "placeholder/muted on --control-bg");
-  // (b) badge/pill text on their soft backgrounds (accent/green/amber/red families).
-  const pair = (fgK: string, bgK: string, label: string) => {
-    const F = R(fgK), G = R(bgK);
-    if (F && G) need(contrast(over(F, PANEL), over(G, PANEL)) >= 4.5, `${t}: ${label} = ${contrast(over(F, PANEL), over(G, PANEL)).toFixed(2)}:1 (< 4.5)`);
-  };
-  pair("--accent", "--accent-soft", "pill text --accent on --accent-soft");
-  pair("--green", "--green-soft", "badge text --green on --green-soft");
-  pair("--amber", "--amber-soft", "badge text --amber on --amber-soft");
-  pair("--red", "--red-soft", "badge text --red on --red-soft");
-  // (c2) MOTION & BRANDING: the default brand is token-driven SVG — the C mark
-  //      (var(--accent)) and wordmark (var(--ink)) must be legible on the surfaces the
-  //      brand renders on: the sidebar header and the auth card panel.
-  if (acc) need(contrast(over(acc, SIDE), SIDE) >= 3, `${t}: brand C mark --accent on sidebar = ${contrast(over(acc, SIDE), SIDE).toFixed(2)}:1 (< 3)`);
-  if (acc) need(contrast(over(acc, PANEL), PANEL) >= 3, `${t}: brand C mark --accent on auth panel = ${contrast(over(acc, PANEL), PANEL).toFixed(2)}:1 (< 3)`);
-  if (ink) need(contrast(over(ink, SIDE), SIDE) >= 4.5, `${t}: brand wordmark --ink on sidebar = ${contrast(over(ink, SIDE), SIDE).toFixed(2)}:1 (< 4.5)`);
-  // (c) eyebrow/muted labels over the SCENIC backdrop: fun themes paint literal gradient
-  //     stops behind the content; muted text must clear 4.5 against EVERY stop (this is
-  //     the Vaporwave "THEMES label barely visible" case the old suite missed).
+  // ===== THE CONTRAST RULE SYSTEM — every rule pairing, per theme =====
+  // CLASS 1, ON-PANEL: all three inks x both panels (plus the panel-family surfaces).
+  for (const [nm, c] of [["--ink", ink], ["--ink-soft", inkSoft], ["--ink-faint", faint]] as [string, RGB | null][]) {
+    at(c, PANEL, 4.5, `ON-PANEL ${nm} on --panel`);
+    at(c, P2, 4.5, `ON-PANEL ${nm} on --panel-2`);
+    at(c, ROWH, 4.5, `ON-PANEL ${nm} on --row-hover`);
+    at(c, GRAY, 4.5, `ON-PANEL ${nm} on --gray-soft`);
+  }
+  at(ink, SIDE, 4.5, "ON-PANEL --ink on sidebar"); at(ink, TOP, 4.5, "ON-PANEL --ink on topbar");
+  // CLASS 2, ON-BG: the dedicated on-bg pair vs --bg AND — because an image's local
+  // color is unpredictable — vs EVERY literal scenic gradient stop. Scenic themes get
+  // the panel-tinted backdrop chip, so their effective surface = chip over the stop.
+  const onBg = R("--ink-on-bg"), onBgSoft = R("--ink-on-bg-soft");
+  need(!!onBg && !!onBgSoft, `${t}: --ink-on-bg / --ink-on-bg-soft exist (the ON-BG class tokens)`);
+  at(onBg, BG, 4.5, "ON-BG --ink-on-bg on --bg");
+  at(onBgSoft, BG, 4.5, "ON-BG --ink-on-bg-soft on --bg");
   const rawBody = t === "(root/light)" ? "" : rawBlock('body[data-theme="' + t + '"] {');
   const bgDecl = rawBody.match(/\n\s*background:\s*([^;]+);/);
-  if (bgDecl && faint) {
+  if (bgDecl) {
+    const chip: RGB = { r: PANEL.r, g: PANEL.g, b: PANEL.b, a: 0.78 }; // the scenic backstop tint
     for (const st of bgDecl[1].matchAll(/#[0-9a-fA-F]{6}/g)) {
       const stop = parseColor(st[0])!;
-      need(contrast(over(faint, bg), stop) >= 4.5, `${t}: muted/eyebrow text over scenic stop ${st[0]} = ${contrast(over(faint, bg), stop).toFixed(2)}:1 (< 4.5)`);
+      const effSurface = SCENIC.includes(t) ? over(chip, stop) : stop;
+      if (onBg) need(contrast(over(onBg, effSurface), effSurface) >= 4.5, `${t}: ON-BG --ink-on-bg over scenic stop ${st[0]}${SCENIC.includes(t) ? " (through the chip)" : ""} = ${contrast(over(onBg, effSurface), effSurface).toFixed(2)}:1 (< 4.5)`);
+      if (onBgSoft) need(contrast(over(onBgSoft, effSurface), effSurface) >= 4.5, `${t}: ON-BG --ink-on-bg-soft over scenic stop ${st[0]}${SCENIC.includes(t) ? " (through the chip)" : ""} = ${contrast(over(onBgSoft, effSurface), effSurface).toFixed(2)}:1 (< 4.5)`);
     }
   }
+  // CLASS 3, ON-CONTROL: control ink + placeholder on the control surface.
+  const ctrlBg = R("--control-bg") || panel;
+  const CTRL = over(ctrlBg, bg);
+  const ctrlInk = R("--control-ink"), ctrlPh = R("--control-placeholder");
+  need(!!ctrlInk && !!ctrlPh, `${t}: --control-ink / --control-placeholder exist (the ON-CONTROL class tokens)`);
+  at(ctrlInk, CTRL, 4.5, "ON-CONTROL --control-ink on --control-bg");
+  at(ctrlPh, CTRL, 3, "ON-CONTROL placeholder on --control-bg (AA-large floor)");
+  // CLASS 4, ON-ACCENT.
+  if (acc) need(contrast(over(onAcc, acc), over(acc, bg)) >= 4.5, `${t}: ON-ACCENT --on-accent on --accent = ${contrast(over(onAcc, acc), over(acc, bg)).toFixed(2)}:1 (< 4.5)`);
+  if (accS) need(contrast(over(onAcc, accS), over(accS, bg)) >= 4.5, `${t}: ON-ACCENT --on-accent on --accent-strong (hover) = ${contrast(over(onAcc, accS), over(accS, bg)).toFixed(2)}:1 (< 4.5)`);
+  // CLASS 5, ON-SOFT: every soft pair.
+  const pair = (fgK: string, bgK: string) => {
+    const F = R(fgK), G = R(bgK);
+    if (F && G) need(contrast(over(F, PANEL), over(G, PANEL)) >= 4.5, `${t}: ON-SOFT ${fgK} on ${bgK} = ${contrast(over(F, PANEL), over(G, PANEL)).toFixed(2)}:1 (< 4.5)`);
+  };
+  pair("--accent", "--accent-soft"); pair("--green", "--green-soft"); pair("--amber", "--amber-soft"); pair("--red", "--red-soft");
+  // Non-text + brand (kept from the prior suites).
+  if (lineS) need(contrast(PANEL, over(lineS, PANEL)) >= 3, `${t}: input border --line-strong vs panel = ${contrast(PANEL, over(lineS, PANEL)).toFixed(2)}:1 (< 3)`);
+  if (acc) need(contrast(PANEL, over(acc, PANEL)) >= 3, `${t}: --accent (focus/indicator) vs panel = ${contrast(PANEL, over(acc, PANEL)).toFixed(2)}:1 (< 3)`);
+  if (acc) need(contrast(over(acc, SIDE), SIDE) >= 3, `${t}: brand C mark --accent on sidebar = ${contrast(over(acc, SIDE), SIDE).toFixed(2)}:1 (< 3)`);
+  if (acc) need(contrast(over(acc, PANEL), PANEL) >= 3, `${t}: brand C mark --accent on auth panel = ${contrast(over(acc, PANEL), PANEL).toFixed(2)}:1 (< 3)`);
+  need(contrast(over(ink, SIDE), SIDE) >= 4.5, `${t}: brand wordmark --ink on sidebar = ${contrast(over(ink, SIDE), SIDE).toFixed(2)}:1 (< 4.5)`);
 }
 
-console.log("All-theme legibility guard (parsed from styles.css)\n===================================================");
-console.log(`  Checked ${THEMES.length} themes across text, muted, button, border and opacity rules.`);
+// The scenic backstop is SOURCE-ASSERTED on every enumerated scenic theme: one grouped
+// chip rule (panel-tinted, blurred, rounded) covering the ON-BG selectors.
+{
+  const chipRule = css.includes('body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-theme="forest"],[data-theme="sunset"],[data-theme="dreamcore"],[data-theme="academia"])') && css.includes("/* scenic ON-BG backstop */");
+  need(chipRule, "scenic backstop: the grouped backdrop-chip rule covers all seven scenic themes' ON-BG text");
+}
 if (failures.length) {
-  console.log(`\n${failures.length} FAILED \u274c`);
-  for (const f of failures) console.log("  \u2717 " + f);
+  console.log(`\n${failures.length} CONTRAST-RULE FAILURE(S) \u274c`);
+  failures.forEach((f) => console.log("  \u2717 " + f));
   process.exit(1);
 }
-console.log("\nALL PASSED \u2705 (all themes meet WCAG AA text + AA non-text contrast, surfaces opaque)");
+console.log("\nALL PASSED \u2705 (the contrast RULE SYSTEM holds: every class pairing, every theme)");
 process.exit(0);

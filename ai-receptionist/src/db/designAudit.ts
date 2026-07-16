@@ -52,8 +52,14 @@ export interface LayoutCounts {
   fixedWidthNoEscape: number;
   nowrapNoEllipsis: number;
   frTrackNoFloor: number;
+  inkSurfaceMismatch: number;
 }
-export const LAYOUT_COUNTERS: (keyof LayoutCounts)[] = ["flexControlNoShrink", "actionsRowNoWrap", "fixedWidthNoEscape", "nowrapNoEllipsis", "frTrackNoFloor"];
+export const LAYOUT_COUNTERS: (keyof LayoutCounts)[] = ["flexControlNoShrink", "actionsRowNoWrap", "fixedWidthNoEscape", "nowrapNoEllipsis", "frTrackNoFloor", "inkSurfaceMismatch"];
+// CONTRAST RULE SYSTEM enforcement (best-effort static heuristic, documented):
+// the known ON-BG-scoped selectors must never take a panel-class ink. A rule whose
+// selector names one of BG_SCOPED and whose body sets color to --ink/--ink-soft/
+// --ink-faint (rather than --ink-on-bg / --ink-on-bg-soft) is a counted violation.
+const BG_SCOPED = ["content-page-title", "settings-h", "theme-group-label", "settings-intro", "thc-name", "thc-group-row"];
 export interface AuditResult {
   files: Record<string, FileCounts>;
   totals: FileCounts;
@@ -64,7 +70,7 @@ export interface AuditResult {
 // ---- Layout anti-pattern scan (styles.css). Exported standalone so tests can run it on
 // synthetic CSS (e.g. the negative check: inject an offender, confirm the count rises). ----
 export function auditLayoutPatterns(css: string): LayoutCounts {
-  const out: LayoutCounts = { flexControlNoShrink: 0, actionsRowNoWrap: 0, fixedWidthNoEscape: 0, nowrapNoEllipsis: 0, frTrackNoFloor: 0 };
+  const out: LayoutCounts = { flexControlNoShrink: 0, actionsRowNoWrap: 0, fixedWidthNoEscape: 0, nowrapNoEllipsis: 0, frTrackNoFloor: 0, inkSurfaceMismatch: 0 };
   // Strip comments first so a comment above a rule never merges into its "selector".
   css = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const seenControls = new Set<string>();
@@ -88,6 +94,8 @@ export function auditLayoutPatterns(css: string): LayoutCounts {
     if (/(?:^|;)\s*width:\s*\d{3,}px/.test(body) && !body.includes("max-width") && !/flex\s*:/.test(body)) out.fixedWidthNoEscape++;
     // (d) nowrap text with no truncation strategy
     if (body.includes("white-space: nowrap") && !body.includes("overflow") && !body.includes("text-overflow")) out.nowrapNoEllipsis++;
+    // (f) contrast system: panel-class inks on ON-BG-scoped selectors
+    if (BG_SCOPED.some((frag) => sel.includes(frag)) && /color:\s*var\(--ink(-soft|-faint)?\)/.test(body)) out.inkSurfaceMismatch++;
     // (e) bare fr grid tracks without a minmax() floor (single full-width "1fr" excluded)
     for (const g of body.matchAll(/grid-template-columns:\s*([^;]+)/g)) {
       const v = g[1].trim();
