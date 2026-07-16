@@ -469,6 +469,7 @@
     search.value = listView.q;
     search.setAttribute("aria-label", "Search automations by name");
     search.oninput = () => { listView.q = search.value; refreshList(); };
+    const searchBoxEl = App.util.searchBox(search); // LC-1: the shared search box (icon + C mark)
     const statusSel = makeSelect([["all", "All statuses"], ["enabled", "Enabled"], ["disabled", "Disabled"]], listView.status, (v) => { listView.status = v; refreshList(); });
     const triggerSel = makeSelect([["all", "All triggers"], ...presentTriggers()], listView.trigger, (v) => { listView.trigger = v; refreshList(); });
     const sortSel = makeSelect([["default", "Sort: Default"], ["name", "Sort: Name (A–Z)"], ["recent", "Sort: Recently edited"]], listView.sort, (v) => { listView.sort = v; refreshList(); });
@@ -478,7 +479,7 @@
       search.value = ""; statusSel.value = "all"; triggerSel.value = "all"; sortSel.value = "default";
       refreshList();
     };
-    [search, statusSel, triggerSel, sortSel, clear].forEach((c) => bar.appendChild(c));
+    [searchBoxEl, statusSel, triggerSel, sortSel, clear].forEach((c) => bar.appendChild(c));
     body.appendChild(bar);
 
     // Count line + the list region. Only these are rebuilt on filter changes, so

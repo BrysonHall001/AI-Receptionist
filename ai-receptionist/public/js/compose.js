@@ -283,8 +283,9 @@
     const hint = el("p", "cell-muted cp-hint");
     hint.textContent = "Pick a field to personalize per recipient. Set an optional fallback used when a recipient has no value (e.g. \u201cthere\u201d).";
     body.appendChild(hint);
-    const search = el("input", "input"); search.placeholder = "Search fields\u2026"; search.classList.add("cp-mb8");
-    body.appendChild(search);
+    const search = el("input", "input"); search.placeholder = "Search fields\u2026";
+    const searchWrap = App.util.searchBox(search); searchWrap.classList.add("cp-mb8"); // LC-1: shared search box
+    body.appendChild(searchWrap);
     const list = el("div", "cp-tag-list"); body.appendChild(list);
     const fbWrap = el("label", "field cp-block-mt10");
     fbWrap.innerHTML = `<span class="field-label">Fallback (optional)</span>`;
@@ -474,10 +475,11 @@
       tplMenu.innerHTML = "";
       // Searchable header (email templates carry tags/preview worth filtering).
       if (kind === "email") {
-        const search = el("input", "input"); search.placeholder = "Search templates\u2026"; search.classList.add("cp-tpl-search"); search.value = tplFilter;
+        const search = el("input", "input"); search.placeholder = "Search templates\u2026"; search.value = tplFilter;
         search.onclick = (e) => e.stopPropagation();
         search.oninput = () => { tplFilter = search.value; paintList(); };
-        tplMenu.appendChild(search);
+        const searchWrap = App.util.searchBox(search); searchWrap.classList.add("cp-tpl-search"); // LC-1: shared search box
+        tplMenu.appendChild(searchWrap);
       }
       const listWrap = el("div", "saved-list");
       tplMenu.appendChild(listWrap);

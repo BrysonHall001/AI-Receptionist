@@ -53,8 +53,9 @@ export interface LayoutCounts {
   nowrapNoEllipsis: number;
   frTrackNoFloor: number;
   inkSurfaceMismatch: number;
+  bespokeSearchInput: number;
 }
-export const LAYOUT_COUNTERS: (keyof LayoutCounts)[] = ["flexControlNoShrink", "actionsRowNoWrap", "fixedWidthNoEscape", "nowrapNoEllipsis", "frTrackNoFloor", "inkSurfaceMismatch"];
+export const LAYOUT_COUNTERS: (keyof LayoutCounts)[] = ["flexControlNoShrink", "actionsRowNoWrap", "fixedWidthNoEscape", "nowrapNoEllipsis", "frTrackNoFloor", "inkSurfaceMismatch", "bespokeSearchInput"];
 // CONTRAST RULE SYSTEM enforcement (best-effort static heuristic, documented):
 // the known ON-BG-scoped selectors must never take a panel-class ink. A rule whose
 // selector names one of BG_SCOPED and whose body sets color to --ink/--ink-soft/
@@ -70,7 +71,7 @@ export interface AuditResult {
 // ---- Layout anti-pattern scan (styles.css). Exported standalone so tests can run it on
 // synthetic CSS (e.g. the negative check: inject an offender, confirm the count rises). ----
 export function auditLayoutPatterns(css: string): LayoutCounts {
-  const out: LayoutCounts = { flexControlNoShrink: 0, actionsRowNoWrap: 0, fixedWidthNoEscape: 0, nowrapNoEllipsis: 0, frTrackNoFloor: 0, inkSurfaceMismatch: 0 };
+  const out: LayoutCounts = { flexControlNoShrink: 0, actionsRowNoWrap: 0, fixedWidthNoEscape: 0, nowrapNoEllipsis: 0, frTrackNoFloor: 0, inkSurfaceMismatch: 0, bespokeSearchInput: 0 };
   // Strip comments first so a comment above a rule never merges into its "selector".
   css = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const seenControls = new Set<string>();
@@ -213,7 +214,26 @@ export function runAudit(): AuditResult {
     add(name, countJsOrHtml(readFileSync(join(pub, name), "utf8"), false));
   }
 
-  return { files, totals, layout: auditLayoutPatterns(css), info: { distinctSpacingValues: cssCounts.spacing.size } };
+  // LC-1 scanner: BESPOKE SEARCH INPUTS. Heuristic (documented): any JS assignment of a
+  // search-like placeholder ('placeholder = "Search…"' etc.) must have the shared
+  // App.util.searchBox( wrap within the surrounding 800 characters — the ONE approved
+  // pattern (icon left, C mark right). A search input styled ad hoc is a counted
+  // violation. Baseline: zero.
+  let bespokeSearch = 0;
+  for (const name of readdirSync(jsDir).sort()) {
+    if (!name.endsWith(".js") || name === "util.js") continue; // util.js IS the shared builder
+    const src = readFileSync(join(jsDir, name), "utf8");
+    const re = /\.placeholder\s*=\s*["'`]Search/g;
+    let m;
+    while ((m = re.exec(src))) {
+      const win = src.slice(Math.max(0, m.index - 800), m.index + 800);
+      if (!win.includes("App.util.searchBox(")) bespokeSearch++;
+    }
+  }
+
+  const layout = auditLayoutPatterns(css);
+  layout.bespokeSearchInput = bespokeSearch;
+  return { files, totals, layout, info: { distinctSpacingValues: cssCounts.spacing.size } };
 }
 
 export const BASELINE_PATH = resolve(__dirname, "designBaseline.json");

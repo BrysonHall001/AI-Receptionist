@@ -137,7 +137,8 @@
     "fixedWidthNoEscape": 17,
     "nowrapNoEllipsis": 16,
     "frTrackNoFloor": 0,
-    "inkSurfaceMismatch": 0
+    "inkSurfaceMismatch": 0,
+    "bespokeSearchInput": 0
   },
   "info": {
     "distinctSpacingValues": 21

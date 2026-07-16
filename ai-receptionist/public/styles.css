@@ -2360,7 +2360,9 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .learn-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 860px) { .learn-layout { grid-template-columns: 1fr; } }
 .learn-nav { position: sticky; top: 84px; }
-.learn-search { width: 100%; margin-bottom: 12px; }
+.learn-nav > .search-box { width: 100%; margin-bottom: 12px; } /* LC-1: the shared search box replaces the bespoke input */
+.learn-deep-link { color: var(--accent); font-weight: 600; text-decoration: none; }
+.learn-deep-link:hover { text-decoration: underline; }
 .learn-nav-list { display: flex; flex-direction: column; gap: 2px; max-height: 70vh; overflow: auto; }
 .learn-cat { font-size: var(--text-xs); font-weight: var(--eyebrow-weight); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--ink-on-bg-soft); margin: 14px 0 4px; } /* ON-BG */
 .learn-cat:first-child { margin-top: 0; }
@@ -3104,6 +3106,7 @@ select.input {
    var(--accent), hidden while typing via :placeholder-shown — pure CSS). */
 .search-box { position: relative; display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; max-width: 100%; }
 .search-box .search-input { padding-left: 32px; padding-right: 28px; width: 100%; }
+.search-box > .input { padding-left: 32px; padding-right: 28px; width: 100%; } /* LC-1: converged bespoke search inputs (compose pickers, automations list) get the same clearance */
 .search-ico { position: absolute; left: 10px; display: inline-flex; width: 14px; height: 14px; color: var(--ink-faint); pointer-events: none; }
 .search-ico svg { width: 14px; height: 14px; }
 .search-c { position: absolute; right: 10px; display: none; width: 14px; height: 16px; pointer-events: none; }
