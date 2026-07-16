@@ -59,7 +59,7 @@ const inputRule = css.slice(css.indexOf(".input {"), css.indexOf("}", css.indexO
 check(inputRule.includes("border-radius: var(--radius-sm)"), ".input corners ride the --radius-sm path (pill buttons never round inputs)");
 for (const c of [".card {", ".stat-card {", ".portal-card {", ".widget-card {"]) {
   const r = css.slice(css.indexOf(c), css.indexOf("}", css.indexOf(c)));
-  check(r.includes("var(--card-border-w) solid var(--card-border)"), `${c.replace(" {", "")} reads the card-border tokens`);
+  check(r.includes("inset 0 0 0 var(--border-w) var(--border-c)"), `${c.replace(" {", "")} carries the revisions-1 border ring`);
 }
 check(/\.view-toggle \{[^}]*border: 1px solid var\(--control-border\); border-radius: var\(--radius-sm\);/.test(css), "segmented controls take the corner + border dims");
 check(/\.pill, \.badge, \.state-pill, \.nav-edit-pill \{\s*padding: 3px 10px; border-radius: 999px;/.test(css) && /\.stat-pill-cap \{[^}]*text-transform: uppercase/.test(css), "pills/badges stay 999px ALWAYS; the eyebrow system carries no personality tokens (exemptions hold)");
@@ -95,15 +95,15 @@ const empty = sanitizeUserTheme(base) as any;
 check(PERSONALITY_SLIDER_KEYS.every((k) => !(k in empty)) && !("shadowColor" in empty), "absent fields stay absent (preset personality; legacy payloads unchanged)");
 const junk = sanitizeUserTheme({ ...base, corners: "banana", shadows: 940, borders: -5, buttons: NaN, shadowColor: "red" }) as any;
 check(!("corners" in junk) && junk.shadows === 100 && junk.borders === 0 && !("buttons" in junk) && !("shadowColor" in junk), "junk dropped; out-of-range clamped 0..100");
-check(JSON.stringify(LEGACY_PERSONALITY_MAP) === JSON.stringify({ corners: { sharp: 8, soft: 35, round: 85 }, shadows: { crisp: 20, standard: 40, blended: 75 }, borders: { hairline: 40, strong: 80 }, buttons: { rect: 10, soft: 35, pill: 90 } }), "the server legacy map matches the documented spec");
+check(JSON.stringify(LEGACY_PERSONALITY_MAP) === JSON.stringify({ corners: { sharp: 8, soft: 35, round: 85 }, shadows: { crisp: 20, standard: 40, blended: 75 }, borders: { hairline: 25, strong: 80 }, buttons: { rect: 10, soft: 35, pill: 90 } }), "the server legacy map matches the documented spec (hairline remapped 40 -> 25 = the exact-1px ring position)");
 
 // ---------- (3) precedence + designer UI (REVISED: sliders) ----------
 console.log("\n(3) precedence + designer UI (source assertions on theme.js):");
 check(themeJs.includes("function personalityTokens(p, dark)") && themeJs.includes("function applyPersonality(ut)") && /s\.setProperty\(k, tokens\[k\]\)/.test(themeJs), "ONE interpolation map applies positions via body.style.setProperty (the sanctioned mechanism)");
 check(/applyResolved\(\{ mode: "custom", custom: c \}\); applyPersonality\(ut\); return;/.test(themeJs) && /applyResolved\(\{ mode: "preset", preset: a\.preset \|\| "light" \}\);\s*applyPersonality\(ut\);/.test(themeJs), "personality applies AFTER the resolved theme — 9b's exact custom-color precedence, unchanged");
 check(themeJs.includes("Object.assign({}, PERSONALITY_DEFAULTS, base, normalizePersonality(ut))"), "effective positions = defaults <- preset <- the user's custom fields (override order)");
-check(themeJs.includes('sliderRow("Corners", "corners")') && themeJs.includes('sliderRow("Nav highlight", "navHighlight")') && themeJs.includes('sliderRow("Table density", "density")') && themeJs.includes('id="th-shadowc"'), "six slider rows + the shadow-color picker row in the COMPONENT STYLE group");
-check(themeJs.includes('["corners", "shadows", "borders", "buttons", "navHighlight", "density", "shadowColor"].forEach((k) => { delete prefs[k]; })'), '"Reset to theme default" clears the seven fields (the preset\'s positions return)');
+check(themeJs.includes('sliderRow("Corners", "corners")') && themeJs.includes('sliderRow("Nav highlight", "navHighlight")') && themeJs.includes('sliderRow("Table Row Height", "density")') && themeJs.includes('id="th-shadowc"'), "six slider rows (Component Style is sliders-only; the color pickers live in the color section since revisions 1)");
+check(themeJs.includes('["corners", "shadows", "borders", "buttons", "navHighlight", "density", "shadowColor", "borderColor"].forEach((k) => { delete prefs[k]; })'), '"Reset to theme default" clears the eight fields (borderColor included since revisions 1)');
 check(themeJs.includes("clearComponents();") && /function applyPersonality\(ut\) \{\s*clearComponents\(\);/.test(themeJs), "component vars cleared before re-apply (no stale overrides leak across theme switches)");
 
 // ---------- (4) matrix: extremes across all 18 themes ----------

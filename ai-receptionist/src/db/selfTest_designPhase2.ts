@@ -56,7 +56,9 @@ const input = css.slice(css.indexOf(".input {"), css.indexOf("}", css.indexOf(".
 check(/border: 1px solid var\(--control-border\)/.test(input) && /background: var\(--control-bg\)/.test(input), ".input (the one canonical control style) reads --control-border + --control-bg");
 check((css.match(/(^|\n)\.input \{/g) || []).length === 1, "the control style is defined exactly once (selects/textareas share it via .input / textarea.input)");
 const card = css.slice(css.indexOf(".card {"), css.indexOf("}", css.indexOf(".card {")) + 1);
-check(/border-radius: var\(--card-radius\)/.test(card) && /box-shadow: var\(--card-shadow\)/.test(card), ".card reads --card-radius + --card-shadow");
+// REVISIONS-1 UPDATE: the outline became an inset ring; --card-shadow still composes in
+// the same box-shadow declaration (the indirection layer holds, just ring-first).
+check(/\.card \{[^}]*border-radius: var\(--card-radius\);[^}]*box-shadow: inset 0 0 0 var\(--border-w\) var\(--border-c\), var\(--card-shadow\);/s.test(css), ".card reads --card-radius + --card-shadow (composed after the revisions-1 border ring)");
 check(/tbody td \{ padding: var\(--table-row-pad\) 18px;/.test(css) && /--table-row-pad: 13px;/.test(css), "table rows read --table-row-pad (default aligned to the measured 13px — the token was unused before)");
 check(/(^|\n)\.pill \{ display: inline-block;.*var\(--accent-soft\)/.test(css), "one canonical .pill class on semantic tokens");
 check(/(^|\n)\.section-head \{ display: flex;/.test(css) && /(^|\n)\.empty \{ padding: /.test(css), "section-header and empty-state single classes exist");

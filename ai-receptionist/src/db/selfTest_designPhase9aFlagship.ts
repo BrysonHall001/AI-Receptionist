@@ -77,7 +77,7 @@ check(/\.tenants-table-host tbody td \{ padding-top: 8px; padding-bottom: 8px; \
 console.log("\n(3) buttons & controls:");
 check(/--btn-weight: 650;/.test(css), "firmer --btn-weight (650)");
 check(/\.btn-primary \{ background: var\(--accent\); color: var\(--on-accent\); border-color: var\(--accent-strong\); \}/.test(css), "primary depth = hairline --accent-strong rim (token-driven, no new shadow level)");
-check(/\.btn-ghost \{ background: var\(--panel\); color: var\(--ink-soft\); border-color: var\(--control-border\); \}/.test(css), "ghost borders share --control-border with inputs");
+check(/\.btn-ghost \{ background: var\(--panel\); color: var\(--ink-soft\); border-color: transparent; box-shadow: inset 0 0 0 var\(--border-w\) var\(--border-c\); \}/.test(css), "ghost outline = the shared border ring (revisions 1; layout border transparent = zero shift)");
 const btnRule = css.slice(css.indexOf(".btn {"), css.indexOf("}", css.indexOf(".btn {")));
 const inputRule = css.slice(css.indexOf(".input {"), css.indexOf("}", css.indexOf(".input {")));
 check(btnRule.includes("min-height: var(--control-h)") && inputRule.includes("min-height: var(--control-h)") && inputRule.includes("border-radius: var(--radius-sm)"), "controls match buttons in height; inputs corner via the --radius-sm path (9b: pill buttons don't round inputs)");
@@ -85,7 +85,7 @@ check(btnRule.includes("min-height: var(--control-h)") && inputRule.includes("mi
 // ---------- (4) cards & modals ----------
 console.log("\n(4) cards & modals:");
 check(/--shadow: 0 1px 2px rgba\(20, 20, 30, 0\.05\), 0 2px 8px rgba\(20, 20, 30, 0\.08\);/.test(css), "level-1 --shadow retuned crisper (all cards inherit)");
-check(/\.card \{\s*background: var\(--panel\); border: var\(--card-border-w\) solid var\(--card-border\);/.test(css), "cards: hairline border on the card-border tokens (9b routed the color/width through the personality layer)");
+check(/\.card \{\s*background: var\(--panel\); border: none;/.test(css) && /box-shadow: inset 0 0 0 var\(--border-w\) var\(--border-c\), var\(--card-shadow\);/.test(css), "cards: hairline outline via the revisions-1 border ring (1px --line by default; zero layout shift)");
 check(/--modal-radius: calc\(var\(--radius\) \+ 4px\);/.test(css) && /--modal-width: 460px;/.test(css), "--modal-radius / --modal-width minted (radius follows the corners dimension since 9b; same 14px default)");
 const modalRule = css.slice(css.indexOf("\n.modal {") + 1, css.indexOf("}", css.indexOf("\n.modal {")));
 check(modalRule.includes("max-width: var(--modal-width)") && modalRule.includes("border-radius: var(--modal-radius)") && !modalRule.includes("460px") && !modalRule.includes("14px"), ".modal metrics on tokens — NO hardcoded 14px/460px literals remain in the rule");

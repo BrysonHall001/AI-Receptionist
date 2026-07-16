@@ -559,7 +559,7 @@
 
     // Built-in theme preset ids (match src/theme/themes.ts). "" = leave the default.
     const THEME_PRESETS = [
-      ["", "Default (Clean Light)"], ["warm", "Warm Light"], ["slate", "Slate"],
+      ["", "Default (Classic Clarity)"], ["warm", "Warm Light"], ["slate", "Slate"],
       ["steel", "Steel Blue"], ["contrast", "High Contrast"], ["dark", "Dark"], ["midnight", "Midnight"],
     ];
 

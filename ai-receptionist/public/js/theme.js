@@ -42,7 +42,7 @@
   // interpolation map below is the single deterministic slider->tokens function; every
   // formula is documented in docs/design-system.md. PRESET_PERSONALITIES expresses each
   // theme's exaggerated personality as positions; custom fields override per 9b precedence.
-  const COMPONENT_VARS = ["--radius", "--radius-sm", "--shadow", "--shadow-lg", "--card-border", "--card-border-w", "--control-border", "--btn-radius", "--btn-pad-x", "--nav-active-bg", "--nav-active-ink", "--nav-active-bar", "--nav-active-glow", "--table-row-pad", "--list-row-pad"];
+  const COMPONENT_VARS = ["--radius", "--radius-sm", "--shadow", "--shadow-lg", "--border-w", "--border-c", "--btn-radius", "--btn-pad-x", "--nav-active-bg", "--nav-active-ink", "--nav-active-bar", "--nav-active-glow", "--table-row-pad", "--list-row-pad"];
   function clearComponents() { const s = document.body.style; COMPONENT_VARS.forEach((v) => s.removeProperty(v)); }
 
   // Defaults chosen so the formulas REPRODUCE the untouched Clean Light values exactly:
@@ -51,14 +51,16 @@
   // shadows 40 -> the 9a standard verbatim; borders 40 -> 1px --line cards + --line-strong
   // controls; nav 40 -> soft pill with a 0px bar (band start = today); density 64 ->
   // 13px --table-row-pad + 8px list rows (the spec's 40 would give 10px — visibly denser).
-  const PERSONALITY_DEFAULTS = { corners: 35, buttons: 23, shadows: 40, borders: 40, navHighlight: 40, density: 64, shadowColor: null };
+  const PERSONALITY_DEFAULTS = { corners: 35, buttons: 23, shadows: 40, borders: 25, navHighlight: 40, density: 64, shadowColor: null, borderColor: null };
+  // (borders default moved 40 -> 25 with the ring redefinition: 25 is the position whose
+  // 0..4px lerp lands EXACTLY on today's 1px hairline — the pixel-identical default.)
 
   // 9b enum -> 9b.2 position mapping (legacy saves load correctly forever; map on read,
   // write the numeric format on save).
   const LEGACY_MAP = {
     corners: { sharp: 8, soft: 35, round: 85 },
     shadows: { crisp: 20, standard: 40, blended: 75 },
-    borders: { hairline: 40, strong: 80 },
+    borders: { hairline: 25, strong: 80 }, // hairline remapped 40 -> 25 with the ring system (25 = the 1px position)
     buttons: { rect: 10, soft: 35, pill: 90 },
   };
   function normalizePersonality(ut) {
@@ -71,6 +73,7 @@
       if (Number.isFinite(v) && (k in ut)) out[k] = Math.max(0, Math.min(100, Math.round(v)));
     }
     if (typeof ut.shadowColor === "string" && isHex(ut.shadowColor)) out.shadowColor = ut.shadowColor.trim();
+    if (typeof ut.borderColor === "string" && isHex(ut.borderColor)) out.borderColor = ut.borderColor.trim();
     return out;
   }
 
@@ -144,17 +147,17 @@
       t["--shadow"] = parts.join(", ");
       t["--shadow-lg"] = shadowLayer(keyLerp(K.lg, P.shadows)[0], rgb);
     }
-    // Borders: banded prominence. 0-19 borderless cards; 20-59 today (1px --line cards,
-    // --line-strong controls); 60-89 both --line-strong; 90-100 the 2px silly end.
-    // ZERO-ZERO FLOOR: shadows 0 + borders 0 would erase all structure — cards keep a
-    // minimum 1px --line hairline so surfaces never vanish (documented safety floor).
-    let cardC, ctrlC, w = "1px";
-    if (P.borders < 20) { cardC = "transparent"; ctrlC = "var(--line)"; }
-    else if (P.borders < 60) { cardC = "var(--line)"; ctrlC = "var(--line-strong)"; }
-    else if (P.borders < 90) { cardC = "var(--line-strong)"; ctrlC = "var(--line-strong)"; }
-    else { cardC = "var(--line-strong)"; ctrlC = "var(--line-strong)"; w = "2px"; }
-    if (P.borders === 0 && P.shadows === 0) cardC = "var(--line)"; // the structure floor
-    t["--card-border"] = cardC; t["--control-border"] = ctrlC; t["--card-border-w"] = w;
+    // Borders (revisions 1): ONE global chrome ring. --border-w lerps 0px -> 4px in
+    // quarter-px steps and paints as INSET box-shadow rings (buttons, cards/panels, the
+    // sidebar's right edge, the topbar's bottom edge) — never border-width, so the slider
+    // can never shift layout. 0 = borderless everywhere; 100 = chunky 4px chrome.
+    // Default 25 -> exactly 1px = today's hairlines. --border-c = the Border-color pick
+    // or the theme's --line (Neutral). ZERO-ZERO FLOOR: borders 0 + shadows 0 keeps the
+    // 1px hairline so surfaces never vanish.
+    let bw = Math.round(lerp(0, 4, P.borders / 100) * 4) / 4;
+    if (P.borders === 0 && P.shadows === 0) bw = 1; // the structure floor
+    t["--border-w"] = bw + "px";
+    t["--border-c"] = P.borderColor ? P.borderColor : "var(--line)";
     // Nav highlight: continuous-ish bands (see docs). Band starts extend the previous
     // band's end state so dragging never pops. Default 40 = soft pill + 0px bar = today.
     const n = P.navHighlight;
@@ -291,6 +294,8 @@
     let prefs = data.theme && data.theme.active ? data.theme : { active: { mode: "preset", preset: "light" }, customs: [] };
     // Phase 9c: the preview cards scope each theme's full token set; parse it once.
     const themeVars = await loadThemeVars();
+    // Revisions 1: which carousel group is showing (follows the active preset's group).
+    let carouselGroup = "basic";
     // editor working colors (live preview only until saved)
     let editor = activeCustomColors() || { ...DEFAULT_CUSTOM };
 
@@ -330,41 +335,34 @@
     // Continuous "Fun intensity" slider. Lives beneath the Fun dropdown; drives the
     // --fun CSS variable live (0..1) so fun-theme decoration animates smoothly, and
     // only affects fun presets. Persisted (clamped 0..100) via the debounced save.
-    // Phase 9c: the intensity control is a row of 12 segment rectangles (filled = accent,
-    // unfilled = --gray-soft), mapping linearly onto the SAME 0..100 prefs.funLevel field
-    // with the SAME live path (App.theme.applyFun) and the SAME debounced persistence as
-    // the old range input. Click or drag across to fill; keyboard arrows adjust when the
-    // row has focus; the fill animation rides the motion token (reduced-motion = instant).
+    // ===== Revisions 1: THE shared segmented slider component =====
+    // One component for every 0..100 slider in the app (Fun intensity + all Component
+    // Style controls): a row of 12 small rectangles filled left-to-right in accent
+    // (unfilled = --gray-soft), click OR drag across, keyboard arrows when focused,
+    // fill animation on the motion token (the global reduced-motion block = instant).
     const FUN_SEGS = 12;
-    function funSlider() {
-      const lvl = clampFun(prefs.funLevel);
-      const row = el("div", "fun-slider-row");
-      let segsHtml = "";
-      for (let i = 0; i < FUN_SEGS; i++) segsHtml += `<span class="fun-seg-i" data-i="${i}"></span>`;
-      row.innerHTML =
-        `<label class="fun-slider-label" for="fun-seg">Fun intensity ` +
-        `<span class="cell-muted" style="font-weight:400">— only affects Fun themes</span></label>` +
-        `<div class="fun-slider-controls">` +
-        `<span class="fun-range-end">Calm</span>` +
-        `<div class="fun-seg" id="fun-seg" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${lvl}" aria-label="Fun intensity">${segsHtml}</div>` +
-        `<span class="fun-range-end">Extra</span>` +
-        `<span class="fun-range-val" id="fun-val">${lvl}</span>` +
-        `</div>`;
-      const seg = row.querySelector("#fun-seg");
-      const valEl = row.querySelector("#fun-val");
-      const cells = Array.from(row.querySelectorAll(".fun-seg-i"));
-      function paint(v) {
-        const filled = Math.round((v / 100) * FUN_SEGS);
+    function segSlider(opts) {
+      const seg = el("div", "fun-seg");
+      seg.tabIndex = 0;
+      seg.setAttribute("role", "slider");
+      seg.setAttribute("aria-valuemin", "0");
+      seg.setAttribute("aria-valuemax", "100");
+      seg.setAttribute("aria-label", opts.ariaLabel || "");
+      let html = "";
+      for (let i = 0; i < FUN_SEGS; i++) html += `<span class="fun-seg-i" data-i="${i}"></span>`;
+      seg.innerHTML = html;
+      const cells = Array.from(seg.querySelectorAll(".fun-seg-i"));
+      let value = clampFun(opts.value);
+      function paint() {
+        const filled = Math.round((value / 100) * FUN_SEGS);
         cells.forEach((c, i) => c.classList.toggle("fun-seg-i--on", i < filled));
-        valEl.textContent = String(v);
-        seg.setAttribute("aria-valuenow", String(v));
+        seg.setAttribute("aria-valuenow", String(value));
       }
-      function setLevel(v, saveNow) {
-        v = clampFun(v);
-        prefs.funLevel = v;
-        paint(v);
-        App.theme.applyFun(v);   // live, cheap (just sets --fun) — the SAME path as before
-        scheduleFunSave(saveNow ? 0 : undefined); // the SAME debounced server save
+      function setValue(v, commit) {
+        value = clampFun(v);
+        paint();
+        if (opts.onInput) opts.onInput(value);
+        if (commit && opts.onCommit) opts.onCommit(value);
       }
       const idxToLevel = (i) => Math.round(((i + 1) / FUN_SEGS) * 100);
       const fromEvent = (e) => {
@@ -374,15 +372,39 @@
         return clampFun(Math.round(((e.clientX - r.left) / Math.max(1, r.width)) * 100));
       };
       let dragging = false;
-      seg.onpointerdown = (e) => { dragging = true; seg.setPointerCapture(e.pointerId); setLevel(fromEvent(e)); };
-      seg.onpointermove = (e) => { if (dragging) setLevel(fromEvent(e)); };
-      seg.onpointerup = (e) => { dragging = false; setLevel(fromEvent(e), true); };
+      seg.onpointerdown = (e) => { dragging = true; seg.setPointerCapture(e.pointerId); setValue(fromEvent(e)); };
+      seg.onpointermove = (e) => { if (dragging) setValue(fromEvent(e)); };
+      seg.onpointerup = (e) => { dragging = false; setValue(fromEvent(e), true); };
       seg.onkeydown = (e) => {
         const step = Math.round(100 / FUN_SEGS);
-        if (e.key === "ArrowLeft") { e.preventDefault(); setLevel(clampFun(prefs.funLevel) - step, true); }
-        else if (e.key === "ArrowRight") { e.preventDefault(); setLevel(clampFun(prefs.funLevel) + step, true); }
+        if (e.key === "ArrowLeft") { e.preventDefault(); setValue(value - step, true); }
+        else if (e.key === "ArrowRight") { e.preventDefault(); setValue(value + step, true); }
       };
-      paint(lvl);
+      paint();
+      return { el: seg, set: (v) => { value = clampFun(v); paint(); }, get value() { return value; } };
+    }
+    function funSlider() {
+      const lvl = clampFun(prefs.funLevel);
+      const row = el("div", "fun-slider-row");
+      row.innerHTML =
+        `<label class="fun-slider-label">Fun intensity ` +
+        `<span class="cell-muted" style="font-weight:400">— only affects Fun themes</span></label>` +
+        `<div class="fun-slider-controls">` +
+        `<span class="fun-range-end">Calm</span>` +
+        `<span class="fun-seg-host"></span>` +
+        `<span class="fun-range-end">Extra</span>` +
+        `<span class="fun-range-val" id="fun-val">${lvl}</span>` +
+        `</div>`;
+      const valEl = row.querySelector("#fun-val");
+      // CONVERGED onto the shared segSlider — same prefs.funLevel field, same
+      // App.theme.applyFun live path, same debounced persistence.
+      const slider = segSlider({
+        ariaLabel: "Fun intensity",
+        value: lvl,
+        onInput: (v) => { prefs.funLevel = v; valEl.textContent = String(v); App.theme.applyFun(v); scheduleFunSave(); },
+        onCommit: () => scheduleFunSave(0),
+      });
+      row.querySelector(".fun-seg-host").replaceWith(slider.el);
       return row;
     }
 
@@ -391,7 +413,7 @@
     // in styles.css + that preset's 9b.2 personality tokens) onto the card root, so the
     // mock renders in ITS theme no matter which theme the app is running.
     const PALETTE_KEYS = ["--bg", "--panel", "--panel-2", "--ink", "--ink-soft", "--ink-faint", "--line", "--line-strong", "--accent", "--accent-soft", "--accent-strong", "--green", "--green-soft", "--amber", "--amber-soft", "--red", "--red-soft", "--gray-soft", "--row-hover", "--on-accent", "--sidebar-bg", "--topbar-bg", "--font-ui", "--font-display", "--pill-bg"];
-    var _themeVarsCache = null; // was `let`: hoisting fix — mountSettings can run before this line executes (TDZ crash)
+    var _themeVarsCache; // HOTFIX KEPT (was `let` = TDZ crash: used above, declared here; `var` hoists; no initializer so the warm cache is never reset)
     async function loadThemeVars() {
       if (_themeVarsCache) return _themeVarsCache;
       let cssText = "";
@@ -582,11 +604,29 @@
       // list), and centering a card fires the same selectPreset path the dropdowns used.
       wrap.appendChild(el("p", "settings-intro cell-muted", "Pick a theme — the cards are live previews of each theme's colors and component personality. Centering a card applies and saves it."));
       const activePreset = prefs.active.mode === "preset" ? prefs.active.preset : null;
-      wrap.appendChild(el("div", "theme-group-label", "Basic"));
-      wrap.appendChild(coverflowCarousel("basic", presets.filter((p) => p.group === "basic"), activePreset, themeVars));
-      wrap.appendChild(el("div", "theme-group-label", "Fun"));
-      wrap.appendChild(coverflowCarousel("fun", presets.filter((p) => p.group === "fun"), activePreset, themeVars));
-      wrap.appendChild(funSlider());
+      // Revisions 1: ONE carousel at a time, with a group switcher above it. The visible
+      // carousel's centered card = the applied theme. Switching groups: if the saved
+      // theme belongs to the new group, just center it (no theme change); if not, center
+      // that group's FIRST card AND apply it — deliberately literal: flipping the
+      // dropdown flips the theme; the carousel is the source of truth.
+      if (activePreset) { const ap = presets.find((p) => p.id === activePreset); if (ap) carouselGroup = ap.group; }
+      const groupRow = el("div", "thc-group-row");
+      const groupSel = document.createElement("select");
+      groupSel.className = "input theme-dd thc-group-sel";
+      [["basic", "Basic"], ["fun", "Fun"]].forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; groupSel.appendChild(o); });
+      groupSel.value = carouselGroup;
+      groupSel.onchange = () => {
+        carouselGroup = groupSel.value;
+        const groupPresets = presets.filter((p) => p.group === carouselGroup);
+        const belongs = activePreset && groupPresets.some((p) => p.id === activePreset);
+        if (belongs) render(); // center the saved theme; NO theme change
+        else selectPreset(groupPresets[0].id); // apply the group's first card (re-renders)
+      };
+      groupRow.appendChild(el("span", "eyebrow", "Themes"));
+      groupRow.appendChild(groupSel);
+      wrap.appendChild(groupRow);
+      wrap.appendChild(coverflowCarousel(carouselGroup, presets.filter((p) => p.group === carouselGroup), activePreset, themeVars));
+      if (carouselGroup === "fun") wrap.appendChild(funSlider()); // intensity ONLY under Fun
 
       // Two-column lower zone (stacks under ~900px): Design-your-own | Logo/white-label.
       const lower = el("div", "thc-lower");
@@ -614,26 +654,30 @@
       const sliderRow = (label, key) => {
         const v = effPersona[key];
         return `<div class="theme-custom-row theme-slider-row"><label>${label}</label>` +
-          `<div class="fun-slider-controls th-p-slider"><input type="range" class="fun-range" min="0" max="100" step="1" value="${v}" data-dim="${key}" aria-label="${label}">` +
+          `<div class="fun-slider-controls th-p-slider" data-dim-host="${key}" data-dim-label="${label}">` +
           `<span class="fun-range-val th-p-hint" data-hint="${key}">${hintFor(key, v)}</span></div></div>`;
       };
       designer.innerHTML = `
         <div class="theme-custom">
+          <div class="th-two-col">
           <div class="theme-custom-row"><label>Background color</label><input type="color" id="th-bg" value="${editor.background}"></div>
           <div class="theme-custom-row"><label>Content panel color</label><input type="color" id="th-panel" value="${editor.panel}"></div>
           <div class="theme-custom-row"><label>Top bar color</label><input type="color" id="th-top" value="${editor.topbar}"></div>
           <div class="theme-custom-row"><label>Sidebar color</label><input type="color" id="th-side" value="${editor.sidebar}"></div>
           <div class="theme-custom-row"><label>Font color</label><input type="color" id="th-fg" value="${editor.fontColor}"></div>
+          <div class="theme-custom-row"><label>Shadow color</label><div class="th-shadowc-row"><input type="color" id="th-shadowc" value="${esc(effPersona.shadowColor || (luminance((getComputedStyle(document.body).getPropertyValue("--panel").trim() || "#ffffff")) <= 0.5 ? "#000000" : "#14141e"))}"><button type="button" id="th-shadowc-neutral" class="th-comp-reset">Neutral</button></div></div>
+          <div class="theme-custom-row"><label>Border color</label><div class="th-shadowc-row"><input type="color" id="th-borderc" value="${esc(effPersona.borderColor || (getComputedStyle(document.body).getPropertyValue("--line").trim().match(/^#[0-9a-fA-F]{6}$/) ? getComputedStyle(document.body).getPropertyValue("--line").trim() : "#e4e4e2"))}"><button type="button" id="th-borderc-neutral" class="th-comp-reset">Neutral</button></div></div>
           <div class="theme-custom-row"><label>Font</label><select id="th-font" class="input">${fontOpts}</select></div>
+          </div>
           <div class="theme-comp-head"><span class="eyebrow">Component style</span><button type="button" id="th-comp-reset" class="th-comp-reset">Reset to theme default</button></div>
+          <div class="th-two-col">
           ${sliderRow("Corners", "corners")}
           ${sliderRow("Buttons", "buttons")}
           ${sliderRow("Shadows", "shadows")}
-          <div class="theme-custom-row"><label>Shadow color</label><div class="th-shadowc-row"><input type="color" id="th-shadowc" value="${esc(effPersona.shadowColor || (document.body.dataset.theme && luminance((getComputedStyle(document.body).getPropertyValue("--panel").trim() || "#ffffff")) <= 0.5 ? "#000000" : "#14141e"))}">` +
-          `<button type="button" id="th-shadowc-neutral" class="th-comp-reset">Neutral</button></div></div>
           ${sliderRow("Borders", "borders")}
           ${sliderRow("Nav highlight", "navHighlight")}
-          ${sliderRow("Table density", "density")}
+          ${sliderRow("Table Row Height", "density")}
+          </div>
         </div>`;
       lowerLeft.appendChild(designer);
 
@@ -700,25 +744,35 @@
           font: host.querySelector("#th-font").value,
         };
       }
-      // Phase 9b.2: sliders apply live on every input (setProperty, same as the color
-      // pickers) and persist debounced like the Fun slider. Dragging writes the numeric
-      // field (the new format); legacy enum fields are replaced the first time you drag.
+      // Revisions 1: every Component Style control is the SHARED segSlider (the segmented
+      // Fun-intensity style, app-wide). Same live apply + debounced persistence as 9b.2.
       let pSaveTimer = null;
       const schedulePersonalitySave = () => { if (pSaveTimer) clearTimeout(pSaveTimer); pSaveTimer = setTimeout(async () => { pSaveTimer = null; try { await persist(); } catch (e) { toast(e.message, true); } }, 300); };
-      designer.querySelectorAll(".th-p-slider .fun-range").forEach((sl) => {
-        sl.oninput = () => {
-          const key = sl.dataset.dim; const v = Math.max(0, Math.min(100, Math.round(Number(sl.value) || 0)));
-          prefs[key] = v; // numeric = the new persisted format
-          const hint = designer.querySelector(`[data-hint="${key}"]`); if (hint) hint.textContent = hintFor(key, v);
-          applyPersonality(prefs); // live, over whatever theme is active
-          schedulePersonalitySave();
-        };
+      designer.querySelectorAll(".th-p-slider[data-dim-host]").forEach((host) => {
+        const key = host.dataset.dimHost;
+        const slider = segSlider({
+          ariaLabel: host.dataset.dimLabel,
+          value: effPersona[key],
+          onInput: (v) => {
+            prefs[key] = v; // numeric = the persisted format
+            const hint = designer.querySelector(`[data-hint="${key}"]`); if (hint) hint.textContent = hintFor(key, v);
+            applyPersonality(prefs); // live, over whatever theme is active
+            schedulePersonalitySave();
+          },
+          onCommit: () => schedulePersonalitySave(),
+        });
+        host.insertBefore(slider.el, host.firstChild);
       });
       const shadowC = designer.querySelector("#th-shadowc");
       shadowC.oninput = () => { prefs.shadowColor = shadowC.value; applyPersonality(prefs); schedulePersonalitySave(); };
       designer.querySelector("#th-shadowc-neutral").onclick = () => { delete prefs.shadowColor; applyPersonality(prefs); schedulePersonalitySave(); };
+      // Border color: mirrors Shadow color's neutral pattern EXACTLY (pick -> live +
+      // persisted with the other custom colors; Neutral -> back to the theme's --line).
+      const borderC = designer.querySelector("#th-borderc");
+      borderC.oninput = () => { prefs.borderColor = borderC.value; applyPersonality(prefs); schedulePersonalitySave(); };
+      designer.querySelector("#th-borderc-neutral").onclick = () => { delete prefs.borderColor; applyPersonality(prefs); schedulePersonalitySave(); };
       designer.querySelector("#th-comp-reset").onclick = async () => {
-        ["corners", "shadows", "borders", "buttons", "navHighlight", "density", "shadowColor"].forEach((k) => { delete prefs[k]; });
+        ["corners", "shadows", "borders", "buttons", "navHighlight", "density", "shadowColor", "borderColor"].forEach((k) => { delete prefs[k]; });
         applyPersonality(prefs); // back to the ACTIVE preset's exaggerated positions
         try { await persist(); toast("Component style reset to the theme default"); } catch (e) { toast(e.message, true); }
         render();

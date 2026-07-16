@@ -58,7 +58,8 @@ check(themeJs.includes("selectPreset(items[i].id); // …and centering IS select
 // (the only OTHER preset assignment is the delete-custom fallback to "light" — not a picker)
 check((themeJs.match(/prefs\.active = \{ mode: "preset", preset: id \}/g) || []).length === 1 && (themeJs.match(/prefs\.active = \{ mode: "preset", preset: /g) || []).length === 2, "exactly ONE picker path sets a chosen preset (plus the pre-existing delete-custom fallback to light)");
 check(!themeJs.includes("function presetSelect(") && !themeJs.includes("Choose a basic theme") && !themeJs.includes("Choose a fun theme"), "the two dropdowns are GONE (carousels are the only preset pickers)");
-check(themeJs.includes('coverflowCarousel("basic", presets.filter((p) => p.group === "basic")') && themeJs.includes('coverflowCarousel("fun", presets.filter((p) => p.group === "fun")'), "roster + grouping from the same /api/theme presets source, new presentation");
+// REVISIONS-1 UPDATE: one carousel at a time, switched by group — same roster source.
+check(themeJs.includes('coverflowCarousel(carouselGroup, presets.filter((p) => p.group === carouselGroup)') && (themeJs.match(/coverflowCarousel\(/g) || []).length === 2 /* 1 def + 1 call */, "roster + grouping from the same /api/theme presets source (one carousel, group-switched)");
 check(themeJs.includes('e.key === "ArrowLeft"') && themeJs.includes("leftBtn.onclick = () => pick(cur - 1)") && themeJs.includes("d.onclick = () => pick(i)"), "keyboard arrows + edge buttons + clickable dots all route through pick()");
 check(themeJs.includes('const name = el("div", "eyebrow thc-name", p.label);') && /\.thc-d0 \.thc-name \{ color: var\(--ink\); \}/.test(css), "name-only eyebrow label beneath each card; the centered card's label stronger");
 
@@ -75,15 +76,15 @@ for (const id of ["aero", "dusk", "cottage", "vaporwave", "forest", "sunset", "d
 const pickerCode = themeJs.slice(themeJs.indexOf("function themePreviewCard"), themeJs.indexOf("function swatchHTML"));
 check(!pickerCode.includes("App.scene"), "no scenic renderer is invoked by the pickers (stand-ins only)");
 check(themeJs.includes("const themeVars = await loadThemeVars();"), "the var map loads once before the first render");
-check(/\.thc-scope \{[^}]*border: var\(--card-border-w\) solid var\(--card-border\); border-radius: var\(--card-radius\);\s*box-shadow: var\(--card-shadow\);/.test(css), "card CHROME follows the ACTIVE app theme; preview CONTENT follows its own scoped tokens");
+check(/\.thc-scope \{[^}]*border: none; border-radius: var\(--card-radius\);\s*box-shadow: inset 0 0 0 var\(--border-w\) var\(--border-c\), var\(--card-shadow\);/.test(css), "card CHROME follows the ACTIVE app theme (revisions-1 ring); preview CONTENT follows its own scoped tokens");
 
 // ---------- (4) the segment intensity slider ----------
 console.log("\n(4) segmented intensity:");
 check(themeJs.includes("const FUN_SEGS = 12;"), "~12 segments");
-check(themeJs.includes("prefs.funLevel = v;") && themeJs.includes("App.theme.applyFun(v);   // live, cheap (just sets --fun) — the SAME path as before") && themeJs.includes("scheduleFunSave(saveNow ? 0 : undefined); // the SAME debounced server save"), "maps onto the SAME prefs.funLevel field, SAME live path, SAME persistence");
+check(themeJs.includes("onInput: (v) => { prefs.funLevel = v; valEl.textContent = String(v); App.theme.applyFun(v); scheduleFunSave(); }") && themeJs.includes("onCommit: () => scheduleFunSave(0),"), "maps onto the SAME prefs.funLevel field, SAME live path, SAME persistence (via the shared segSlider since revisions 1)");
 check(themeJs.includes('const idxToLevel = (i) => Math.round(((i + 1) / FUN_SEGS) * 100);'), "segments map linearly onto 0..100");
-check(themeJs.includes('seg.onpointerdown') && themeJs.includes('seg.onpointermove') && themeJs.includes('if (dragging) setLevel(fromEvent(e))'), "click OR drag across fills left-to-right");
-check(themeJs.includes('if (e.key === "ArrowLeft") { e.preventDefault(); setLevel(clampFun(prefs.funLevel) - step, true); }'), "keyboard arrows adjust when focused");
+check(themeJs.includes('seg.onpointerdown') && themeJs.includes('seg.onpointermove') && themeJs.includes('if (dragging) setValue(fromEvent(e))'), "click OR drag across fills left-to-right (shared component)");
+check(themeJs.includes('if (e.key === "ArrowLeft") { e.preventDefault(); setValue(value - step, true); }'), "keyboard arrows adjust when focused (shared component)");
 check(/\.fun-seg-i \{[^}]*background: var\(--gray-soft\);[^}]*transition: background var\(--transition\)/.test(css) && /\.fun-seg-i--on \{ background: var\(--accent\); border-color: var\(--accent\); \}/.test(css), "filled = accent, unfilled = --gray-soft; fill animation on the motion token (reduced-motion honored globally)");
 check(themeJs.includes('<span class="fun-range-end">Calm</span>') && themeJs.includes('<span class="fun-range-end">Extra</span>') && themeJs.includes('id="fun-val"'), "Calm/Extra end labels + the live number kept");
 

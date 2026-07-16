@@ -49,6 +49,7 @@ export interface UserTheme {
   navHighlight?: number;
   density?: number;
   shadowColor?: string;
+  borderColor?: string; // revisions 1: the Border-color pick (hex; absent = the theme's --line)
 }
 
 // ---- Legacy per-portal shape (kept only to import old Tenant.theme data) ----
@@ -61,7 +62,7 @@ export interface Theme {
 // The shipped presets. Adding one = add an entry here AND a matching
 // `body[data-theme="<id>"]` block in public/styles.css.
 export const PRESETS = [
-  { id: "light", label: "Clean Light", group: "basic", swatches: ["#fbfbfa", "#5b59d6", "#1a1a1e"] },
+  { id: "light", label: "Classic Clarity", group: "basic", swatches: ["#fbfbfa", "#5b59d6", "#1a1a1e"] },
   { id: "warm", label: "Warm Light", group: "basic", swatches: ["#fbf8f3", "#5b59d6", "#2b2722"] },
   { id: "neutral", label: "Neutral Pro", group: "basic", swatches: ["#f5f6f7", "#2f6f8f", "#22282e"] },
   { id: "slate", label: "Slate", group: "basic", swatches: ["#eef1f4", "#4a6076", "#2b3440"] },
@@ -100,7 +101,7 @@ export const PERSONALITY_SLIDER_KEYS = ["corners", "shadows", "borders", "button
 export const LEGACY_PERSONALITY_MAP: Record<string, Record<string, number>> = {
   corners: { sharp: 8, soft: 35, round: 85 },
   shadows: { crisp: 20, standard: 40, blended: 75 },
-  borders: { hairline: 40, strong: 80 },
+  borders: { hairline: 25, strong: 80 }, // hairline remapped 40 -> 25 (25 = the exact-1px ring position)
   buttons: { rect: 10, soft: 35, pill: 90 },
 };
 // Kept as an alias so older imports keep compiling (the enum sets live on as the legacy
@@ -189,6 +190,7 @@ export function sanitizeUserTheme(input: unknown): UserTheme {
     if ((k in obj) && Number.isFinite(n)) (outBase as any)[k] = Math.max(0, Math.min(100, Math.round(n)));
   }
   if (isValidHex(obj.shadowColor)) (outBase as any).shadowColor = String(obj.shadowColor).trim();
+  if (isValidHex(obj.borderColor)) (outBase as any).borderColor = String(obj.borderColor).trim();
   return logo ? { ...outBase, logo } : outBase;
 }
 

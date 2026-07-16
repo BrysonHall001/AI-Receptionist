@@ -144,6 +144,8 @@
   /* ============ DESIGN PHASE 9b.2 — personality-slider tokens ============
      Seven sliders (theme.js personalityTokens) drive these live; the defaults below ARE
      the untouched Clean Light experience (slider defaults reproduce them exactly). */
+  --border-w: 1px;                       /* revisions 1: the ONE global chrome-ring thickness (borders slider, 0..4px) */
+  --border-c: var(--line);               /* the chrome-ring color (Border-color pick; neutral = --line) */
   --nav-active-bg: var(--accent-soft);   /* active nav fill (sidebar + top page-nav) */
   --nav-active-ink: var(--accent);       /* active nav text */
   --nav-active-bar: 0px;                 /* accent edge bar: left bar on sidebar, extra underline on top tabs */
@@ -171,7 +173,7 @@ body {
   width: 248px;
   flex-shrink: 0;
   background: var(--sidebar-bg, var(--panel));
-  border-right: 1px solid var(--line);
+  border-right: none; box-shadow: inset calc(0px - var(--border-w)) 0 0 var(--border-c); /* revisions 1: the right edge is a ring */
   display: flex;
   flex-direction: column;
   padding: 20px 14px;
@@ -224,7 +226,7 @@ body {
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 24px 32px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: none; box-shadow: inset 0 calc(0px - var(--border-w)) 0 var(--border-c); /* revisions 1: the bottom edge is a ring */
   background: var(--topbar-bg, var(--panel));
   backdrop-filter: blur(6px);
   position: sticky; top: 0; z-index: 5;
@@ -246,7 +248,7 @@ body {
   min-height: 54px; box-sizing: border-box;
   padding: 10px 20px 10px 52px; /* left room for the corner collapse toggle */
   background: var(--topbar-bg, var(--panel));
-  border-bottom: 1px solid var(--line);
+  border-bottom: none; box-shadow: inset 0 calc(0px - var(--border-w)) 0 var(--border-c); /* revisions 1 */
 }
 .pages-scroll {
   display: flex; align-items: center; gap: var(--sp-1);
@@ -297,7 +299,7 @@ body {
 .btn-danger:hover { filter: brightness(0.94); }
 .btn-danger:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
 .confirm-msg { margin: 0; line-height: 1.55; color: var(--ink-soft); }
-.btn-ghost { background: var(--panel); color: var(--ink-soft); border-color: var(--control-border); } /* Phase 9a: same border token as inputs */
+.btn-ghost { background: var(--panel); color: var(--ink-soft); border-color: transparent; box-shadow: inset 0 0 0 var(--border-w) var(--border-c); } /* revisions 1: the button outline is the shared ring (layout border stays transparent = zero shift) */
 .btn-ghost:hover { background: var(--gray-soft); color: var(--ink); }
 .btn-ghost:active { background: var(--line); }
 
@@ -311,9 +313,9 @@ body {
 /* ---------- Stat cards ---------- */
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 28px; }
 .stat-card {
-  background: var(--panel); border: var(--card-border-w) solid var(--card-border);
+  background: var(--panel); border: none;
   border-radius: var(--radius); padding: var(--card-pad);
-  box-shadow: var(--shadow);
+  box-shadow: inset 0 0 0 var(--border-w) var(--border-c), var(--shadow);
 }
 .stat-label { color: var(--ink-faint); font-size: var(--text-xs); font-weight: var(--eyebrow-weight); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
 .stat-value { font-size: var(--text-2xl); font-weight: 800; letter-spacing: var(--tracking-tighter); margin-top: 8px; }
@@ -336,8 +338,9 @@ body {
 .section-head .muted { color: var(--ink-faint); font-size: var(--text-sm); }
 
 .card {
-  background: var(--panel); border: var(--card-border-w) solid var(--card-border);
-  border-radius: var(--card-radius); overflow: hidden; box-shadow: var(--card-shadow);
+  background: var(--panel); border: none; /* revisions 1: the outline is the RING in box-shadow (zero layout shift at any thickness) */
+  border-radius: var(--card-radius); overflow: hidden;
+  box-shadow: inset 0 0 0 var(--border-w) var(--border-c), var(--card-shadow);
 }
 
 /* Tenants Panel (card) view — grid of tenant cards, alternate to the table body. */
@@ -682,7 +685,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 
 /* ---------- Master portal grid ---------- */
 .portal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(244px, 1fr)); gap: 14px; }
-.portal-card { background: var(--panel); border: var(--card-border-w) solid var(--card-border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
+.portal-card { background: var(--panel); border: none; border-radius: var(--radius); padding: 18px; box-shadow: inset 0 0 0 var(--border-w) var(--border-c), var(--shadow); display: flex; flex-direction: column; gap: 10px; }
 .portal-card-head { display: flex; align-items: center; justify-content: space-between; }
 .portal-mark { width: 36px; height: 36px; border-radius: 9px; background: var(--ink); color: var(--on-accent); display: grid; place-items: center; font-weight: 800; font-size: var(--text-md); }
 .portal-name { font-weight: 700; font-size: var(--text-base); }
@@ -1001,7 +1004,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 .widget-card .drag-handle { cursor: grab; opacity: 0.35; transition: opacity var(--transition); }
 .widget-card:hover .drag-handle { opacity: 0.7; }
 .widget-card .drag-handle:active { cursor: grabbing; }
-.widget-card { background: var(--panel); border: var(--card-border-w) solid var(--card-border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; display: flex; flex-direction: column; overflow: hidden; }
+.widget-card { background: var(--panel); border: none; border-radius: var(--radius); box-shadow: inset 0 0 0 var(--border-w) var(--border-c), var(--shadow); padding: 16px 18px; display: flex; flex-direction: column; overflow: hidden; }
 .widget-kpi { min-height: 150px; }
 .widget-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .widget-title { font-weight: 700; font-size: var(--text-base); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* hardening: long widget titles never push the actions out of the card */
@@ -1245,7 +1248,7 @@ body[data-theme="cottage"] .brand-mark { background: var(--accent); color: #fff;
 .fun-slider-label { display: block; font-size: var(--text-sm); font-weight: 600; color: var(--ink-soft); margin-bottom: 8px; }
 .fun-slider-controls { display: flex; align-items: center; gap: 10px; }
 .fun-range-end { font-size: var(--text-xs); color: var(--ink-faint); flex: 0 0 auto; }
-.fun-range { flex: 1 1 auto; accent-color: var(--accent); cursor: pointer; height: 22px; }
+/* (revisions 1: .fun-range retired — every slider is the shared segmented component) */
 .fun-range-val { flex: 0 0 auto; min-width: 30px; text-align: right; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 
 /* ============================================================
@@ -2958,8 +2961,8 @@ select.input {
 }
 .thc-scope {
   height: 200px; overflow: hidden; position: relative;
-  border: var(--card-border-w) solid var(--card-border); border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow); background: var(--bg);
+  border: none; border-radius: var(--card-radius);
+  box-shadow: inset 0 0 0 var(--border-w) var(--border-c), var(--card-shadow); background: var(--bg); /* revisions 1: ring chrome */
 }
 .thc-d0  { transform: translateX(-50%) rotateY(0deg) scale(1); z-index: 5; opacity: 1; }
 .thc-dm1 { transform: translateX(-96%) rotateY(38deg) scale(0.8); z-index: 4; opacity: 1; }
@@ -3009,3 +3012,14 @@ select.input {
 .fun-seg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fun-seg-i { flex: 1 1 auto; min-width: 0; height: 12px; border-radius: 3px; background: var(--gray-soft); border: 1px solid var(--line); transition: background var(--transition), border var(--transition); pointer-events: auto; }
 .fun-seg-i--on { background: var(--accent); border-color: var(--accent); }
+
+/* ======================================================================
+   APPEARANCE REVISIONS 1 — two-column control grids + the group switcher
+   Container queries collapse the two-column grids under an ~800px card.
+   ====================================================================== */
+.theme-custom-card { container-type: inline-size; }
+.th-two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 var(--sp-5); min-width: 0; align-items: start; }
+@container (max-width: 800px) { .th-two-col { grid-template-columns: 1fr; } }
+@supports not (container-type: inline-size) { @media (max-width: 1100px) { .th-two-col { grid-template-columns: 1fr; } } }
+.thc-group-row { display: flex; align-items: center; gap: var(--sp-3); margin: 4px 0 10px; min-width: 0; flex-wrap: wrap; }
+.thc-group-sel { max-width: 220px; }

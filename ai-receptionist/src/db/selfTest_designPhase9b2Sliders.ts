@@ -49,7 +49,7 @@ console.log("\n(1) anchors (exact documented values):");
 const d = T({});
 check(d["--radius"] === "10px" && d["--radius-sm"] === "7px" && d["--btn-radius"] === "7px" && d["--btn-pad-x"] === "14px" && d["--table-row-pad"] === "13px" && d["--list-row-pad"] === "8px", "DEFAULTS reproduce Clean Light exactly (10/7 radii, 7px/14px buttons, 13px/8px density)");
 check(d["--shadow"] === "0 1px 2px rgba(20, 20, 30, 0.05), 0 2px 8px rgba(20, 20, 30, 0.08)" && d["--shadow-lg"] === "0 10px 40px rgba(20, 20, 30, 0.16)", "DEFAULT shadow = the 9a standard VERBATIM");
-check(d["--card-border"] === "var(--line)" && d["--control-border"] === "var(--line-strong)" && d["--card-border-w"] === "1px", "DEFAULT borders = today (1px --line cards, --line-strong controls)");
+check(d["--border-w"] === "1px" && d["--border-c"] === "var(--line)" && d["--card-border"] === undefined && d["--control-border"] === undefined, "DEFAULT borders = today (a 1px --line ring; the old per-scope tokens are no longer slider-driven)");
 check(d["--nav-active-bg"] === "var(--accent-soft)" && d["--nav-active-ink"] === "var(--accent)" && d["--nav-active-bar"] === "0px" && d["--nav-active-glow"] === "none", "DEFAULT nav = today (soft pill, no bar, no glow)");
 // corners
 check(T({ corners: 0 })["--radius"] === "0px" && T({ corners: 100 })["--radius"] === "28px" && T({ corners: 100 })["--radius-sm"] === "24px" && T({ corners: 90 })["--radius-sm"] === "21px", "corners: 0 -> 0px, 100 -> 28px/24px (0.85x bubble bump at >=90)");
@@ -65,7 +65,7 @@ check(T({ shadows: 40 }, true)["--shadow"] === "0 1px 2px rgba(0, 0, 0, 0.3), 0 
 // shadow color replaces the base at the same alphas
 check(T({ shadows: 40, shadowColor: "#ff3df0" })["--shadow"] === "0 1px 2px rgba(255, 61, 240, 0.05), 0 2px 8px rgba(255, 61, 240, 0.08)", "shadow color: picked hex at the slider's current alphas");
 // borders bands
-check(T({ borders: 5 })["--card-border"] === "transparent" && T({ borders: 40 })["--card-border"] === "var(--line)" && T({ borders: 75 })["--card-border"] === "var(--line-strong)" && T({ borders: 95 })["--card-border-w"] === "2px" && T({ borders: 75 })["--card-border-w"] === "1px", "borders bands: 0-19 borderless, 40 today, 75 strong, 90+ the 2px silly end");
+check(T({ borders: 0 })["--border-w"] === "0px" && T({ borders: 25 })["--border-w"] === "1px" && T({ borders: 50 })["--border-w"] === "2px" && T({ borders: 100 })["--border-w"] === "4px" && T({ borders: 82 })["--border-w"] === "3.25px" && T({ borderColor: "#ff3df0" })["--border-c"] === "#ff3df0", "borders (revisions 1): the ring lerps 0px -> 4px (quarter-px steps; 25 = the 1px default; strong presets ~3.25px); Border color drives --border-c");
 // density
 check(T({ density: 0 })["--table-row-pad"] === "4px" && T({ density: 0 })["--list-row-pad"] === "3px" && T({ density: 100 })["--table-row-pad"] === "18px" && T({ density: 100 })["--list-row-pad"] === "11px", "density: 4..18px rows, list rows scaled + floored at 3px");
 
@@ -106,8 +106,8 @@ check(/\.pop-item \{[^}]*padding: var\(--list-row-pad\) 8px/.test(css) && /\.bul
 // ---------- (4) safety ----------
 console.log("\n(4) safety floors + extended matrix:");
 const zz = T({ borders: 0, shadows: 0 });
-check(zz["--shadow"] === "none" && zz["--card-border"] === "var(--line)" && zz["--card-border-w"] === "1px", "ZERO-ZERO FLOOR: borders 0 + shadows 0 keeps a 1px --line hairline (surfaces never vanish)");
-check(T({ borders: 0, shadows: 40 })["--card-border"] === "transparent", "…and borders 0 alone IS borderless (shadows carry structure)");
+check(zz["--shadow"] === "none" && zz["--border-w"] === "1px" && zz["--border-c"] === "var(--line)", "ZERO-ZERO FLOOR: borders 0 + shadows 0 keeps a 1px --line ring (surfaces never vanish)");
+check(T({ borders: 0, shadows: 40 })["--border-w"] === "0px", "…and borders 0 alone IS borderless (shadows carry structure)");
 check(T({ density: 0 })["--table-row-pad"] === "4px", "density 0 keeps a 4px minimum row pad (touch-target floor documented)");
 
 type RGB = [number, number, number];
