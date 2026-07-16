@@ -78,15 +78,15 @@ for (const id of THEME_IDS) {
 }
 check(css.indexOf('body[data-theme="light"] {') === -1, 'Clean Light ("") stays the pure :root base — no theme block');
 check(/const PRESET_PERSONALITIES = \{/.test(themeJs) && THEME_IDS.concat(["light"]).every((id) => new RegExp(`\\b${id}:\\s*\\{`).test(themeJs)), "PRESET_PERSONALITIES covers all 18 themes (exaggerated positions, the single source)");
-check(themeJs.includes('dusk:      { corners: 8,  shadows: 22, borders: 80, buttons: 10, navHighlight: 90, density: 45, shadowColor: "#ff3df0" }'), "dusk formalizes its glow DNA (nav 90 + magenta shadow color)");
+check(themeJs.includes('dusk:      { corners: 8,  shadows: 22, borders: 80, buttons: 10, density: 45, shadowColor: "#ff3df0" }'), "dusk formalizes its glow DNA (magenta shadow color; the nav dimension was removed in visual fixes 2)");
 check(!/body\[data-theme="aero"\][^{]*\{[^}]*border-radius: 13px/.test(css), "aero's glossy button still rides --btn-radius (no 13px literal)");
 check(/text-shadow: 0 0 14px rgba\(255,61,240,0\.45\)/.test(css), "dusk's text-glow flourish untouched");
 
 // ---------- (2) round-trip persistence (9b.2 numeric format + legacy 9b mapping) ----------
 console.log("\n(2) round-trip (sanitizeUserTheme = the /api/theme chokepoint):");
 const base: any = { active: { mode: "preset", preset: "slate" }, customs: [] };
-const saved = sanitizeUserTheme({ ...base, corners: 85, shadows: 75, borders: 80, buttons: 90, navHighlight: 92, density: 30, shadowColor: "#ff3df0" }) as any;
-check(saved.corners === 85 && saved.shadows === 75 && saved.borders === 80 && saved.buttons === 90 && saved.navHighlight === 92 && saved.density === 30 && saved.shadowColor === "#ff3df0", "the seven numeric/color fields survive save -> reload identical");
+const saved = sanitizeUserTheme({ ...base, corners: 85, shadows: 75, borders: 80, buttons: 90, density: 30, shadowColor: "#ff3df0" }) as any;
+check(saved.corners === 85 && saved.shadows === 75 && saved.borders === 80 && saved.buttons === 90 && saved.density === 30 && saved.shadowColor === "#ff3df0", "the numeric/color fields survive save -> reload identical (navHighlight removed in visual fixes 2)");
 const again = sanitizeUserTheme(saved) as any;
 check(PERSONALITY_SLIDER_KEYS.every((k) => again[k] === saved[k]) && again.shadowColor === saved.shadowColor, "idempotent: sanitizing the sanitized output changes nothing");
 const legacy = sanitizeUserTheme({ ...base, corners: "sharp", shadows: "blended", borders: "strong", buttons: "pill" }) as any;
@@ -102,8 +102,8 @@ console.log("\n(3) precedence + designer UI (source assertions on theme.js):");
 check(themeJs.includes("function personalityTokens(p, dark)") && themeJs.includes("function applyPersonality(ut)") && /s\.setProperty\(k, tokens\[k\]\)/.test(themeJs), "ONE interpolation map applies positions via body.style.setProperty (the sanctioned mechanism)");
 check(/applyResolved\(\{ mode: "custom", custom: c \}\); applyPersonality\(ut\); return;/.test(themeJs) && /applyResolved\(\{ mode: "preset", preset: a\.preset \|\| "light" \}\);\s*applyPersonality\(ut\);/.test(themeJs), "personality applies AFTER the resolved theme — 9b's exact custom-color precedence, unchanged");
 check(themeJs.includes("Object.assign({}, PERSONALITY_DEFAULTS, base, normalizePersonality(ut))"), "effective positions = defaults <- preset <- the user's custom fields (override order)");
-check(themeJs.includes('sliderRow("Corners", "corners")') && themeJs.includes('sliderRow("Nav highlight", "navHighlight")') && themeJs.includes('sliderRow("Table Row Height", "density")') && themeJs.includes('id="th-shadowc"'), "six slider rows (Component Style is sliders-only; the color pickers live in the color section since revisions 1)");
-check(themeJs.includes('["corners", "shadows", "borders", "buttons", "navHighlight", "density", "shadowColor", "borderColor"].forEach((k) => { delete prefs[k]; })'), '"Reset to theme default" clears the eight fields (borderColor included since revisions 1)');
+check(themeJs.includes('sliderRow("Corners", "corners")') && !themeJs.includes('sliderRow("Nav highlight"') && themeJs.includes('sliderRow("Table Row Height", "density")') && themeJs.includes('id="th-shadowc"'), "five slider rows (Nav highlight removed in visual fixes 2; the color pickers live in the color section)");
+check(themeJs.includes('["corners", "shadows", "borders", "buttons", "density", "shadowColor", "borderColor"].forEach((k) => { delete prefs[k]; })'), '"Reset to theme default" clears the seven fields (navHighlight removed in visual fixes 2)');
 check(themeJs.includes("clearComponents();") && /function applyPersonality\(ut\) \{\s*clearComponents\(\);/.test(themeJs), "component vars cleared before re-apply (no stale overrides leak across theme switches)");
 
 // ---------- (4) matrix: extremes across all 18 themes ----------

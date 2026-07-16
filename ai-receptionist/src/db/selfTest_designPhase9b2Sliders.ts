@@ -50,7 +50,7 @@ const d = T({});
 check(d["--radius"] === "10px" && d["--radius-sm"] === "7px" && d["--btn-radius"] === "7px" && d["--btn-pad-x"] === "14px" && d["--table-row-pad"] === "13px" && d["--list-row-pad"] === "8px", "DEFAULTS reproduce Clean Light exactly (10/7 radii, 7px/14px buttons, 13px/8px density)");
 check(d["--shadow"] === "0 1px 2px rgba(20, 20, 30, 0.05), 0 2px 8px rgba(20, 20, 30, 0.08)" && d["--shadow-lg"] === "0 10px 40px rgba(20, 20, 30, 0.16)", "DEFAULT shadow = the 9a standard VERBATIM");
 check(d["--border-w"] === "1px" && d["--border-c"] === "var(--line)" && d["--card-border"] === undefined && d["--control-border"] === undefined, "DEFAULT borders = today (a 1px --line ring; the old per-scope tokens are no longer slider-driven)");
-check(d["--nav-active-bg"] === "var(--accent-soft)" && d["--nav-active-ink"] === "var(--accent)" && d["--nav-active-bar"] === "0px" && d["--nav-active-glow"] === "none", "DEFAULT nav = today (soft pill, no bar, no glow)");
+check(d["--nav-active-bg"] === undefined && !("navHighlight" in P.PERSONALITY_DEFAULTS), "nav-highlight dimension REMOVED (visual fixes 2) — no nav tokens are emitted");
 // corners
 check(T({ corners: 0 })["--radius"] === "0px" && T({ corners: 100 })["--radius"] === "28px" && T({ corners: 100 })["--radius-sm"] === "24px" && T({ corners: 90 })["--radius-sm"] === "21px", "corners: 0 -> 0px, 100 -> 28px/24px (0.85x bubble bump at >=90)");
 // buttons
@@ -69,13 +69,9 @@ check(T({ borders: 0 })["--border-w"] === "0px" && T({ borders: 25 })["--border-
 // density
 check(T({ density: 0 })["--table-row-pad"] === "4px" && T({ density: 0 })["--list-row-pad"] === "3px" && T({ density: 100 })["--table-row-pad"] === "18px" && T({ density: 100 })["--list-row-pad"] === "11px", "density: 4..18px rows, list rows scaled + floored at 3px");
 
-console.log("\n(1b) nav-highlight bands (continuous-ish boundaries):");
-const nav = (n: number) => T({ navHighlight: n });
-check(nav(0)["--nav-active-bg"].includes("color-mix") && nav(0)["--nav-active-bg"].includes("40%"), "band 1 whisper: faint accent-soft mix, no bar");
-check(nav(20)["--nav-active-bg"] === "var(--accent-soft)" && nav(19)["--nav-active-bg"].includes("97%"), "band 1->2 boundary: 19 is a 97% mix, 20 is the full soft pill (continuous)");
-check(nav(40)["--nav-active-bar"] === "0px" && nav(50)["--nav-active-bar"] === "2px" && nav(59)["--nav-active-bar"] === "3px", "band 3: the accent bar lerps 0 -> 3px (band START = band 2's end, no pop)");
-check(nav(60)["--nav-active-bg"].includes("var(--accent) 0%") && nav(60)["--nav-active-ink"] === "var(--accent)" && nav(70)["--nav-active-ink"] === "var(--on-accent)" && nav(79)["--nav-active-bg"].includes("95%"), "band 4: bg mixes toward --accent; ink flips at the 50% mix");
-check(nav(80)["--nav-active-bg"] === "var(--accent)" && nav(80)["--nav-active-glow"] === "none" && nav(90)["--nav-active-glow"] === "0 0 9px var(--accent)" && nav(100)["--nav-active-glow"] === "0 0 18px var(--accent)", "band 5: bold at 80 (glow 0 = band 4's end), glow radius lerps to 18px at 100");
+console.log("\n(1b) nav-highlight: removed cleanly (visual fixes 2):");
+check(!Object.keys(P.PRESET_PERSONALITIES).some((k: string) => "navHighlight" in P.PRESET_PERSONALITIES[k]), "no preset carries a navHighlight position anymore");
+check(P.normalizePersonality({ navHighlight: 90, corners: 12 }).navHighlight === undefined, "legacy saved navHighlight values load cleanly and are IGNORED");
 
 // ---------- (2) legacy mapping ----------
 console.log("\n(2) legacy 9b enums -> positions:");
@@ -89,19 +85,17 @@ for (const [k, m] of Object.entries(LEGACY_PERSONALITY_MAP)) {
 check(JSON.stringify(P.LEGACY_MAP) === JSON.stringify(LEGACY_PERSONALITY_MAP), "client LEGACY_MAP and server LEGACY_PERSONALITY_MAP agree exactly");
 const n1 = P.normalizePersonality({ corners: "round", density: 30 });
 check(n1.corners === 85 && n1.density === 30, "client normalizer maps enums on READ (legacy saves render correctly without a write)");
-const rt = sanitizeUserTheme({ ...base, corners: 12, navHighlight: 88, shadowColor: "#00ffcc" }) as any;
-check(rt.corners === 12 && rt.navHighlight === 88 && rt.shadowColor === "#00ffcc" && (sanitizeUserTheme(rt) as any).corners === 12, "numeric format round-trips");
+const rt = sanitizeUserTheme({ ...base, corners: 12, density: 88, shadowColor: "#00ffcc" }) as any;
+check(rt.corners === 12 && rt.density === 88 && rt.shadowColor === "#00ffcc" && (sanitizeUserTheme(rt) as any).corners === 12, "numeric format round-trips");
+check(!("navHighlight" in (sanitizeUserTheme({ ...base, navHighlight: 90 }) as any)), "the server DROPS legacy navHighlight on save (visual fixes 2)");
 const empty = sanitizeUserTheme(base) as any;
-check(["corners", "shadows", "borders", "buttons", "navHighlight", "density", "shadowColor"].every((k) => !(k in empty)), "absent -> defaults (fields stay absent; untouched tenants byte-identical)");
+check(["corners", "shadows", "borders", "buttons", "density", "shadowColor"].every((k) => !(k in empty)), "absent -> defaults (fields stay absent; untouched tenants byte-identical)");
 
-// ---------- (3) nav rewire ----------
-console.log("\n(3) both nav contexts read the tokens:");
-check(/\.nav-item\.active \{ background: var\(--nav-active-bg\); color: var\(--nav-active-ink\); font-weight: 600; border-left: var\(--nav-active-bar\) solid var\(--accent\); box-shadow: var\(--nav-active-glow\); \}/.test(css), "sidebar .nav-item.active is fully token-driven (bg/ink/bar/glow)");
-check(/\.portal-pages-row \.nav-item\.active \{ border-left: 0; border-bottom: var\(--nav-active-bar\) solid var\(--accent\); \}/.test(css), "top page-nav tabs: the SAME tokens; the bar renders as an underline");
-check(!css.includes(".nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }"), "the old hardcoded active style is GONE");
-check(!css.includes('body[data-theme="dusk"] .nav-item.active { box-shadow: 0 0 14px'), "dusk's bespoke nav glow rule is GONE (now its Nav-highlight position, 90)");
-check(/--nav-active-bg: var\(--accent-soft\);/.test(css) && /--nav-active-bar: 0px;/.test(css) && /--nav-active-glow: none;/.test(css) && /--list-row-pad: 8px;/.test(css), ":root defaults for the minted tokens = today (no-override render identical)");
-check(/\.pop-item \{[^}]*padding: var\(--list-row-pad\) 8px/.test(css) && /\.bulk-item \{[^}]*padding: var\(--list-row-pad\) 10px/.test(css), "shared list rows ride --list-row-pad (density slider)");
+// ---------- (3) nav: static classic active state (slider removed, visual fixes 2) ----------
+console.log("\n(3) nav active state:");
+check(/\.nav-item\.active \{ background: var\(--accent-soft\); color: var\(--accent\); font-weight: 600; \}/.test(css), "both navs (they share .nav-item) use the classic static active style");
+check(!css.includes("--nav-active-") && !themeSrc.includes("--nav-active-"), "no nav-active tokens remain anywhere (clean removal, no orphans)");
+check(/--list-row-pad: 8px;/.test(css) && /\.pop-item \{[^}]*padding: var\(--list-row-pad\) 8px/.test(css) && /\.bulk-item \{[^}]*padding: var\(--list-row-pad\) 10px/.test(css), "shared list rows still ride --list-row-pad (density slider)");
 
 // ---------- (4) safety ----------
 console.log("\n(4) safety floors + extended matrix:");
@@ -131,19 +125,12 @@ for (const t of THEMES) {
   const res = (k: string): RGB | null => { let v = eff[k]; let n = 0; while (v && v.startsWith("var(") && n++ < 6) v = eff[v.slice(4, -1).trim()]; return v ? hex(v) : null; };
   const accent = res("--accent")!, soft = res("--accent-soft")!, on = res("--on-accent") || [255, 255, 255], panel = res("--panel")!;
   const persona = { ...P.PERSONALITY_DEFAULTS, ...(P.PRESET_PERSONALITIES[t] || {}) };
-  const n = persona.navHighlight;
-  // resolve the RESTING nav state colors for this preset's exaggerated position
-  let bg: RGB, ink: RGB;
-  if (n < 60) { bg = soft; ink = accent; }
-  else if (n < 80) { const q = Math.round(((n - 60) / 20) * 100) / 100; bg = mix(accent, soft, q); ink = q >= 0.5 ? (on as RGB) : accent; }
-  else { bg = accent; ink = on as RGB; }
-  const r = contrast(ink, bg);
-  // Bar: >= 4.5 for the NEW bold/glow bands (9b.2 introduces those); >= 4.0 for the
-  // soft-pill bands, which are the PRE-EXISTING shipped accent-on-accent-soft treatment
-  // (sand has always sat at 4.02:1 there — unchanged by this batch, documented).
-  const bar = n >= 60 ? 4.5 : 4.0;
-  check(r >= bar, `${t}: resting nav state legible at its position (${r.toFixed(2)}:1, bar ${bar})`);
-  if (r < worstNav) { worstNav = r; wN = `${t} (nav ${n})`; }
+  // visual fixes 2: the nav slider is gone — every theme's resting active nav is the
+  // static soft pill (accent text on accent-soft). The contrast audit raised the failing
+  // palettes, so the bar here is the full 4.5 text standard.
+  const r = contrast(accent, soft);
+  check(r >= 4.5 || contrast(on as RGB, soft) >= 4.5 /* (no theme uses on-accent here; kept for form) */, `${t}: active nav text legible (accent on accent-soft ${r.toFixed(2)}:1)`);
+  if (r < worstNav) { worstNav = r; wN = t; }
   // strong-border presets must keep --line-strong legible on --panel
   if (persona.borders >= 60) { const ls = res("--line-strong")!; check(contrast(ls, panel) >= 3, `${t}: strong borders legible (--line-strong vs --panel ${contrast(ls, panel).toFixed(2)}:1)`); }
 }

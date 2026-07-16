@@ -37,6 +37,12 @@ function lum(c: RGB): number { return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.
 function contrast(a: RGB, b: RGB): number { const L1 = lum(a), L2 = lum(b), hi = Math.max(L1, L2), lo = Math.min(L1, L2); return (hi + 0.05) / (lo + 0.05); }
 
 const css = readFileSync(resolve(__dirname, "../../public/styles.css"), "utf8");
+function rawBlock(sel: string): string {
+  const i = css.indexOf(sel); if (i < 0) return "";
+  const st = css.indexOf("{", i); let d = 1, j = st + 1;
+  while (j < css.length && d > 0) { if (css[j] === "{") d++; else if (css[j] === "}") d--; j++; }
+  return css.slice(st + 1, j - 1);
+}
 function blockVars(sel: string): Record<string, string> {
   const i = css.indexOf(sel);
   const out: Record<string, string> = {};
@@ -76,6 +82,36 @@ for (const t of THEMES) {
   if (accS) need(contrast(over(onAcc, accS), over(accS, bg)) >= 4.5, `${t}: button text on --accent-strong (hover) = ${contrast(over(onAcc, accS), over(accS, bg)).toFixed(2)}:1 (< 4.5)`);
   if (lineS) need(contrast(PANEL, over(lineS, PANEL)) >= 3, `${t}: input border --line-strong vs panel = ${contrast(PANEL, over(lineS, PANEL)).toFixed(2)}:1 (< 3)`);
   if (acc) need(contrast(PANEL, over(acc, PANEL)) >= 3, `${t}: --accent (focus/indicator) vs panel = ${contrast(PANEL, over(acc, PANEL)).toFixed(2)}:1 (< 3)`);
+
+  // ===== VISUAL FIXES 2 — the missing combinations (upgraded after a real-app audit) =====
+  // The suite passed while real screens failed because these were never asserted:
+  const R = (k: string) => { let val = v[k]; let n = 0; while (val && val.startsWith("var(") && n++ < 8) val = v[val.slice(4, -1).trim()]; return parseColor(val || ""); };
+  // (a) control text + placeholder on the CONTROL surface (selects/inputs; --control-bg
+  //     resolves through var chains — e.g. var(--panel) — which C() never followed).
+  const ctrl = R("--control-bg") || panel;
+  const CTRL = over(ctrl, bg);
+  at(ink, CTRL, 4.5, "control text on --control-bg");
+  at(faint, CTRL, 4.5, "placeholder/muted on --control-bg");
+  // (b) badge/pill text on their soft backgrounds (accent/green/amber/red families).
+  const pair = (fgK: string, bgK: string, label: string) => {
+    const F = R(fgK), G = R(bgK);
+    if (F && G) need(contrast(over(F, PANEL), over(G, PANEL)) >= 4.5, `${t}: ${label} = ${contrast(over(F, PANEL), over(G, PANEL)).toFixed(2)}:1 (< 4.5)`);
+  };
+  pair("--accent", "--accent-soft", "pill text --accent on --accent-soft");
+  pair("--green", "--green-soft", "badge text --green on --green-soft");
+  pair("--amber", "--amber-soft", "badge text --amber on --amber-soft");
+  pair("--red", "--red-soft", "badge text --red on --red-soft");
+  // (c) eyebrow/muted labels over the SCENIC backdrop: fun themes paint literal gradient
+  //     stops behind the content; muted text must clear 4.5 against EVERY stop (this is
+  //     the Vaporwave "THEMES label barely visible" case the old suite missed).
+  const rawBody = t === "(root/light)" ? "" : rawBlock('body[data-theme="' + t + '"] {');
+  const bgDecl = rawBody.match(/\n\s*background:\s*([^;]+);/);
+  if (bgDecl && faint) {
+    for (const st of bgDecl[1].matchAll(/#[0-9a-fA-F]{6}/g)) {
+      const stop = parseColor(st[0])!;
+      need(contrast(over(faint, bg), stop) >= 4.5, `${t}: muted/eyebrow text over scenic stop ${st[0]} = ${contrast(over(faint, bg), stop).toFixed(2)}:1 (< 4.5)`);
+    }
+  }
 }
 
 console.log("All-theme legibility guard (parsed from styles.css)\n===================================================");

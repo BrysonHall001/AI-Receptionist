@@ -13,9 +13,9 @@
   --accent: #5b59d6;
   --accent-soft: #efeffc;
   --accent-strong: #5250be;
-  --green: #1f9d6b;
+  --green: #177a52; /* visual fixes 2: badge text clears 4.5:1 on --green-soft */
   --green-soft: #e6f6ee;
-  --amber: #b7791f;
+  --amber: #966319; /* visual fixes 2: badge text clears 4.5:1 on --amber-soft */
   --amber-soft: #fbf2e2;
   --red: #c0392b;
   --red-soft: #fbeae8;
@@ -146,10 +146,6 @@
      the untouched Clean Light experience (slider defaults reproduce them exactly). */
   --border-w: 1px;                       /* revisions 1: the ONE global chrome-ring thickness (borders slider, 0..4px) */
   --border-c: var(--line);               /* the chrome-ring color (Border-color pick; neutral = --line) */
-  --nav-active-bg: var(--accent-soft);   /* active nav fill (sidebar + top page-nav) */
-  --nav-active-ink: var(--accent);       /* active nav text */
-  --nav-active-bar: 0px;                 /* accent edge bar: left bar on sidebar, extra underline on top tabs */
-  --nav-active-glow: none;               /* the silly end: accent glow */
   --list-row-pad: 8px;                   /* list-row vertical padding (density slider, scaled off --table-row-pad) */
 }
 
@@ -200,9 +196,7 @@ body {
   transition: background var(--transition), color var(--transition);
 }
 .nav-item:hover { background: var(--gray-soft); color: var(--ink); }
-.nav-item.active { background: var(--nav-active-bg); color: var(--nav-active-ink); font-weight: 600; border-left: var(--nav-active-bar) solid var(--accent); box-shadow: var(--nav-active-glow); } /* 9b.2: token-driven active state (nav-highlight slider) */
-/* Top page-nav tabs (Analytics etc.): the SAME tokens; the bar renders as an underline. */
-.portal-pages-row .nav-item.active { border-left: 0; border-bottom: var(--nav-active-bar) solid var(--accent); }
+.nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; } /* visual fixes 2: nav-highlight slider removed — the classic active state returns */
 .nav-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--ink-faint); transition: background var(--transition);
@@ -1014,7 +1008,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 .widget-kpi .widget-body { min-height: 60px; }
 .kpi { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 8px 0 4px; }
 .kpi-value { font-size: var(--text-kpi); font-weight: 800; letter-spacing: var(--tracking-tighter); color: var(--accent); line-height: 1; }
-.kpi-label { font-size: var(--text-sm); color: var(--ink-faint); margin-top: 8px; }
+.kpi-label { font-size: var(--text-xs); font-weight: var(--eyebrow-weight); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--ink-faint); margin-top: 8px; } /* visual fixes 2: the caption is an eyebrow, directly on the card */
 .heatmap-wrap { overflow: auto; max-height: 240px; }
 .heatmap { border-collapse: collapse; font-size: var(--text-xs); }
 .heatmap th { padding: 4px 8px; text-align: left; color: var(--ink-faint); font-weight: 600; position: sticky; white-space: nowrap; }
@@ -1134,10 +1128,10 @@ body[data-theme="aero"] {
   --bg: #cfeeff;
   /* SOLID surfaces (was frosted translucent) so scenery never shows through text. */
   --panel: #f4fbff; --panel-2: #e8f5fd;
-  --ink: #0c3a52; --ink-soft: #2b6480; --ink-faint: #285b74;
+  --ink: #0c3a52; --ink-soft: #2b6480; --ink-faint: #1e4356;
   --line: #d3ebf7; --line-strong: #6692a7;
-  --accent: #0b78a5; --accent-soft: #dcf0fb; --accent-strong: #0b6b94;
-  --green: #10b97e; --green-soft: rgba(205,255,232,0.7); --amber: #e0900f; --amber-soft: rgba(255,244,210,0.8); --red: #ec5648; --red-soft: rgba(255,220,216,0.8);
+  --accent: #0a729d; --accent-soft: #dcf0fb; --accent-strong: #0b6b94;
+  --green: #0b7e56; --green-soft: rgba(205,255,232,0.7); --amber: #9b630a; --amber-soft: rgba(255,244,210,0.8); --red: #af4035; --red-soft: rgba(255,220,216,0.8);
   --row-hover: #eaf6fe; --on-accent: #fff;
   --sidebar-bg: #eef8fe; --topbar-bg: #eaf6fe;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
@@ -1202,8 +1196,8 @@ body[data-theme="cottage"] {
   --bg: #f4ecdd; --panel: #fbf6ec; --panel-2: #f1e8d6;
   --ink: #4a3f33; --ink-soft: #7a6c59; --ink-faint: #716555;
   --line: #e4d8c3; --line-strong: #958874;
-  --accent: #63755d; --accent-soft: #eaf0e4; --accent-strong: #586953;
-  --green: #6f9a5e; --green-soft: #e9f0e2; --amber: #c8843c; --amber-soft: #f6ead7; --red: #bb6a5a; --red-soft: #f3e3de;
+  --accent: #5f7059; --accent-soft: #eaf0e4; --accent-strong: #586953;
+  --green: #537346; --green-soft: #e9f0e2; --amber: #905f2b; --amber-soft: #f6ead7; --red: #965548; --red-soft: #f3e3de;
   --row-hover: #f1e8d6; --on-accent: #fff;
   --font-ui: "Segoe UI", Candara, "Trebuchet MS", system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
@@ -1289,8 +1283,9 @@ body[data-theme="sand"] {
   --bg: #f3ecdf; --panel: #fbf6ec; --panel-2: #f0e7d6;
   --ink: #43392b; --ink-soft: #6f6453; --ink-faint: #716553;
   --line: #e6dcc8; --line-strong: #938873;
-  --accent: #936737; --accent-soft: #f1e6d5; --accent-strong: #825c33;
-  --amber: #b07a25; --amber-soft: #f5e8d2; --gray-soft: #efe6d6; --row-hover: #f3ead9;
+  --accent: #875f33; --accent-soft: #f1e6d5; --accent-strong: #825c33;
+  --amber: #8b601d; --amber-soft: #f5e8d2; --gray-soft: #efe6d6; --row-hover: #f3ead9;
+  --green: #187c55; /* visual fixes 2: contrast audit — badge/label legibility in-theme */
 }
 
 /* ---- Basic: High Contrast (accessibility-friendly) ---- */
@@ -1328,7 +1323,7 @@ body[data-theme="midnight"] {
 /* ---- Fun: Vaporwave (bg: grid over gradient) ---- */
 body[data-theme="vaporwave"] {
   --bg: #1a1130; --panel: #281a4d; --panel-2: #311f59;
-  --ink: #f6ecff; --ink-soft: #cdb9ec; --ink-faint: #9f8bc5;
+  --ink: #f6ecff; --ink-soft: #cdb9ec; --ink-faint: #ab99cc;
   --line: #43306e; --line-strong: #7b66a5;
   --accent: #ff6ad5; --accent-soft: #321f55; --accent-strong: #ff7cda;
   --green: #6be1ff; --green-soft: #15243a; --amber: #ffcf6a; --amber-soft: #2a2412; --red: #ff6a8f; --red-soft: #2a1320;
@@ -1365,10 +1360,10 @@ body[data-theme="sunset"] {
   --bg: #fbe3cf;
   /* SOLID surfaces (was translucent) so scenery never shows through text. */
   --panel: #fff6ec; --panel-2: #fdeede;
-  --ink: #3a2a33; --ink-soft: #6e5560; --ink-faint: #66525c;
+  --ink: #3a2a33; --ink-soft: #6e5560; --ink-faint: #3e3238;
   --line: #f0d9c8; --line-strong: #9d8278;
-  --accent: #ae5830; --accent-soft: #fbe6d6; --accent-strong: #9a4f2c;
-  --amber: #d98a1f; --amber-soft: #fbe6cf; --green: #5aa17a; --green-soft: #e2f0e8; --red: #d8504a; --red-soft: #fbe0de;
+  --accent: #a2522d; --accent-soft: #fbe6d6; --accent-strong: #9a4f2c;
+  --amber: #915c15; --amber-soft: #fbe6cf; --green: #417458; --green-soft: #e2f0e8; --red: #af413c; --red-soft: #fbe0de;
   --gray-soft: #f7e6d8; --row-hover: #fdeedd; --on-accent: #fff;
   --sidebar-bg: #fff2e4; --topbar-bg: #fff2e4;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
@@ -1378,10 +1373,10 @@ body[data-theme="sunset"] {
 /* ---- Fun: Dreamcore (soft surreal pastel dreamscape) ---- */
 body[data-theme="dreamcore"] {
   --bg: #efe4fb; --panel: #fdf7fb; --panel-2: #f5ecf7;
-  --ink: #43384e; --ink-soft: #574c63; --ink-faint: #6b5f78;
+  --ink: #43384e; --ink-soft: #574c63; --ink-faint: #665a72;
   --line: #ecdcf2; --line-strong: #9686a1;
-  --accent: #9e5885; --accent-soft: #fbe6f4; --accent-strong: #8c4f77;
-  --green: #6fbf9e; --green-soft: #e2f4ec; --amber: #dca23c; --amber-soft: #f8ecd6; --red: #e0748f; --red-soft: #fbe4ea;
+  --accent: #96547e; --accent-soft: #fbe6f4; --accent-strong: #8c4f77;
+  --green: #457662; --green-soft: #e2f4ec; --amber: #886425; --amber-soft: #f8ecd6; --red: #9d5164; --red-soft: #fbe4ea;
   --gray-soft: #f3ecf7; --row-hover: #f6eef9; --on-accent: #fff;
   --sidebar-bg: #f7effb; --topbar-bg: #f7effb;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
@@ -2915,7 +2910,14 @@ select.input {
   background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 14px 16px 14px 20px;
 }
-.stat-pill::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--rule-accent); }
+/* Visual fixes 2 — THE universal widget accent bar, defined ONCE. Every dashboard widget
+   (Analytics, Home Dashboard, and the master-hub Billing & Usage dashboards all render
+   .widget-card through the shared engine), plus the master-hub usage-summary stat-pill
+   cards, carry a ~4px full-height left bar in var(--accent) — token-driven, so it
+   re-tints the moment the theme (or a custom accent) changes; the cards' overflow:hidden
+   keeps it inside the radius. */
+.widget-card::before, .stat-pill::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--accent); }
+.widget-card { position: relative; }
 .stat-pill-value { font-size: var(--text-kpi); font-weight: 800; letter-spacing: var(--tracking-tighter); color: var(--accent); line-height: 1; }
 .stat-pill-cap { display: block; font-size: var(--text-xs); font-weight: var(--eyebrow-weight); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--ink-faint); line-height: var(--leading-tight); margin-top: 8px; }
 /* Adoption shims: the admin usage-summary keeps its context-appropriate value size. */
@@ -3023,3 +3025,28 @@ select.input {
 @supports not (container-type: inline-size) { @media (max-width: 1100px) { .th-two-col { grid-template-columns: 1fr; } } }
 .thc-group-row { display: flex; align-items: center; gap: var(--sp-3); margin: 4px 0 10px; min-width: 0; flex-wrap: wrap; }
 .thc-group-sel { max-width: 220px; }
+
+/* ======================================================================
+   VISUAL FIXES 2 — nav hover sweep + the micro-animation pass
+   A 2px --accent underline sweeps left -> right (scaleX 0 -> 1, origin left)
+   on hover of BOTH navs and the settings sub-nav tiles. Pseudo-element, so
+   zero layout shift; sits above any existing border; rides the motion token
+   (the global prefers-reduced-motion block makes it instant/off).
+   ====================================================================== */
+.nav-item, .settings-subnav-item { position: relative; }
+.nav-item::after, .settings-subnav-item::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 2px; height: 2px;
+  background: var(--accent); border-radius: 999px;
+  transform: scaleX(0); transform-origin: left;
+  transition: transform var(--transition);
+  pointer-events: none;
+}
+.nav-item:hover::after, .settings-subnav-item:hover::after { transform: scaleX(1); }
+
+/* Micro-animation 2: dropdown/context menus fade-slide in (transform/opacity only). */
+@keyframes menuIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.col-popover, .bulk-menu, .imp-menu, .mf-mod-menu, .nav-burger-menu { animation: menuIn var(--transition); }
+
+/* Micro-animation 3: button press micro-depress (the base .btn already transitions
+   transform on the motion token; this adds only the pressed state — no layout shift). */
+.btn:active:not(:disabled) { transform: translateY(1px); }

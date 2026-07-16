@@ -46,7 +46,6 @@ export interface UserTheme {
   shadows?: number;
   borders?: number;
   buttons?: number;
-  navHighlight?: number;
   density?: number;
   shadowColor?: string;
   borderColor?: string; // revisions 1: the Border-color pick (hex; absent = the theme's --line)
@@ -97,7 +96,7 @@ export const FONT_IDS: string[] = FONTS.map((f) => f.id);
 
 // Phase 9b.2 — the slider dimensions and the legacy 9b enum -> position mapping.
 // (Mirrored in public/js/theme.js LEGACY_MAP; the self-test asserts they agree.)
-export const PERSONALITY_SLIDER_KEYS = ["corners", "shadows", "borders", "buttons", "navHighlight", "density"] as const;
+export const PERSONALITY_SLIDER_KEYS = ["corners", "shadows", "borders", "buttons", "density"] as const; // visual fixes 2: navHighlight removed (legacy payloads containing it load cleanly; the field is dropped on save)
 export const LEGACY_PERSONALITY_MAP: Record<string, Record<string, number>> = {
   corners: { sharp: 8, soft: 35, round: 85 },
   shadows: { crisp: 20, standard: 40, blended: 75 },

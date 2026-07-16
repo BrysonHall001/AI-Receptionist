@@ -156,7 +156,7 @@
     const agg = aggregate(src, rows, fields, w);
     host.innerHTML = "";
     const { el, esc } = U();
-    if (agg.kind === "kpi") { const k = el("div", "kpi stat-pill"); k.appendChild(el("div", "kpi-value stat-pill-value", String(agg.value))); k.appendChild(el("div", "kpi-label stat-pill-cap", measureLabel(w.measure, fields))); host.appendChild(k); return; } // Phase 9a: KPI adopts the stat-pill
+    if (agg.kind === "kpi") { const k = el("div", "kpi"); k.appendChild(el("div", "kpi-value", String(agg.value))); k.appendChild(el("div", "kpi-label", measureLabel(w.measure, fields))); host.appendChild(k); return; } // visual fixes 2: no inner pill — the widget CARD is the surface (accent bar lives on the card)
     if (agg.kind === "heatmap") {
       const table = el("table", "heatmap"); const thead = el("thead"); const htr = el("tr"); htr.appendChild(el("th", "", ""));
       agg.cols.forEach((c) => htr.appendChild(el("th", "", esc(c)))); thead.appendChild(htr); table.appendChild(thead);
@@ -258,6 +258,15 @@
         const numericFields = src.reportFields.filter((f) => f.type === "number" || f.type === "percent" || f.type === "line_items" || f.type === "progress");
         $("#w-mfield").innerHTML = numericFields.map((f) => `<option value="${esc(f.key)}">${esc(f.label)}</option>`).join("");
         if (initial && w.measure && w.measure.field) $("#w-mfield").value = w.measure.field;
+        // Visual fixes 2 — sources with NO numeric fields (e.g. Calls: caller/phone/reason/
+        // status/date are all text or dates) used to render an EMPTY field select for
+        // Sum/Avg, with the select chevron painting as a stray dark bar. A measure that
+        // has nothing to operate on is disabled; the field select is HIDDEN whenever it
+        // would be empty (sync() enforces it), and the op snaps back to Count.
+        const hasNumeric = numericFields.length > 0;
+        $("#w-mop").options[1].disabled = !hasNumeric;
+        $("#w-mop").options[2].disabled = !hasNumeric;
+        if (!hasNumeric && $("#w-mop").value !== "count") { $("#w-mop").value = "count"; w.measure = { op: "count" }; }
         $("#w-mop").options[0].textContent = "Count of " + String(src.label || "records").toLowerCase();
         if (!initial) w.filters = [];
         $("#w-group").innerHTML = ""; $("#w-series").innerHTML = "";
@@ -270,12 +279,12 @@
         const colInit = (initial && Array.isArray(w.columns) && w.columns.length) ? w.columns : defaultListColumns(src);
         listColsEd = listColsEditor($("#w-list-cols"), src.reportFields, colInit, () => preview());
       }
-      function sync() { const t = $("#w-type").value; const isList = t === "list"; $("#w-measure-wrap").classList.toggle("u-hidden", isList); $("#w-mfield").classList.toggle("u-hidden", !(!isList && $("#w-mop").value !== "count")); $("#w-group-wrap").classList.toggle("u-hidden", isList || t === "kpi"); const ns = t === "stacked" || t === "heatmap"; $("#w-series-wrap").classList.toggle("u-hidden", !ns); $("#w-series-label").textContent = t === "heatmap" ? "Rows (second dimension)" : "Stack by"; $("#w-list-wrap").classList.toggle("u-hidden", !isList); preview(); }
+      function sync() { const t = $("#w-type").value; const isList = t === "list"; $("#w-measure-wrap").classList.toggle("u-hidden", isList); $("#w-mfield").classList.toggle("u-hidden", !(!isList && $("#w-mop").value !== "count" && $("#w-mfield").options.length > 0)); /* never render an EMPTY select */ $("#w-group-wrap").classList.toggle("u-hidden", isList || t === "kpi"); const ns = t === "stacked" || t === "heatmap"; $("#w-series-wrap").classList.toggle("u-hidden", !ns); $("#w-series-label").textContent = t === "heatmap" ? "Rows (second dimension)" : "Stack by"; $("#w-list-wrap").classList.toggle("u-hidden", !isList); preview(); }
       function collect() {
         const t = $("#w-type").value; const mop = $("#w-mop").value;
         const base = { id: w.id, title: $("#w-title").value.trim() || "Untitled", source: curSrcKey, type: t, filters: w.filters, cw: w.cw, ch: w.ch };
         if (t === "list") { base.columns = listColsEd ? listColsEd.getCols() : []; base.measure = { op: "count" }; base.groupBy = []; base.series = []; return base; }
-        base.measure = mop === "count" ? { op: "count" } : { op: mop, field: $("#w-mfield").value };
+        base.measure = (mop === "count" || !$("#w-mfield").value) ? { op: "count" } : { op: mop, field: $("#w-mfield").value }; // belt + braces: no field -> Count
         base.groupBy = t === "kpi" ? [] : groupEd.getDims();
         base.series = (t === "stacked" || t === "heatmap") ? seriesEd.getDims() : [];
         return base;

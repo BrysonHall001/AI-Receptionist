@@ -67,10 +67,12 @@ check(JSON.stringify(LEGACY_PERSONALITY_MAP.borders) === JSON.stringify({ hairli
 
 // ---------- (2) nav: the FIX path ----------
 console.log("\n(2) nav highlight — fix path:");
-check(/\.nav-item\.active \{ background: var\(--nav-active-bg\); color: var\(--nav-active-ink\);/.test(css) && /\.portal-pages-row \.nav-item\.active \{ border-left: 0; border-bottom: var\(--nav-active-bar\) solid var\(--accent\); \}/.test(css), "both navs read the --nav-active-* tokens (the wiring was correct)");
+// VISUAL-FIXES-2 UPDATE: the nav dimension was subsequently REMOVED on user feedback;
+// the classic static active style is back and no nav tokens remain.
+check(/\.nav-item\.active \{ background: var\(--accent-soft\); color: var\(--accent\); font-weight: 600; \}/.test(css) && !css.includes("--nav-active-"), "nav active state is the classic static style (nav-highlight removed in visual fixes 2)");
 check(themeJs.includes("var _themeVarsCache; // HOTFIX KEPT") && !themeJs.includes("let _themeVarsCache"), "root cause repaired: the TDZ crash (loadThemeVars used above a later `let`) — the var hotfix is kept, initializer removed so the cache never resets");
 check(themeJs.indexOf("const themeVars = await loadThemeVars();") < themeJs.indexOf("var _themeVarsCache"), "(the use-before-declaration ordering that caused the crash is documented in place)");
-check(T({ navHighlight: 90 })["--nav-active-glow"] === "0 0 9px var(--accent)" && T({ navHighlight: 90 })["--nav-active-bg"] === "var(--accent)", "all bands still compute (whisper -> glow); the slider stays");
+check(T({ navHighlight: 90 })["--nav-active-glow"] === undefined, "legacy navHighlight inputs are ignored by the map (removed in visual fixes 2)");
 
 // ---------- (3) the shared slider, app-wide ----------
 console.log("\n(3) one segmented slider component:");

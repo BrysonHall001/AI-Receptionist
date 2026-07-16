@@ -42,7 +42,7 @@
   // interpolation map below is the single deterministic slider->tokens function; every
   // formula is documented in docs/design-system.md. PRESET_PERSONALITIES expresses each
   // theme's exaggerated personality as positions; custom fields override per 9b precedence.
-  const COMPONENT_VARS = ["--radius", "--radius-sm", "--shadow", "--shadow-lg", "--border-w", "--border-c", "--btn-radius", "--btn-pad-x", "--nav-active-bg", "--nav-active-ink", "--nav-active-bar", "--nav-active-glow", "--table-row-pad", "--list-row-pad"];
+  const COMPONENT_VARS = ["--radius", "--radius-sm", "--shadow", "--shadow-lg", "--border-w", "--border-c", "--btn-radius", "--btn-pad-x", "--table-row-pad", "--list-row-pad"]; // visual fixes 2: nav-highlight removed
   function clearComponents() { const s = document.body.style; COMPONENT_VARS.forEach((v) => s.removeProperty(v)); }
 
   // Defaults chosen so the formulas REPRODUCE the untouched Clean Light values exactly:
@@ -51,7 +51,7 @@
   // shadows 40 -> the 9a standard verbatim; borders 40 -> 1px --line cards + --line-strong
   // controls; nav 40 -> soft pill with a 0px bar (band start = today); density 64 ->
   // 13px --table-row-pad + 8px list rows (the spec's 40 would give 10px — visibly denser).
-  const PERSONALITY_DEFAULTS = { corners: 35, buttons: 23, shadows: 40, borders: 25, navHighlight: 40, density: 64, shadowColor: null, borderColor: null };
+  const PERSONALITY_DEFAULTS = { corners: 35, buttons: 23, shadows: 40, borders: 25, density: 64, shadowColor: null, borderColor: null }; // visual fixes 2: navHighlight removed (legacy values load and are ignored)
   // (borders default moved 40 -> 25 with the ring redefinition: 25 is the position whose
   // 0..4px lerp lands EXACTLY on today's 1px hairline — the pixel-identical default.)
 
@@ -66,7 +66,7 @@
   function normalizePersonality(ut) {
     ut = ut || {};
     const out = {};
-    for (const k of ["corners", "shadows", "borders", "buttons", "navHighlight", "density"]) {
+    for (const k of ["corners", "shadows", "borders", "buttons", "density"]) { // navHighlight dropped (legacy saves tolerated: the field is simply ignored)
       let v = ut[k];
       if (typeof v === "string" && LEGACY_MAP[k] && LEGACY_MAP[k][v] != null) v = LEGACY_MAP[k][v];
       v = Number(v);
@@ -81,22 +81,22 @@
   const PRESET_PERSONALITIES = {
     light:     {},
     warm:      {},
-    neutral:   { corners: 35, shadows: 20, borders: 40, buttons: 10, navHighlight: 35, density: 40 },
-    slate:     { corners: 8,  shadows: 18, borders: 40, buttons: 10, navHighlight: 32, density: 30 },
-    steel:     { corners: 6,  shadows: 15, borders: 40, buttons: 8,  navHighlight: 30, density: 28 },
-    contrast:  { corners: 5,  shadows: 15, borders: 82, buttons: 8,  navHighlight: 40, density: 32 },
+    neutral:   { corners: 35, shadows: 20, borders: 40, buttons: 10, density: 40 },
+    slate:     { corners: 8,  shadows: 18, borders: 40, buttons: 10, density: 30 },
+    steel:     { corners: 6,  shadows: 15, borders: 40, buttons: 8,  density: 28 },
+    contrast:  { corners: 5,  shadows: 15, borders: 82, buttons: 8,  density: 32 },
     dark:      {},
-    midnight:  { corners: 8,  shadows: 20, borders: 40, buttons: 10, navHighlight: 35, density: 40 },
-    graphite:  { corners: 35, shadows: 20, borders: 40, buttons: 10, navHighlight: 35, density: 50 },
-    sand:      { corners: 82, shadows: 72, borders: 40, buttons: 45, navHighlight: 45, density: 58 },
-    forest:    { corners: 38, shadows: 75, borders: 40, buttons: 35, navHighlight: 45, density: 55 },
-    aero:      { corners: 85, shadows: 78, borders: 40, buttons: 92, navHighlight: 55, density: 55 },
-    dusk:      { corners: 8,  shadows: 22, borders: 80, buttons: 10, navHighlight: 90, density: 45, shadowColor: "#ff3df0" },
-    cottage:   { corners: 38, shadows: 42, borders: 40, buttons: 30, navHighlight: 38, density: 55, shadowColor: "#785a32" },
-    sunset:    { corners: 84, shadows: 74, borders: 40, buttons: 50, navHighlight: 48, density: 60 },
-    dreamcore: { corners: 90, shadows: 85, borders: 40, buttons: 90, navHighlight: 82, density: 62 },
-    academia:  { corners: 10, shadows: 40, borders: 78, buttons: 10, navHighlight: 40, density: 45 },
-    vaporwave: { corners: 7,  shadows: 20, borders: 82, buttons: 90, navHighlight: 92, density: 42, shadowColor: "#ff6ad5" },
+    midnight:  { corners: 8,  shadows: 20, borders: 40, buttons: 10, density: 40 },
+    graphite:  { corners: 35, shadows: 20, borders: 40, buttons: 10, density: 50 },
+    sand:      { corners: 82, shadows: 72, borders: 40, buttons: 45, density: 58 },
+    forest:    { corners: 38, shadows: 75, borders: 40, buttons: 35, density: 55 },
+    aero:      { corners: 85, shadows: 78, borders: 40, buttons: 92, density: 55 },
+    dusk:      { corners: 8,  shadows: 22, borders: 80, buttons: 10, density: 45, shadowColor: "#ff3df0" },
+    cottage:   { corners: 38, shadows: 42, borders: 40, buttons: 30, density: 55, shadowColor: "#785a32" },
+    sunset:    { corners: 84, shadows: 74, borders: 40, buttons: 50, density: 60 },
+    dreamcore: { corners: 90, shadows: 85, borders: 40, buttons: 90, density: 62 },
+    academia:  { corners: 10, shadows: 40, borders: 78, buttons: 10, density: 45 },
+    vaporwave: { corners: 7,  shadows: 20, borders: 82, buttons: 90, density: 42, shadowColor: "#ff6ad5" },
   };
 
   function isDarkSurface() {
@@ -158,16 +158,8 @@
     if (P.borders === 0 && P.shadows === 0) bw = 1; // the structure floor
     t["--border-w"] = bw + "px";
     t["--border-c"] = P.borderColor ? P.borderColor : "var(--line)";
-    // Nav highlight: continuous-ish bands (see docs). Band starts extend the previous
-    // band's end state so dragging never pops. Default 40 = soft pill + 0px bar = today.
-    const n = P.navHighlight;
-    let bg, ink = "var(--accent)", bar = 0, glow = "none";
-    if (n < 20) bg = "color-mix(in srgb, var(--accent-soft) " + Math.round(lerp(40, 100, n / 20)) + "%, transparent)";
-    else if (n < 40) bg = "var(--accent-soft)";
-    else if (n < 60) { bg = "var(--accent-soft)"; bar = Math.round(lerp(0, 3, (n - 40) / 20)); }
-    else if (n < 80) { const q = Math.round(lerp(0, 100, (n - 60) / 20)); bg = "color-mix(in srgb, var(--accent) " + q + "%, var(--accent-soft))"; ink = q >= 50 ? "var(--on-accent)" : "var(--accent)"; bar = 3; }
-    else { bg = "var(--accent)"; ink = "var(--on-accent)"; bar = 3; const g = Math.round(lerp(0, 18, (n - 80) / 20)); glow = g > 0 ? "0 0 " + g + "px var(--accent)" : "none"; }
-    t["--nav-active-bg"] = bg; t["--nav-active-ink"] = ink; t["--nav-active-bar"] = bar + "px"; t["--nav-active-glow"] = glow;
+    // (visual fixes 2: the Nav-highlight dimension was removed — it shipped inert due
+    //  to the settings-mount crash and was cut on user feedback; navs use static styles.)
     // Table density: --table-row-pad lerp(4,18); list rows scale off it (8/13 ratio,
     // clamped 3..12). Default 64 -> 13px / 8px (today, incl. the test-pinned 13px).
     const pad = Math.round(lerp(4, 18, P.density / 100));
@@ -469,9 +461,9 @@
         '<div class="thc-app">' +
         '<div class="thc-topbar"><span class="thc-dot-sm"></span><span class="thc-topline"></span></div>' +
         '<div class="thc-cols">' +
-        '<div class="thc-side"><span class="nav-item">Home</span><span class="nav-item active">Contacts</span><span class="nav-item">Analytics</span></div>' +
+        '<div class="thc-side"><span class="nav-item active">Home</span><span class="nav-item">Contacts</span><span class="nav-item">Analytics</span></div>' + // visual fixes 2: HOME is the active page (it IS a Home-Dashboard mock)
         '<div class="thc-main">' +
-        '<div class="stat-pill thc-kpi"><div class="stat-pill-value">128</div><div class="stat-pill-cap">Clients</div></div>' +
+        '<div class="widget-card thc-kpi"><div class="kpi"><div class="kpi-value">128</div><div class="kpi-label">Clients</div></div></div>' + // visual fixes 2: the corrected KPI (widget card + universal accent bar, no inner pill)
         '<div class="card thc-table"><table><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>' +
         '<tr><td>Avery Lane</td><td><span class="pill success">Done</span></td></tr>' +
         '<tr><td>Sam Reyes</td><td><span class="pill">Open</span></td></tr>' +
@@ -649,7 +641,7 @@
       const presetId = prefs.active && prefs.active.mode === "preset" ? prefs.active.preset : null;
       const presetPersona = Object.assign({}, PERSONALITY_DEFAULTS, (presetId && PRESET_PERSONALITIES[presetId]) || {});
       const effPersona = Object.assign({}, presetPersona, normalizePersonality(prefs));
-      const HINTS = { corners: ["Square", "Soft", "Round"], buttons: ["Rect", "Soft", "Pill"], shadows: ["Flat", "Standard", "Dreamy"], borders: ["Airy", "Hairline", "Bold"], navHighlight: ["Whisper", "Pill", "Glow"], density: ["Tight", "Cozy", "Airy"] };
+      const HINTS = { corners: ["Square", "Soft", "Round"], buttons: ["Rect", "Soft", "Pill"], shadows: ["Flat", "Standard", "Dreamy"], borders: ["Airy", "Hairline", "Bold"], density: ["Tight", "Cozy", "Airy"] };
       const hintFor = (key, v) => HINTS[key][v < 34 ? 0 : v < 67 ? 1 : 2] + " " + v;
       const sliderRow = (label, key) => {
         const v = effPersona[key];
@@ -665,8 +657,8 @@
           <div class="theme-custom-row"><label>Top bar color</label><input type="color" id="th-top" value="${editor.topbar}"></div>
           <div class="theme-custom-row"><label>Sidebar color</label><input type="color" id="th-side" value="${editor.sidebar}"></div>
           <div class="theme-custom-row"><label>Font color</label><input type="color" id="th-fg" value="${editor.fontColor}"></div>
-          <div class="theme-custom-row"><label>Shadow color</label><div class="th-shadowc-row"><input type="color" id="th-shadowc" value="${esc(effPersona.shadowColor || (luminance((getComputedStyle(document.body).getPropertyValue("--panel").trim() || "#ffffff")) <= 0.5 ? "#000000" : "#14141e"))}"><button type="button" id="th-shadowc-neutral" class="th-comp-reset">Neutral</button></div></div>
-          <div class="theme-custom-row"><label>Border color</label><div class="th-shadowc-row"><input type="color" id="th-borderc" value="${esc(effPersona.borderColor || (getComputedStyle(document.body).getPropertyValue("--line").trim().match(/^#[0-9a-fA-F]{6}$/) ? getComputedStyle(document.body).getPropertyValue("--line").trim() : "#e4e4e2"))}"><button type="button" id="th-borderc-neutral" class="th-comp-reset">Neutral</button></div></div>
+          <div class="theme-custom-row"><label>Shadow color</label><div class="th-shadowc-row"><button type="button" id="th-shadowc-neutral" class="th-comp-reset">Neutral</button><input type="color" id="th-shadowc" value="${esc(effPersona.shadowColor || (luminance((getComputedStyle(document.body).getPropertyValue("--panel").trim() || "#ffffff")) <= 0.5 ? "#000000" : "#14141e"))}"></div></div>
+          <div class="theme-custom-row"><label>Border color</label><div class="th-shadowc-row"><button type="button" id="th-borderc-neutral" class="th-comp-reset">Neutral</button><input type="color" id="th-borderc" value="${esc(effPersona.borderColor || (getComputedStyle(document.body).getPropertyValue("--line").trim().match(/^#[0-9a-fA-F]{6}$/) ? getComputedStyle(document.body).getPropertyValue("--line").trim() : "#e4e4e2"))}"></div></div>
           <div class="theme-custom-row"><label>Font</label><select id="th-font" class="input">${fontOpts}</select></div>
           </div>
           <div class="theme-comp-head"><span class="eyebrow">Component style</span><button type="button" id="th-comp-reset" class="th-comp-reset">Reset to theme default</button></div>
@@ -675,7 +667,6 @@
           ${sliderRow("Buttons", "buttons")}
           ${sliderRow("Shadows", "shadows")}
           ${sliderRow("Borders", "borders")}
-          ${sliderRow("Nav highlight", "navHighlight")}
           ${sliderRow("Table Row Height", "density")}
           </div>
         </div>`;
@@ -763,16 +754,21 @@
         });
         host.insertBefore(slider.el, host.firstChild);
       });
+      // Visual fixes 2: the Neutral affordance sits LEFT of each swatch, and clicking it
+      // REPAINTS the swatch to the computed neutral immediately (the old bug left the
+      // stale pick visible). The neutral values are recomputed AFTER applyPersonality so
+      // theme switches and reloads stay correct (render() also recomputes on mount).
+      const neutralShadowHex = () => (luminance((getComputedStyle(document.body).getPropertyValue("--panel").trim() || "#ffffff")) <= 0.5 ? "#000000" : "#14141e");
+      const neutralBorderHex = () => { const l = getComputedStyle(document.body).getPropertyValue("--line").trim(); return /^#[0-9a-fA-F]{6}$/.test(l) ? l : "#e4e4e2"; };
       const shadowC = designer.querySelector("#th-shadowc");
       shadowC.oninput = () => { prefs.shadowColor = shadowC.value; applyPersonality(prefs); schedulePersonalitySave(); };
-      designer.querySelector("#th-shadowc-neutral").onclick = () => { delete prefs.shadowColor; applyPersonality(prefs); schedulePersonalitySave(); };
-      // Border color: mirrors Shadow color's neutral pattern EXACTLY (pick -> live +
-      // persisted with the other custom colors; Neutral -> back to the theme's --line).
+      designer.querySelector("#th-shadowc-neutral").onclick = () => { delete prefs.shadowColor; applyPersonality(prefs); shadowC.value = neutralShadowHex(); schedulePersonalitySave(); };
+      // Border color: mirrors Shadow color's neutral pattern EXACTLY.
       const borderC = designer.querySelector("#th-borderc");
       borderC.oninput = () => { prefs.borderColor = borderC.value; applyPersonality(prefs); schedulePersonalitySave(); };
-      designer.querySelector("#th-borderc-neutral").onclick = () => { delete prefs.borderColor; applyPersonality(prefs); schedulePersonalitySave(); };
+      designer.querySelector("#th-borderc-neutral").onclick = () => { delete prefs.borderColor; applyPersonality(prefs); borderC.value = neutralBorderHex(); schedulePersonalitySave(); };
       designer.querySelector("#th-comp-reset").onclick = async () => {
-        ["corners", "shadows", "borders", "buttons", "navHighlight", "density", "shadowColor", "borderColor"].forEach((k) => { delete prefs[k]; });
+        ["corners", "shadows", "borders", "buttons", "density", "shadowColor", "borderColor"].forEach((k) => { delete prefs[k]; });
         applyPersonality(prefs); // back to the ACTIVE preset's exaggerated positions
         try { await persist(); toast("Component style reset to the theme default"); } catch (e) { toast(e.message, true); }
         render();

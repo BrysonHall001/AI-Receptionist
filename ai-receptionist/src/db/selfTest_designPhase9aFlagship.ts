@@ -101,10 +101,12 @@ check(/\.badge-completed \{ background: var\(--green-soft\); color: var\(--green
 // ---------- (6) stat pill + KPI adoption ----------
 console.log("\n(6) stat pill:");
 check(/\.stat-pill \{\s*position: relative; overflow: hidden;\s*background: var\(--panel-2\); border: 1px solid var\(--line\); border-radius: var\(--radius\);/.test(css), ".stat-pill container (rounded --panel-2)");
-check(/\.stat-pill::before \{ content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var\(--rule-accent\); \}/.test(css), "accent end-cap bar");
+check(/\.widget-card::before, \.stat-pill::before \{ content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var\(--accent\); \}/.test(css), "accent end-cap bar (visual-fixes-2: ONE universal rule on var(--accent) — every widget card + stat pill)");
 check(/\.stat-pill-value \{ font-size: var\(--text-kpi\); font-weight: 800; letter-spacing: var\(--tracking-tighter\); color: var\(--accent\); line-height: 1; \}/.test(css), "value stays on --text-kpi");
 check(/\.stat-pill-cap \{[^}]*font-weight: var\(--eyebrow-weight\); text-transform: uppercase; letter-spacing: var\(--tracking-caps\); color: var\(--ink-faint\);/.test(css), "caption IS an eyebrow");
-check(reports.includes('el("div", "kpi stat-pill")') && reports.includes('el("div", "kpi-value stat-pill-value"') && reports.includes('el("div", "kpi-label stat-pill-cap"'), "adoption site 1: the reports dashboard KPI widget");
+// VISUAL-FIXES-2 UPDATE: the KPI widget dropped the inner pill (the CARD is the surface,
+// carrying the universal accent bar); value + eyebrow caption sit directly on it.
+check(reports.includes('el("div", "kpi")') && reports.includes('el("div", "kpi-value"') && reports.includes('el("div", "kpi-label"') && !reports.includes("kpi stat-pill"), "adoption site 1: the KPI widget (redesigned — no inner pill; the card carries the bar)");
 check(admin.includes('el("div", "card stat-pill")') && admin.includes('el("div", "cell-muted stat-pill-cap", label)'), "adoption site 2: the master-hub usage-summary KPIs");
 
 // ---------- (7) guardrails ----------
