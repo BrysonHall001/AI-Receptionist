@@ -40,14 +40,17 @@ console.log("=============================");
 
 // ---------- (1) the rule system ----------
 console.log("\n(1) the contrast rule system:");
-check(css.includes("--ink-on-bg: var(--ink);") && css.includes("--ink-on-bg-soft: var(--ink-faint);") && css.includes("--control-ink: var(--ink);") && css.includes("--control-placeholder: var(--ink-faint);"), "the class tokens are minted (--ink-on-bg pair, --control-ink pair)");
+// HEADING-CONTRAST HOTFIX: the class tokens are EXPLICIT LITERALS per scope — a var()
+// inside a :root custom property bakes :root's ink at computed-value time, which is
+// exactly how dark themes inherited dark headings (the third-recurrence bug).
+check(css.includes("--ink-on-bg: #1a1a1e;") && css.includes("--ink-on-bg-soft: #6b6b74;") && css.includes("--control-ink: #1a1a1e;") && css.includes("--control-placeholder: #6b6b74;") && !css.includes("--ink-on-bg: var(--ink);"), "the class tokens are minted as EXPLICIT literals (:root + every theme block — the substitution trap is dead)");
 check(css.includes(".content { padding: 28px 40px 60px; max-width: 1600px; color: var(--ink-on-bg); }"), "CLASS-LEVEL enforcement: text directly on the page bg defaults to ON-BG");
 check(css.includes(".card, .stat-card, .portal-card, .widget-card, .table-wrap, .modal, .auth-card, .col-popover, .bulk-menu, .imp-menu, .mf-mod-menu, .nav-burger-menu, .drawer { color: var(--ink); }"), "…and every panel surface re-establishes the ON-PANEL palette for its subtree");
 for (const sel of [".content-page-title", ".settings-h"]) check(new RegExp(sel.replace(".", "\\.") + " \\{[^}]*color: var\\(--ink-on-bg\\)").test(css), `ON-BG conversion: ${sel} uses --ink-on-bg`);
 for (const sel of [".theme-group-label", ".settings-intro", ".thc-name"]) check(new RegExp(sel.replace(".", "\\.") + " \\{[^}]*color: var\\(--ink-on-bg-soft\\)").test(css), `ON-BG conversion: ${sel} uses --ink-on-bg-soft`);
 check(css.includes(".content .section-head .eyebrow, .content .fields-section-head .eyebrow, .thc-group-row .eyebrow { color: var(--ink-on-bg-soft); }"), "ON-BG conversion: on-bg eyebrows (section heads, the group row)");
 check(/color: var\(--control-ink\)/.test(css) && css.includes("::placeholder { color: var(--control-placeholder); opacity: 1; }"), "ON-CONTROL conversion: control text + placeholders use the control pair");
-check(css.includes('body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-theme="forest"],[data-theme="sunset"],[data-theme="dreamcore"],[data-theme="academia"]) :is(.content-page-title, .settings-h, .theme-group-label, .settings-intro, .thc-name, .thc-group-row .eyebrow, .section-head .eyebrow, .fields-section-head .eyebrow)') && css.includes("backdrop-filter: blur(6px);") && css.includes("color-mix(in srgb, var(--panel) 78%, transparent)"), "the scenic backstop: ONE grouped panel-tinted chip rule on all SEVEN scenic themes (no raw text on imagery)");
+check(css.includes('body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-theme="forest"],[data-theme="sunset"],[data-theme="dreamcore"],[data-theme="academia"]) :is(.content-page-title, .settings-h, .theme-group-label, .settings-intro, .thc-name, .thc-group-row .eyebrow, .section-head .eyebrow, .fields-section-head .eyebrow, .learn-title, .learn-cat)') && css.includes("backdrop-filter: blur(6px);") && css.includes("color-mix(in srgb, var(--panel) 78%, transparent)"), "the scenic backstop: ONE grouped chip rule on all SEVEN scenic themes (now incl. the Learning Center headings)");
 // the rewritten matrix covers every pairing
 for (const marker of ["ON-PANEL ${nm} on --panel-2", "ON-BG --ink-on-bg over scenic stop", "ON-CONTROL --control-ink on --control-bg", "ON-ACCENT --on-accent on --accent", 'pair("--amber", "--amber-soft")', "(through the chip)"]) {
   check(contrastSrc.includes(marker), `the rewritten matrix asserts: ${marker.slice(0, 48)}…`);
@@ -78,6 +81,18 @@ check(appJs.includes('location.hash = me && App.isAdminTier(me.role) && !App.sta
 check(css.includes("@keyframes brandSheen") && css.includes(".brand-logo--full svg .brand-c { animation: brandSheen 7s ease-in-out infinite;"), "the sheen: a ~7s barely-there glint, scoped to .brand-c — the DEFAULT mark only (uploaded <img> logos have no .brand-c)");
 check(css.includes("@keyframes cNudge") && css.includes(".brand-row--clickable:hover .brand-logo--full svg .brand-c { animation: cNudge 450ms cubic-bezier(0.3, 0.7, 0.3, 1) 1, brandSheen 7s ease-in-out infinite; }"), "hover: the C nudges left and clicks back (the loader bounce at small amplitude), sheen preserved");
 check(/@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none !important;/.test(css), "both logo animations die under reduced motion (static mark)");
+
+// ---------- (4b) the hotfix ledger, permanent + guarded ----------
+console.log("\n(4b) hotfix ledger:");
+const utilJs = readFileSync(resolve(PUB, "js", "util.js"), "utf8");
+const themeJs2 = readFileSync(resolve(PUB, "js", "theme.js"), "utf8");
+const cavSrc = readFileSync(resolve(__dirname, "selfTest_contactsAllViews.ts"), "utf8");
+check(themeJs2.includes("var _themeVarsCache; // HOTFIX KEPT"), "ledger 1: theme.js var _themeVarsCache (TDZ) kept");
+check(utilJs.includes("App.util = App.util || {}; // HOTFIX KEPT") && utilJs.includes("Object.assign(App.util, { $, $$, el, esc,"), "ledger 2: util.js guard + Object.assign merge (the canonical assignment can never clobber the skeleton/search helpers again)");
+check(cavSrc.includes('if (!dateField) throw new Error("no date field on the contact type — cannot continue")'), "ledger 3: contactsAllViews throw-guard after the dateField check kept");
+// the computational resolver itself (the mechanism that catches this bug class)
+const matrix = readFileSync(resolve(__dirname, "selfTest_allThemeContrast.ts"), "utf8");
+check(matrix.includes("const CSSRESOLVE = (k: string) =>") && matrix.includes("root[k]") && matrix.includes("(k in themeOwn) ? v : root"), "the matrix resolves class tokens COMPUTATIONALLY (real custom-property scoping — 53 pre-fix violations caught)");
 
 // ---------- (5) ratchet ----------
 console.log("\n(5) ratchet:");

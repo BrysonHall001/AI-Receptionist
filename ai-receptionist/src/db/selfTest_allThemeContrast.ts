@@ -68,8 +68,24 @@ const SCENIC = ["dusk", "aero", "vaporwave", "forest", "sunset", "dreamcore", "a
 for (const t of THEMES) {
   const v = eff(t);
   const C = (k: string) => parseColor(v[k] || "");
-  // R(): resolve var() chains so class tokens like --ink-on-bg: var(--ink) compute.
+  // R(): resolve var() chains within the MERGED theme scope (fine for tokens the theme
+  // itself declares or uses directly).
   const R = (k: string) => { let val = v[k]; let n = 0; while (val && val.startsWith("var(") && n++ < 8) val = v[val.slice(4, -1).trim()]; return parseColor(val || ""); };
+  // CSSRESOLVE(): the COMPUTATIONAL resolver with REAL custom-property semantics.
+  // A var() inside a custom property's value substitutes at computed-value time on the
+  // scope that DECLARES it: a token declared only in :root bakes :root's inner values,
+  // and a theme overriding the INNER token (e.g. --ink) does NOT reach through. So the
+  // effective value = the THEME block's own declaration (resolved in theme scope) if
+  // present, else :root's declaration resolved with :ROOT values ONLY. This is the
+  // heading-contrast bug's exact mechanism — the old symbolic resolver hid it.
+  const themeOwn = t === "(root/light)" ? { ...root } : blockVars('body[data-theme="' + t + '"] {');
+  const CSSRESOLVE = (k: string) => {
+    const scope = (k in themeOwn) ? v : root; // theme-declared -> theme scope; else :root scope
+    let val = (k in themeOwn) ? themeOwn[k] : root[k];
+    let n = 0;
+    while (val && val.startsWith("var(") && n++ < 8) val = scope[val.slice(4, -1).trim()];
+    return parseColor(val || "");
+  };
   const bg = C("--bg"), ink = R("--ink"), faint = R("--ink-faint"), inkSoft = R("--ink-soft");
   const panel = C("--panel") || bg, p2 = C("--panel-2") || panel;
   const rowh = C("--row-hover") || panel, gray = C("--gray-soft") || panel, side = C("--sidebar-bg") || panel, top = C("--topbar-bg") || panel;
@@ -91,7 +107,10 @@ for (const t of THEMES) {
   // CLASS 2, ON-BG: the dedicated on-bg pair vs --bg AND — because an image's local
   // color is unpredictable — vs EVERY literal scenic gradient stop. Scenic themes get
   // the panel-tinted backdrop chip, so their effective surface = chip over the stop.
-  const onBg = R("--ink-on-bg"), onBgSoft = R("--ink-on-bg-soft");
+  // COMPUTATIONAL leg: what .page-title/.content-page-title ACTUALLY renders — the CSS
+  // rule says color: var(--ink-on-bg); resolve it with the real semantics above.
+  need(/\.content-page-title \{[^}]*color: var\(--ink-on-bg\)/.test(css), `${t}: .page-title's rule reads var(--ink-on-bg)`);
+  const onBg = CSSRESOLVE("--ink-on-bg"), onBgSoft = CSSRESOLVE("--ink-on-bg-soft");
   need(!!onBg && !!onBgSoft, `${t}: --ink-on-bg / --ink-on-bg-soft exist (the ON-BG class tokens)`);
   at(onBg, BG, 4.5, "ON-BG --ink-on-bg on --bg");
   at(onBgSoft, BG, 4.5, "ON-BG --ink-on-bg-soft on --bg");
@@ -109,7 +128,7 @@ for (const t of THEMES) {
   // CLASS 3, ON-CONTROL: control ink + placeholder on the control surface.
   const ctrlBg = R("--control-bg") || panel;
   const CTRL = over(ctrlBg, bg);
-  const ctrlInk = R("--control-ink"), ctrlPh = R("--control-placeholder");
+  const ctrlInk = CSSRESOLVE("--control-ink"), ctrlPh = CSSRESOLVE("--control-placeholder");
   need(!!ctrlInk && !!ctrlPh, `${t}: --control-ink / --control-placeholder exist (the ON-CONTROL class tokens)`);
   at(ctrlInk, CTRL, 4.5, "ON-CONTROL --control-ink on --control-bg");
   at(ctrlPh, CTRL, 3, "ON-CONTROL placeholder on --control-bg (AA-large floor)");

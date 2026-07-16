@@ -153,10 +153,10 @@
        ON-ACCENT  --on-accent                           (accent-filled elements)
        ON-SOFT    the matching strong color              (badges/pills on *-soft) */
   --content-text-inset: 18px;            /* the panels' inner text line (table cells etc.) — titles align to it */
-  --ink-on-bg: var(--ink);               /* ON-BG text (page titles etc.) — AA vs --bg per theme */
-  --ink-on-bg-soft: var(--ink-faint);    /* ON-BG secondary (eyebrows, hints) */
-  --control-ink: var(--ink);             /* ON-CONTROL text — AA vs --control-bg per theme */
-  --control-placeholder: var(--ink-faint); /* placeholders (>= the AA-large floor; in practice AA) */
+  --ink-on-bg: #1a1a1e;                  /* ON-BG text — EXPLICIT LITERAL per theme (a var() here bakes :root's ink at computed-value time and dark themes inherit DARK headings: the third-recurrence bug) */
+  --ink-on-bg-soft: #6b6b74;             /* ON-BG secondary — explicit literal (same rule) */
+  --control-ink: #1a1a1e;                /* ON-CONTROL text — explicit literal (same rule) */
+  --control-placeholder: #6b6b74;        /* placeholders — explicit literal (same rule) */
   --border-w: 1px;                       /* revisions 1: the ONE global chrome-ring thickness (borders slider, 0..4px) */
   --border-c: var(--line);               /* the chrome-ring color (Border-color pick; neutral = --line) */
   --list-row-pad: 8px;                   /* list-row vertical padding (density slider, scaled off --table-row-pad) */
@@ -1129,6 +1129,8 @@ body[data-theme="dark"] {
   --accent: #8482f5; --accent-soft: #26263a; --accent-strong: #9391f6;
   --green: #34c98a; --green-soft: #16281f; --amber: #d8a23c; --amber-soft: #2a2113; --red: #e0685a; --red-soft: #2c1715;
   --row-hover: #23232f; --scrim: rgba(0,0,0,0.55); --on-accent: #14120e;
+  --ink-on-bg: #e9e9f0; --ink-on-bg-soft: #8e8e95; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #e9e9f0; --control-placeholder: #8e8e95; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Neutral / professional (basic) ---- */
@@ -1138,6 +1140,8 @@ body[data-theme="neutral"] {
   --line: #e6e8ea; --line-strong: #898d92;
   --accent: #2f6f8f; --accent-soft: #e9f1f5; --accent-strong: #2b6380;
   --row-hover: #f1f5f7;
+  --ink-on-bg: #22282e; --ink-on-bg-soft: #656b73; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #22282e; --control-placeholder: #656b73; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Frutiger Aero (fun, flagship) ---- */
@@ -1154,6 +1158,8 @@ body[data-theme="aero"] {
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
   --font-display: "Nunito", "Segoe UI", system-ui, sans-serif;
   background: url("/themes/bubbles.svg") repeat, radial-gradient(120% 90% at 50% -10%, #b6f3ff 0%, rgba(182,243,255,0) 55%), linear-gradient(165deg, #36b6f5 0%, #6fd6ff 28%, #a7efe2 62%, #c8ffdd 100%) fixed;
+  --ink-on-bg: #0c3a52; --ink-on-bg-soft: #1e4356; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #0c3a52; --control-placeholder: #1e4356; /* …and the control pair, same explicit rule */
 }
 /* solid surfaces (legibility): opaque panels with a soft aero shadow, no blur */
 body[data-theme="aero"] .card,
@@ -1192,7 +1198,10 @@ body[data-theme="dusk"] {
   background:
     radial-gradient(120% 70% at 50% 120%, rgba(255,61,240,0.28) 0%, rgba(255,61,240,0) 55%),
     radial-gradient(90% 60% at 50% -10%, rgba(34,224,255,0.18) 0%, rgba(34,224,255,0) 60%),
-    linear-gradient(180deg, #0d0a26 0%, #1a1145 60%, #241b4d 100%) fixed;}
+    linear-gradient(180deg, #0d0a26 0%, #1a1145 60%, #241b4d 100%) fixed;
+  --ink-on-bg: #f3ecff; --ink-on-bg-soft: #908aa5; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #f3ecff; --control-placeholder: #908aa5; /* …and the control pair, same explicit rule */
+}
 body[data-theme="dusk"] .page-title,
 body[data-theme="dusk"] .settings-h,
 body[data-theme="dusk"] .brand-name { font-family: var(--font-display); letter-spacing: 0.03em; text-shadow: 0 0 14px rgba(255,61,240,0.45); }
@@ -1213,6 +1222,8 @@ body[data-theme="cottage"] {
   --row-hover: #f1e8d6; --on-accent: #fff;
   --font-ui: "Segoe UI", Candara, "Trebuchet MS", system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --ink-on-bg: #4a3f33; --ink-on-bg-soft: #716555; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #4a3f33; --control-placeholder: #716555; /* …and the control pair, same explicit rule */
 }
 body[data-theme="cottage"] .page-title,
 body[data-theme="cottage"] .settings-h { font-family: var(--font-display); font-weight: 600; }
@@ -1269,6 +1280,8 @@ body[data-theme="warm"] {
   --line: #efe9df; --line-strong: #948f85;
   --accent: #5b59d6; --accent-soft: #efeffc; --accent-strong: #5250be;
   --gray-soft: #f4efe7; --row-hover: #f8f4ec;
+  --ink-on-bg: #2b2722; --ink-on-bg-soft: #726a62; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #2b2722; --control-placeholder: #726a62; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Basic: Slate ---- */
@@ -1278,6 +1291,8 @@ body[data-theme="slate"] {
   --line: #e1e6eb; --line-strong: #89919b;
   --accent: #4a6076; --accent-soft: #e7edf2; --accent-strong: #43566a;
   --gray-soft: #eef1f4; --row-hover: #f1f4f7;
+  --ink-on-bg: #2b3440; --ink-on-bg-soft: #636d79; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #2b3440; --control-placeholder: #636d79; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Basic: Steel Blue ---- */
@@ -1287,6 +1302,8 @@ body[data-theme="steel"] {
   --line: #e2e7ee; --line-strong: #88919c;
   --accent: #2a4d7a; --accent-soft: #e6edf6; --accent-strong: #26456d;
   --gray-soft: #eef2f7; --row-hover: #eef3f9;
+  --ink-on-bg: #1f2733; --ink-on-bg-soft: #626c7b; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #1f2733; --control-placeholder: #626c7b; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Basic: Sand ---- */
@@ -1297,6 +1314,8 @@ body[data-theme="sand"] {
   --accent: #875f33; --accent-soft: #f1e6d5; --accent-strong: #825c33;
   --amber: #8b601d; --amber-soft: #f5e8d2; --gray-soft: #efe6d6; --row-hover: #f3ead9;
   --green: #187c55; /* visual fixes 2: contrast audit — badge/label legibility in-theme */
+  --ink-on-bg: #43392b; --ink-on-bg-soft: #716553; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #43392b; --control-placeholder: #716553; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Basic: High Contrast (accessibility-friendly) ---- */
@@ -1307,6 +1326,8 @@ body[data-theme="contrast"] {
   --accent: #0b5bd3; --accent-soft: #d6e4fb; --accent-strong: #0b52bc;
   --green: #0a7a3f; --green-soft: #d8f0e2; --amber: #8a5a00; --amber-soft: #f6e6c8;
   --red: #b00000; --red-soft: #ffd9d9; --gray-soft: #ededed; --row-hover: #eef3fc; --on-accent: #ffffff;
+  --ink-on-bg: #000000; --ink-on-bg-soft: #474747; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #000000; --control-placeholder: #474747; /* …and the control pair, same explicit rule */
 }
 body[data-theme="contrast"] .input:focus { box-shadow: 0 0 0 3px #0b5bd3; border-color: #0b5bd3; }
 body[data-theme="contrast"] .btn-primary:disabled { opacity: 0.55; }
@@ -1319,6 +1340,8 @@ body[data-theme="graphite"] {
   --accent: #9b99f2; --accent-soft: #2f3140; --accent-strong: #a7a5f4;
   --green: #46c98f; --green-soft: #1c2e26; --amber: #d6a23a; --amber-soft: #2a2414; --red: #df6f61; --red-soft: #2a1614;
   --gray-soft: #383b41; --row-hover: #393c42; --scrim: rgba(0,0,0,0.5); --on-accent: #14120e;
+  --ink-on-bg: #e7e8ea; --ink-on-bg-soft: #a8abb1; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #e7e8ea; --control-placeholder: #a8abb1; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Basic: Midnight (deep true-dark) ---- */
@@ -1329,6 +1352,8 @@ body[data-theme="midnight"] {
   --accent: #7674f1; --accent-soft: #181830; --accent-strong: #8785f2;
   --green: #2fbf86; --green-soft: #0f241b; --amber: #cf9a3a; --amber-soft: #241d10; --red: #df6557; --red-soft: #281312;
   --gray-soft: #14141e; --row-hover: #15151f; --scrim: rgba(0,0,0,0.65); --on-accent: #14120e;
+  --ink-on-bg: #e6e7ee; --ink-on-bg-soft: #808294; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #e6e7ee; --control-placeholder: #808294; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Fun: Vaporwave (bg: grid over gradient) ---- */
@@ -1347,6 +1372,8 @@ body[data-theme="vaporwave"] {
     radial-gradient(90% 70% at 15% 10%, rgba(255,106,213,0.35) 0%, rgba(255,106,213,0) 55%),
     radial-gradient(90% 70% at 85% 90%, rgba(107,225,255,0.30) 0%, rgba(107,225,255,0) 55%),
     linear-gradient(160deg, #3a1a63 0%, #4a1f7a 45%, #2b1b4d 100%) fixed;
+  --ink-on-bg: #f6ecff; --ink-on-bg-soft: #ab99cc; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #f6ecff; --control-placeholder: #ab99cc; /* …and the control pair, same explicit rule */
 }
 body[data-theme="vaporwave"] .page-title, body[data-theme="vaporwave"] .settings-h { text-transform: lowercase; letter-spacing: 0.01em; text-shadow: 0 0 12px rgba(255,106,213,0.4); }
 body[data-theme="vaporwave"] .card, body[data-theme="vaporwave"] .settings-card { box-shadow: 0 0 0 1px rgba(255,106,213,0.22), 0 8px 26px rgba(0,0,0,0.45); }
@@ -1363,6 +1390,8 @@ body[data-theme="forest"] {
   --font-ui: "Segoe UI", Candara, system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, serif;
   background: url("/themes/leaves.svg") repeat, #1c2a22 fixed;
+  --ink-on-bg: #eef0e6; --ink-on-bg-soft: #a1af9b; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #eef0e6; --control-placeholder: #a1af9b; /* …and the control pair, same explicit rule */
 }
 body[data-theme="forest"] .page-title, body[data-theme="forest"] .settings-h { font-family: var(--font-display); }
 
@@ -1379,6 +1408,8 @@ body[data-theme="sunset"] {
   --sidebar-bg: #fff2e4; --topbar-bg: #fff2e4;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
   background: linear-gradient(160deg, #ffd9a8 0%, #ffb98f 35%, #f5907a 65%, #b98fd0 100%) fixed;
+  --ink-on-bg: #3a2a33; --ink-on-bg-soft: #3e3238; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #3a2a33; --control-placeholder: #3e3238; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Fun: Dreamcore (soft surreal pastel dreamscape) ---- */
@@ -1393,6 +1424,8 @@ body[data-theme="dreamcore"] {
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
   --font-display: "Nunito", "Segoe UI", system-ui, sans-serif;
   background: linear-gradient(180deg, #d6f5ec 0%, #cfe8ff 22%, #e3d4f7 52%, #ffd9ec 82%, #ffe6d4 100%) fixed;
+  --ink-on-bg: #43384e; --ink-on-bg-soft: #665a72; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #43384e; --control-placeholder: #665a72; /* …and the control pair, same explicit rule */
 }
 
 /* ---- Fun: Dark Academia (moody candlelit library) ---- */
@@ -1407,6 +1440,8 @@ body[data-theme="academia"] {
   --font-ui: "Segoe UI", Candara, system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
   background: radial-gradient(120% 90% at 50% 40%, #2a1e14 0%, #1a130d 60%, #120c07 100%) fixed;
+  --ink-on-bg: #ece0cf; --ink-on-bg-soft: #b09a7e; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
+  --control-ink: #ece0cf; --control-placeholder: #b09a7e; /* …and the control pair, same explicit rule */
 }
 
 /* Phase 9b — Borders=strong themes: tables take the stronger rules too (header band + row rules). */
@@ -2321,15 +2356,15 @@ tbody tr.row-selected { background: var(--accent-soft); }
 
 /* ---------- Learning Center ---------- */
 .learn-head { margin-bottom: 16px; }
-.learn-title { font-size: var(--text-xl); font-weight: 700; letter-spacing: var(--tracking-tighter); }
+.learn-title { font-size: var(--text-xl); font-weight: 700; letter-spacing: var(--tracking-tighter); color: var(--ink-on-bg); } /* ON-BG (the Learning Center's own page heading) */
 .learn-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 860px) { .learn-layout { grid-template-columns: 1fr; } }
 .learn-nav { position: sticky; top: 84px; }
 .learn-search { width: 100%; margin-bottom: 12px; }
 .learn-nav-list { display: flex; flex-direction: column; gap: 2px; max-height: 70vh; overflow: auto; }
-.learn-cat { font-size: var(--text-xs); font-weight: var(--eyebrow-weight); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--ink-faint); margin: 14px 0 4px; }
+.learn-cat { font-size: var(--text-xs); font-weight: var(--eyebrow-weight); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--ink-on-bg-soft); margin: 14px 0 4px; } /* ON-BG */
 .learn-cat:first-child { margin-top: 0; }
-.learn-link { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 8px 10px; font-size: var(--text-sm); color: var(--ink-soft); cursor: pointer; }
+.learn-link { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 8px 10px; font-size: var(--text-sm); color: var(--ink-on-bg-soft); cursor: pointer; } /* ON-BG */
 .learn-link:hover { background: var(--gray-soft); color: var(--ink); }
 .learn-link.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .learn-article { padding: 24px 32px; max-width: none; }
@@ -3135,7 +3170,7 @@ select.input {
    forest, sunset, dreamcore, academia). An image's local color is unpredictable, so
    ON-BG text on those themes sits on a subtle panel-tinted, blurred, rounded chip —
    the aero "solid surfaces" precedent, applied consistently. No raw text on imagery. */
-body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-theme="forest"],[data-theme="sunset"],[data-theme="dreamcore"],[data-theme="academia"]) :is(.content-page-title, .settings-h, .theme-group-label, .settings-intro, .thc-name, .thc-group-row .eyebrow, .section-head .eyebrow, .fields-section-head .eyebrow) {
+body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-theme="forest"],[data-theme="sunset"],[data-theme="dreamcore"],[data-theme="academia"]) :is(.content-page-title, .settings-h, .theme-group-label, .settings-intro, .thc-name, .thc-group-row .eyebrow, .section-head .eyebrow, .fields-section-head .eyebrow, .learn-title, .learn-cat) {
   background: color-mix(in srgb, var(--panel) 78%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);

@@ -59,7 +59,7 @@ export const LAYOUT_COUNTERS: (keyof LayoutCounts)[] = ["flexControlNoShrink", "
 // the known ON-BG-scoped selectors must never take a panel-class ink. A rule whose
 // selector names one of BG_SCOPED and whose body sets color to --ink/--ink-soft/
 // --ink-faint (rather than --ink-on-bg / --ink-on-bg-soft) is a counted violation.
-const BG_SCOPED = ["content-page-title", "settings-h", "theme-group-label", "settings-intro", "thc-name", "thc-group-row"];
+const BG_SCOPED = ["content-page-title", "settings-h", "theme-group-label", "settings-intro", "thc-name", "thc-group-row", "learn-title", "learn-cat", "learn-link"];
 export interface AuditResult {
   files: Record<string, FileCounts>;
   totals: FileCounts;
@@ -94,8 +94,11 @@ export function auditLayoutPatterns(css: string): LayoutCounts {
     if (/(?:^|;)\s*width:\s*\d{3,}px/.test(body) && !body.includes("max-width") && !/flex\s*:/.test(body)) out.fixedWidthNoEscape++;
     // (d) nowrap text with no truncation strategy
     if (body.includes("white-space: nowrap") && !body.includes("overflow") && !body.includes("text-overflow")) out.nowrapNoEllipsis++;
-    // (f) contrast system: panel-class inks on ON-BG-scoped selectors
-    if (BG_SCOPED.some((frag) => sel.includes(frag)) && /color:\s*var\(--ink(-soft|-faint)?\)/.test(body)) out.inkSurfaceMismatch++;
+    // (f) contrast system: panel-class inks on ON-BG-scoped selectors. Exclusion: a rule
+    // that paints its OWN panel-family background (hover/active pills like .learn-link:hover
+    // { background: var(--gray-soft); color: var(--ink); }) is legitimately ON-PANEL/ON-SOFT
+    // for that state — documented heuristic refinement.
+    if (BG_SCOPED.some((frag) => sel.includes(frag)) && /color:\s*var\(--ink(-soft|-faint)?\)/.test(body) && !/background:\s*var\(--(gray-soft|panel|panel-2|accent-soft|row-hover)\)/.test(body)) out.inkSurfaceMismatch++;
     // (e) bare fr grid tracks without a minmax() floor (single full-width "1fr" excluded)
     for (const g of body.matchAll(/grid-template-columns:\s*([^;]+)/g)) {
       const v = g[1].trim();
