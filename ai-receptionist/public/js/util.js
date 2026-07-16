@@ -54,6 +54,7 @@
   // a header band + rows; "widgets" = a grid of widget-sized blocks. Shimmer colors
   // are tokens (--gray-soft / --panel-2); the global reduced-motion block freezes the
   // sweep into static shapes.
+  App.util = App.util || {}; // hotfix (reapplied): namespace must exist before these assignments
   App.util.SKELETON_DELAY_MS = 150;
   App.util.showSkeleton = function (host, kind) {
     host.innerHTML = "";
@@ -199,7 +200,7 @@
     return api(url, opts);
   }
 
-  App.util = { $, $$, el, esc, fmtDate, fmtDateOnly, statusBadge, roleLabel, toast, debounce };
+  Object.assign(App.util, { $, $$, el, esc, fmtDate, fmtDateOnly, statusBadge, roleLabel, toast, debounce }); // hotfix (reapplied): merge, don't clobber
   App.api = api;
   App.portalApi = portalApi;
 
