@@ -91,7 +91,9 @@ check(audit.layout.bespokeSearchInput === 0 && (baseline as any).layout.bespokeS
 console.log("\n(4) VISUAL markers (part-2 hooks):");
 check(visuals.length >= 10, `markers present (${visuals.length})`);
 check(visuals.every((b) => typeof b.visual === "string" && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(b.visual) && typeof b.note === "string" && b.note.length > 0), "every marker is well-formed: kebab-case id + a human note");
-check(learnJs.includes("if (b.visual) return null;"), "markers are invisible to users (renderBlock skips them)");
+// LC-2 UPDATE: markers now RESOLVE to inert themed scenes (single figure or the shared
+// stepper); unresolved ids render nothing and fail selfTest_learningCenter2.
+check(learnJs.includes("App.learnScenes && App.learnScenes.get(b.visual)") && learnJs.includes('inert.setAttribute("aria-hidden", "true")'), "markers resolve through the scene registry as INERT aria-hidden figures (LC-2)");
 
 // ---------- (5) ledger + ratchet ----------
 console.log("\n(5) ledger + ratchet:");

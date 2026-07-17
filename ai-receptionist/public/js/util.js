@@ -47,6 +47,65 @@
     `<path d="M58.68 9.76 A14 14 0 0 1 68.36 18.95" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round"/>` +
     `<path d="M59.71 5.90 A18 18 0 0 1 72.17 17.72" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" opacity="0.6"/>` +
     `</g></svg>`;
+  // LC-2 — THE shared stepper: a flat, instructional prev/next carousel (frames, dots,
+  // per-frame captions, keyboard arrows). Built as a general component — the Learning
+  // Center's visual demos are its first consumer. Transitions are opacity-only on the
+  // motion token; the global prefers-reduced-motion block makes swaps instant.
+  App.ui = App.ui || {};
+  App.ui.stepper = function (frames, opts) {
+    opts = opts || {};
+    const root = document.createElement("div");
+    root.className = "lstep";
+    root.tabIndex = 0;
+    root.setAttribute("role", "group");
+    root.setAttribute("aria-label", opts.label || "Step-by-step illustration");
+    const viewport = document.createElement("div");
+    viewport.className = "lstep-viewport";
+    root.appendChild(viewport);
+    const caption = document.createElement("div");
+    caption.className = "scene-caption";
+    const controls = document.createElement("div");
+    controls.className = "lstep-controls";
+    const prev = document.createElement("button");
+    prev.className = "icon-btn lstep-arrow"; prev.type = "button"; prev.innerHTML = "&larr;"; prev.setAttribute("aria-label", "Previous step");
+    const dotsWrap = document.createElement("div");
+    dotsWrap.className = "lstep-dots";
+    const next = document.createElement("button");
+    next.className = "icon-btn lstep-arrow"; next.type = "button"; next.innerHTML = "&rarr;"; next.setAttribute("aria-label", "Next step");
+    controls.appendChild(prev); controls.appendChild(dotsWrap); controls.appendChild(next);
+    let idx = 0;
+    const frameEls = frames.map(function (f, i) {
+      const fr = document.createElement("div");
+      fr.className = "lstep-frame" + (i === 0 ? " active" : "");
+      fr.appendChild(f.el);
+      viewport.appendChild(fr);
+      const dot = document.createElement("button");
+      dot.className = "lstep-dot" + (i === 0 ? " active" : ""); dot.type = "button";
+      dot.setAttribute("aria-label", "Step " + (i + 1) + " of " + frames.length);
+      dot.onclick = function () { go(i); };
+      dotsWrap.appendChild(dot);
+      return fr;
+    });
+    function go(i) {
+      idx = (i + frames.length) % frames.length;
+      frameEls.forEach(function (fr, j) { fr.classList.toggle("active", j === idx); });
+      Array.prototype.forEach.call(dotsWrap.children, function (d, j) { d.classList.toggle("active", j === idx); });
+      caption.textContent = frames[idx].caption || "";
+      prev.disabled = idx === 0; next.disabled = idx === frames.length - 1;
+    }
+    prev.onclick = function () { if (idx > 0) go(idx - 1); };
+    next.onclick = function () { if (idx < frames.length - 1) go(idx + 1); };
+    root.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowLeft") { e.preventDefault(); if (idx > 0) go(idx - 1); }
+      if (e.key === "ArrowRight") { e.preventDefault(); if (idx < frames.length - 1) go(idx + 1); }
+    });
+    caption.textContent = frames[0] && frames[0].caption || "";
+    prev.disabled = true; next.disabled = frames.length <= 1;
+    root.appendChild(caption);
+    if (frames.length > 1) root.appendChild(controls);
+    return root;
+  };
+
   // MOTION & BRANDING — shared skeletons. showSkeleton(host, kind) waits
   // SKELETON_DELAY_MS (150) and only inserts the shimmer if the host is STILL empty —
   // fast fetches never flash one; the real render simply replaces innerHTML, so the

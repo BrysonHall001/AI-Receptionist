@@ -539,9 +539,23 @@
   function renderBlock(b) {
     if (b.p) { const p = el("p", "learn-p"); p.innerHTML = richText(b.p); return p; }
     if (b.tip) { const d = el("div", "learn-tip"); d.innerHTML = `<strong>Tip:</strong> ${richText(b.tip)}`; return d; }
-    // VISUAL: placeholders are intentionally invisible — LC rebuild part 2 replaces
-    // them with live embedded UI demonstrations. { shot } is the retired ancestor.
-    if (b.visual) return null;
+    // LC-2: VISUAL markers resolve through the scene registry — a single inert
+    // themed figure, or the shared stepper for multi-frame sequences. An id missing
+    // from the registry renders nothing (and fails selfTest_learningCenter2, so a
+    // future guide edit can't dangle silently). { shot } is the retired ancestor.
+    if (b.visual) {
+      const scene = App.learnScenes && App.learnScenes.get(b.visual);
+      if (!scene || !scene.frames || !scene.frames.length) return null;
+      const frameEl = (f) => { const d = el("div", "scene-frame"); const inert = el("div", "scene-inert"); inert.setAttribute("aria-hidden", "true"); inert.innerHTML = f.html; d.appendChild(inert); return d; };
+      const wrap = el("figure", "learn-scene");
+      if (scene.frames.length === 1) {
+        wrap.appendChild(frameEl(scene.frames[0]));
+        if (scene.frames[0].caption) { const c = el("figcaption", "scene-caption", scene.frames[0].caption); wrap.appendChild(c); }
+      } else {
+        wrap.appendChild(App.ui.stepper(scene.frames.map((f) => ({ el: frameEl(f), caption: f.caption })), { label: "Illustration: " + (b.note || b.visual) }));
+      }
+      return wrap;
+    }
     if (b.shot) return null;
     if (b.steps) {
       const ol = el("ol", "learn-steps");
