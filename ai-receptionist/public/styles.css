@@ -3252,3 +3252,33 @@ body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-t
 .scene-seg { max-width: 220px; }
 .scene-theme-mini { flex: 1 1 0; min-width: 0; height: 54px; background: var(--panel-2); }
 .scene-theme-mini--big { height: 64px; }
+
+/* LC-3 fidelity scaffolds (layout-only, token-composed) */
+.scene-maincol { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 auto; }
+.scene-pagesrow { display: flex; gap: 4px; background: var(--topbar-bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px 8px; overflow: hidden; }
+.scene-pagesrow .nav-item { font-size: var(--text-xs); padding: 4px 8px; }
+.scene-presence { width: 10px; height: 10px; border-radius: 999px; background: var(--green); flex: none; margin-left: auto; }
+.scene-presence--b { background: var(--amber); margin-left: 4px; }
+.scene-reports-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; min-width: 0; }
+.scene-widgetgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.scene-widgetgrid .scene-kpi { width: auto; }
+.scene-widebar { padding: 12px 16px; }
+.scene-bars { display: flex; align-items: flex-end; gap: 6px; height: 44px; margin-bottom: 6px; }
+.scene-bar { flex: 1 1 0; min-width: 0; background: var(--accent); border-radius: 3px 3px 0 0; height: 40%; }
+.scene-bar--2 { height: 70%; }
+.scene-bar--3 { height: 55%; }
+.scene-bar--4 { height: 90%; }
+.scene-pageactions { justify-content: flex-start; margin-bottom: 10px; }
+.scene-kancol { flex: 1 1 0; width: auto; min-width: 0; max-height: none; }
+.scene-calwrap { padding: 0; overflow: hidden; }
+.scene-calhead { grid-template-columns: repeat(5, minmax(0, 1fr)); position: static; }
+.scene-calhead .cal-dayhead { font-size: var(--text-xs); }
+.scene-rulerow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 0; }
+.scene-mapgrid { margin: 0 0 8px; }
+
+/* LC-3 R4 scaffolds (layout-only, token-composed) */
+.scene-modal { border: 1px solid var(--line-strong); }
+.scene-modalhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 4px; }
+.scene-modaltitle { font-weight: 700; font-size: var(--text-sm); }
+.scene-x { pointer-events: none; }
+.scene-carouselrow { align-items: center; justify-content: center; }

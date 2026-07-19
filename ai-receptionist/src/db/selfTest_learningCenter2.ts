@@ -73,7 +73,7 @@ const used = new Set<string>();
 for (const m of allHtml.matchAll(/class="([^"]+)"/g)) m[1].split(/\s+/).forEach((c) => c && used.add(c));
 const undefinedClasses = [...used].filter((c) => !new RegExp("\\." + c.replace(/[-]/g, "\\-") + "[\\s,{:.]").test(css));
 check(undefinedClasses.length === 0, `every scene class exists in the stylesheet${undefinedClasses.length ? " — MISSING: " + undefinedClasses.join(", ") : ""} (${used.size} distinct classes)`);
-const bespoke = [...used].filter((c) => !/^(scene-|lstep|fun-seg)/.test(c) && !["card", "widget-card", "kpi", "kpi-value", "kpi-label", "pill", "success", "skipped", "btn", "btn-primary", "btn-ghost", "btn-sm", "nav-item", "active", "input", "field-label", "eyebrow", "icon-btn"].includes(c));
+const bespoke = [...used].filter((c) => !/^(scene-|lstep|fun-seg)/.test(c) && !["card", "widget-card", "widget-grid", "kpi", "kpi-value", "kpi-label", "pill", "success", "skipped", "btn", "btn-primary", "btn-ghost", "btn-sm", "btn-block", "nav-item", "active", "input", "field-label", "eyebrow", "icon-btn", "kanban-col", "kanban-col-head", "kanban-cards", "kanban-card", "seg-btn", "seg-on", "chip", "cell-muted", "page-actions", "map-grid", "rule-editor", "rule-field", "rule-op", "rule-val", "cal-head", "cal-dayhead"].includes(c)); // LC-3: fidelity scenes use the REAL page classes
 check(bespoke.length === 0, `only shared component classes + the scene/stepper scaffold${bespoke.length ? " — UNEXPECTED: " + bespoke.join(", ") : ""}`);
 
 // ---------- (3) voice rule ----------

@@ -20,16 +20,10 @@
   const App = global.App || (global.App = {});
   const { el, esc } = App.util;
 
-  // Owner page-lock: the "finding your way around" guide lists the nav sections in one
-  // sentence. Render it dynamically so locked pages aren't named. This sentinel is
-  // swapped for the computed sentence at render time.
-  const NAV_SECTIONS_SENTINEL = "@@NAV_SECTIONS@@";
-  function listJoin(a) { if (a.length <= 1) return a.join(""); if (a.length === 2) return a[0] + " and " + a[1]; return a.slice(0, -1).join(", ") + ", and " + a[a.length - 1]; }
-  function navSectionsSentence() {
-    const NAV_LABELS = (App.buildPortalNav ? App.buildPortalNav() : [["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"], ["#/contacts", "Contacts"], ["#/jobs", "Jobs"], ["#/bookings", "Bookings"], ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"], ["#/learn", "Learning Center"], ["#/feedback", "Feedback"]]).map(function (it) { return [it[0], it[1]]; });
-    const names = NAV_LABELS.filter((x) => !(App.isPageLocked && App.isPageLocked(x[0]))).map((x) => x[1]);
-    return "The left navigation lists the main sections: " + listJoin(names) + ".";
-  }
+  // LC-3, THE SEEDED-DATA RULE: guide text never enumerates the LIVE portal's nav or
+  // names its custom modules/fields/stages — docs ship to every portal. The old dynamic
+  // nav sentence (which leaked seeded test modules) is gone; the orientation guide
+  // teaches the modules-vs-pages PATTERN with the base modules as examples.
 
   const GUIDES = [
     {
@@ -37,16 +31,18 @@
       items: [
         {
           id: "orientation",
-          title: "Finding your way around",
+          title: "Finding your way around: Modules and Pages",
           blocks: [
-            { p: "After you sign in, the screen has three parts: the left navigation, the top bar, and the main area." },
+            { p: "Clarity's navigation has two parts, and the split is the key to the whole app. The LEFT navigation lists your MODULES — the kinds of data your business keeps, like [[#/contacts|Contacts]], [[#/jobs|Jobs]], and [[#/bookings|Bookings]], plus any modules you create. Modules are highly configurable: their fields are grouped into sections, they offer custom views, and you can rename them to your own words." },
+            { p: "Across the TOP run your PAGES — fixed-purpose screens that work WITH that data: [[#/dashboard|Home Dashboard]], [[#/calls|Calls]], [[#/reports|Analytics]], [[#/automations|Automations]], [[#/communication|Communication]], the Learning Center, and [[#/feedback|Feedback]]." },
             { steps: [
-              NAV_SECTIONS_SENTINEL,
-              "The top bar shows the current page's actions, and small colored dots for teammates who are online right now — hover a dot to see who it is.",
+              "Left navigation = modules: one entry per kind of record. Yours may differ from a teammate's screenshots — modules are renameable and you can add your own.",
+              "Top row = pages: the fixed tools. Their names don't change.",
+              "The top bar also shows small colored presence dots for teammates who are online — hover one to see who it is.",
               "Click the logo in the top-left corner at any time to return to your [[#/dashboard|Home Dashboard]].",
             ] },
-            { tip: "If a section named in a guide isn't in your navigation, it may be turned off for your workspace or your role — ask whoever manages your account." },
-            { visual: "shell-tour", note: "interactive callout tour of nav / top bar / content" },
+            { tip: "If something named in a guide isn't in your navigation, it may be turned off for your workspace or your role — ask whoever manages your account." },
+            { visual: "shell-tour", note: "callout tour: module sidebar, page row, top bar" },
           ],
         },
         {
@@ -59,7 +55,7 @@
               "Press Add widget to create a new tile — see the Analytics section's \"Building a widget\" guide for every option.",
               "Drag a widget's card to reorder; use its menu to edit or remove it.",
             ] },
-            { visual: "home-widgets", note: "mini dashboard with a drag-reorder demo" },
+            { visual: "home-dashboard", note: "faithful mini Home Dashboard: reports bar + widget grid" },
           ],
         },
         {
@@ -122,11 +118,17 @@
       cat: "Working with records", pagesAll: ["#/contacts", "#/jobs", "#/bookings"],
       items: [
         {
-          id: "records-modules",
-          title: "Records, modules, and pages",
+          id: "how-organized",
+          title: "How Clarity is organized: fields \u2192 sections \u2192 modules \u2192 links",
           blocks: [
-            { p: "Your data lives in modules — Contacts, Jobs, Bookings, and any others your workspace has added. Each module gets its own page in the navigation and holds one kind of record." },
-            { p: "Modules can be renamed (see \"Renaming pages\" under Customizing), so your navigation might say Clients, Projects, or Appointments — the guides here use each module's current name automatically." },
+            { p: "Everything in Clarity hangs off one simple hierarchy. FIELDS are the individual pieces of information — a name, a phone number, a date. Fields live in SECTIONS, which group related fields together on a record's panel (contact details in one section, preferences in another). Sections make up a MODULE — [[#/contacts|Contacts]], [[#/jobs|Jobs]], [[#/bookings|Bookings]], or any module you create — and each module holds one kind of record." },
+            { p: "Modules LINK to each other: a record's panel shows related tabs, so a contact's jobs and bookings are one click away. And alongside the modules sit the PAGES — the fixed tools like [[#/dashboard|Home Dashboard]] and [[#/reports|Analytics]] that read and chart the data your modules hold." },
+            { steps: [
+              "Open any record in [[#/contacts|Contacts]] and notice its fields grouped under section headings.",
+              "Look at the tabs on the record's panel — each links to a related module.",
+              "Everything about this shape is yours to change in [[#/settings/fields|Settings \u2192 Modules & Fields]]: add fields, arrange sections, create whole modules.",
+            ] },
+            { tip: "Modules can be renamed to your own words (see \"Renaming pages\" under Customizing), so your navigation might say Clients or Projects — these guides use your current names automatically." },
           ],
         },
         {
@@ -559,7 +561,7 @@
     if (b.shot) return null;
     if (b.steps) {
       const ol = el("ol", "learn-steps");
-      b.steps.forEach((s) => { const text = s === NAV_SECTIONS_SENTINEL ? navSectionsSentence() : s; const li = el("li"); li.innerHTML = s === NAV_SECTIONS_SENTINEL ? esc(text) : richText(text); ol.appendChild(li); });
+      b.steps.forEach((s) => { const li = el("li"); li.innerHTML = richText(s); ol.appendChild(li); });
       return ol;
     }
     return null;
@@ -571,7 +573,7 @@
     (it.blocks || []).forEach((b) => {
       if (b.p) parts.push(b.p);
       if (b.tip) parts.push(b.tip);
-      if (b.steps) parts.push(b.steps.filter((s) => s !== NAV_SECTIONS_SENTINEL).join(" "));
+      if (b.steps) parts.push(b.steps.join(" "));
     });
     return parts.join(" ").replace(LINK_RE, "$2").toLowerCase();
   }
