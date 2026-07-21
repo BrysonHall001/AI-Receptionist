@@ -1,4 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { audit } from "../services/auditService";
+import { AUDIT_ACTIONS } from "../services/auditCatalog";
 import multer from "multer";
 import { extractDocuments, combineBlocks, MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "../services/docExtractService";
 import { organizeIntoSections, InstructionsParseError } from "../services/instructionsDocParseService";
@@ -187,6 +189,63 @@ apiRouter.get("/impersonation/targets", async (req: Request, res: Response) => {
 
 // Start impersonation. Writes the overlay onto the REAL session. Gated to the real
 // super-admin; never to the overlay.
+// ---- Audit foundation (devtools batch 2): the DECLARATIVE route audit map. ----
+// Structure/settings/bulk/export mutations are captured here — one middleware, data-
+// driven, firing on response FINISH for 2xx only (zero latency added, and a failed
+// request is never audited as a change). Per-item record/contact/communication events
+// come from the event-bus subscriber; import counts + impersonation + auth have their
+// own direct hooks. No route is captured twice.
+const AUDIT_ROUTE_MAP: { m: string; re: RegExp; action: string; subjectType: string; label?: string }[] = [
+  { m: "POST",   re: /^\/fields$/, action: AUDIT_ACTIONS.FIELD_CREATE, subjectType: "fieldDef" },
+  { m: "PATCH",  re: /^\/fields\/[^/]+$/, action: AUDIT_ACTIONS.FIELD_UPDATE, subjectType: "fieldDef" },
+  { m: "DELETE", re: /^\/fields\/[^/]+$/, action: AUDIT_ACTIONS.FIELD_DELETE, subjectType: "fieldDef" },
+  { m: "POST",   re: /^\/fields\/reorder$/, action: AUDIT_ACTIONS.FIELD_UPDATE, subjectType: "fieldDef", label: "Field order" },
+  { m: "POST",   re: /^\/fields\/[^/]+\/section$/, action: AUDIT_ACTIONS.SECTION_UPDATE, subjectType: "fieldDef" },
+  { m: "POST",   re: /^\/field-sections/, action: AUDIT_ACTIONS.SECTION_UPDATE, subjectType: "fieldSection" },
+  { m: "PATCH",  re: /^\/field-sections/, action: AUDIT_ACTIONS.SECTION_UPDATE, subjectType: "fieldSection" },
+  { m: "DELETE", re: /^\/field-sections/, action: AUDIT_ACTIONS.SECTION_UPDATE, subjectType: "fieldSection" },
+  { m: "POST",   re: /^\/record-types$/, action: AUDIT_ACTIONS.MODULE_CREATE, subjectType: "recordType" },
+  { m: "POST",   re: /^\/record-types\/pipeline$/, action: AUDIT_ACTIONS.MODULE_UPDATE, subjectType: "recordType", label: "Pipeline switch" },
+  { m: "POST",   re: /^\/record-types\/views$/, action: AUDIT_ACTIONS.VIEWS_UPDATE, subjectType: "recordType" },
+  { m: "POST",   re: /^\/record-(stages|statuses|subtypes)\//, action: AUDIT_ACTIONS.STAGES_UPDATE, subjectType: "recordType" },
+  { m: "POST",   re: /^\/labels$/, action: AUDIT_ACTIONS.TERMS_UPDATE, subjectType: "settings", label: "Pages & terms" },
+  { m: "PATCH",  re: /^\/theme$/, action: AUDIT_ACTIONS.SETTINGS_APPEARANCE, subjectType: "settings", label: "Appearance" },
+  { m: "POST",   re: /^\/account\/voice$/, action: AUDIT_ACTIONS.SETTINGS_AI, subjectType: "settings", label: "Voice mode" },
+  { m: "POST",   re: /^\/integrations\//, action: AUDIT_ACTIONS.SETTINGS_INTEGRATIONS, subjectType: "settings" },
+  { m: "POST",   re: /^\/portal-roles/, action: AUDIT_ACTIONS.SETTINGS_PERMISSIONS, subjectType: "settings" },
+  { m: "PATCH",  re: /^\/portal-roles/, action: AUDIT_ACTIONS.SETTINGS_PERMISSIONS, subjectType: "settings" },
+  { m: "DELETE", re: /^\/portal-roles/, action: AUDIT_ACTIONS.SETTINGS_PERMISSIONS, subjectType: "settings" },
+  { m: "POST",   re: /^\/booking-config$/, action: AUDIT_ACTIONS.SETTINGS_SCHEDULING, subjectType: "settings", label: "Booking config" },
+  { m: "POST",   re: /^\/resources$/, action: AUDIT_ACTIONS.SETTINGS_SCHEDULING, subjectType: "settings", label: "Resources" },
+  { m: "PATCH",  re: /^\/resources\//, action: AUDIT_ACTIONS.SETTINGS_SCHEDULING, subjectType: "settings", label: "Resources" },
+  { m: "DELETE", re: /^\/resources\//, action: AUDIT_ACTIONS.SETTINGS_SCHEDULING, subjectType: "settings", label: "Resources" },
+  { m: "POST",   re: /^\/exports$/, action: AUDIT_ACTIONS.EXPORT_RUN, subjectType: "export" },
+  { m: "POST",   re: /^\/contacts\/bulk-update$/, action: AUDIT_ACTIONS.BULK_UPDATE, subjectType: "contact" },
+  { m: "POST",   re: /^\/records\/bulk-update$/, action: AUDIT_ACTIONS.BULK_UPDATE, subjectType: "record" },
+];
+apiRouter.use((req: Request, res: Response, next) => {
+  res.on("finish", () => {
+    try {
+      if (res.statusCode < 200 || res.statusCode >= 300) return;
+      const hit = AUDIT_ROUTE_MAP.find((r) => r.m === req.method && r.re.test(req.path));
+      if (!hit) return;
+      const u: any = (req as any).user;
+      audit({
+        tenantId: (u && u.tenantId) || (req as any).impersonation?.scopeTenantId || null,
+        actorType: "user",
+        actorId: u?.id ?? null,
+        actorLabel: (u && (u.name || u.email)) || "Unknown user",
+        action: hit.action,
+        subjectType: hit.subjectType,
+        subjectId: (req.params && (req.params as any).id) || null,
+        subjectLabel: hit.label || (typeof req.body?.name === "string" ? req.body.name : typeof req.body?.label === "string" ? req.body.label : null),
+        meta: hit.action === AUDIT_ACTIONS.EXPORT_RUN ? { rows: Number(req.body?.rowCount) || 0, dataType: req.body?.dataType || null } : hit.action === AUDIT_ACTIONS.BULK_UPDATE ? { count: Array.isArray(req.body?.ids) ? req.body.ids.length : 0, field: req.body?.field || null } : null,
+      });
+    } catch { /* the audit map must never break a response */ }
+  });
+  next();
+});
+
 apiRouter.post("/impersonation/start", async (req: Request, res: Response) => {
   if (!req.realUser || !isAdminTier(req.realUser.role)) { res.status(403).json({ error: "Super-admin only" }); return; }
   const token = req.cookies?.[SESSION_COOKIE];
@@ -207,6 +266,7 @@ apiRouter.post("/impersonation/start", async (req: Request, res: Response) => {
       // If the target holds a CUSTOM role, carry it so the session resolves to EXACTLY
       // that role's permissions (base role stays the user's own; customRoleId drives can()).
       await setImpersonation(token, { mode: "view-as-user", targetUserId: target.id, assumedRole: (target as any).role, scopeTenantId: (target as any).tenantId ?? null, customRoleId: (target as any).customRoleId ?? null });
+      { const real: any = req.realUser || req.user; audit({ tenantId: (target as any).tenantId ?? null, actorType: "user", actorId: real?.id ?? null, actorLabel: (real && (real.name || real.email)) || "Hub user", action: AUDIT_ACTIONS.IMPERSONATION_START, subjectType: "auth", subjectId: target.id, subjectLabel: (target as any).name || (target as any).email || null, meta: { mode: "view-as-user" } }); }
     } else if (mode === "act-as-type") {
       const scopeTenantId = String(body.scopeTenantId || "");
       if (!scopeTenantId) { res.status(400).json({ error: "Open a portal first" }); return; }
@@ -240,6 +300,7 @@ apiRouter.post("/impersonation/exit", async (req: Request, res: Response) => {
   if (!req.realUser || !isAdminTier(req.realUser.role)) { res.status(403).json({ error: "Super-admin only" }); return; }
   const token = req.cookies?.[SESSION_COOKIE];
   await clearImpersonation(token);
+  { const real: any = req.realUser || req.user; audit({ tenantId: (req as any).impersonation?.scopeTenantId ?? null, actorType: "user", actorId: real?.id ?? null, actorLabel: (real && (real.name || real.email)) || "Hub user", action: AUDIT_ACTIONS.IMPERSONATION_END, subjectType: "auth" }); }
   res.json({ ok: true, impersonating: false });
 });
 
@@ -425,6 +486,7 @@ apiRouter.post("/contacts/import", async (req: Request, res: Response) => {
     try {
       await createImportRecord({ tenantId, dataType: "contact", name: "Contacts import", rowCount: result.imported + result.skipped, okCount: result.imported, failCount: result.skipped, createdById: req.user?.id ?? null });
     } catch { /* never fail the import on history write */ }
+    audit({ tenantId, actorType: "user", actorId: req.user?.id ?? null, actorLabel: (req.user && ((req.user as any).name || (req.user as any).email)) || "Unknown user", action: AUDIT_ACTIONS.IMPORT_RUN, subjectType: "import", subjectLabel: "Contacts import", meta: { imported: result.imported, skipped: result.skipped } });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1471,6 +1533,7 @@ apiRouter.post("/records/import", async (req: Request, res: Response) => {
     try {
       await createImportRecord({ tenantId, dataType: type || "record", name: `${type || "record"} import`, rowCount: result.imported + result.skipped, okCount: result.imported, failCount: result.skipped, createdById: req.user?.id ?? null });
     } catch { /* never fail the import on history write */ }
+    audit({ tenantId, actorType: "user", actorId: req.user?.id ?? null, actorLabel: (req.user && ((req.user as any).name || (req.user as any).email)) || "Unknown user", action: AUDIT_ACTIONS.IMPORT_RUN, subjectType: "import", subjectLabel: "Records import", meta: { imported: result.imported, skipped: result.skipped } });
     res.json(result);
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });

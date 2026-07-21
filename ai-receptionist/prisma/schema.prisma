@@ -1342,3 +1342,31 @@ model Counter {
 
   @@unique([tenantId, key])
 }
+
+// ---- Developer Tools batch 2: the action-level audit trail ----
+// Who did what, when, to which record, with field-level before/after values.
+// Denormalized actor/subject labels so history SURVIVES user/record deletion.
+// Retention: status flows active -> pending_deletion (14d) -> hard delete (14d more),
+// enforced by the scheduler sweep in bounded batches. Capture is fire-and-forget and
+// may never fail, slow, or block the action it records.
+model AuditEvent {
+  id            String   @id @default(cuid())
+  tenantId      String?  // null for master-hub-level actions
+  actorType     String   // user | system | ai | automation
+  actorId       String?
+  actorLabel    String   // denormalized display name
+  action        String   // dot-namespaced verb, e.g. "record.update"
+  subjectType   String   // record | contact | fieldDef | settings | auth | ...
+  subjectId     String?
+  subjectLabel  String?  // denormalized
+  recordTypeKey String?
+  diff          Json?    // { field: { from, to } } — field-level changes only
+  meta          Json?    // IP for auth events, import row counts, etc.
+  status        String   @default("active") // active | pending_deletion
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, subjectType, subjectId])
+  @@index([status, createdAt])
+  @@index([action])
+}

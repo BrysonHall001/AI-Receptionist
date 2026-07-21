@@ -1,4 +1,6 @@
 import { prisma } from "../db/client";
+import { audit } from "./auditService";
+import { AUDIT_ACTIONS } from "./auditCatalog";
 import { Extracted } from "../ai/schema";
 import { log as logActivity } from "./activityService";
 import { emitEvent } from "../events/bus";
@@ -362,6 +364,7 @@ export async function purgeExpiredContacts(tenantId: string): Promise<number> {
   const r = await prisma.contact.deleteMany({
     where: { tenantId, deletedAt: { not: null, lt: cutoff } } as any,
   });
+  if (r.count) audit({ tenantId, actorType: "system", actorLabel: "Recycle-bin retention", action: AUDIT_ACTIONS.CONTACT_PURGE, subjectType: "contact", meta: { count: r.count } });
   return r.count;
 }
 

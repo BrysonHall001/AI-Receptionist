@@ -4,6 +4,8 @@
 // the 1a migration. Records keep their own table; contacts are untouched.
 
 import { prisma } from "../db/client";
+import { audit } from "./auditService";
+import { AUDIT_ACTIONS } from "./auditCatalog";
 import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_RECORD_TYPE_KEY, INVOICE_RECORD_TYPE_KEY } from "./recordTypeService";
 import { randomUUID } from "crypto";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
@@ -852,6 +854,7 @@ export async function purgeExpiredRecords(tenantId: string): Promise<number> {
   const r = await db.record.deleteMany({
     where: { tenantId, deletedAt: { not: null, lt: cutoff } },
   });
+  if (r.count) audit({ tenantId, actorType: "system", actorLabel: "Recycle-bin retention", action: AUDIT_ACTIONS.RECORD_PURGE, subjectType: "record", meta: { count: r.count } });
   return r.count;
 }
 

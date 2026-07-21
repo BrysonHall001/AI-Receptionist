@@ -1,4 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { audit } from "../services/auditService";
+import { AUDIT_ACTIONS } from "../services/auditCatalog";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal, isBillingStatus, BILLING_STATUSES } from "../services/portalService";
 import { systemRecordTypeOptions } from "../services/recordTypeService";
@@ -78,6 +80,7 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
     // set later under Integrations); requireEmail is hard-set true and not accepted.
     // lockedPages (owner page-lock) may be set atomically at creation.
     const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages, billingStatus, hiddenRecordTypes });
+    { const u: any = (req as any).realUser || (req as any).user; audit({ tenantId: portal.id, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", action: AUDIT_ACTIONS.HUB_TENANT_CREATE, subjectType: "tenant", subjectId: portal.id, subjectLabel: portal.name }); }
     logger.info(`Portal created: ${portal.name} (${portal.id})`);
     res.json(portal);
   } catch (err) {
@@ -119,6 +122,9 @@ adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
       data.voiceMode = b.receptionistEnabled ? "WALKIE" : "OFF";
     }
     const portal = await updatePortal(req.params.id, data);
+    { const u: any = (req as any).realUser || (req as any).user;
+      const suspended = data.billingStatus !== undefined && String(data.billingStatus).toUpperCase().includes("SUSPEND");
+      audit({ tenantId: req.params.id, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", action: suspended ? AUDIT_ACTIONS.HUB_TENANT_SUSPEND : AUDIT_ACTIONS.HUB_SETTINGS_UPDATE, subjectType: "tenant", subjectId: req.params.id, subjectLabel: (portal as any)?.name || null, meta: data.billingStatus !== undefined ? { billingStatus: data.billingStatus } : null }); }
     res.json(portal);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

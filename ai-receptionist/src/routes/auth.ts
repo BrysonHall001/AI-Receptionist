@@ -6,6 +6,8 @@ import { createSession, destroySession, setSessionCookie, clearSessionCookie, SE
 import { createResetToken, consumeResetToken, publicUser, accountInactive } from "../services/userService";
 import { sendPlainEmail } from "../services/notificationService";
 import { env, smsEnabled } from "../config/env";
+import { audit } from "../services/auditService";
+import { AUDIT_ACTIONS } from "../services/auditCatalog";
 import { logger } from "../utils/logger";
 import { rateLimit } from "../middleware/rateLimit";
 import { can, NAV_VIEW_AREAS } from "../services/permissionService";
@@ -38,6 +40,7 @@ authRouter.post("/login", loginIpLimiter, loginLimiter, async (req: Request, res
   }
   const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    audit({ tenantId: (user as any)?.tenantId ?? null, actorType: "user", actorId: user?.id ?? null, actorLabel: email.trim().toLowerCase(), action: AUDIT_ACTIONS.AUTH_LOGIN_FAILED, subjectType: "auth", meta: { ip: req.ip || null } }); // fire-and-forget; never blocks the 401
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
@@ -47,10 +50,13 @@ authRouter.post("/login", loginIpLimiter, loginLimiter, async (req: Request, res
   }
   const token = await createSession(user.id);
   setSessionCookie(res, token);
+  audit({ tenantId: (user as any).tenantId ?? null, actorType: "user", actorId: user.id, actorLabel: user.name || user.email, action: AUDIT_ACTIONS.AUTH_LOGIN, subjectType: "auth", meta: { ip: req.ip || null } });
   res.json({ user: publicUser(user) });
 });
 
 authRouter.post("/logout", async (req: Request, res: Response) => {
+  const u: any = (req as any).user;
+  if (u) audit({ tenantId: u.tenantId ?? null, actorType: "user", actorId: u.id, actorLabel: u.name || u.email, action: AUDIT_ACTIONS.AUTH_LOGOUT, subjectType: "auth", meta: { ip: req.ip || null } });
   await destroySession(req.cookies?.[SESSION_COOKIE]);
   clearSessionCookie(res);
   res.json({ ok: true });

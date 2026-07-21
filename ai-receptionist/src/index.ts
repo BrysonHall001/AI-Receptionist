@@ -5,6 +5,8 @@ import { logger } from "./utils/logger";
 import { ensureInboundStatusCallback } from "./telephony/provisionStatusCallback";
 import { attachConversationRelay } from "./telephony/conversationRelayWs";
 import { sweepStaleCalls } from "./services/callOrchestrator";
+import { registerAuditSubscriber } from "./services/auditSubscriber";
+import { runAuditRetentionSweep } from "./services/auditService";
 import { sweepResolvedFeedback } from "./services/feedbackService";
 import { processDueJobs } from "./automation/scheduler";
 import { processDueReports } from "./services/reportScheduler";
@@ -54,6 +56,13 @@ async function main(): Promise<void> {
     void sweepStaleCalls();
   }, 60_000);
   sweepTimer.unref();
+
+  // Audit foundation (devtools batch 2): subscribe the bus->audit mapper (records,
+  // contacts, bookings, sends — captured ONCE, here), and run the 14+14 retention
+  // sweep hourly (the geocode-sweep pattern: bounded batches, never throws).
+  registerAuditSubscriber();
+  const auditSweepTimer = setInterval(() => { void runAuditRetentionSweep(); }, 60 * 60_000);
+  auditSweepTimer.unref();
 
   // Resolved-feedback auto-delete: same in-process timer mechanism as above, but
   // a slow cadence (every 6 hours, plus once shortly after boot) since it only

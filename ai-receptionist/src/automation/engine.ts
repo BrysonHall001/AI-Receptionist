@@ -1,4 +1,6 @@
 import { prisma } from "../db/client";
+import { audit } from "../services/auditService";
+import { AUDIT_ACTIONS } from "../services/auditCatalog";
 import { logger } from "../utils/logger";
 import { subscribe } from "../events/bus";
 import { DomainEvent, EventActor } from "../events/types";
@@ -386,6 +388,9 @@ async function writeRun(
         error: data.error ?? null,
       },
     });
+    // Audit foundation: an automation EXECUTION (matched runs only) — actorType
+    // "automation", never blocking the run log (audit() is fire-and-forget).
+    if (data.matched) audit({ tenantId: auto.tenantId, actorType: "automation", actorId: auto.id, actorLabel: (auto as any).name || "Automation", action: AUDIT_ACTIONS.AUTOMATION_EXECUTED, subjectType: "automation", subjectId: auto.id, subjectLabel: (auto as any).name || null, meta: { status: data.status, eventType: data.eventType } });
   } catch (err) {
     logger.error(`automation run log failed (${auto.id}): ${(err as Error).message}`);
   }
