@@ -114,7 +114,7 @@
   // at render time via App.label(kind,"many") so renaming the contact/job record
   // type (or a Tenant.labels override) updates the nav. Other items are app
   // FEATURE names, not object nouns, so they stay literal.
-  const ADMIN_NAV = [["#/admin/portals", "Tenants"], ["#/admin/users", "Users"], ["#/admin/email", "Email"], ["#/admin/usage", "Billing & Usage"], ["#/admin/feedback", "Feedback"], ["#/admin/changelog", "Change Log"]];
+  const ADMIN_NAV = [["#/admin/portals", "Tenants"], ["#/admin/users", "Users"], ["#/admin/email", "Email"], ["#/admin/usage", "Billing & Usage"], ["#/admin/feedback", "Feedback"], ["#/admin/devtools", "Developer Tools"]]; // devtools shell: Developer Tools sits directly below Feedback; the Change Log moved inside it (History -> Change Log)
   // The portal nav is now registry-driven: fixed pages + one item per record type
   // (from navModel.js, which reads the live record types with the three system types
   // as the always-present default). Exposed as a LIVE getter so the Settings → Labels
@@ -764,7 +764,7 @@
       // is no portal presence strip, so presence is stopped.
       const topbar = el("header", "topbar");
       const topLeft = el("div", "top-left");
-      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/usage": "Billing & Usage", "#/admin/feedback": "Feedback", "#/admin/changelog": "Change Log" };
+      const titleMap = { "#/dashboard": "Home Dashboard", "#/calls": "Calls", "#/contacts": App.label("contact", "many"), "#/jobs": App.label("job", "many"), "#/reports": "Analytics", "#/communication": "Communication", "#/automations": "Automations", "#/feedback": "Feedback", "#/settings": "Settings", "#/admin/portals": "Tenants", "#/admin/users": "Users", "#/admin/email": "Email", "#/admin/usage": "Billing & Usage", "#/admin/feedback": "Feedback", "#/admin/devtools": "Developer Tools" };
       let pageTitle = titleMap[activePath];
       if (!pageTitle) {
         const found = items.find(function (it) { return it[0] === activePath; });
@@ -855,7 +855,7 @@
       if (!App.isAdminTier(me.role)) return App.go(App.firstAvailableNav());
       // Email + Billing are OWNER/SUPER_ADMIN only; an Auditor who deep-links is bounced to Tenants.
       if ((path === "/admin/email" || path === "/admin/usage") && !(me.role === "OWNER" || me.role === "SUPER_ADMIN")) return App.go("#/admin/portals");
-      const sub = path === "/admin/users" ? "users" : path === "/admin/email" ? "email" : path === "/admin/usage" ? "usage" : path === "/admin/feedback" ? "feedback" : path === "/admin/changelog" ? "changelog" : "portals";
+      const sub = path === "/admin/users" ? "users" : path === "/admin/email" ? "email" : path === "/admin/usage" ? "usage" : path === "/admin/feedback" ? "feedback" : (path === "/admin/devtools" || path === "/admin/changelog") ? "devtools" : "portals"; // devtools shell (old changelog links land in the new home)
       buildShell("admin", "#/admin/" + sub);
       return App.admin.render(sub);
     }

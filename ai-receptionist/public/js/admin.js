@@ -33,7 +33,7 @@
     if (v === "email") return renderEmail();
     if (v === "usage") return renderUsageBilling();
     if (v === "feedback") return App.feedback.renderMaster(view());
-    if (v === "changelog") return renderChangelog();
+    if (v === "devtools" || v === "changelog") return renderDevTools(); // devtools shell (the router maps the old changelog route here too)
     return renderPortals();
   }
 
@@ -966,19 +966,85 @@
     };
   }
 
+  // ---------------- Developer Tools (the shell) ----------------
+  // A settings-style section grid (the portal Settings tiles pattern) over a sub-tab
+  // row (the AI-Receptionist settings-tabs pattern) — both DATA-DRIVEN so future
+  // sections (and the coming Audit Log sub-tab) are one-line additions.
+  const DEVTOOL_SECTIONS = [
+    { key: "history", label: "History", render: renderHistorySection },
+    // future sections register here
+  ];
+  const HISTORY_SUBTABS = [
+    { key: "changelog", label: "Change Log", mount: (host) => renderChangelog(host) },
+    // { key: "auditlog", label: "Audit Log", mount: ... } — a later batch
+  ];
+
+  function renderDevTools() {
+    view().innerHTML = "";
+    const wrap = el("div", "fade-in settings-tiles-shell");
+    const tiles = el("div", "settings-tiles");
+    const panel = el("div");
+    let active = DEVTOOL_SECTIONS[0] && DEVTOOL_SECTIONS[0].key;
+    function paintTiles() {
+      tiles.innerHTML = "";
+      DEVTOOL_SECTIONS.forEach((s) => {
+        const tile = el("a", "settings-tile" + (s.key === active ? " active" : ""), esc(s.label));
+        tile.onclick = (e) => { e.preventDefault(); if (active !== s.key) { active = s.key; paintTiles(); paintPanel(); } };
+        tiles.appendChild(tile);
+      });
+    }
+    function paintPanel() {
+      panel.innerHTML = "";
+      const s = DEVTOOL_SECTIONS.find((x) => x.key === active);
+      if (s) s.render(panel);
+    }
+    wrap.appendChild(tiles);
+    wrap.appendChild(panel);
+    view().appendChild(wrap);
+    paintTiles();
+    paintPanel();
+  }
+
+  function renderHistorySection(panel) {
+    const bar = el("div", "settings-tabs");
+    const body = el("div");
+    let active = HISTORY_SUBTABS[0] && HISTORY_SUBTABS[0].key;
+    function paintBar() {
+      bar.innerHTML = "";
+      HISTORY_SUBTABS.forEach((t) => {
+        const b = el("button", null, t.label);
+        b.className = "settings-tab" + (active === t.key ? " active" : "");
+        b.onclick = () => { if (active !== t.key) { active = t.key; paintBar(); paintBody(); } };
+        bar.appendChild(b);
+      });
+    }
+    function paintBody() {
+      body.innerHTML = "";
+      const t = HISTORY_SUBTABS.find((x) => x.key === active);
+      if (t) t.mount(body);
+    }
+    panel.appendChild(bar);
+    panel.appendChild(body);
+    paintBar();
+    paintBody();
+  }
+
   // ---------------- Change Log ----------------
   // Product-level log of every change shipped, read from the DB (never git).
   // Reuses App.table.mount — same sort/filter/pagination as the other hub tables.
-  async function renderChangelog() {
-    loading();
+  // Devtools shell: the SAME function, now mountable into any host (the Change Log
+  // sub-tab passes one; with no argument it behaves exactly as it always did).
+  async function renderChangelog(hostEl) {
+    const mount = hostEl || view();
+    App.util.showSkeleton(mount, "table");
     let rows;
     try { rows = await App.api("/api/admin/changelog"); }
-    catch (e) { view().innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+    catch (e) { mount.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
     if (!Array.isArray(rows)) rows = [];
 
-    view().innerHTML = "";
+    mount.innerHTML = "";
     const host = el("div", "fade-in");
-    view().appendChild(host);
+    mount.appendChild(host);
 
     const columns = [
       { key: "date", label: "Date", type: "date", get: (r) => r.date, text: (r) => fmtDateOnly(r.date), render: (r) => `<span class="cell-muted">${fmtDateOnly(r.date)}</span>` },
