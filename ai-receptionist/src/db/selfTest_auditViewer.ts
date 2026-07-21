@@ -90,14 +90,15 @@ async function main() {
   check(viewerSrc.includes('meta.retention.ACTIVE_DAYS + " days, then pending deletion for " + meta.retention.PENDING_DAYS'), "the retention note interpolates DT-2's constants\u2026");
   const noteLine = viewerSrc.split("\n").find((l) => l.includes("Events are kept")) || "";
   check(!/14/.test(noteLine), "\u2026with NO hardcoded \"14\" anywhere in the copy (it cannot drift from the code)");
-  check(adminRoutes.includes("res.json({ actions: AUDIT_ACTION_VALUES, groups: AUDIT_ACTION_GROUPS, retention: AUDIT_RETENTION });") && AUDIT_RETENTION.ACTIVE_DAYS === 14 && AUDIT_ACTION_GROUPS.length >= 8, "the meta endpoint serves the catalog's own groups + retention config");
-  for (const k of ['"createdAt"', '"tenant"', '"actor"', '"action"', '"subject"', '"details"']) check(viewerSrc.includes(`const defaultKeys = ["createdAt", "tenant", "actor", "action", "subject", "details"]`) || viewerSrc.includes(k), `default column ${k}`);
+  check(adminRoutes.includes("res.json({ actions: AUDIT_ACTION_VALUES, groups: AUDIT_ACTION_GROUPS, retention: AUDIT_RETENTION, customRoles });") && AUDIT_RETENTION.ACTIVE_DAYS === 14 && AUDIT_ACTION_GROUPS.length >= 8, "the meta endpoint serves the catalog's own groups + retention config");
+  // audit-fixes batch: the default set gained User Type (Actor renamed to User)
+check(viewerSrc.includes('const defaultKeys = ["createdAt", "tenant", "actor", "userType", "action", "subject", "details"]'), 'default columns: Time \u00b7 Tenant \u00b7 User \u00b7 User Type \u00b7 Action \u00b7 Subject \u00b7 Details');
   for (const extra of ['key: "actorId"', 'key: "subjectId"', 'key: "recordTypeKey"', 'key: "status"', 'key: "ip"']) check(viewerSrc.includes(extra), `manage-columns extra: ${extra}`);
   check(viewerSrc.includes('localStorage.getItem(AUDIT_COLS_KEY)') && viewerSrc.includes("saveLayout(layout)"), "column prefs persist per-browser (the tenants-table localStorage pattern)");
   check(tableJs.includes("const { container, rows, onRowClick, emptyHtml, rowClass } = opts;") && viewerSrc.includes('rowClass: (r) => (r.status === "pending_deletion" ? "adm-audit-pending" : "")') && !read("public/js/portal.js").includes("rowClass:"), "the rowClass hook is ADDITIVE shared machinery (audit uses it; no sibling passes it \u2014 their behavior is untouched)");
   check(css.includes("tbody tr.adm-audit-pending td { opacity: 0.55; }") && viewerSrc.includes('<span class="pill skipped">pending deletion</span>'), "pending_deletion rows render muted with a status pill");
   check(viewerSrc.includes('emptyHtml: `<div class="card cell-muted adm-t14">No audit events match.</div>`'), "the shared empty-state block");
-  check(viewerSrc.includes('mkSel([["active", "Active"], ["pending_deletion", "Pending deletion"], ["all", "All"]]') && viewerSrc.includes('["", "All tenants"]') && viewerSrc.includes('meta.groups.map((g) => [g.key, g.label])') && viewerSrc.includes('fromEl.type = "date"'), "the filter set: tenant roster, actor type, grouped actions (from the catalog), status (Active default), date range");
+  check(viewerSrc.includes('mkSel([["active", "Active"], ["pending_deletion", "Pending deletion"], ["all", "All"]]') && viewerSrc.includes('["", "All tenants"]') && viewerSrc.includes('meta.groups.map((g) => [g.key, g.label])') && viewerSrc.includes('["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["14", "Last 14 days"], ["custom", "Custom\\u2026"]'), "the filter set: tenant roster, actor type, grouped actions (from the catalog), status (Active default), the Date-range preset select");
 
   // ---------- (3) diff rendering, headless ----------
   console.log("\n(3) diff rendering:");
@@ -110,7 +111,7 @@ async function main() {
   };
   const auditDetailsSummary = new Function("esc", `return (${grab("auditDetailsSummary").replace("function auditDetailsSummary", "function")})`)(esc);
   const auditValHtml = new Function("esc", `return (${grab("auditValHtml").replace("function auditValHtml", "function")})`)(esc);
-  check(auditDetailsSummary({ diff: { a: {}, b: {}, c: {} } }) === "3 fields changed" && auditDetailsSummary({ meta: { imported: 12, skipped: 2 } }) === "12 rows imported, 2 skipped" && auditDetailsSummary({ meta: { ip: "1.2.3.4" } }) === "IP 1.2.3.4" && auditDetailsSummary({}) === "\u2014", "the Details cell summarizes compactly (3-field diff, import counts, auth IP, em-dash fallback)");
+  check(auditDetailsSummary({ diff: { a: {}, b: {}, c: {} } }) === "3 fields changed" && auditDetailsSummary({ meta: { imported: 12, skipped: 2 } }) === "12 rows imported, 2 skipped" && auditDetailsSummary({ meta: { ip: "1.2.3.4" } }) === "\u2014" /* audit-fixes: auth substance = the IP COLUMN, never Details */ && auditDetailsSummary({}) === "\u2014", "the Details cell summarizes compactly (3-field diff, import counts, auth IP, em-dash fallback)");
   const longVal = auditValHtml("x".repeat(200));
   check(longVal.includes("adm-diff-expand") && longVal.includes("adm-diff-full u-hidden") && auditValHtml({ a: 1 }).includes("&quot;a&quot;: 1") && auditValHtml(undefined).includes("\u2014"), "values render safely: long values truncate with expand; JSON pretty-prints; empty shows an em-dash");
   const detailSrc = adminJs.slice(adminJs.indexOf("function openAuditDetail"), adminJs.indexOf("async function renderAuditLog"));

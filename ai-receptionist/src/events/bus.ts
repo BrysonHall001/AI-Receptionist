@@ -50,6 +50,7 @@ export async function emitEvent(input: EmitInput): Promise<DomainEvent> {
     type: input.actor?.type ?? "system",
     id: input.actor?.id ?? null,
     name: input.actor?.name ?? null,
+    role: input.actor?.role ?? null, // audit-fixes: rides the in-memory event only
   };
   const subject: EventSubject = {
     type: input.subject?.type ?? "contact",

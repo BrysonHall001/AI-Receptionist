@@ -67,7 +67,7 @@ export interface MutationActor {
 }
 
 function actorOf(actor?: MutationActor) {
-  return { type: actor?.type ?? "system", id: actor?.id ?? null, name: actor?.name ?? null };
+  return { type: actor?.type ?? "system", id: actor?.id ?? null, name: actor?.name ?? null, role: (actor as any)?.role ?? null }; // audit-fixes: role rides through to the audit subscriber
 }
 
 /**

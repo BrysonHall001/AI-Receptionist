@@ -1355,6 +1355,7 @@ model AuditEvent {
   actorType     String   // user | system | ai | automation
   actorId       String?
   actorLabel    String   // denormalized display name
+  actorRole     String?  // denormalized role at act time: hub OWNER/SUPER_ADMIN/AUDITOR, portal PORTAL_ADMIN/CLIENT_USER, or CUSTOM:<portalRoleId>; null for non-human/historical
   action        String   // dot-namespaced verb, e.g. "record.update"
   subjectType   String   // record | contact | fieldDef | settings | auth | ...
   subjectId     String?

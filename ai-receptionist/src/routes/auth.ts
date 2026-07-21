@@ -50,13 +50,13 @@ authRouter.post("/login", loginIpLimiter, loginLimiter, async (req: Request, res
   }
   const token = await createSession(user.id);
   setSessionCookie(res, token);
-  audit({ tenantId: (user as any).tenantId ?? null, actorType: "user", actorId: user.id, actorLabel: user.name || user.email, action: AUDIT_ACTIONS.AUTH_LOGIN, subjectType: "auth", meta: { ip: req.ip || null } });
+  audit({ tenantId: (user as any).tenantId ?? null, actorType: "user", actorId: user.id, actorLabel: user.name || user.email, actorRole: (user as any).customRoleId ? "CUSTOM:" + (user as any).customRoleId : (user as any).role || null, action: AUDIT_ACTIONS.AUTH_LOGIN, subjectType: "auth", meta: { ip: req.ip || null } });
   res.json({ user: publicUser(user) });
 });
 
 authRouter.post("/logout", async (req: Request, res: Response) => {
   const u: any = (req as any).user;
-  if (u) audit({ tenantId: u.tenantId ?? null, actorType: "user", actorId: u.id, actorLabel: u.name || u.email, action: AUDIT_ACTIONS.AUTH_LOGOUT, subjectType: "auth", meta: { ip: req.ip || null } });
+  if (u) audit({ tenantId: u.tenantId ?? null, actorType: "user", actorId: u.id, actorLabel: u.name || u.email, actorRole: u.customRoleId ? "CUSTOM:" + u.customRoleId : u.role || null, action: AUDIT_ACTIONS.AUTH_LOGOUT, subjectType: "auth", meta: { ip: req.ip || null } });
   await destroySession(req.cookies?.[SESSION_COOKIE]);
   clearSessionCookie(res);
   res.json({ ok: true });
@@ -83,7 +83,13 @@ authRouter.get("/me", async (req: Request, res: Response) => {
   // Billing tab (server still enforces the endpoint independently).
   permView["billing"] = await can(req.user as any, "billing", "view");
   const lockedPages = (req.user as any)?.tenantId ? await getLockedPages((req.user as any).tenantId) : [];
-  res.json({ user: { ...req.user, permView, lockedPages }, features: { smsEnabled: smsEnabled() } });
+  // System Health nav-dot (audit-fixes-health): hub-tier users get the CACHED health
+  // verdict on the boot payload they already fetch — no extra request, no polling.
+  let healthWorst: string | null = null;
+  if (["OWNER", "SUPER_ADMIN", "AUDITOR"].includes((req.user as any).role)) {
+    try { const snap = require("../services/healthService").getHealthSnapshot(); healthWorst = snap ? snap.worst : null; } catch { /* nicety only */ }
+  }
+  res.json({ user: { ...req.user, permView, lockedPages }, features: { smsEnabled: smsEnabled() }, healthWorst });
 });
 
 authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => {

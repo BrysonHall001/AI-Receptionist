@@ -122,12 +122,22 @@ async function receptionistOn(tenantId: string, res: Response): Promise<boolean>
 // Action attribution. The id is ALWAYS the real user's, so an act-as-type session
 // stamps honestly as the super-admin; the name is annotated "(acting as <ROLE>)"
 // while impersonating. Routes call this instead of building the actor inline.
+// audit-fixes: the ONE helper that captures the acting human's role for the trail.
+// Hub humans keep their HUB role even while acting inside a portal (req.realUser wins);
+// portal humans report their portal role, with custom roles as CUSTOM:<portalRoleId>
+// (the viewer resolves names via the meta roster). Non-human actors never pass here.
+function actorRoleOf(req: Request): string | null {
+  const real: any = req.realUser || req.user;
+  if (!real) return null;
+  if (real.customRoleId) return "CUSTOM:" + real.customRoleId;
+  return real.role || null;
+}
 function actorOf(req: Request) {
   const real = req.realUser || req.user;
   const imp = req.impersonation;
   let name = (real?.name || real?.email || "") as string;
   if (imp && imp.mode === "act-as-type") name += " (acting as " + imp.assumedRole + ")";
-  return { id: real!.id, name, type: "user" as const };
+  return { id: real!.id, name, type: "user" as const, role: actorRoleOf(req) };
 }
 
 // Audit-trail helper: log a security/settings change as a tenant-scoped event,
@@ -235,6 +245,7 @@ apiRouter.use((req: Request, res: Response, next) => {
         actorType: "user",
         actorId: u?.id ?? null,
         actorLabel: (u && (u.name || u.email)) || "Unknown user",
+        actorRole: actorRoleOf(req),
         action: hit.action,
         subjectType: hit.subjectType,
         subjectId: (req.params && (req.params as any).id) || null,
@@ -266,7 +277,7 @@ apiRouter.post("/impersonation/start", async (req: Request, res: Response) => {
       // If the target holds a CUSTOM role, carry it so the session resolves to EXACTLY
       // that role's permissions (base role stays the user's own; customRoleId drives can()).
       await setImpersonation(token, { mode: "view-as-user", targetUserId: target.id, assumedRole: (target as any).role, scopeTenantId: (target as any).tenantId ?? null, customRoleId: (target as any).customRoleId ?? null });
-      { const real: any = req.realUser || req.user; audit({ tenantId: (target as any).tenantId ?? null, actorType: "user", actorId: real?.id ?? null, actorLabel: (real && (real.name || real.email)) || "Hub user", action: AUDIT_ACTIONS.IMPERSONATION_START, subjectType: "auth", subjectId: target.id, subjectLabel: (target as any).name || (target as any).email || null, meta: { mode: "view-as-user" } }); }
+      { const real: any = req.realUser || req.user; audit({ tenantId: (target as any).tenantId ?? null, actorType: "user", actorId: real?.id ?? null, actorLabel: (real && (real.name || real.email)) || "Hub user", actorRole: real?.role ?? null, action: AUDIT_ACTIONS.IMPERSONATION_START, subjectType: "auth", subjectId: target.id, subjectLabel: (target as any).name || (target as any).email || null, meta: { mode: "view-as-user" } }); }
     } else if (mode === "act-as-type") {
       const scopeTenantId = String(body.scopeTenantId || "");
       if (!scopeTenantId) { res.status(400).json({ error: "Open a portal first" }); return; }
@@ -300,7 +311,7 @@ apiRouter.post("/impersonation/exit", async (req: Request, res: Response) => {
   if (!req.realUser || !isAdminTier(req.realUser.role)) { res.status(403).json({ error: "Super-admin only" }); return; }
   const token = req.cookies?.[SESSION_COOKIE];
   await clearImpersonation(token);
-  { const real: any = req.realUser || req.user; audit({ tenantId: (req as any).impersonation?.scopeTenantId ?? null, actorType: "user", actorId: real?.id ?? null, actorLabel: (real && (real.name || real.email)) || "Hub user", action: AUDIT_ACTIONS.IMPERSONATION_END, subjectType: "auth" }); }
+  { const real: any = req.realUser || req.user; audit({ tenantId: (req as any).impersonation?.scopeTenantId ?? null, actorType: "user", actorId: real?.id ?? null, actorLabel: (real && (real.name || real.email)) || "Hub user", actorRole: real?.role ?? null, action: AUDIT_ACTIONS.IMPERSONATION_END, subjectType: "auth" }); }
   res.json({ ok: true, impersonating: false });
 });
 
@@ -486,7 +497,7 @@ apiRouter.post("/contacts/import", async (req: Request, res: Response) => {
     try {
       await createImportRecord({ tenantId, dataType: "contact", name: "Contacts import", rowCount: result.imported + result.skipped, okCount: result.imported, failCount: result.skipped, createdById: req.user?.id ?? null });
     } catch { /* never fail the import on history write */ }
-    audit({ tenantId, actorType: "user", actorId: req.user?.id ?? null, actorLabel: (req.user && ((req.user as any).name || (req.user as any).email)) || "Unknown user", action: AUDIT_ACTIONS.IMPORT_RUN, subjectType: "import", subjectLabel: "Contacts import", meta: { imported: result.imported, skipped: result.skipped } });
+    audit({ tenantId, actorType: "user", actorId: req.user?.id ?? null, actorLabel: (req.user && ((req.user as any).name || (req.user as any).email)) || "Unknown user", actorRole: actorRoleOf(req), action: AUDIT_ACTIONS.IMPORT_RUN, subjectType: "import", subjectLabel: "Contacts import", meta: { imported: result.imported, skipped: result.skipped } });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1533,7 +1544,7 @@ apiRouter.post("/records/import", async (req: Request, res: Response) => {
     try {
       await createImportRecord({ tenantId, dataType: type || "record", name: `${type || "record"} import`, rowCount: result.imported + result.skipped, okCount: result.imported, failCount: result.skipped, createdById: req.user?.id ?? null });
     } catch { /* never fail the import on history write */ }
-    audit({ tenantId, actorType: "user", actorId: req.user?.id ?? null, actorLabel: (req.user && ((req.user as any).name || (req.user as any).email)) || "Unknown user", action: AUDIT_ACTIONS.IMPORT_RUN, subjectType: "import", subjectLabel: "Records import", meta: { imported: result.imported, skipped: result.skipped } });
+    audit({ tenantId, actorType: "user", actorId: req.user?.id ?? null, actorLabel: (req.user && ((req.user as any).name || (req.user as any).email)) || "Unknown user", actorRole: actorRoleOf(req), action: AUDIT_ACTIONS.IMPORT_RUN, subjectType: "import", subjectLabel: "Records import", meta: { imported: result.imported, skipped: result.skipped } });
     res.json(result);
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });

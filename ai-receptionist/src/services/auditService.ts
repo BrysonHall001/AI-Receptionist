@@ -28,6 +28,7 @@ export interface AuditEventInput {
   actorType: "user" | "system" | "ai" | "automation";
   actorId?: string | null;
   actorLabel: string;
+  actorRole?: string | null; // denormalized acting role (audit-fixes batch); null = non-human or unknown
   action: string;
   subjectType: string;
   subjectId?: string | null;
@@ -64,6 +65,7 @@ export function audit(evt: AuditEventInput): void {
       actorType: evt.actorType,
       actorId: evt.actorId ?? null,
       actorLabel: evt.actorLabel,
+      actorRole: evt.actorRole ?? null,
       action: evt.action,
       subjectType: evt.subjectType,
       subjectId: evt.subjectId ?? null,
@@ -110,6 +112,7 @@ export function computeDiff(before: Record<string, unknown> | null | undefined, 
 // FURTHER PENDING_DAYS -> hard delete. Bounded batches per tick; never throws.
 export async function runAuditRetentionSweep(now: Date = new Date()): Promise<{ demoted: number; deleted: number }> {
   const res = { demoted: 0, deleted: 0 };
+  try { require("./healthService").markAuditSweep(); } catch { /* health is a bystander */ }
   try {
     const activeCutoff = new Date(now.getTime() - AUDIT_RETENTION.ACTIVE_DAYS * 24 * 60 * 60 * 1000);
     const deleteCutoff = new Date(now.getTime() - (AUDIT_RETENTION.ACTIVE_DAYS + AUDIT_RETENTION.PENDING_DAYS) * 24 * 60 * 60 * 1000);

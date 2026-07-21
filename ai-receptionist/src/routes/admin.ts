@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { audit } from "../services/auditService";
 import { AUDIT_ACTION_VALUES, AUDIT_ACTION_GROUPS, AUDIT_RETENTION } from "../services/auditCatalog";
 import { queryAuditEvents } from "../services/auditQueryService";
+import { getHealthSnapshot, runHealthChecks } from "../services/healthService";
 import { AUDIT_ACTIONS } from "../services/auditCatalog";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal, isBillingStatus, BILLING_STATUSES } from "../services/portalService";
@@ -82,7 +83,7 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
     // set later under Integrations); requireEmail is hard-set true and not accepted.
     // lockedPages (owner page-lock) may be set atomically at creation.
     const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages, billingStatus, hiddenRecordTypes });
-    { const u: any = (req as any).realUser || (req as any).user; audit({ tenantId: portal.id, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", action: AUDIT_ACTIONS.HUB_TENANT_CREATE, subjectType: "tenant", subjectId: portal.id, subjectLabel: portal.name }); }
+    { const u: any = (req as any).realUser || (req as any).user; audit({ tenantId: portal.id, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", actorRole: u?.role ?? null, action: AUDIT_ACTIONS.HUB_TENANT_CREATE, subjectType: "tenant", subjectId: portal.id, subjectLabel: portal.name }); }
     logger.info(`Portal created: ${portal.name} (${portal.id})`);
     res.json(portal);
   } catch (err) {
@@ -126,7 +127,7 @@ adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
     const portal = await updatePortal(req.params.id, data);
     { const u: any = (req as any).realUser || (req as any).user;
       const suspended = data.billingStatus !== undefined && String(data.billingStatus).toUpperCase().includes("SUSPEND");
-      audit({ tenantId: req.params.id, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", action: suspended ? AUDIT_ACTIONS.HUB_TENANT_SUSPEND : AUDIT_ACTIONS.HUB_SETTINGS_UPDATE, subjectType: "tenant", subjectId: req.params.id, subjectLabel: (portal as any)?.name || null, meta: data.billingStatus !== undefined ? { billingStatus: data.billingStatus } : null }); }
+      audit({ tenantId: req.params.id, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", actorRole: u?.role ?? null, action: suspended ? AUDIT_ACTIONS.HUB_TENANT_SUSPEND : AUDIT_ACTIONS.HUB_SETTINGS_UPDATE, subjectType: "tenant", subjectId: req.params.id, subjectLabel: (portal as any)?.name || null, meta: data.billingStatus !== undefined ? { billingStatus: data.billingStatus } : null }); }
     res.json(portal);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -424,8 +425,28 @@ adminRouter.delete("/feedback/:id", requireRole("OWNER", "SUPER_ADMIN"), async (
 // every sibling admin endpoint. Cursor pagination (createdAt desc, id desc — stable
 // under insertion); filters ride the DT-2 indexes ([status, createdAt] for the
 // default view, [tenantId, createdAt], [action]).
+// System Health (audit-fixes-health batch): serve the CACHED snapshot (running one
+// if the cache is cold), and a recheck trigger that returns fresh results. Same
+// router-level hub gate as every sibling. Read-only + side-effect-free beyond pings.
+adminRouter.get("/health", async (_req: Request, res: Response) => {
+  try {
+    res.json(getHealthSnapshot() || await runHealthChecks());
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+adminRouter.post("/health/recheck", async (_req: Request, res: Response) => {
+  try {
+    res.json(await runHealthChecks());
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
 adminRouter.get("/audit-events/meta", async (_req: Request, res: Response) => {
-  res.json({ actions: AUDIT_ACTION_VALUES, groups: AUDIT_ACTION_GROUPS, retention: AUDIT_RETENTION });
+  // customRoles: id -> name roster so the viewer can render CUSTOM:<id> actorRoles.
+  let customRoles: Record<string, string> = {};
+  try {
+    const roles = await (prisma as any).portalRole.findMany({ select: { id: true, name: true } });
+    roles.forEach((r: any) => { customRoles[r.id] = r.name; });
+  } catch { /* the roster is a nicety; the viewer falls back to "Custom role" */ }
+  res.json({ actions: AUDIT_ACTION_VALUES, groups: AUDIT_ACTION_GROUPS, retention: AUDIT_RETENTION, customRoles });
 });
 
 adminRouter.get("/audit-events", async (req: Request, res: Response) => {

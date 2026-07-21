@@ -6,6 +6,7 @@ import { ensureInboundStatusCallback } from "./telephony/provisionStatusCallback
 import { attachConversationRelay } from "./telephony/conversationRelayWs";
 import { sweepStaleCalls } from "./services/callOrchestrator";
 import { registerAuditSubscriber } from "./services/auditSubscriber";
+import { startHealthSweep, markSchedulerTick } from "./services/healthService";
 import { runAuditRetentionSweep } from "./services/auditService";
 import { sweepResolvedFeedback } from "./services/feedbackService";
 import { processDueJobs } from "./automation/scheduler";
@@ -64,6 +65,9 @@ async function main(): Promise<void> {
   const auditSweepTimer = setInterval(() => { void runAuditRetentionSweep(); }, 60 * 60_000);
   auditSweepTimer.unref();
 
+  // System Health: the ~3-minute cached check sweep (audit-fixes-health batch).
+  startHealthSweep();
+
   // Resolved-feedback auto-delete: same in-process timer mechanism as above, but
   // a slow cadence (every 6 hours, plus once shortly after boot) since it only
   // needs to clear tickets resolved 30+ days ago. No new infrastructure.
@@ -99,7 +103,7 @@ async function main(): Promise<void> {
       automationSweeping = false;
     }
   };
-  const automationSweepTimer = setInterval(() => { void runAutomationSweep(); }, 2 * 60_000);
+  const automationSweepTimer = setInterval(() => { markSchedulerTick(); void runAutomationSweep(); }, 2 * 60_000); // health: the scheduler-age check watches this tick
   automationSweepTimer.unref();
 
   // Recurring-reports heartbeat: same 2-minute in-process cadence as the automation

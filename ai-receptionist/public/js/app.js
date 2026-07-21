@@ -33,6 +33,7 @@
       const j = await res.json();
       App.state.me = j.user;
       App.state.features = j.features || App.state.features || {};
+      App.state.healthWorst = j.healthWorst || null; // health nav-dot verdict (cached server snapshot)
       return App.state.me;
     } catch (e) { return App.state.me; }
   };
@@ -454,7 +455,7 @@
   // context with the impersonated scope so the UI re-renders as the right role for
   // the right portal immediately after entering/leaving impersonation.
   async function refreshSession() {
-    try { const res = await fetch("/api/auth/me", { credentials: "same-origin" }); if (res.ok) { const j = await res.json(); App.state.me = j.user; App.state.features = j.features || App.state.features || {}; } } catch (e) {}
+    try { const res = await fetch("/api/auth/me", { credentials: "same-origin" }); if (res.ok) { const j = await res.json(); App.state.me = j.user; App.state.features = j.features || App.state.features || {}; App.state.healthWorst = j.healthWorst || null; } } catch (e) {}
     await App.loadImpersonation();
     const st = App.state.impersonation;
     if (st && st.impersonating && st.overlay && st.overlay.scopeTenantId) {
@@ -626,6 +627,12 @@
       const a = el("a", "nav-item" + (href === activePath ? " active" : "") + (canEditNav ? " nav-item--editable" : ""), esc(text));
       a.href = href;
       a.dataset.href = href;
+      // System Health passive alerting: the Developer Tools item wears an amber/red
+      // dot when the CACHED server snapshot (delivered on the /me boot payload) says
+      // warn/fail. No polling — the dot refreshes with /me and with health rechecks.
+      if (href === "#/admin/devtools" && (App.state.healthWorst === "warn" || App.state.healthWorst === "fail")) {
+        a.appendChild(el("span", "nav-health-dot" + (App.state.healthWorst === "fail" ? " fail" : "")));
+      }
       if (canEditNav) {
         const burger = el("span", "nav-burger", "⋮");
         burger.title = "Rename, reorder, or hide";

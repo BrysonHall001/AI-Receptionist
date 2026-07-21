@@ -972,6 +972,7 @@
   // sections (and the coming Audit Log sub-tab) are one-line additions.
   const DEVTOOL_SECTIONS = [
     { key: "history", label: "History", render: renderHistorySection },
+    { key: "health", label: "System Health", render: renderHealthSection }, // audit-fixes-health batch
     // future sections register here
   ];
   const HISTORY_SUBTABS = [
@@ -1029,6 +1030,80 @@
     paintBody();
   }
 
+  // ---------------- System Health (audit-fixes-health batch) ----------------
+  // Cached service checks as status cards (the settings-tile pattern), grouped
+  // External / Internal / Background / Last 24h, with a top banner and Re-check now.
+  const HEALTH_SUBTABS = [
+    { key: "overview", label: "Overview", mount: (host) => renderHealthOverview(host) },
+    // future health sub-tabs register here
+  ];
+  function renderHealthSection(panel) {
+    const bar = el("div", "settings-tabs");
+    const body = el("div");
+    let active = HEALTH_SUBTABS[0] && HEALTH_SUBTABS[0].key;
+    function paintBar() {
+      bar.innerHTML = "";
+      HEALTH_SUBTABS.forEach((t) => {
+        const b = el("button", null, t.label);
+        b.className = "settings-tab" + (active === t.key ? " active" : "");
+        b.onclick = () => { if (active !== t.key) { active = t.key; paintBar(); paintBody(); } };
+        bar.appendChild(b);
+      });
+    }
+    function paintBody() { body.innerHTML = ""; const t = HEALTH_SUBTABS.find((x) => x.key === active); if (t) t.mount(body); }
+    panel.appendChild(bar);
+    panel.appendChild(body);
+    paintBar();
+    paintBody();
+  }
+
+  const HEALTH_GROUP_LABELS = { external: "External services", internal: "Internal", background: "Background work", pulse: "Last 24 hours" };
+  const HEALTH_CHECK_LABELS = { twilio: "Twilio", openai: "OpenAI", elevenlabs: "ElevenLabs", mapbox: "Mapbox", google: "Google", database: "Database", process: "Process", scheduler: "Scheduler", geoQueue: "Geocode queue", auditSweep: "Audit retention", automations: "Automations", dripQueue: "Drip queue", requests: "Requests", webhooks: "Webhook deliveries", failedLogins: "Failed logins" };
+
+  async function renderHealthOverview(host) {
+    App.util.showSkeleton(host, "widgets");
+    let snap;
+    try { snap = await App.api("/api/admin/health"); }
+    catch (e) { host.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+    paintHealth(host, snap);
+  }
+
+  function paintHealth(host, snap) {
+    host.innerHTML = "";
+    const wrap = el("div", "fade-in");
+    const issues = (snap.summary.warn || 0) + (snap.summary.fail || 0);
+    const banner = el("div", "card health-banner" + (snap.worst === "fail" ? " health-banner--fail" : snap.worst === "warn" ? " health-banner--warn" : ""));
+    const recheck = el("button", "btn btn-ghost btn-sm", "Re-check now");
+    banner.appendChild(el("span", "health-dot " + snap.worst));
+    banner.appendChild(el("strong", null, issues === 0 ? "All systems normal" : issues + (issues === 1 ? " issue" : " issues")));
+    banner.appendChild(el("span", "cell-muted health-banner-when", "Checked " + fmtDate(snap.checkedAt)));
+    banner.appendChild(recheck);
+    recheck.onclick = async () => {
+      recheck.disabled = true;
+      App.util.showSkeleton(host, "widgets");
+      try {
+        const fresh = await App.api("/api/admin/health/recheck", { method: "POST" });
+        App.state.healthWorst = fresh.worst || null; // keep the nav dot honest without polling
+        paintHealth(host, fresh);
+      } catch (e) { toast(e.message); paintHealth(host, snap); }
+    };
+    wrap.appendChild(banner);
+
+    Object.keys(snap.groups).forEach((gk) => {
+      const checks = snap.groups[gk] || {};
+      wrap.appendChild(el("div", "eyebrow health-group-eyebrow", esc(HEALTH_GROUP_LABELS[gk] || gk)));
+      const grid = el("div", "settings-tiles health-grid");
+      Object.keys(checks).forEach((ck) => {
+        const c = checks[ck];
+        const tile = el("div", "settings-tile health-card");
+        tile.innerHTML = `<span class="health-card-head"><span class="health-dot ${esc(c.status)}"></span><strong>${esc(HEALTH_CHECK_LABELS[ck] || ck)}</strong></span><span class="cell-muted health-card-detail">${esc(c.detail)}</span><span class="cell-muted health-card-meta">${c.latencyMs} ms \u00b7 ${fmtDate(c.checkedAt)}</span>`;
+        grid.appendChild(tile);
+      });
+      wrap.appendChild(grid);
+    });
+    host.appendChild(wrap);
+  }
+
   // ---------------- Audit Log (devtools batch 3) ----------------
   // READ-ONLY viewer over the DT-2 AuditEvent trail, on the SAME App.table.mount
   // machinery as the Change Log and tenant lists (sortable columns, the shared search
@@ -1045,7 +1120,8 @@
     if (m.rows !== undefined) return m.rows + " rows";
     if (m.count !== undefined) return m.count + " rows";
     if (m.recipients !== undefined) return m.recipients + (m.recipients === 1 ? " recipient" : " recipients");
-    if (m.ip) return "IP " + m.ip;
+    // Auth events: their substance is the User + the IP COLUMN — Details never
+    // duplicates the IP (audit-fixes batch). Other meta falls through below.
     if (m.status) return String(m.status);
     return "\u2014";
   }
@@ -1063,7 +1139,7 @@
     return `<span class="adm-diff-val"><span class="adm-diff-short">${esc(text.slice(0, LONG))}\u2026 <button class="btn btn-ghost btn-sm adm-diff-expand" type="button">Show all</button></span><span class="adm-diff-full u-hidden">${esc(text)}</span></span>`;
   }
 
-  function openAuditDetail(r, tenantName) {
+  function openAuditDetail(r, tenantName, userTypeOf) {
     const inner = el("div");
     inner.innerHTML = `<div class="modal-head"><h2>Audit event</h2><button class="icon-btn" id="aud-close">&times;</button></div>`;
     const body = el("div", "modal-body");
@@ -1071,7 +1147,8 @@
     const rowsHtml = [
       ["Time", fmtDate(r.createdAt)],
       ["Tenant", tenantName[r.tenantId] || "\u2014"],
-      ["Actor", `${esc(r.actorLabel)} <span class="pill${r.actorType === "user" ? "" : r.actorType === "ai" ? " success" : " skipped"}">${esc(r.actorType)}</span>${r.actorId ? ` <span class="cell-muted">${esc(r.actorId)}</span>` : ""}`],
+      ["User", `${esc(r.actorLabel)}${r.actorId ? ` <span class="cell-muted">${esc(r.actorId)}</span>` : ""}`],
+      ["User Type", esc(userTypeOf ? userTypeOf(r) : r.actorType)],
       ["Action", esc(r.action)],
       ["Subject", `${esc(r.subjectLabel || "\u2014")} <span class="cell-muted">${esc(r.subjectType)}${r.subjectId ? " \u00b7 " + esc(r.subjectId) : ""}</span>`],
       ["Record type", esc(r.recordTypeKey || "\u2014")],
@@ -1126,19 +1203,34 @@
 
     const wrap = el("div", "fade-in");
     // the retention note interpolates the SERVER'S OWN constants — the copy can't drift
-    const note = el("p", "cell-muted adm-audit-note",
+    const note = el("p", "cell-muted adm-audit-note table-lead",
       esc("Events are kept " + meta.retention.ACTIVE_DAYS + " days, then pending deletion for " + meta.retention.PENDING_DAYS + " more, then removed automatically."));
     wrap.appendChild(note);
 
-    const bar = el("div", "adm-auditbar");
+    const bar = el("div", "adm-auditbar table-lead");
     const mkSel = (optionPairs, onchange) => { const s = el("select", "input adm-cadsel"); optionPairs.forEach((pair) => { const o = el("option", null, esc(pair[1])); o.value = pair[0]; s.appendChild(o); }); s.onchange = () => onchange(s.value); return s; };
     bar.appendChild(mkSel([["", "All tenants"]].concat((portals || []).map((p) => [p.id, p.name])), (v) => { f.tenantId = v; reload(); }));
     bar.appendChild(mkSel([["", "All actors"], ["user", "People"], ["ai", "AI receptionist"], ["automation", "Automations"], ["system", "System"]], (v) => { f.actorType = v; reload(); }));
     bar.appendChild(mkSel([["", "All actions"]].concat(meta.groups.map((g) => [g.key, g.label])), (v) => { f.group = v; reload(); }));
     bar.appendChild(mkSel([["active", "Active"], ["pending_deletion", "Pending deletion"], ["all", "All"]], (v) => { f.status = v; reload(); }));
+    // ONE "Date range" preset select (All time default); Custom\u2026 reveals the pair.
+    // Same server params (from/to) underneath — presets just compute them.
+    const dayIso = (d) => d.toISOString().slice(0, 10);
+    const customWrap = el("span", "adm-audit-customdates u-hidden");
     const fromEl = el("input", "input adm-cadsel"); fromEl.type = "date"; fromEl.onchange = () => { f.from = fromEl.value; reload(); };
     const toEl = el("input", "input adm-cadsel"); toEl.type = "date"; toEl.onchange = () => { f.to = toEl.value; reload(); };
-    bar.appendChild(fromEl); bar.appendChild(toEl);
+    customWrap.appendChild(fromEl); customWrap.appendChild(toEl);
+    const rangeSel = mkSel([["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["14", "Last 14 days"], ["custom", "Custom\u2026"]], (v) => {
+      const now = new Date();
+      customWrap.classList.toggle("u-hidden", v !== "custom");
+      if (v === "all") { f.from = ""; f.to = ""; }
+      else if (v === "today") { f.from = dayIso(now); f.to = dayIso(now); }
+      else if (v === "7" || v === "14") { const d = new Date(now.getTime() - (Number(v) - 1) * 86400000); f.from = dayIso(d); f.to = dayIso(now); }
+      else { f.from = fromEl.value; f.to = toEl.value; }
+      if (v !== "custom") { fromEl.value = f.from; toEl.value = f.to; }
+      reload();
+    });
+    bar.appendChild(rangeSel); bar.appendChild(customWrap);
     wrap.appendChild(bar);
 
     const tableHost = el("div");
@@ -1148,11 +1240,24 @@
     moreWrap.appendChild(moreBtn);
     wrap.appendChild(moreWrap);
 
-    const actorPill = (t) => `<span class="pill${t === "user" ? "" : t === "ai" ? " success" : " skipped"}">${esc(t)}</span>`;
+    // User Type: humans show their ROLE (hub roles persist through impersonation —
+    // captured from req.realUser); custom portal roles resolve via the meta roster;
+    // non-humans map from actorType; historical events (no actorRole) show an em-dash.
+    const ROLE_LABELS = { OWNER: "Owner", SUPER_ADMIN: "Super Admin", AUDITOR: "Auditor", PORTAL_ADMIN: "Portal admin", CLIENT_USER: "Client user" };
+    const userTypeOf = (r) => {
+      if (r.actorType === "ai") return "AI receptionist";
+      if (r.actorType === "system") return "System";
+      if (r.actorType === "automation") return "Automation";
+      const role = r.actorRole;
+      if (!role) return "\u2014";
+      if (role.indexOf("CUSTOM:") === 0) return (meta.customRoles && meta.customRoles[role.slice(7)]) || "Custom role";
+      return ROLE_LABELS[role] || role;
+    };
     const columns = [
       { key: "createdAt", label: "Time", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
       { key: "tenant", label: "Tenant", type: "text", get: (r) => tenantName[r.tenantId] || "", render: (r) => esc(tenantName[r.tenantId] || "\u2014") },
-      { key: "actor", label: "Actor", type: "text", get: (r) => r.actorLabel, cellClass: "cell-strong", render: (r) => `${esc(r.actorLabel)} ${actorPill(r.actorType)}` },
+      { key: "actor", label: "User", type: "text", get: (r) => r.actorLabel, cellClass: "cell-strong", render: (r) => esc(r.actorLabel) }, // name only — the pill moved into User Type
+      { key: "userType", label: "User Type", type: "text", get: (r) => userTypeOf(r), render: (r) => esc(userTypeOf(r)) },
       { key: "action", label: "Action", type: "text", get: (r) => r.action, render: (r) => esc(r.action) },
       { key: "subject", label: "Subject", type: "text", get: (r) => r.subjectLabel || r.subjectType, render: (r) => `${esc(r.subjectLabel || "\u2014")} <span class="cell-muted">${esc(r.subjectType)}</span>` },
       { key: "details", label: "Details", type: "text", get: (r) => auditDetailsSummary(r), render: (r) => esc(auditDetailsSummary(r)) },
@@ -1162,7 +1267,7 @@
       { key: "status", label: "Status", type: "text", get: (r) => r.status, render: (r) => r.status === "pending_deletion" ? `<span class="pill skipped">pending deletion</span>` : `<span class="pill success">active</span>` },
       { key: "ip", label: "IP", type: "text", get: (r) => (r.meta && r.meta.ip) || "", render: (r) => `<span class="cell-muted">${esc((r.meta && r.meta.ip) || "\u2014")}</span>` },
     ];
-    const defaultKeys = ["createdAt", "tenant", "actor", "action", "subject", "details"];
+    const defaultKeys = ["createdAt", "tenant", "actor", "userType", "action", "subject", "details"];
     const loadLayout = () => { try { return JSON.parse(localStorage.getItem(AUDIT_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
     const saveLayout = (l) => { try { localStorage.setItem(AUDIT_COLS_KEY, JSON.stringify(l || {})); } catch (e) {} };
     let layout = loadLayout();
@@ -1177,10 +1282,31 @@
         defaultSort: "createdAt", defaultSortDir: "desc",
         emptyHtml: `<div class="card cell-muted adm-t14">No audit events match.</div>`,
         pageSize: 25,
-        onRowClick: (r) => openAuditDetail(r, tenantName),
+        onRowClick: (r) => openAuditDetail(r, tenantName, userTypeOf),
         rowClass: (r) => (r.status === "pending_deletion" ? "adm-audit-pending" : ""),
       });
       App.table.manageColumns(handle, columns, { defaultKeys, order: layout.order, hidden: layout.hidden, onSave: (nl) => { layout = { order: nl.order, hidden: nl.hidden }; saveLayout(layout); } });
+      // Export — immediately LEFT of Manage columns (the charges-page precedent),
+      // through App.exportModal wholesale: field selection (hidden ID columns
+      // included as selectable fields), CSV vs Excel, and the master-hub recent-
+      // exports history. Exports the CURRENTLY FILTERED, loaded window.
+      const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
+      exportBtn.onclick = () => App.exportModal({
+        title: "Export audit events",
+        columns: columns.map((c) => ({ key: c.key, label: c.label, type: c.type, get: c.get, text: c.text })),
+        rows: handle.getFiltered(),
+        dataType: "audit",
+        namePlaceholder: "e.g. July audit trail",
+        filterLabel: "Which events to export",
+        unitPlural: "Events",
+        sheetName: "Audit events",
+        countText: (n) => n + " event" + (n === 1 ? "" : "s"),
+        saveHistory: true,
+        historyApi: App.api,
+        historyBase: "/api/admin/exports",
+      });
+      const manageBtnEl = handle.toolbarRight && handle.toolbarRight.firstChild;
+      if (handle.toolbarRight) handle.toolbarRight.insertBefore(exportBtn, manageBtnEl);
       moreWrap.classList.toggle("u-hidden", !nextCursor);
     }
 

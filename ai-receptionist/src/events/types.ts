@@ -9,6 +9,7 @@ export interface EventActor {
   type: ActorType;
   id?: string | null;
   name?: string | null;
+  role?: string | null; // audit-fixes: acting role, threaded to the audit subscriber (not persisted on Event)
 }
 
 // Loose actor shape accepted by deletedByFromActor — both EventActor (records)

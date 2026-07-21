@@ -152,7 +152,8 @@
        ON-CONTROL --control-ink / --control-placeholder (inputs, selects)
        ON-ACCENT  --on-accent                           (accent-filled elements)
        ON-SOFT    the matching strong color              (badges/pills on *-soft) */
-  --content-text-inset: 18px;            /* the panels' inner text line (table cells etc.) — titles align to it */
+  --content-text-inset: 18px;
+  --table-lead-inset: 18px; /* hardening primitive: lead rows + toolbar share ONE table alignment inset */            /* the panels' inner text line (table cells etc.) — titles align to it */
   --ink-on-bg: #1a1a1e;                  /* ON-BG text — EXPLICIT LITERAL per theme (a var() here bakes :root's ink at computed-value time and dark themes inherit DARK headings: the third-recurrence bug) */
   --ink-on-bg-soft: #6b6b74;             /* ON-BG secondary — explicit literal (same rule) */
   --control-ink: #1a1a1e;                /* ON-CONTROL text — explicit literal (same rule) */
@@ -599,7 +600,13 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 
 /* ---------- Table toolbar + search + filters ---------- */
 .table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: 12px; flex-wrap: wrap; min-width: 0; } /* hardening: the shared Filters+Search row wraps at squeeze instead of escaping its card (acceptance case 1) */
-.toolbar-left { display: flex; align-items: center; gap: 10px; padding-left: 18px; min-width: 0; flex-wrap: wrap; }
+.toolbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+/* LAYOUT-HARDENING PRIMITIVE — table lead-row alignment (root-cause fix, batch
+   audit-fixes-health). ONE token supplies the inset that lines a row up with the
+   table's cell text; .toolbar-left AND any custom control row above a table (mark it
+   .table-lead) draw from the SAME definition, so their left edges are flush by
+   construction. Inside padded cards, .table-flush zeroes BOTH the same way. */
+.toolbar-left, .table-lead { padding-left: var(--table-lead-inset); }
 .toolbar-right { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; flex-wrap: wrap; min-width: 0; }
 .search-input { width: 260px; max-width: 100%; min-width: 0; min-height: var(--control-h); /* hardening: confined to its CONTAINER, not the viewport (fixes the Template Library toolbar escape) */ font-family: var(--font-ui); font-size: var(--text-sm); padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--panel); }
 .search-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
@@ -615,7 +622,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
    is actually open, so an open filter panel still doesn't touch the table. */
 .table-flush .table-layout { gap: 0; }
 .table-flush .filter-rail.open { margin-right: 16px; }
-.table-flush .toolbar-left { padding-left: 0; }
+.table-flush .toolbar-left, .table-flush .table-lead { padding-left: 0; }
 .filter-rail { width: 0; overflow: hidden; flex-shrink: 0; transition: width var(--transition); }
 .filter-rail.open { width: 264px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow); }
 .rail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -3284,7 +3291,7 @@ body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-t
 .scene-carouselrow { align-items: center; justify-content: center; }
 
 /* Developer Tools batch 3 — Audit Log (layout-only, token-composed) */
-.adm-auditbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; min-width: 0; }
+.adm-auditbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; min-width: 0; } /* alignment comes from .table-lead (the shared primitive), never ad-hoc margins */
 .adm-audit-note { margin: 0 0 10px; }
 .adm-audit-more { display: flex; justify-content: center; margin-top: 10px; }
 
@@ -3300,3 +3307,21 @@ body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-t
 .adm-diff-arrow { color: var(--ink-faint); }
 .adm-diff-val { white-space: pre-wrap; overflow-wrap: anywhere; display: inline-block; max-width: 100%; }
 tbody tr.adm-audit-pending td { opacity: 0.55; }
+.adm-audit-customdates { display: inline-flex; gap: 8px; min-width: 0; }
+
+/* System Health (audit-fixes-health; token-only, on the settings-tile pattern) */
+.health-banner { display: flex; align-items: center; gap: 10px; padding: 14px 18px; margin-bottom: 16px; flex-wrap: wrap; min-width: 0; }
+.health-banner--warn { border-color: var(--amber); }
+.health-banner--fail { border-color: var(--red); }
+.health-banner-when { margin-right: auto; }
+.health-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--green); flex: none; display: inline-block; }
+.health-dot.warn { background: var(--amber); }
+.health-dot.fail { background: var(--red); }
+.health-group-eyebrow { margin: 6px 0 8px; }
+.health-grid { align-items: stretch; }
+.health-card { display: flex; flex-direction: column; gap: 6px; cursor: default; max-width: 280px; min-width: 0; }
+.health-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.health-card-detail { font-size: var(--text-sm); overflow-wrap: anywhere; }
+.health-card-meta { font-size: var(--text-xs); }
+.nav-health-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--amber); display: inline-block; margin-left: 8px; flex: none; }
+.nav-health-dot.fail { background: var(--red); }

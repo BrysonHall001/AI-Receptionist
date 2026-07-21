@@ -38,7 +38,7 @@ function main() {
   check(!/App\.inviteComposer\.open\(\{[^}]*selfScope/.test(portal), "portal invite (portal.js) does NOT pass selfScope (stays portal-scoped)");
 
   console.log("\n(3) caption alignment (18px gutter, matching toolbar + table):");
-  check(/\.toolbar-left\s*\{[^}]*padding-left:\s*18px/.test(css), "CSS: .toolbar-left is indented 18px (Filters gutter)");
+  check(css.includes(".toolbar-left, .table-lead { padding-left: var(--table-lead-inset); }") && css.includes("--table-lead-inset: 18px;"), "CSS: the Filters gutter (18px) now comes from the SHARED lead-row primitive (audit-fixes batch)");
   check(/tbody td\s*\{\s*padding:\s*var\(--table-row-pad\) 18px/.test(css) && /--table-row-pad: 13px;/.test(css), "CSS: table cells use an 18px left gutter (vertical pad tokenized at the same 13px — design Phase 2)");
   check(/\.card\s*\{(?:(?!padding)[^}])*\}/.test(css), "CSS: .card has NO padding (table is flush in its container)");
   // STALE-TEST FIX (design Phase 8): the mop-up batch moved this from an inline style in

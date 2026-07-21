@@ -46,6 +46,7 @@ export function registerAuditSubscriber(): void {
         actorType: actorTypeOf(e),
         actorId: e.actor?.id || null,
         actorLabel: actorLabelOf(e),
+        actorRole: (e.actor && (e.actor as any).role) || null,
         subjectId: e.subject?.id || null,
       };
       const p: any = e.payload || {};
