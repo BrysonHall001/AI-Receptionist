@@ -3282,3 +3282,21 @@ body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-t
 .scene-modaltitle { font-weight: 700; font-size: var(--text-sm); }
 .scene-x { pointer-events: none; }
 .scene-carouselrow { align-items: center; justify-content: center; }
+
+/* Developer Tools batch 3 — Audit Log (layout-only, token-composed) */
+.adm-auditbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; min-width: 0; }
+.adm-audit-note { margin: 0 0 10px; }
+.adm-audit-more { display: flex; justify-content: center; margin-top: 10px; }
+
+/* Audit Log detail modal + pending muting (devtools batch 3; token-only) */
+.adm-audit-metagrid { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 6px 14px; align-items: baseline; margin-bottom: 14px; }
+.adm-audit-metak { font-size: var(--text-sm); }
+.adm-audit-metav { min-width: 0; overflow-wrap: anywhere; }
+.adm-diff-table { width: 100%; margin-bottom: 14px; }
+.adm-diff-table th { text-align: left; font-size: var(--text-xs); color: var(--ink-faint); padding: 4px 8px; }
+.adm-diff-table td { padding: 6px 8px; vertical-align: top; font-size: var(--text-sm); }
+.adm-diff-old .adm-diff-val { color: var(--ink-faint); text-decoration: line-through; }
+.adm-diff-new .adm-diff-val { font-weight: 600; }
+.adm-diff-arrow { color: var(--ink-faint); }
+.adm-diff-val { white-space: pre-wrap; overflow-wrap: anywhere; display: inline-block; max-width: 100%; }
+tbody tr.adm-audit-pending td { opacity: 0.55; }

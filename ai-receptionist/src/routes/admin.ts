@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { audit } from "../services/auditService";
+import { AUDIT_ACTION_VALUES, AUDIT_ACTION_GROUPS, AUDIT_RETENTION } from "../services/auditCatalog";
+import { queryAuditEvents } from "../services/auditQueryService";
 import { AUDIT_ACTIONS } from "../services/auditCatalog";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal, isBillingStatus, BILLING_STATUSES } from "../services/portalService";
@@ -413,6 +415,24 @@ adminRouter.delete("/feedback/:id", requireRole("OWNER", "SUPER_ADMIN"), async (
     res.json(await deleteFeedbackTicket(req.params.id, feedbackCtxMaster(req) as any));
   } catch (err) {
     res.status((err as any).status || 400).json({ error: (err as Error).message });
+  }
+});
+
+// ---- Developer Tools batch 3: the Audit Log query API (READ-ONLY by design —
+// retention alone removes rows; no mutation endpoints exist). Gated by the same
+// router-level requireRole(OWNER, SUPER_ADMIN, AUDITOR) + impersonation lockout as
+// every sibling admin endpoint. Cursor pagination (createdAt desc, id desc — stable
+// under insertion); filters ride the DT-2 indexes ([status, createdAt] for the
+// default view, [tenantId, createdAt], [action]).
+adminRouter.get("/audit-events/meta", async (_req: Request, res: Response) => {
+  res.json({ actions: AUDIT_ACTION_VALUES, groups: AUDIT_ACTION_GROUPS, retention: AUDIT_RETENTION });
+});
+
+adminRouter.get("/audit-events", async (req: Request, res: Response) => {
+  try {
+    res.json(await queryAuditEvents(req.query as Record<string, string | undefined>));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 

@@ -63,6 +63,20 @@ export const AUDIT_ACTION_VALUES: string[] = Object.values(AUDIT_ACTIONS);
 export const AUDIT_ACTOR_TYPES = ["user", "system", "ai", "automation"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
+// Viewer groups (DT-3): the action-namespace filter is built FROM the catalog —
+// grouped prefixes, defined here so the UI can never drift from the vocabulary.
+export const AUDIT_ACTION_GROUPS: { key: string; label: string; prefixes: string[] }[] = [
+  { key: "records", label: "Records", prefixes: ["record.", "ai.booking."] },
+  { key: "contacts", label: "Contacts", prefixes: ["contact.", "ai.contact."] },
+  { key: "structure", label: "Structure", prefixes: ["structure."] },
+  { key: "settings", label: "Settings", prefixes: ["settings."] },
+  { key: "auth", label: "Auth", prefixes: ["auth."] },
+  { key: "data", label: "Data (import/export/bulk)", prefixes: ["data."] },
+  { key: "comms", label: "Comms", prefixes: ["communication."] },
+  { key: "automations", label: "Automations", prefixes: ["automation."] },
+  { key: "admin", label: "Admin", prefixes: ["hub."] },
+];
+
 // Retention policy (named config — no magic numbers at the sweep site).
 export const AUDIT_RETENTION = {
   ACTIVE_DAYS: 14,          // active -> pending_deletion after 14 days

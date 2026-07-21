@@ -976,7 +976,7 @@
   ];
   const HISTORY_SUBTABS = [
     { key: "changelog", label: "Change Log", mount: (host) => renderChangelog(host) },
-    // { key: "auditlog", label: "Audit Log", mount: ... } — a later batch
+    { key: "auditlog", label: "Audit Log", mount: (host) => renderAuditLog(host) }, // devtools batch 3
   ];
 
   function renderDevTools() {
@@ -1027,6 +1027,199 @@
     panel.appendChild(body);
     paintBar();
     paintBody();
+  }
+
+  // ---------------- Audit Log (devtools batch 3) ----------------
+  // READ-ONLY viewer over the DT-2 AuditEvent trail, on the SAME App.table.mount
+  // machinery as the Change Log and tenant lists (sortable columns, the shared search
+  // box, manage-columns, pagination) — no parallel table. Server-side filters ride
+  // the DT-2 indexes; the table pages the loaded window client-side like its siblings.
+  const AUDIT_COLS_KEY = "clarity_admin_audit_cols";
+  const AUDIT_PAGE_LIMIT = 200; // server window per fetch (capped server-side at 500)
+
+  function auditDetailsSummary(r) {
+    const d = r.diff && typeof r.diff === "object" ? Object.keys(r.diff).length : 0;
+    if (d) return d + (d === 1 ? " field changed" : " fields changed");
+    const m = r.meta || {};
+    if (m.imported !== undefined) return m.imported + " rows imported" + (m.skipped ? ", " + m.skipped + " skipped" : "");
+    if (m.rows !== undefined) return m.rows + " rows";
+    if (m.count !== undefined) return m.count + " rows";
+    if (m.recipients !== undefined) return m.recipients + (m.recipients === 1 ? " recipient" : " recipients");
+    if (m.ip) return "IP " + m.ip;
+    if (m.status) return String(m.status);
+    return "\u2014";
+  }
+
+  // One value, rendered safely for the diff table: JSON pretty-printed small; long
+  // values truncated with an inline expand. Read-only; everything escaped.
+  function auditValHtml(v) {
+    let text;
+    if (v === undefined) text = "\u2014";
+    else if (v === null) text = "null";
+    else if (typeof v === "object") { try { text = JSON.stringify(v, null, 1); } catch (e) { text = String(v); } }
+    else text = String(v);
+    const LONG = 120;
+    if (text.length <= LONG) return `<span class="adm-diff-val">${esc(text)}</span>`;
+    return `<span class="adm-diff-val"><span class="adm-diff-short">${esc(text.slice(0, LONG))}\u2026 <button class="btn btn-ghost btn-sm adm-diff-expand" type="button">Show all</button></span><span class="adm-diff-full u-hidden">${esc(text)}</span></span>`;
+  }
+
+  function openAuditDetail(r, tenantName) {
+    const inner = el("div");
+    inner.innerHTML = `<div class="modal-head"><h2>Audit event</h2><button class="icon-btn" id="aud-close">&times;</button></div>`;
+    const body = el("div", "modal-body");
+    const metaGrid = el("div", "adm-audit-metagrid");
+    const rowsHtml = [
+      ["Time", fmtDate(r.createdAt)],
+      ["Tenant", tenantName[r.tenantId] || "\u2014"],
+      ["Actor", `${esc(r.actorLabel)} <span class="pill${r.actorType === "user" ? "" : r.actorType === "ai" ? " success" : " skipped"}">${esc(r.actorType)}</span>${r.actorId ? ` <span class="cell-muted">${esc(r.actorId)}</span>` : ""}`],
+      ["Action", esc(r.action)],
+      ["Subject", `${esc(r.subjectLabel || "\u2014")} <span class="cell-muted">${esc(r.subjectType)}${r.subjectId ? " \u00b7 " + esc(r.subjectId) : ""}</span>`],
+      ["Record type", esc(r.recordTypeKey || "\u2014")],
+      ["Status", r.status === "pending_deletion" ? `<span class="pill skipped">pending deletion</span>` : `<span class="pill success">active</span>`],
+    ];
+    metaGrid.innerHTML = rowsHtml.map(([k, v]) => `<div class="adm-audit-metak cell-muted">${esc(k)}</div><div class="adm-audit-metav">${v}</div>`).join("");
+    body.appendChild(metaGrid);
+
+    const diffKeys = r.diff && typeof r.diff === "object" ? Object.keys(r.diff) : [];
+    if (diffKeys.length) {
+      body.appendChild(el("h3", "settings-sub", "Changes"));
+      const t = el("table", "adm-diff-table");
+      t.innerHTML = `<thead><tr><th>Field</th><th>Before</th><th></th><th>After</th></tr></thead><tbody>` +
+        diffKeys.map((k) => { const d = r.diff[k] || {}; return `<tr><td class="cell-strong">${esc(k)}</td><td class="adm-diff-old">${auditValHtml(d.from)}</td><td class="adm-diff-arrow">\u2192</td><td class="adm-diff-new">${auditValHtml(d.to)}</td></tr>`; }).join("") + `</tbody>`;
+      body.appendChild(t);
+    }
+    const metaKeys = r.meta && typeof r.meta === "object" ? Object.keys(r.meta) : [];
+    if (metaKeys.length) {
+      body.appendChild(el("h3", "settings-sub", "Details"));
+      const mg = el("div", "adm-audit-metagrid");
+      mg.innerHTML = metaKeys.map((k) => `<div class="adm-audit-metak cell-muted">${esc(k)}</div><div class="adm-audit-metav">${auditValHtml(r.meta[k])}</div>`).join("");
+      body.appendChild(mg);
+    }
+    if (!diffKeys.length && !metaKeys.length) body.appendChild(el("p", "cell-muted", "No additional detail was recorded for this event."));
+    inner.appendChild(body);
+    const overlay = modal(inner);
+    inner.querySelector("#aud-close").onclick = () => overlay.remove();
+    body.addEventListener("click", (e) => {
+      const b = e.target && e.target.closest(".adm-diff-expand");
+      if (!b) return;
+      const val = b.closest(".adm-diff-val");
+      val.querySelector(".adm-diff-short").classList.add("u-hidden");
+      val.querySelector(".adm-diff-full").classList.remove("u-hidden");
+    });
+  }
+
+  async function renderAuditLog(hostEl) {
+    const mount = hostEl || view();
+    App.util.showSkeleton(mount, "table");
+    let meta, portals;
+    try {
+      meta = await App.api("/api/admin/audit-events/meta");
+      portals = await App.api("/api/admin/portals");
+    } catch (e) { mount.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+    const tenantName = {};
+    (portals || []).forEach((p) => { tenantName[p.id] = p.name; });
+
+    // filter state (server-side; the DT-2 [status, createdAt] index backs the default view)
+    const f = { tenantId: "", actorType: "", group: "", status: "active", from: "", to: "" };
+    let rows = [];
+    let nextCursor = null;
+
+    const wrap = el("div", "fade-in");
+    // the retention note interpolates the SERVER'S OWN constants — the copy can't drift
+    const note = el("p", "cell-muted adm-audit-note",
+      esc("Events are kept " + meta.retention.ACTIVE_DAYS + " days, then pending deletion for " + meta.retention.PENDING_DAYS + " more, then removed automatically."));
+    wrap.appendChild(note);
+
+    const bar = el("div", "adm-auditbar");
+    const mkSel = (optionPairs, onchange) => { const s = el("select", "input adm-cadsel"); optionPairs.forEach((pair) => { const o = el("option", null, esc(pair[1])); o.value = pair[0]; s.appendChild(o); }); s.onchange = () => onchange(s.value); return s; };
+    bar.appendChild(mkSel([["", "All tenants"]].concat((portals || []).map((p) => [p.id, p.name])), (v) => { f.tenantId = v; reload(); }));
+    bar.appendChild(mkSel([["", "All actors"], ["user", "People"], ["ai", "AI receptionist"], ["automation", "Automations"], ["system", "System"]], (v) => { f.actorType = v; reload(); }));
+    bar.appendChild(mkSel([["", "All actions"]].concat(meta.groups.map((g) => [g.key, g.label])), (v) => { f.group = v; reload(); }));
+    bar.appendChild(mkSel([["active", "Active"], ["pending_deletion", "Pending deletion"], ["all", "All"]], (v) => { f.status = v; reload(); }));
+    const fromEl = el("input", "input adm-cadsel"); fromEl.type = "date"; fromEl.onchange = () => { f.from = fromEl.value; reload(); };
+    const toEl = el("input", "input adm-cadsel"); toEl.type = "date"; toEl.onchange = () => { f.to = toEl.value; reload(); };
+    bar.appendChild(fromEl); bar.appendChild(toEl);
+    wrap.appendChild(bar);
+
+    const tableHost = el("div");
+    wrap.appendChild(tableHost);
+    const moreWrap = el("div", "adm-audit-more");
+    const moreBtn = el("button", "btn btn-ghost btn-sm", "Load older events");
+    moreWrap.appendChild(moreBtn);
+    wrap.appendChild(moreWrap);
+
+    const actorPill = (t) => `<span class="pill${t === "user" ? "" : t === "ai" ? " success" : " skipped"}">${esc(t)}</span>`;
+    const columns = [
+      { key: "createdAt", label: "Time", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
+      { key: "tenant", label: "Tenant", type: "text", get: (r) => tenantName[r.tenantId] || "", render: (r) => esc(tenantName[r.tenantId] || "\u2014") },
+      { key: "actor", label: "Actor", type: "text", get: (r) => r.actorLabel, cellClass: "cell-strong", render: (r) => `${esc(r.actorLabel)} ${actorPill(r.actorType)}` },
+      { key: "action", label: "Action", type: "text", get: (r) => r.action, render: (r) => esc(r.action) },
+      { key: "subject", label: "Subject", type: "text", get: (r) => r.subjectLabel || r.subjectType, render: (r) => `${esc(r.subjectLabel || "\u2014")} <span class="cell-muted">${esc(r.subjectType)}</span>` },
+      { key: "details", label: "Details", type: "text", get: (r) => auditDetailsSummary(r), render: (r) => esc(auditDetailsSummary(r)) },
+      { key: "actorId", label: "Actor ID", type: "text", get: (r) => r.actorId || "", render: (r) => `<span class="cell-muted">${esc(r.actorId || "\u2014")}</span>` },
+      { key: "subjectId", label: "Subject ID", type: "text", get: (r) => r.subjectId || "", render: (r) => `<span class="cell-muted">${esc(r.subjectId || "\u2014")}</span>` },
+      { key: "recordTypeKey", label: "Record type", type: "text", get: (r) => r.recordTypeKey || "", render: (r) => esc(r.recordTypeKey || "\u2014") },
+      { key: "status", label: "Status", type: "text", get: (r) => r.status, render: (r) => r.status === "pending_deletion" ? `<span class="pill skipped">pending deletion</span>` : `<span class="pill success">active</span>` },
+      { key: "ip", label: "IP", type: "text", get: (r) => (r.meta && r.meta.ip) || "", render: (r) => `<span class="cell-muted">${esc((r.meta && r.meta.ip) || "\u2014")}</span>` },
+    ];
+    const defaultKeys = ["createdAt", "tenant", "actor", "action", "subject", "details"];
+    const loadLayout = () => { try { return JSON.parse(localStorage.getItem(AUDIT_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
+    const saveLayout = (l) => { try { localStorage.setItem(AUDIT_COLS_KEY, JSON.stringify(l || {})); } catch (e) {} };
+    let layout = loadLayout();
+
+    let handle = null;
+    function mountTable() {
+      tableHost.innerHTML = "";
+      const initial = App.table.applyColumnLayout(columns, layout, defaultKeys);
+      handle = App.table.mount({
+        container: tableHost, columns: initial, rows,
+        tableId: "admin-auditlog",
+        defaultSort: "createdAt", defaultSortDir: "desc",
+        emptyHtml: `<div class="card cell-muted adm-t14">No audit events match.</div>`,
+        pageSize: 25,
+        onRowClick: (r) => openAuditDetail(r, tenantName),
+        rowClass: (r) => (r.status === "pending_deletion" ? "adm-audit-pending" : ""),
+      });
+      App.table.manageColumns(handle, columns, { defaultKeys, order: layout.order, hidden: layout.hidden, onSave: (nl) => { layout = { order: nl.order, hidden: nl.hidden }; saveLayout(layout); } });
+      moreWrap.classList.toggle("u-hidden", !nextCursor);
+    }
+
+    function queryString(cursor) {
+      const p = new URLSearchParams();
+      p.set("limit", String(AUDIT_PAGE_LIMIT));
+      p.set("status", f.status);
+      if (f.tenantId) p.set("tenantId", f.tenantId);
+      if (f.actorType) p.set("actorType", f.actorType);
+      if (f.group) { const g = meta.groups.find((x) => x.key === f.group); if (g) p.set("actions", g.prefixes.join(",")); }
+      if (f.from) p.set("from", f.from);
+      if (f.to) p.set("to", f.to);
+      if (cursor) p.set("cursor", cursor);
+      return p.toString();
+    }
+    async function reload() {
+      App.util.showSkeleton(tableHost, "table");
+      try {
+        const r = await App.api(`/api/admin/audit-events?${queryString(null)}`);
+        rows = r.events || [];
+        nextCursor = r.nextCursor || null;
+      } catch (e) { tableHost.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+      mountTable();
+    }
+    moreBtn.onclick = async () => {
+      if (!nextCursor) return;
+      moreBtn.disabled = true;
+      try {
+        const r = await App.api(`/api/admin/audit-events?${queryString(nextCursor)}`);
+        rows = rows.concat(r.events || []);
+        nextCursor = r.nextCursor || null;
+      } catch (e) { toast(e.message); }
+      moreBtn.disabled = false;
+      mountTable();
+    };
+
+    mount.innerHTML = "";
+    mount.appendChild(wrap);
+    await reload();
   }
 
   // ---------------- Change Log ----------------

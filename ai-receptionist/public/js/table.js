@@ -185,7 +185,7 @@
   // ---------- rendering ----------
   function mount(opts) {
     if (!hasDOM) return;
-    const { container, rows, onRowClick, emptyHtml } = opts;
+    const { container, rows, onRowClick, emptyHtml, rowClass } = opts; // rowClass(row) -> optional extra class (devtools batch 3; additive, siblings unaffected)
     let columns = (opts.columns || []).slice();
     const rowId = opts.rowId || ((r) => r.id);
     const selectable = !!opts.selectable;
@@ -344,6 +344,7 @@
       } else {
         pageRows.forEach((row) => {
           const tr = el("tr");
+          if (rowClass) { const rc = rowClass(row); if (rc) tr.className = rc; }
           if (opts.highlightId && row.id === opts.highlightId) tr.classList.add("row-new");
           const id = rowId(row);
           if (selectable) {
