@@ -69,7 +69,7 @@ async function main() {
   check(adminJs.includes("History is kept in memory (last ${d.historyLimit || 30} checks per item) and resets when the app restarts."), "the panel footer says the history is memory-only and resets on restart");
   check(adminJs.includes("<table><thead><tr><th>Time</th><th>Status</th><th>Latency</th><th>Detail</th></tr></thead>") && adminJs.includes('el("div", "table-wrap card health-history")'), "the recent-checks table uses the shared table styling with Time \u00b7 Status \u00b7 Latency \u00b7 Detail");
   check(adminRoutes.includes('adminRouter.get("/health/detail/:check"') && adminJs.includes('App.api(`/api/admin/health/detail/${encodeURIComponent(checkKey)}`)'), "panels load one check's detail (cache entry + history + extras) from the detail endpoint");
-  check(adminJs.includes('App.state._devtoolsHint = { section: "history", subtab: "auditlog", auditFilter: { group: "automations"') && adminJs.includes("if (hint && hint.auditFilter) Object.assign(f, hint.auditFilter);"), "Automations/Drips panels deep-link into the Audit Log PRE-FILTERED (one-shot hint)");
+  check(adminJs.includes('automations: { audit: () => ({ group: "automations", status: "all"') && adminJs.includes("if (hint && hint.auditFilter) Object.assign(f, hint.auditFilter);"), "the Automations panel EMBEDS the audit table pre-filtered (devtools-data superseded the deep link; the hint machinery remains for route mapping)");
 
   // ---------- (4) banner + nav dot removed ----------
   console.log("\n(4) banner + nav-dot removal (orphan scan):");
@@ -111,7 +111,7 @@ async function main() {
   check(read("public/js/learnScenes.js").includes("sourceFn"), "ledger 5 kept (LC untouched)");
   check(adminJs.includes("const DEVTOOL_SECTIONS = [") && adminJs.includes('{ key: "changelog", label: "Change Log"'), "ledger 6 kept");
   check(read("src/services/auditService.ts").includes("void Promise.resolve()") && read("prisma/schema.prisma").includes("actorRole     String?"), "ledger 7 kept (foundation + actorRole; capture untouched)");
-  check(adminJs.includes('tableId: "admin-auditlog"') && css.includes(".toolbar-left, .table-lead { padding-left: var(--table-lead-inset); }") && adminJs.includes('{ key: "userType", label: "User Type"') && adminJs.includes('dataType: "audit",'), "ledger 8 kept (viewer + alignment primitive + User Type + export)");
+  check(adminJs.includes('tableId: opts.embedded ? "admin-auditlog-embed-" + (opts.embedId || "panel") : "admin-auditlog"') && css.includes(".toolbar-left, .table-lead { padding-left: var(--table-lead-inset); }") && adminJs.includes('{ key: "userType", label: "User Type"') && adminJs.includes('dataType: "audit",'), "ledger 8 kept (viewer — now embeddable with a per-embed tableId — + alignment primitive + User Type + export)");
   const auditR = runAudit();
   check(auditR.totals.rawHex <= (baseline as any).totals.rawHex && LAYOUT_COUNTERS.every((k) => (auditR.layout as any)[k] <= (baseline as any).layout[k]), "ratchet (color + all seven counters) at-or-below baseline");
 

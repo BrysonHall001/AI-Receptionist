@@ -27,6 +27,7 @@ export const HEALTH = {
   AUTOMATION_FAILS_24H_WARN: 1, AUTOMATION_FAILS_24H_FAIL: 25,
   DRIP_OVERDUE_GRACE_MS: 10 * 60_000, DRIP_OVERDUE_WARN: 1, DRIP_FAILED_24H_WARN: 1,
   WEBHOOK_FAILS_24H_WARN: 1, WEBHOOK_FAILS_24H_FAIL: 25,
+  ERRORS_24H_WARN: 1, ERRORS_24H_FAIL: 25, // captured client+server errors (devtools-data)
   FAILED_LOGINS_24H_WARN: 10, FAILED_LOGINS_24H_FAIL: 50,
   MEM_WARN_MB: 768, MEM_FAIL_MB: 1536,
 } as const;
@@ -204,11 +205,23 @@ const checkDripQueue: CheckFn = async () => {
 // Requests / 5xx — no request log exists in this codebase (nothing is cheaply
 // available), so these report honestly instead of inventing a counter.
 const checkRequests: CheckFn = async () => ({ status: "ok", detail: "Not tracked (no request log in this deployment)" });
-// Webhook failures — EmailLog rows with status "failed" in 24h (the Resend delivery webhook writes these).
+// Webhook deliveries — devtools-data rewire: REAL 24h WebhookEvent counts (every
+// inbound webhook route records here — Twilio voice/SMS/relay, Stripe, Resend, the
+// custom ingest). Failures drive the amber/red thresholds.
 const checkWebhooks: CheckFn = async () => {
-  const n = await db().emailLog.count({ where: { status: "failed", createdAt: { gte: H24() } } });
-  const status: HealthStatus = n >= HEALTH.WEBHOOK_FAILS_24H_FAIL ? "fail" : n >= HEALTH.WEBHOOK_FAILS_24H_WARN ? "warn" : "ok";
-  return { status, detail: `${n} failed deliver${n === 1 ? "y" : "ies"} in 24h` };
+  const [total, failed] = await Promise.all([
+    db().webhookEvent.count({ where: { createdAt: { gte: H24() } } }),
+    db().webhookEvent.count({ where: { outcome: "fail", createdAt: { gte: H24() } } }),
+  ]);
+  const status: HealthStatus = failed >= HEALTH.WEBHOOK_FAILS_24H_FAIL ? "fail" : failed >= HEALTH.WEBHOOK_FAILS_24H_WARN ? "warn" : "ok";
+  return { status, detail: `${total} deliver${total === 1 ? "y" : "ies"}, ${failed} failed in 24h` };
+};
+// Errors — captured client + server ErrorEvent rows in 24h (devtools-data). A
+// plain count; the Errors sub-tab and tile panel show the actual rows.
+const checkErrors: CheckFn = async () => {
+  const n = await db().errorEvent.count({ where: { createdAt: { gte: H24() } } });
+  const status: HealthStatus = n >= HEALTH.ERRORS_24H_FAIL ? "fail" : n >= HEALTH.ERRORS_24H_WARN ? "warn" : "ok";
+  return { status, detail: `${n} captured error${n === 1 ? "" : "s"} in 24h` };
 };
 // Failed logins — straight from the audit trail: AuditEvent action "auth.login_failed" in 24h.
 const checkFailedLogins: CheckFn = async () => {
@@ -236,6 +249,7 @@ const CHECKS: Record<string, { group: keyof HealthSnapshot["groups"]; fn: CheckF
   dripQueue: { group: "background", fn: checkDripQueue },
   requests: { group: "pulse", fn: checkRequests },
   webhooks: { group: "pulse", fn: checkWebhooks },
+  errors: { group: "pulse", fn: checkErrors },
   failedLogins: { group: "pulse", fn: checkFailedLogins },
 };
 export const HEALTH_CHECK_KEYS = Object.keys(CHECKS);

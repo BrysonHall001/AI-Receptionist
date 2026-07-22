@@ -465,6 +465,93 @@ adminRouter.get("/health/detail/:check", async (req: Request, res: Response) => 
   } catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
+// devtools-data: the ErrorEvent surface — read-only, capped, filtered like its audit
+// sibling (source, tenant, day-inclusive dates, q over message/route). Newest first.
+adminRouter.get("/errors", async (req: Request, res: Response) => {
+  try {
+    const q = req.query as Record<string, string | undefined>;
+    const limit = Math.min(Math.max(parseInt(q.limit || "300", 10) || 300, 1), 500);
+    const where: any = {};
+    if (q.source === "client" || q.source === "server") where.source = q.source;
+    if (q.tenantId) where.tenantId = q.tenantId;
+    if (q.from || q.to) {
+      where.createdAt = {};
+      if (q.from) where.createdAt.gte = new Date(q.from);
+      if (q.to) { const t = new Date(q.to); t.setHours(23, 59, 59, 999); where.createdAt.lte = t; }
+    }
+    if (q.q && q.q.trim()) {
+      const needle = q.q.trim();
+      where.OR = [
+        { message: { contains: needle, mode: "insensitive" } },
+        { route: { contains: needle, mode: "insensitive" } },
+      ];
+    }
+    const rows = await (prisma as any).errorEvent.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });
+    const tn: Record<string, string> = {};
+    (await (prisma as any).tenant.findMany({ select: { id: true, name: true } })).forEach((t: any) => { tn[t.id] = t.name; });
+    res.json({ rows: rows.map((r: any) => ({ ...r, tenant: r.tenantId ? tn[r.tenantId] || "" : "" })) });
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+// devtools-data: the WebhookEvent surface — read-only, capped, filtered like Errors
+// (provider, outcome, tenant, day-inclusive dates, q over summary/endpoint).
+adminRouter.get("/webhook-events", async (req: Request, res: Response) => {
+  try {
+    const q = req.query as Record<string, string | undefined>;
+    const limit = Math.min(Math.max(parseInt(q.limit || "300", 10) || 300, 1), 500);
+    const where: any = {};
+    if (q.provider && ["twilio", "google", "stripe", "other"].includes(q.provider)) where.provider = q.provider;
+    if (q.outcome === "ok" || q.outcome === "fail") where.outcome = q.outcome;
+    if (q.tenantId) where.tenantId = q.tenantId;
+    if (q.from || q.to) {
+      where.createdAt = {};
+      if (q.from) where.createdAt.gte = new Date(q.from);
+      if (q.to) { const t = new Date(q.to); t.setHours(23, 59, 59, 999); where.createdAt.lte = t; }
+    }
+    if (q.q && q.q.trim()) {
+      const needle = q.q.trim();
+      where.OR = [
+        { summary: { contains: needle, mode: "insensitive" } },
+        { endpoint: { contains: needle, mode: "insensitive" } },
+      ];
+    }
+    const rows = await (prisma as any).webhookEvent.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });
+    const tn: Record<string, string> = {};
+    (await (prisma as any).tenant.findMany({ select: { id: true, name: true } })).forEach((t: any) => { tn[t.id] = t.name; });
+    res.json({ rows: rows.map((r: any) => ({ ...r, tenant: r.tenantId ? tn[r.tenantId] || "" : "" })) });
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+// devtools-data: underlying ROWS for the data-backed panels (geocode + drip queues).
+// Cheap reads with tenant names joined in; no mutation surface.
+adminRouter.get("/health/rows/geoQueue", async (_req: Request, res: Response) => {
+  try {
+    const tn: Record<string, string> = {};
+    (await (prisma as any).tenant.findMany({ select: { id: true, name: true } })).forEach((t: any) => { tn[t.id] = t.name; });
+    const pick = { id: true, tenantId: true, status: true, lastError: true, fieldKey: true, updatedAt: true } as any;
+    const [cg, rg] = await Promise.all([
+      (prisma as any).contactGeo.findMany({ where: { status: { in: ["pending", "failed"] } }, select: { ...pick, contact: { select: { name: true } } }, orderBy: { updatedAt: "desc" }, take: 300 }),
+      (prisma as any).recordGeo.findMany({ where: { status: { in: ["pending", "failed"] } }, select: { ...pick, record: { select: { title: true } } }, orderBy: { updatedAt: "desc" }, take: 300 }),
+    ]);
+    const rows = cg.map((r: any) => ({ id: r.id, kind: "contact", tenantId: r.tenantId, tenant: tn[r.tenantId] || "", label: (r.contact && r.contact.name) || "", fieldKey: r.fieldKey || "", status: r.status, error: r.lastError || "", updatedAt: r.updatedAt }))
+      .concat(rg.map((r: any) => ({ id: r.id, kind: "record", tenantId: r.tenantId, tenant: tn[r.tenantId] || "", label: (r.record && r.record.title) || "", fieldKey: r.fieldKey || "", status: r.status, error: r.lastError || "", updatedAt: r.updatedAt })));
+    res.json({ rows });
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+adminRouter.get("/health/rows/dripQueue", async (_req: Request, res: Response) => {
+  try {
+    const tn: Record<string, string> = {};
+    (await (prisma as any).tenant.findMany({ select: { id: true, name: true } })).forEach((t: any) => { tn[t.id] = t.name; });
+    const now = Date.now();
+    const rows = (await (prisma as any).scheduledJob.findMany({
+      where: { OR: [{ status: "failed", updatedAt: { gte: new Date(now - 24 * 60 * 60_000) } }, { status: "pending", dueAt: { lt: new Date(now - 10 * 60_000) } }] },
+      select: { id: true, tenantId: true, automationName: true, contactName: true, dueAt: true, status: true, error: true },
+      orderBy: { dueAt: "desc" }, take: 300,
+    })).map((r: any) => ({ ...r, tenant: tn[r.tenantId] || "" }));
+    res.json({ rows });
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
 // Health v2: re-run ONE check (user-initiated; the sweep cadence is untouched).
 adminRouter.post("/health/recheck/:check", async (req: Request, res: Response) => {
   try {

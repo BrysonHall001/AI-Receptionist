@@ -7,6 +7,8 @@ import { attachConversationRelay } from "./telephony/conversationRelayWs";
 import { sweepStaleCalls } from "./services/callOrchestrator";
 import { registerAuditSubscriber } from "./services/auditSubscriber";
 import { startHealthSweep, markSchedulerTick } from "./services/healthService";
+import { runErrorPruneSweep } from "./services/errorService";
+import { runWebhookPruneSweep } from "./services/webhookService";
 import { runAuditRetentionSweep } from "./services/auditService";
 import { sweepResolvedFeedback } from "./services/feedbackService";
 import { processDueJobs } from "./automation/scheduler";
@@ -67,6 +69,11 @@ async function main(): Promise<void> {
 
   // System Health: the ~3-minute cached check sweep (audit-fixes-health batch).
   startHealthSweep();
+
+  // devtools-data: hourly ops retention — captured errors AND webhook deliveries.
+  // Bounded batches; never blocks anything.
+  const opsPruneTimer = setInterval(() => { void runErrorPruneSweep(); void runWebhookPruneSweep(); }, 60 * 60_000);
+  opsPruneTimer.unref();
 
   // Resolved-feedback auto-delete: same in-process timer mechanism as above, but
   // a slow cadence (every 6 hours, plus once shortly after boot) since it only

@@ -1349,6 +1349,46 @@ model Counter {
 // Retention: status flows active -> pending_deletion (14d) -> hard delete (14d more),
 // enforced by the scheduler sweep in bounded batches. Capture is fire-and-forget and
 // may never fail, slow, or block the action it records.
+// devtools-data: captured client + server errors (the white-screen class of incident
+// becomes VISIBLE). Truncated, secret-free payloads; hard-pruned after 14 days.
+model ErrorEvent {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  source    String   // client | server
+  tenantId  String?
+  userId    String?
+  userLabel String?
+  message   String
+  stack     String?  // truncated to ~4KB at capture
+  route     String?  // client hash-route or server method+path
+  userAgent String?
+  meta      Json?
+
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@index([source, createdAt])
+}
+
+// devtools-data: inbound webhook deliveries (the Webhook inspector). Redacted,
+// truncated excerpts only — never tokens/signatures/message bodies. 14-day retention.
+model WebhookEvent {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  provider       String   // twilio | google | stripe | other
+  endpoint       String
+  tenantId       String?
+  outcome        String   // ok | fail
+  httpStatus     Int
+  latencyMs      Int
+  summary        String
+  payloadExcerpt String?  // truncated ~2KB, redacted at capture
+  error          String?
+
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@index([provider, createdAt])
+}
+
 model AuditEvent {
   id            String   @id @default(cuid())
   tenantId      String?  // null for master-hub-level actions

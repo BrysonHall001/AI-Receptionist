@@ -12,6 +12,9 @@ import { inboundRouter } from "./routes/inbound";
 import { inviteRouter } from "./routes/invites";
 import { surveyRouter } from "./routes/surveyPublic";
 import { authRouter } from "./routes/auth";
+import { clientErrorsRouter } from "./routes/clientErrors";
+import { captureError } from "./services/errorService";
+import { webhookRecorder } from "./services/webhookService";
 import { adminRouter } from "./routes/admin";
 import { apiRouter } from "./routes/api";
 import { googleRouter } from "./routes/google";
@@ -32,9 +35,9 @@ export function createApp(): express.Express {
   // Resend delivery webhook — MUST see the RAW request body for Svix signature
   // verification, so it is mounted with express.raw BEFORE the global urlencoded/JSON
   // parsers below. Public (no auth), like the Twilio webhooks.
-  app.use("/webhooks/resend", express.raw({ type: "*/*" }), resendWebhookRouter);
+  app.use("/webhooks/resend", express.raw({ type: "*/*" }), webhookRecorder("other"), resendWebhookRouter); // devtools-data: capture (Resend = provider "other")
   // Stripe payment webhook — same RAW-body requirement for signature verification.
-  app.use("/webhooks/stripe", express.raw({ type: "*/*" }), stripeWebhookRouter);
+  app.use("/webhooks/stripe", express.raw({ type: "*/*" }), webhookRecorder("stripe"), stripeWebhookRouter); // devtools-data: capture
 
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json({ limit: "2mb" })); // imports can be largish
@@ -88,15 +91,20 @@ export function createApp(): express.Express {
   });
 
   // Telephony (unauthenticated by nature)
-  app.use("/webhooks/twilio", twilioRouter);
+  app.use("/webhooks/twilio", webhookRecorder("twilio"), twilioRouter); // devtools-data: capture
   // SECOND, PARALLEL voice path (ConversationRelay + ElevenLabs). Separate mount
   // so the existing /webhooks/twilio path is untouched. See the router for how
   // to point your Twilio number at it for testing.
-  app.use("/webhooks/relay", conversationRelayRouter);
+  app.use("/webhooks/relay", webhookRecorder("twilio"), conversationRelayRouter); // devtools-data: capture (ConversationRelay rides Twilio)
   app.use("/internal", internalRouter);
-  app.use("/hooks/in", inboundRouter); // PUBLIC inbound webhook ingest (tenant from token)
+  app.use("/hooks/in", webhookRecorder("other"), inboundRouter); // PUBLIC inbound webhook ingest (tenant from token); devtools-data: capture
   app.use("/invites", inviteRouter); // PUBLIC account-activation surface (gated by invite token only)
   app.use("/survey", surveyRouter); // PUBLIC survey response surface (gated by survey token / publicId only)
+
+  // devtools-data: client error reports (open surface — a white-screen can precede
+  // login — but per-IP rate-limited and shape-validated inside; MUST sit before the
+  // auth-gated /api catch-all).
+  app.use("/api/client-errors", clientErrorsRouter);
 
   // Auth (login/forgot/reset are open; /me reads the session)
   app.use("/api/auth", authRouter);
@@ -107,6 +115,28 @@ export function createApp(): express.Express {
   app.use("/api/google", googleRouter);
   // Portal dashboard surface (requires auth — enforced inside the router)
   app.use("/api", apiRouter);
+
+  // devtools-data: the final error middleware — the SERVER-SIDE capture hook. Every
+  // handled route still responds via its own try/catch (behavior unchanged); anything
+  // that THROWS past those lands here: captured (fire-and-forget) + a clean 500.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  app.use((err: any, req: any, res: any, _next: any) => {
+    try {
+      const u: any = req.user || null;
+      captureError({
+        source: "server",
+        tenantId: (u && u.tenantId) || null,
+        userId: (u && u.id) || null,
+        userLabel: (u && (u.name || u.email)) || null,
+        message: (err && err.message) || "Unhandled server error",
+        stack: (err && err.stack) || null,
+        route: `${req.method} ${req.path}`,
+        userAgent: (req.headers && req.headers["user-agent"]) || null,
+      });
+    } catch { /* capture never blocks the response */ }
+    if (res.headersSent) return;
+    res.status(500).json({ error: "Internal error" });
+  });
 
   // SPA fallback for client-side routes.
   app.get("*", (req, res, next) => {

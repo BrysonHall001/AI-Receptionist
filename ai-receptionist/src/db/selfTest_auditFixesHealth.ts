@@ -91,7 +91,7 @@ async function main() {
   const viewerSrc = adminJs.slice(adminJs.indexOf("async function renderAuditLog"), adminJs.indexOf("// ---------------- Change Log"));
   check(viewerSrc.includes("exportBtn.onclick = () => App.exportModal({") && viewerSrc.includes("rows: handle.getFiltered(),") && viewerSrc.includes('dataType: "audit",') && viewerSrc.includes('historyBase: "/api/admin/exports",'), "Export rides App.exportModal WHOLESALE (filtered rows, master export history) — no parallel implementation");
   check(viewerSrc.includes("columns: columns.map((c) => ({ key: c.key, label: c.label, type: c.type, get: c.get, text: c.text }))") && viewerSrc.includes("insertBefore(exportBtn, manageBtnEl)"), "\u2026offering ALL columns (hidden IDs selectable), placed immediately LEFT of Manage columns");
-  check(viewerSrc.includes('const defaultKeys = ["createdAt", "tenant", "actor", "userType", "action", "subject", "details"]'), "defaults: Time \u00b7 Tenant \u00b7 User \u00b7 User Type \u00b7 Action \u00b7 Subject \u00b7 Details");
+  check(viewerSrc.includes('const defaultKeys = opts.defaultKeys || ["createdAt", "tenant", "actor", "userType", "action", "subject", "details"]'), "defaults: Time \u00b7 Tenant \u00b7 User \u00b7 User Type \u00b7 Action \u00b7 Subject \u00b7 Details (overridable when embedded — devtools-data)");
   for (const extra of ['key: "actorId"', 'key: "subjectId"', 'key: "recordTypeKey"', 'key: "status"', 'key: "ip"']) check(viewerSrc.includes(extra), `hidden-by-default: ${extra}`);
   const grab = (name: string) => { const start = adminJs.indexOf(`function ${name}(`); let i = adminJs.indexOf("{", start), depth = 0, j = i; for (; j < adminJs.length; j++) { if (adminJs[j] === "{") depth++; if (adminJs[j] === "}") { depth--; if (!depth) break; } } return adminJs.slice(start, j + 1); };
   const summary = new Function("esc", `return (${grab("auditDetailsSummary").replace("function auditDetailsSummary", "function")})`)(esc);
@@ -112,7 +112,7 @@ async function main() {
   check(HEALTH.INTERVAL_MS === 3 * 60_000 && HEALTH.SCHEDULER_STALE_FACTOR === 2 && HEALTH.CHECK_TIMEOUT_MS > 0 && HEALTH.DB_WARN_MS < HEALTH.DB_FAIL_MS, "thresholds are NAMED constants");
   const snap = await runHealthChecks(); // in a DB-less/offline sandbox the provider/DB cards simply fail — the sweep still completes
   const all = Object.values(snap.groups).flatMap((g: any) => Object.values(g)) as any[];
-  check(all.length === 16 && all.every((c) => ["ok", "warn", "fail"].includes(c.status) && typeof c.latencyMs === "number"), `the full sweep completes with 16 shaped checks — Stripe joined in health-v2 (this run: ${snap.summary.ok} ok / ${snap.summary.warn} warn / ${snap.summary.fail} fail)`);
+  check(all.length === 17 && all.every((c) => ["ok", "warn", "fail"].includes(c.status) && typeof c.latencyMs === "number"), `the full sweep completes with 17 shaped checks — Stripe joined in health-v2, Errors in devtools-data (this run: ${snap.summary.ok} ok / ${snap.summary.warn} warn / ${snap.summary.fail} fail)`);
   check(getHealthSnapshot() === snap && ["ok", "warn", "fail"].includes(snap.worst), "the snapshot CACHES; worst derives from the summary");
   const adminRoutes = read("src/routes/admin.ts");
   check(adminRoutes.includes('adminRouter.get("/health"') && adminRoutes.includes("getHealthSnapshot() || await runHealthChecks()") && adminRoutes.includes('adminRouter.post("/health/recheck"'), "the endpoints serve the CACHE + a recheck trigger, behind the sibling hub gate");
@@ -132,7 +132,7 @@ async function main() {
   check(read("public/js/learnScenes.js").includes("sourceFn"), "ledger 5 kept (LC untouched)");
   check(adminJs.includes("const DEVTOOL_SECTIONS = [") && adminJs.includes('{ key: "changelog", label: "Change Log"'), "ledger 6 kept (DT-1 shell)");
   check(read("src/services/auditService.ts").includes("void Promise.resolve()") && read("src/index.ts").includes("registerAuditSubscriber();"), "ledger 7 kept (DT-2 foundation; capture/retention untouched beyond the additive role)");
-  check(adminJs.includes('tableId: "admin-auditlog"') && adminRoutes.includes('adminRouter.get("/audit-events"'), "ledger 8 kept (DT-3 viewer)");
+  check(adminJs.includes('tableId: opts.embedded ? "admin-auditlog-embed-" + (opts.embedId || "panel") : "admin-auditlog"') && adminRoutes.includes('adminRouter.get("/audit-events"'), "ledger 8 kept (DT-3 viewer, embeddable since devtools-data)");
   const auditR = runAudit();
   check(auditR.totals.rawHex <= (baseline as any).totals.rawHex && LAYOUT_COUNTERS.every((k) => (auditR.layout as any)[k] <= (baseline as any).layout[k]), "ratchet (color + all seven counters) at-or-below baseline");
 

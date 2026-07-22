@@ -30,7 +30,7 @@
   async function render(v) {
     current = v;
     if (v === "users") return renderUsers();
-    if (v === "email") return renderEmail();
+    if (v === "email") { App.state._devtoolsHint = { section: "history", subtab: "email" }; return renderDevTools(); } // devtools-data: the old Email route maps into History -> Email History
     if (v === "usage") return renderUsageBilling();
     if (v === "feedback") return App.feedback.renderMaster(view());
     if (v === "devtools" || v === "changelog") return renderDevTools(); // devtools shell (the router maps the old changelog route here too)
@@ -978,6 +978,7 @@
   const HISTORY_SUBTABS = [
     { key: "changelog", label: "Change Log", mount: (host) => renderChangelog(host) },
     { key: "auditlog", label: "Audit Log", mount: (host) => renderAuditLog(host) }, // devtools batch 3
+    { key: "email", label: "Email History", mount: (host) => renderEmail(host) }, // devtools-data: the hub Email tab, relocated verbatim
   ];
 
   function renderDevTools() {
@@ -1039,6 +1040,8 @@
   // External / Internal / Background / Last 24h, with a top banner and Re-check now.
   const HEALTH_SUBTABS = [
     { key: "overview", label: "Overview", mount: (host) => renderHealthOverview(host) },
+    { key: "errors", label: "Errors", mount: (host) => renderErrorsTable(host, {}) }, // devtools-data
+    { key: "webhooks", label: "Webhooks", mount: (host) => renderWebhooksTable(host, {}) }, // devtools-data
     // future health sub-tabs register here
   ];
   function renderHealthSection(panel) {
@@ -1062,7 +1065,7 @@
   }
 
   const HEALTH_GROUP_LABELS = { external: "External services", internal: "Internal", background: "Background work", pulse: "Last 24 hours" };
-  const HEALTH_CHECK_LABELS = { twilio: "Twilio", openai: "OpenAI", elevenlabs: "ElevenLabs", mapbox: "Mapbox", google: "Google Calendar", stripe: "Stripe", database: "Database", process: "Process", scheduler: "Scheduler", geoQueue: "Geocode queue", auditSweep: "Audit retention", automations: "Automations", dripQueue: "Drip queue", requests: "Requests", webhooks: "Webhook deliveries", failedLogins: "Failed logins" };
+  const HEALTH_CHECK_LABELS = { twilio: "Twilio", openai: "OpenAI", elevenlabs: "ElevenLabs", mapbox: "Mapbox", google: "Google Calendar", stripe: "Stripe", database: "Database", process: "Process", scheduler: "Scheduler", geoQueue: "Geocode queue", auditSweep: "Audit retention", automations: "Automations", dripQueue: "Drip queue", requests: "Requests", webhooks: "Webhook deliveries", errors: "Errors", failedLogins: "Failed logins" };
 
   // Health v2 — the two FACES. External services wear their integration LOGO (the
   // same asset set Settings -> Integrations uses); everything else wears a small
@@ -1079,6 +1082,7 @@
     dripQueue: HW('<path d="M12 3s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/>'),
     requests: HW('<path d="M2 12h4l3-7 4 14 3-7h6"/>'),
     webhooks: HW('<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/>'),
+    errors: HW('<path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5"/><path d="M12 17.6v.2"/>'),
     failedLogins: HW('<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/><path d="M12 14.5v2.5"/>'),
   };
 
@@ -1099,9 +1103,314 @@
     automations: "Automation runs over the last day \u2014 failures here mean an automation needs attention.",
     dripQueue: "Delayed and scheduled automation steps waiting for their moment to run.",
     requests: "Web traffic counters for the last day.",
-    webhooks: "Email delivery reports from the provider over the last day.",
+    webhooks: "Inbound webhook deliveries \u2014 calls, texts, billing events, and email reports arriving from connected services.",
+    errors: "Errors captured from tenant browsers and the server over the last day \u2014 including crashes that would otherwise be invisible.",
     failedLogins: "Sign-in attempts that failed in the last day, straight from the audit trail.",
   };
+
+  // devtools-data — the Errors table: ONE component serving both the System Health
+  // "Errors" sub-tab (full) and the Errors tile's expanded panel (pre-filtered 24h).
+  // Shared machinery throughout: App.table.mount, the audit-pattern filter bar with
+  // the four date presets, the shared export modal, the shared detail modal.
+  async function renderErrorsTable(hostEl, opts) {
+    opts = opts || {};
+    const mount = hostEl || view();
+    App.util.showSkeleton(mount, "table");
+    let portals;
+    try { portals = await App.api("/api/admin/portals"); }
+    catch (e) { mount.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+    const f = Object.assign({ source: "", tenantId: "", from: "", to: "" }, opts.filter || {});
+
+    const wrap = el("div", "fade-in");
+    const bar = el("div", "adm-auditbar table-lead");
+    const mkSel = (pairs, onchange) => { const s = el("select", "input adm-cadsel"); pairs.forEach((p) => { const o = el("option", null, esc(p[1])); o.value = p[0]; s.appendChild(o); }); s.onchange = () => onchange(s.value); return s; };
+    const srcSel = mkSel([["", "All sources"], ["client", "Client (browser)"], ["server", "Server"]], (v) => { f.source = v; reload(); });
+    if (f.source) srcSel.value = f.source;
+    bar.appendChild(srcSel);
+    const tenantSel = mkSel([["", "All tenants"]].concat((portals || []).map((p) => [p.id, p.name])), (v) => { f.tenantId = v; reload(); });
+    if (f.tenantId) tenantSel.value = f.tenantId;
+    bar.appendChild(tenantSel);
+    const dayIso = (d) => d.toISOString().slice(0, 10);
+    const rangeSel = mkSel([["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["14", "Last 14 days"]], (v) => {
+      const now = new Date();
+      if (v === "all") { f.from = ""; f.to = ""; }
+      else if (v === "today") { f.from = dayIso(now); f.to = dayIso(now); }
+      else { const d = new Date(now.getTime() - (Number(v) - 1) * 86400000); f.from = dayIso(d); f.to = dayIso(now); }
+      reload();
+    });
+    if (f.from && f.to && f.from === f.to) rangeSel.value = "today";
+    bar.appendChild(rangeSel);
+    wrap.appendChild(bar);
+    const tableHost = el("div");
+    wrap.appendChild(tableHost);
+
+    const srcPill = (s) => s === "server" ? `<span class="pill skipped">server</span>` : `<span class="pill">client</span>`;
+    const columns = [
+      { key: "createdAt", label: "Time", type: "date", get: (r) => r.createdAt, render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
+      { key: "source", label: "Source", type: "text", get: (r) => r.source, render: (r) => srcPill(r.source) },
+      { key: "tenant", label: "Tenant", type: "text", get: (r) => r.tenant || "", render: (r) => esc(r.tenant || "\u2014") },
+      { key: "userLabel", label: "User", type: "text", get: (r) => r.userLabel || "", render: (r) => esc(r.userLabel || "\u2014") },
+      { key: "message", label: "Message", type: "text", get: (r) => r.message, cellClass: "cell-strong", render: (r) => esc(String(r.message).slice(0, 140)) },
+      { key: "route", label: "Route", type: "text", get: (r) => r.route || "", render: (r) => `<span class="cell-muted">${esc(r.route || "\u2014")}</span>` },
+      { key: "userAgent", label: "User agent", type: "text", get: (r) => r.userAgent || "", render: (r) => `<span class="cell-muted">${esc((r.userAgent || "\u2014").slice(0, 60))}</span>` },
+      { key: "stack", label: "Stack", type: "text", get: (r) => (r.stack ? "present" : ""), render: (r) => `<span class="cell-muted">${r.stack ? "present \u2014 click the row" : "\u2014"}</span>` },
+      { key: "id", label: "ID", type: "text", get: (r) => r.id, render: (r) => `<span class="cell-muted">${esc(r.id)}</span>` },
+    ];
+    const defaultKeys = ["createdAt", "source", "tenant", "userLabel", "message", "route"];
+    function openErrorDetail(r) {
+      const inner = el("div");
+      inner.innerHTML = `<div class="modal-head"><h2>Error detail</h2><button class="icon-btn" id="err-close">&times;</button></div>`;
+      const body = el("div", "modal-body");
+      const mg = el("div", "adm-audit-metagrid");
+      mg.innerHTML = [
+        ["Time", fmtDate(r.createdAt)],
+        ["Source", srcPill(r.source)],
+        ["Tenant", esc(r.tenant || "\u2014")],
+        ["User", esc(r.userLabel || "\u2014")],
+        ["Route", esc(r.route || "\u2014")],
+        ["User agent", esc(r.userAgent || "\u2014")],
+      ].map((kv) => `<div class="adm-audit-metak cell-muted">${esc(kv[0])}</div><div class="adm-audit-metav">${kv[1]}</div>`).join("");
+      body.appendChild(mg);
+      body.appendChild(el("h3", "settings-sub", "Message"));
+      body.appendChild(el("p", "adm-audit-metav", esc(r.message)));
+      if (r.stack) {
+        body.appendChild(el("h3", "settings-sub", "Stack"));
+        const pre = el("pre", "err-stack", esc(r.stack));
+        body.appendChild(pre);
+      }
+      inner.appendChild(body);
+      const overlay = modal(inner);
+      inner.querySelector("#err-close").onclick = () => overlay.remove();
+    }
+    let handle = null;
+    async function reload() {
+      App.util.showSkeleton(tableHost, "table");
+      const p = new URLSearchParams();
+      p.set("limit", "500");
+      if (f.source) p.set("source", f.source);
+      if (f.tenantId) p.set("tenantId", f.tenantId);
+      if (f.from) p.set("from", f.from);
+      if (f.to) p.set("to", f.to);
+      let rows;
+      try { rows = (await App.api(`/api/admin/errors?${p.toString()}`)).rows || []; }
+      catch (e) { tableHost.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+      tableHost.innerHTML = "";
+      handle = App.table.mount({
+        container: tableHost, columns: App.table.applyColumnLayout(columns, {}, defaultKeys), rows,
+        tableId: "admin-errors" + (opts.embedId ? "-" + opts.embedId : ""),
+        pageSize: 25,
+        emptyHtml: `<div class="card cell-muted adm-t14">No errors captured. Quiet is good.</div>`,
+        onRowClick: (r) => openErrorDetail(r),
+      });
+      App.table.manageColumns(handle, columns, { defaultKeys });
+      const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
+      exportBtn.onclick = () => App.exportModal({
+        title: "Export errors",
+        columns: columns.map((c) => ({ key: c.key, label: c.label, type: c.type, get: c.get })),
+        rows: handle.getFiltered(),
+        dataType: "errors",
+        namePlaceholder: "e.g. this week's errors",
+        filterLabel: "Which errors to export",
+        unitPlural: "Errors",
+        sheetName: "Errors",
+        countText: (n) => n + " error" + (n === 1 ? "" : "s"),
+        saveHistory: true,
+        historyApi: App.api,
+        historyBase: "/api/admin/exports",
+      });
+      if (handle.toolbarRight) handle.toolbarRight.insertBefore(exportBtn, handle.toolbarRight.firstChild);
+    }
+    mount.innerHTML = "";
+    mount.appendChild(wrap);
+    await reload();
+  }
+
+  // devtools-data — the Webhooks table: ONE component serving the "Webhooks"
+  // sub-tab (full) and the Webhook-deliveries tile's panel (pre-filtered 24h).
+  async function renderWebhooksTable(hostEl, opts) {
+    opts = opts || {};
+    const mount = hostEl || view();
+    App.util.showSkeleton(mount, "table");
+    let portals;
+    try { portals = await App.api("/api/admin/portals"); }
+    catch (e) { mount.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+    const f = Object.assign({ provider: "", outcome: "", tenantId: "", from: "", to: "" }, opts.filter || {});
+
+    const wrap = el("div", "fade-in");
+    const bar = el("div", "adm-auditbar table-lead");
+    const mkSel = (pairs, onchange) => { const s = el("select", "input adm-cadsel"); pairs.forEach((p) => { const o = el("option", null, esc(p[1])); o.value = p[0]; s.appendChild(o); }); s.onchange = () => onchange(s.value); return s; };
+    const provSel = mkSel([["", "All providers"], ["twilio", "Twilio"], ["google", "Google"], ["stripe", "Stripe"], ["other", "Other"]], (v) => { f.provider = v; reload(); });
+    if (f.provider) provSel.value = f.provider;
+    bar.appendChild(provSel);
+    const outSel = mkSel([["", "All outcomes"], ["ok", "OK"], ["fail", "Failed"]], (v) => { f.outcome = v; reload(); });
+    if (f.outcome) outSel.value = f.outcome;
+    bar.appendChild(outSel);
+    const tenantSel = mkSel([["", "All tenants"]].concat((portals || []).map((p) => [p.id, p.name])), (v) => { f.tenantId = v; reload(); });
+    if (f.tenantId) tenantSel.value = f.tenantId;
+    bar.appendChild(tenantSel);
+    const dayIso = (d) => d.toISOString().slice(0, 10);
+    bar.appendChild(mkSel([["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["14", "Last 14 days"]], (v) => {
+      const now = new Date();
+      if (v === "all") { f.from = ""; f.to = ""; }
+      else if (v === "today") { f.from = dayIso(now); f.to = dayIso(now); }
+      else { const d = new Date(now.getTime() - (Number(v) - 1) * 86400000); f.from = dayIso(d); f.to = dayIso(now); }
+      reload();
+    }));
+    wrap.appendChild(bar);
+    const tableHost = el("div");
+    wrap.appendChild(tableHost);
+
+    const outPill = (o) => o === "fail" ? `<span class="pill skipped">fail</span>` : `<span class="pill success">ok</span>`;
+    const columns = [
+      { key: "createdAt", label: "Time", type: "date", get: (r) => r.createdAt, render: (r) => `<span class="cell-muted">${fmtDate(r.createdAt)}</span>` },
+      { key: "provider", label: "Provider", type: "text", get: (r) => r.provider, render: (r) => `<span class="pill">${esc(r.provider)}</span>` },
+      { key: "summary", label: "What it was", type: "text", get: (r) => r.summary, cellClass: "cell-strong", render: (r) => esc(r.summary) },
+      { key: "endpoint", label: "Endpoint", type: "text", get: (r) => r.endpoint, render: (r) => `<span class="cell-muted">${esc(r.endpoint)}</span>` },
+      { key: "tenant", label: "Tenant", type: "text", get: (r) => r.tenant || "", render: (r) => esc(r.tenant || "\u2014") },
+      { key: "outcome", label: "Outcome", type: "text", get: (r) => r.outcome, render: (r) => outPill(r.outcome) },
+      { key: "httpStatus", label: "Status", type: "number", get: (r) => r.httpStatus, render: (r) => `<span class="cell-muted">${r.httpStatus}</span>` },
+      { key: "latencyMs", label: "Latency", type: "number", get: (r) => r.latencyMs, render: (r) => `<span class="cell-muted">${r.latencyMs} ms</span>` },
+      { key: "payloadExcerpt", label: "Excerpt", type: "text", get: (r) => (r.payloadExcerpt ? "present" : ""), render: (r) => `<span class="cell-muted">${r.payloadExcerpt ? "present \u2014 click the row" : "\u2014"}</span>` },
+      { key: "error", label: "Error", type: "text", get: (r) => r.error || "", render: (r) => `<span class="cell-muted">${esc((r.error || "\u2014").slice(0, 60))}</span>` },
+      { key: "id", label: "ID", type: "text", get: (r) => r.id, render: (r) => `<span class="cell-muted">${esc(r.id)}</span>` },
+    ];
+    const defaultKeys = ["createdAt", "provider", "summary", "tenant", "outcome", "httpStatus", "latencyMs"];
+    function openWebhookDetail(r) {
+      const inner = el("div");
+      inner.innerHTML = `<div class="modal-head"><h2>Webhook delivery</h2><button class="icon-btn" id="wh-close">&times;</button></div>`;
+      const body = el("div", "modal-body");
+      const mg = el("div", "adm-audit-metagrid");
+      mg.innerHTML = [
+        ["Time", fmtDate(r.createdAt)],
+        ["Provider", `<span class="pill">${esc(r.provider)}</span>`],
+        ["What it was", esc(r.summary)],
+        ["Endpoint", esc(r.endpoint)],
+        ["Tenant", esc(r.tenant || "\u2014")],
+        ["Outcome", outPill(r.outcome) + ` <span class="cell-muted">HTTP ${r.httpStatus} \u00b7 ${r.latencyMs} ms</span>`],
+      ].map((kv) => `<div class="adm-audit-metak cell-muted">${esc(kv[0])}</div><div class="adm-audit-metav">${kv[1]}</div>`).join("");
+      body.appendChild(mg);
+      if (r.error) {
+        body.appendChild(el("h3", "settings-sub", "Error"));
+        body.appendChild(el("p", "adm-audit-metav", esc(r.error)));
+      }
+      body.appendChild(el("h3", "settings-sub", "Payload excerpt (redacted)"));
+      body.appendChild(el("pre", "err-stack", esc(r.payloadExcerpt || "\u2014 nothing excerpted")));
+      inner.appendChild(body);
+      const overlay = modal(inner);
+      inner.querySelector("#wh-close").onclick = () => overlay.remove();
+    }
+    let handle = null;
+    async function reload() {
+      App.util.showSkeleton(tableHost, "table");
+      const p = new URLSearchParams();
+      p.set("limit", "500");
+      if (f.provider) p.set("provider", f.provider);
+      if (f.outcome) p.set("outcome", f.outcome);
+      if (f.tenantId) p.set("tenantId", f.tenantId);
+      if (f.from) p.set("from", f.from);
+      if (f.to) p.set("to", f.to);
+      let rows;
+      try { rows = (await App.api(`/api/admin/webhook-events?${p.toString()}`)).rows || []; }
+      catch (e) { tableHost.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+      tableHost.innerHTML = "";
+      handle = App.table.mount({
+        container: tableHost, columns: App.table.applyColumnLayout(columns, {}, defaultKeys), rows,
+        tableId: "admin-webhooks" + (opts.embedId ? "-" + opts.embedId : ""),
+        pageSize: 25,
+        emptyHtml: `<div class="card cell-muted adm-t14">No webhook deliveries recorded yet.</div>`,
+        onRowClick: (r) => openWebhookDetail(r),
+      });
+      App.table.manageColumns(handle, columns, { defaultKeys });
+      const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
+      exportBtn.onclick = () => App.exportModal({
+        title: "Export webhook deliveries",
+        columns: columns.map((c) => ({ key: c.key, label: c.label, type: c.type, get: c.get })),
+        rows: handle.getFiltered(),
+        dataType: "webhooks",
+        namePlaceholder: "e.g. this week's webhooks",
+        filterLabel: "Which deliveries to export",
+        unitPlural: "Deliveries",
+        sheetName: "Webhook deliveries",
+        countText: (n) => n + " deliver" + (n === 1 ? "y" : "ies"),
+        saveHistory: true,
+        historyApi: App.api,
+        historyBase: "/api/admin/exports",
+      });
+      if (handle.toolbarRight) handle.toolbarRight.insertBefore(exportBtn, handle.toolbarRight.firstChild);
+    }
+    mount.innerHTML = "";
+    mount.appendChild(wrap);
+    await reload();
+  }
+
+  // devtools-data — WHICH tiles are data-backed, and what their panel table IS.
+  // ONE wrapper (mountHealthDataPanel) turns these configs into real tables on the
+  // shared machinery; audit-shaped ones EMBED the DT-3 audit component itself.
+  const dayIsoAgo = (d) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+  const HEALTH_DATA_PANELS = {
+    failedLogins: { audit: () => ({ action: "auth.login_failed", status: "all", from: dayIsoAgo(1), to: dayIsoAgo(0) }), defaultKeys: ["createdAt", "tenant", "actor", "userType", "action", "ip"] },
+    automations: { audit: () => ({ group: "automations", status: "all", from: dayIsoAgo(1), to: dayIsoAgo(0) }), defaultKeys: ["createdAt", "tenant", "actor", "userType", "action", "subject", "details"] },
+    auditSweep: { audit: () => ({ status: "pending_deletion" }) },
+    geoQueue: {
+      fetch: "/api/admin/health/rows/geoQueue",
+      columns: () => [
+        { key: "updatedAt", label: "Updated", type: "date", get: (r) => r.updatedAt, render: (r) => `<span class="cell-muted">${fmtDate(r.updatedAt)}</span>` },
+        { key: "tenant", label: "Tenant", type: "text", get: (r) => r.tenant, render: (r) => esc(r.tenant || "\u2014") },
+        { key: "kind", label: "Kind", type: "text", get: (r) => r.kind, render: (r) => esc(r.kind) },
+        { key: "label", label: "Contact / record", type: "text", get: (r) => r.label, cellClass: "cell-strong", render: (r) => esc(r.label || "\u2014") },
+        { key: "fieldKey", label: "Address field", type: "text", get: (r) => r.fieldKey, render: (r) => esc(r.fieldKey || "\u2014") },
+        { key: "status", label: "Status", type: "text", get: (r) => r.status, render: (r) => r.status === "failed" ? `<span class="pill skipped">failed</span>` : `<span class="pill">pending</span>` },
+        { key: "error", label: "Error", type: "text", get: (r) => r.error, render: (r) => `<span class="cell-muted">${esc(r.error || "\u2014")}</span>` },
+      ],
+    },
+    dripQueue: {
+      fetch: "/api/admin/health/rows/dripQueue",
+      columns: () => [
+        { key: "dueAt", label: "Due", type: "date", get: (r) => r.dueAt, render: (r) => `<span class="cell-muted">${fmtDate(r.dueAt)}</span>` },
+        { key: "tenant", label: "Tenant", type: "text", get: (r) => r.tenant, render: (r) => esc(r.tenant || "\u2014") },
+        { key: "automationName", label: "Automation", type: "text", get: (r) => r.automationName, cellClass: "cell-strong", render: (r) => esc(r.automationName || "\u2014") },
+        { key: "contactName", label: "Contact", type: "text", get: (r) => r.contactName, render: (r) => esc(r.contactName || "\u2014") },
+        { key: "status", label: "Status", type: "text", get: (r) => r.status, render: (r) => r.status === "failed" ? `<span class="pill skipped">failed</span>` : `<span class="pill">overdue</span>` },
+        { key: "error", label: "Error", type: "text", get: (r) => r.error, render: (r) => `<span class="cell-muted">${esc(r.error || "\u2014")}</span>` },
+      ],
+    },
+    errors: { component: (host) => renderErrorsTable(host, { embedId: "panel", filter: { from: new Date(Date.now() - 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) } }) }, // the tile panel = the SAME component, pre-filtered ~24h
+    webhooks: { component: (host) => renderWebhooksTable(host, { embedId: "panel", filter: { from: new Date(Date.now() - 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) } }) }, // ditto: the Task-6 rewire
+  };
+
+  // The ONE embedded data-table panel: audit-shaped configs EMBED renderAuditLog
+  // (the DT-3 component, preset-filtered); row-shaped configs fetch + mount the
+  // SAME App.table.mount machinery with a Tenant filter select. Configurations,
+  // not seven implementations.
+  async function mountHealthDataPanel(host, checkKey, cfg) {
+    if (cfg.component) { await cfg.component(host); return; } // e.g. Errors: the sub-tab's own component, pre-filtered
+    if (cfg.audit) { await renderAuditLog(host, { embedded: true, embedId: checkKey, filter: cfg.audit(), defaultKeys: cfg.defaultKeys }); return; }
+    App.util.showSkeleton(host, "table");
+    let rows = [];
+    try { rows = (await App.api(cfg.fetch)).rows || []; }
+    catch (e) { host.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+    host.innerHTML = "";
+    const bar = el("div", "adm-auditbar table-lead");
+    let tenantFilter = "";
+    const tenants = Array.from(new Set(rows.map((r) => r.tenant).filter(Boolean))).sort();
+    const mkSel = (pairs, onchange) => { const s = el("select", "input adm-cadsel"); pairs.forEach((p) => { const o = el("option", null, esc(p[1])); o.value = p[0]; s.appendChild(o); }); s.onchange = () => onchange(s.value); return s; };
+    bar.appendChild(mkSel([["", "All tenants"]].concat(tenants.map((t) => [t, t])), (v) => { tenantFilter = v; paint(); }));
+    host.appendChild(bar);
+    const tableHost = el("div");
+    host.appendChild(tableHost);
+    function paint() {
+      tableHost.innerHTML = "";
+      App.table.mount({
+        container: tableHost,
+        columns: cfg.columns(),
+        rows: tenantFilter ? rows.filter((r) => r.tenant === tenantFilter) : rows,
+        tableId: "admin-health-" + checkKey,
+        pageSize: 25,
+        emptyHtml: `<div class="card cell-muted adm-t14">Nothing in the queue.</div>`,
+      });
+    }
+    paint();
+  }
 
   // Health v2 — the expanded detail panel. Full width, directly beneath the tile's
   // SECTION row; a strict accordion (opening another tile's panel closes the open
@@ -1146,36 +1455,39 @@
     statusWrap.innerHTML = statusHtml(cur);
     panel.appendChild(statusWrap);
 
-    // per-tile extras (cheap reads served by the detail endpoint)
+    // per-tile extras (cheap reads served by the detail endpoint; infra tiles only —
+    // the data-backed tiles' old lists/links are SUPERSEDED by their real tables)
+    const dataCfg = HEALTH_DATA_PANELS[checkKey];
     const ex = d.extras || {};
     if (checkKey === "twilio" && ex.phoneNumber) {
       panel.appendChild(el("p", "cell-muted health-extra", "Number: " + esc(ex.phoneNumber) + " \u00b7 " + esc(ex.webhookNote || "")));
-    }
-    if ((checkKey === "automations" || checkKey === "dripQueue")) {
-      const fails = ex.recentFailures || [];
-      if (fails.length) {
-        const ul = el("ul", "health-fail-list");
-        fails.forEach((fjob) => { ul.appendChild(el("li", null, `${esc(fjob.automationName || "(automation)")} \u2014 ${esc(fjob.contactName || "\u2014")} \u00b7 <span class="cell-muted">${fmtDate(fjob.createdAt || fjob.dueAt)}</span>${fjob.error ? ` \u00b7 <span class="cell-muted">${esc(fjob.error)}</span>` : ""}`)); });
-        panel.appendChild(el("h4", "settings-sub", "Failures (24h)"));
-        panel.appendChild(ul);
-      }
-      const link = el("button", "btn btn-ghost btn-sm", "Open in Audit Log \u2197");
-      link.onclick = () => {
-        App.state._devtoolsHint = { section: "history", subtab: "auditlog", auditFilter: { group: "automations", from: new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) } };
-        renderDevTools(); // re-enter the shell; the one-shot hint routes to the pre-filtered log
-      };
-      panel.appendChild(link);
     }
     if (checkKey === "scheduler") {
       panel.appendChild(el("p", "cell-muted health-extra", "The table below doubles as the tick log \u2014 each row is one look at the heartbeat."));
     }
 
-    // the recent-checks table (ring buffer; shared table styling)
-    panel.appendChild(el("h4", "settings-sub", "Recent checks"));
+    // the recent-checks table (ring buffer; shared table styling). On DATA-BACKED
+    // tiles the underlying-rows table is the star, so the check history collapses
+    // behind a small link; infrastructure tiles keep it front and center.
+    const histWrap = el("div");
+    const histHead = el("h4", "settings-sub", "Recent checks");
     const twrap = el("div", "table-wrap card health-history");
     twrap.innerHTML = `<table><thead><tr><th>Time</th><th>Status</th><th>Latency</th><th>Detail</th></tr></thead><tbody>${healthHistoryRows(d.history) || `<tr><td colspan="4" class="cell-muted">No checks recorded yet.</td></tr>`}</tbody></table>`;
-    panel.appendChild(twrap);
-    panel.appendChild(el("p", "cell-muted health-panel-foot", `History is kept in memory (last ${d.historyLimit || 30} checks per item) and resets when the app restarts.`));
+    histWrap.appendChild(histHead);
+    histWrap.appendChild(twrap);
+    histWrap.appendChild(el("p", "cell-muted health-panel-foot", `History is kept in memory (last ${d.historyLimit || 30} checks per item) and resets when the app restarts.`));
+    if (dataCfg) {
+      histWrap.classList.add("u-hidden");
+      const histToggle = el("button", "btn btn-ghost btn-sm health-hist-toggle", "Check history \u25b8");
+      histToggle.onclick = () => { const open = histWrap.classList.toggle("u-hidden"); histToggle.textContent = open ? "Check history \u25b8" : "Check history \u25be"; };
+      panel.appendChild(histToggle);
+      const dataHost = el("div", "health-data-host");
+      panel.appendChild(dataHost);
+      panel.appendChild(histWrap);
+      mountHealthDataPanel(dataHost, checkKey, dataCfg); // the star: REAL underlying rows
+    } else {
+      panel.appendChild(histWrap);
+    }
 
     // per-tile re-check: runs ONLY this check; updates the face + status + table
     const re = el("button", "btn btn-ghost btn-sm health-recheck-one", "Re-check now");
@@ -1360,7 +1672,10 @@
     });
   }
 
-  async function renderAuditLog(hostEl) {
+  // devtools-data: renderAuditLog is EMBEDDABLE — opts { embedded, filter, defaultKeys }
+  // let health panels reuse THE audit table component with preset filters (no fork).
+  async function renderAuditLog(hostEl, opts) {
+    opts = opts || {};
     const mount = hostEl || view();
     App.util.showSkeleton(mount, "table");
     let meta, portals;
@@ -1372,12 +1687,13 @@
     (portals || []).forEach((p) => { tenantName[p.id] = p.name; });
 
     // filter state (server-side; the DT-2 [status, createdAt] index backs the default view)
-    const f = { tenantId: "", actorType: "", group: "", status: "active", from: "", to: "" };
+    const f = { tenantId: "", actorType: "", group: "", status: "active", from: "", to: "", action: "" }; // action: exact-match preset used by embedded panels
     // health v2: consume a one-shot deep-link prefilter (e.g. the Automations panel
     // links here with group=automations + the 7-day range).
     const hint = App.state._devtoolsHint || null;
     if (hint && hint.auditFilter) Object.assign(f, hint.auditFilter);
     App.state._devtoolsHint = null;
+    if (opts.filter) Object.assign(f, opts.filter); // embedded preset (wins over hints)
     let rows = [];
     let nextCursor = null;
 
@@ -1385,16 +1701,22 @@
     // the retention note interpolates the SERVER'S OWN constants — the copy can't drift
     const note = el("p", "cell-muted adm-audit-note table-lead",
       esc("Events are kept " + meta.retention.ACTIVE_DAYS + " days, then pending deletion for " + meta.retention.PENDING_DAYS + " more, then removed automatically."));
-    wrap.appendChild(note);
+    if (!opts.embedded) wrap.appendChild(note); // embedded panels lead with the data, not the policy
 
     const bar = el("div", "adm-auditbar table-lead");
     const mkSel = (optionPairs, onchange) => { const s = el("select", "input adm-cadsel"); optionPairs.forEach((pair) => { const o = el("option", null, esc(pair[1])); o.value = pair[0]; s.appendChild(o); }); s.onchange = () => onchange(s.value); return s; };
-    bar.appendChild(mkSel([["", "All tenants"]].concat((portals || []).map((p) => [p.id, p.name])), (v) => { f.tenantId = v; reload(); }));
-    bar.appendChild(mkSel([["", "All actors"], ["user", "People"], ["ai", "AI receptionist"], ["automation", "Automations"], ["system", "System"]], (v) => { f.actorType = v; reload(); }));
+    const tenantSel = mkSel([["", "All tenants"]].concat((portals || []).map((p) => [p.id, p.name])), (v) => { f.tenantId = v; reload(); });
+    if (f.tenantId) tenantSel.value = f.tenantId;
+    bar.appendChild(tenantSel);
+    const actorSel = mkSel([["", "All actors"], ["user", "People"], ["ai", "AI receptionist"], ["automation", "Automations"], ["system", "System"]], (v) => { f.actorType = v; reload(); });
+    if (f.actorType) actorSel.value = f.actorType;
+    bar.appendChild(actorSel);
     const groupSel = mkSel([["", "All actions"]].concat(meta.groups.map((g) => [g.key, g.label])), (v) => { f.group = v; reload(); });
     if (f.group) groupSel.value = f.group;
     bar.appendChild(groupSel);
-    bar.appendChild(mkSel([["active", "Active"], ["pending_deletion", "Pending deletion"], ["all", "All"]], (v) => { f.status = v; reload(); }));
+    const statusSel = mkSel([["active", "Active"], ["pending_deletion", "Pending deletion"], ["all", "All"]], (v) => { f.status = v; reload(); });
+    if (f.status !== "active") statusSel.value = f.status;
+    bar.appendChild(statusSel);
     // ONE "Date range" preset select — exactly four options (health-v2: the custom
     // date pair is gone; the Time column's sort covers fine-grained needs).
     const dayIso = (d) => d.toISOString().slice(0, 10);
@@ -1442,7 +1764,7 @@
       { key: "status", label: "Status", type: "text", get: (r) => r.status, render: (r) => r.status === "pending_deletion" ? `<span class="pill skipped">pending deletion</span>` : `<span class="pill success">active</span>` },
       { key: "ip", label: "IP", type: "text", get: (r) => (r.meta && r.meta.ip) || "", render: (r) => `<span class="cell-muted">${esc((r.meta && r.meta.ip) || "\u2014")}</span>` },
     ];
-    const defaultKeys = ["createdAt", "tenant", "actor", "userType", "action", "subject", "details"];
+    const defaultKeys = opts.defaultKeys || ["createdAt", "tenant", "actor", "userType", "action", "subject", "details"];
     const loadLayout = () => { try { return JSON.parse(localStorage.getItem(AUDIT_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
     const saveLayout = (l) => { try { localStorage.setItem(AUDIT_COLS_KEY, JSON.stringify(l || {})); } catch (e) {} };
     let layout = loadLayout();
@@ -1453,7 +1775,7 @@
       const initial = App.table.applyColumnLayout(columns, layout, defaultKeys);
       handle = App.table.mount({
         container: tableHost, columns: initial, rows,
-        tableId: "admin-auditlog",
+        tableId: opts.embedded ? "admin-auditlog-embed-" + (opts.embedId || "panel") : "admin-auditlog",
         defaultSort: "createdAt", defaultSortDir: "desc",
         emptyHtml: `<div class="card cell-muted adm-t14">No audit events match.</div>`,
         pageSize: 25,
@@ -1492,6 +1814,7 @@
       if (f.tenantId) p.set("tenantId", f.tenantId);
       if (f.actorType) p.set("actorType", f.actorType);
       if (f.group) { const g = meta.groups.find((x) => x.key === f.group); if (g) p.set("actions", g.prefixes.join(",")); }
+      if (f.action) p.set("action", f.action);
       if (f.from) p.set("from", f.from);
       if (f.to) p.set("to", f.to);
       if (cursor) p.set("cursor", cursor);
@@ -1581,16 +1904,22 @@
   // LEVEL 1 — one row per SEND (grouped by communicationSendId; one-off sends are groups
   // of one). Columns: Date, Tenant, Sent by, Subject, Recipients (count), Status (count
   // summary). No Type column here. Click a send -> its recipient list (Level 2).
-  async function renderEmail() {
-    loading();
+  // Email History (devtools-data batch): the hub's Email tab, relocated VERBATIM
+  // into Developer Tools -> History. _emailHost threads the render target; with no
+  // host set the trio behaves exactly as the old top-level tab did.
+  let _emailHost = null;
+  const emailHost = () => _emailHost || view();
+  async function renderEmail(hostEl) {
+    if (hostEl !== undefined) _emailHost = hostEl;
+    App.util.showSkeleton(emailHost(), "table");
     let rows;
     try { rows = await App.api("/api/admin/email-logs"); }
-    catch (e) { view().innerHTML = `<div class="card cell-muted adm-t14">${esc(e.message)}</div>`; return; }
+    catch (e) { emailHost().innerHTML = `<div class="card cell-muted adm-t14">${esc(e.message)}</div>`; return; }
     if (!Array.isArray(rows)) rows = [];
 
-    view().innerHTML = "";
+    emailHost().innerHTML = "";
     const wrap = el("div", "fade-in");
-    view().appendChild(wrap);
+    emailHost().appendChild(wrap);
     const host = el("div");
     wrap.appendChild(host);
 
@@ -1625,15 +1954,15 @@
   // LEVEL 2 — the recipient list for ONE send. Always shown (even for a single-recipient
   // send, which renders a one-row list). Click a recipient -> full detail (Level 3).
   async function renderEmailRecipients(group) {
-    loading();
+    App.util.showSkeleton(emailHost(), "table");
     let rows;
     try { rows = await App.api("/api/admin/email-logs/recipients?group=" + encodeURIComponent(group.groupKey)); }
-    catch (e) { view().innerHTML = `<div class="card cell-muted adm-t14">${esc(e.message)}</div>`; return; }
+    catch (e) { emailHost().innerHTML = `<div class="card cell-muted adm-t14">${esc(e.message)}</div>`; return; }
     if (!Array.isArray(rows)) rows = [];
 
-    view().innerHTML = "";
+    emailHost().innerHTML = "";
     const wrap = el("div", "fade-in");
-    view().appendChild(wrap);
+    emailHost().appendChild(wrap);
     const back = el("button", "btn btn-ghost btn-sm", "\u2190 Back to Email");
     back.onclick = () => renderEmail();
     wrap.appendChild(back);
@@ -1666,9 +1995,9 @@
   // LEVEL 3 — full single-email detail. `onBack` returns to the recipient list (Level 2);
   // falls back to the Email list if somehow opened without a parent send.
   function renderEmailDetail(r, onBack) {
-    view().innerHTML = "";
+    emailHost().innerHTML = "";
     const wrap = el("div", "fade-in");
-    view().appendChild(wrap);
+    emailHost().appendChild(wrap);
     const back = el("button", "btn btn-ghost btn-sm", onBack ? "\u2190 Back to recipients" : "\u2190 Back to Email");
     back.onclick = onBack || (() => renderEmail());
     wrap.appendChild(back);

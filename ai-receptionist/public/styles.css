@@ -3370,3 +3370,8 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .health-scroller .health-hint { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); color: var(--ink-faint); opacity: 0; transition: opacity var(--transition); pointer-events: none; z-index: 2; font-size: var(--text-lg); }
 .health-scroller.can-right .health-hint { opacity: 1; }
 .health-reall-row { display: flex; justify-content: flex-end; margin-bottom: 10px; min-width: 0; }
+
+/* devtools-data — data-backed health panels */
+.health-data-host { min-width: 0; }
+.health-hist-toggle { align-self: flex-start; }
+.err-stack { font-family: var(--font-mono, monospace); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel-2, var(--panel)); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; max-height: 320px; overflow: auto; margin: 0; }
