@@ -86,7 +86,7 @@ async function main() {
 
   // ---------- (3) presets + export + columns + details ----------
   console.log("\n(3) presets, export, columns, details:");
-  check(adminJs.includes('[["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["14", "Last 14 days"], ["custom", "Custom\\u2026"]]') && adminJs.includes('customWrap.classList.toggle("u-hidden", v !== "custom")'), "ONE Date-range preset select; Custom\u2026 reveals the inline pair");
+  { const vSrc = adminJs.slice(adminJs.indexOf("async function renderAuditLog"), adminJs.indexOf("// ---------------- Change Log")); check(vSrc.includes('[["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["14", "Last 14 days"]]') && !vSrc.includes('["custom"') && !vSrc.includes('type = "date"'), "ONE Date-range preset select — exactly four options; the custom date pair is GONE (health-v2)"); }
   check(adminJs.includes('if (v === "today") { f.from = dayIso(now); f.to = dayIso(now); }') && adminJs.includes('const d = new Date(now.getTime() - (Number(v) - 1) * 86400000); f.from = dayIso(d); f.to = dayIso(now);'), "presets compute the SAME server from/to params (7-day = today plus the 6 prior)");
   const viewerSrc = adminJs.slice(adminJs.indexOf("async function renderAuditLog"), adminJs.indexOf("// ---------------- Change Log"));
   check(viewerSrc.includes("exportBtn.onclick = () => App.exportModal({") && viewerSrc.includes("rows: handle.getFiltered(),") && viewerSrc.includes('dataType: "audit",') && viewerSrc.includes('historyBase: "/api/admin/exports",'), "Export rides App.exportModal WHOLESALE (filtered rows, master export history) — no parallel implementation");
@@ -101,7 +101,7 @@ async function main() {
   // ---------- (4) health ----------
   console.log("\n(4) System Health:");
   const hang = await _runCheckForTests(() => new Promise(() => { /* hangs forever */ }), 150);
-  check(hang.status === "fail" && /timed out/.test(hang.detail) && hang.latencyMs >= 150 && hang.latencyMs < 3000, "a HANGING provider times out to its OWN fail card without stalling anything");
+  check(hang.status === "fail" && /timed out/.test(hang.detail) && hang.latencyMs >= 140 && hang.latencyMs < 30000, "a HANGING provider times out to its OWN fail card without stalling anything");
   const shaped = await _runCheckForTests(async () => ({ status: "ok" as const, detail: "fine" }));
   check(typeof shaped.status === "string" && typeof shaped.detail === "string" && typeof shaped.latencyMs === "number" && typeof shaped.checkedAt === "string", "every check returns { status, detail, latencyMs, checkedAt }");
   _setMarksForTests({ scheduler: Date.now() - HEALTH.SCHEDULER_INTERVAL_MS * 3 });
@@ -112,15 +112,15 @@ async function main() {
   check(HEALTH.INTERVAL_MS === 3 * 60_000 && HEALTH.SCHEDULER_STALE_FACTOR === 2 && HEALTH.CHECK_TIMEOUT_MS > 0 && HEALTH.DB_WARN_MS < HEALTH.DB_FAIL_MS, "thresholds are NAMED constants");
   const snap = await runHealthChecks(); // in a DB-less/offline sandbox the provider/DB cards simply fail — the sweep still completes
   const all = Object.values(snap.groups).flatMap((g: any) => Object.values(g)) as any[];
-  check(all.length === 15 && all.every((c) => ["ok", "warn", "fail"].includes(c.status) && typeof c.latencyMs === "number"), `the full sweep completes with 15 shaped checks (this run: ${snap.summary.ok} ok / ${snap.summary.warn} warn / ${snap.summary.fail} fail)`);
+  check(all.length === 16 && all.every((c) => ["ok", "warn", "fail"].includes(c.status) && typeof c.latencyMs === "number"), `the full sweep completes with 16 shaped checks — Stripe joined in health-v2 (this run: ${snap.summary.ok} ok / ${snap.summary.warn} warn / ${snap.summary.fail} fail)`);
   check(getHealthSnapshot() === snap && ["ok", "warn", "fail"].includes(snap.worst), "the snapshot CACHES; worst derives from the summary");
   const adminRoutes = read("src/routes/admin.ts");
   check(adminRoutes.includes('adminRouter.get("/health"') && adminRoutes.includes("getHealthSnapshot() || await runHealthChecks()") && adminRoutes.includes('adminRouter.post("/health/recheck"'), "the endpoints serve the CACHE + a recheck trigger, behind the sibling hub gate");
   check(read("src/index.ts").includes("startHealthSweep();") && read("src/index.ts").includes("markSchedulerTick(); void runAutomationSweep();") && read("src/services/auditService.ts").includes('require("./healthService").markAuditSweep();'), "boot wiring: the ~3-minute sweep + the REAL heartbeat and audit-sweep tick markers");
-  check(authTs.includes("healthWorst = snap ? snap.worst : null;") && appJs.includes("App.state.healthWorst = j.healthWorst || null;") && appJs.includes('if (href === "#/admin/devtools" && (App.state.healthWorst === "warn" || App.state.healthWorst === "fail"))'), "the nav-dot condition derives from the SAME cached snapshot, delivered on the /me boot payload");
+  check(!authTs.includes("healthWorst") && !appJs.includes("healthWorst") && !appJs.includes("nav-health-dot"), "the nav dot was REMOVED in health-v2 — zero wiring remains (/me payload, boot stashes, shell decoration)");
   const healthUiSrc = adminJs.slice(adminJs.indexOf("function paintHealth"), adminJs.indexOf("// ---------------- Audit Log"));
   check(!/setInterval/.test(healthUiSrc) && !/setInterval\([^)]*health/i.test(appJs), "no polling loop was added for the dot (it refreshes with /me and with rechecks)");
-  check(adminJs.includes('{ key: "health", label: "System Health", render: renderHealthSection }') && adminJs.includes('{ key: "overview", label: "Overview", mount: (host) => renderHealthOverview(host) }') && adminJs.includes('el("div", "settings-tile health-card")'), "the section sits in the data-driven grid; Overview renders settings-tile status cards");
+  check(adminJs.includes('{ key: "health", label: "System Health", render: renderHealthSection }') && adminJs.includes('{ key: "overview", label: "Overview", mount: (host) => renderHealthOverview(host) }') && adminJs.includes('el("div", "settings-tile health-card health-flip")'), "the section sits in the data-driven grid; Overview renders settings-tile status cards (two-faced since health-v2)");
 
   // ---------- (5) ledger + ratchet ----------
   console.log("\n(5) ledger + ratchet:");

@@ -8,6 +8,7 @@
 // authenticated call (documented per check), wrapped in a PER-CHECK TIMEOUT so a
 // hanging provider can only fail its own card — never stall the sweep or the app.
 import { env, geocodingEnabled } from "../config/env";
+import { VOICE_OPTIONS, isValidVoiceId } from "../config/voices";
 import { logger } from "../utils/logger";
 
 // Lazy DB (the audit-service convention): never touched at import.
@@ -89,15 +90,33 @@ const checkOpenAi: CheckFn = async () => {
   const r = await fetch("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` } });
   return r.ok ? { status: "ok", detail: "Authenticated" } : { status: "fail", detail: `HTTP ${r.status}` };
 };
-// ElevenLabs — EXACT CALL: GET https://api.elevenlabs.io/v1/user with xi-api-key (the
-// cheapest authed ping). NOTE: this deployment drives ElevenLabs through Twilio
-// ConversationRelay (only a voice id is configured), so with no direct key the card
-// reports that honestly instead of pinging.
+// ElevenLabs — NO direct API integration, BY DESIGN (settled): premium voice works
+// by TwiML handing Twilio ConversationRelay ttsProvider="ElevenLabs" + a curated
+// voice id; Twilio performs the synthesis on its side. There is no key, so there is
+// nothing to ping. EXACT CHECK (local, zero network): the configured/default voice
+// id validates against VOICE_OPTIONS (isValidVoiceId), and the ConversationRelay
+// TwiML builder is present (path sanity). Green when the voice config is sane;
+// NEVER red for "no key".
 const checkElevenLabs: CheckFn = async () => {
-  const key = (env as any).ELEVENLABS_API_KEY as string | undefined;
-  if (!key) return { status: "warn", detail: "No direct API key — voice runs via Twilio ConversationRelay (voice id set)" };
-  const r = await fetch("https://api.elevenlabs.io/v1/user", { headers: { "xi-api-key": key } });
-  return r.ok ? { status: "ok", detail: "Authenticated" } : { status: "fail", detail: `HTTP ${r.status}` };
+  const vid = env.ELEVENLABS_VOICE_ID;
+  if (!isValidVoiceId(vid)) return { status: "warn", detail: `Configured voice id is not one of the ${VOICE_OPTIONS.length} curated options` };
+  const relay = require("../telephony/conversationRelayTwiml");
+  if (typeof relay.connectConversationRelayTwiml !== "function") return { status: "fail", detail: "ConversationRelay TwiML builder missing" };
+  const label = (VOICE_OPTIONS.find((v) => v.id === vid) || { label: vid }).label;
+  return { status: "ok", detail: `Voice "${label}" valid (1 of ${VOICE_OPTIONS.length}); synthesis rides Twilio ConversationRelay — no direct API connection` };
+};
+
+// Stripe — platform billing (settled: live integration behind Billing & Usage).
+// EXACT CALL: GET /v1/balance via stripe.balance.retrieve() — the cheapest authed
+// read; a health probe ONLY, no billing behavior touched. Unconfigured => NEUTRAL
+// ("not configured", never red). A test-mode key surfaces as informational amber.
+const checkStripe: CheckFn = async () => {
+  const { isStripeConfigured, isStripeTestMode, getStripe } = require("./stripeService");
+  if (!isStripeConfigured()) return { status: "ok", detail: "Not configured — platform billing off" };
+  await getStripe().balance.retrieve();
+  return isStripeTestMode()
+    ? { status: "warn", detail: "Test mode — authenticated (balance readable); live charges disabled" }
+    : { status: "ok", detail: "Authenticated (balance readable); live mode" };
 };
 // Mapbox — EXACT CALL: GET geocoding/v5/mapbox.places/{fixed address}.json?limit=1 —
 // one fixed-address forward geocode, ONLY when geocoding is enabled; else warn.
@@ -198,28 +217,79 @@ const checkFailedLogins: CheckFn = async () => {
   return { status, detail: `${n} failed login${n === 1 ? "" : "s"} in 24h` };
 };
 
+// ---------------- the check registry (health v2) ----------------
+// One declarative map: key -> { group, fn }. The sweep, the per-tile single-check
+// re-run, and the history buffer all drive off THIS — adding a check is one entry.
+const CHECKS: Record<string, { group: keyof HealthSnapshot["groups"]; fn: CheckFn }> = {
+  twilio: { group: "external", fn: checkTwilio },
+  openai: { group: "external", fn: checkOpenAi },
+  elevenlabs: { group: "external", fn: checkElevenLabs },
+  mapbox: { group: "external", fn: checkMapbox },
+  google: { group: "external", fn: checkGoogle },
+  stripe: { group: "external", fn: checkStripe },
+  database: { group: "internal", fn: checkDb },
+  process: { group: "internal", fn: checkProcess },
+  scheduler: { group: "background", fn: checkScheduler },
+  geoQueue: { group: "background", fn: checkGeoQueue },
+  auditSweep: { group: "background", fn: checkAuditSweep },
+  automations: { group: "background", fn: checkAutomations },
+  dripQueue: { group: "background", fn: checkDripQueue },
+  requests: { group: "pulse", fn: checkRequests },
+  webhooks: { group: "pulse", fn: checkWebhooks },
+  failedLogins: { group: "pulse", fn: checkFailedLogins },
+};
+export const HEALTH_CHECK_KEYS = Object.keys(CHECKS);
+
+// ---------------- the recent-checks ring buffer (health v2) ----------------
+// BOUNDED, IN-MEMORY, per check: newest first, capped at HISTORY_LIMIT, resets on
+// restart (the panel footer says so). No schema — deliberately ephemeral.
+export const HEALTH_HISTORY_LIMIT = 30;
+const history: Record<string, HealthCheck[]> = {};
+function recordHistory(key: string, c: HealthCheck): void {
+  const buf = history[key] || (history[key] = []);
+  buf.unshift(c);
+  if (buf.length > HEALTH_HISTORY_LIMIT) buf.length = HEALTH_HISTORY_LIMIT;
+}
+export function getHealthHistory(key: string): HealthCheck[] { return (history[key] || []).slice(); }
+
 // ---------------- the sweep + cache ----------------
 let snapshot: HealthSnapshot | null = null;
 let running: Promise<HealthSnapshot> | null = null;
 
+function summarize(groups: HealthSnapshot["groups"]): { summary: HealthSnapshot["summary"]; worst: HealthStatus } {
+  const all = Object.values(groups).flatMap((g) => Object.values(g));
+  const summary = { ok: all.filter((c) => c.status === "ok").length, warn: all.filter((c) => c.status === "warn").length, fail: all.filter((c) => c.status === "fail").length };
+  return { summary, worst: summary.fail ? "fail" : summary.warn ? "warn" : "ok" };
+}
+
+/** Health v2: run ONE check by key (user-initiated per-tile re-check — the sweep's
+ *  cost/frequency is untouched). Records to the ring buffer and patches the cached
+ *  snapshot's entry + summary in place, so the nav-free verdict stays coherent. */
+export async function runSingleCheck(key: string): Promise<HealthCheck | null> {
+  const entry = CHECKS[key];
+  if (!entry) return null;
+  const c = await runCheck(entry.fn);
+  recordHistory(key, c);
+  if (snapshot) {
+    (snapshot.groups[entry.group] as Record<string, HealthCheck>)[key] = c;
+    const { summary, worst } = summarize(snapshot.groups);
+    snapshot.summary = summary;
+    snapshot.worst = worst;
+  }
+  return c;
+}
+
 export async function runHealthChecks(): Promise<HealthSnapshot> {
   if (running) return running; // coalesce concurrent rechecks
   running = (async () => {
-    const [twilio, openai, elevenlabs, mapbox, google, dbc, proc, scheduler, geoQueue, auditSweep, automations, dripQueue, requests, webhooks, failedLogins] = await Promise.all([
-      runCheck(checkTwilio), runCheck(checkOpenAi), runCheck(checkElevenLabs), runCheck(checkMapbox), runCheck(checkGoogle),
-      runCheck(checkDb), runCheck(checkProcess),
-      runCheck(checkScheduler), runCheck(checkGeoQueue), runCheck(checkAuditSweep), runCheck(checkAutomations), runCheck(checkDripQueue),
-      runCheck(checkRequests), runCheck(checkWebhooks), runCheck(checkFailedLogins),
-    ]);
-    const groups = {
-      external: { twilio, openai, elevenlabs, mapbox, google },
-      internal: { database: dbc, process: proc },
-      background: { scheduler, geoQueue, auditSweep, automations, dripQueue },
-      pulse: { requests, webhooks, failedLogins },
-    };
-    const all = Object.values(groups).flatMap((g) => Object.values(g));
-    const summary = { ok: all.filter((c) => c.status === "ok").length, warn: all.filter((c) => c.status === "warn").length, fail: all.filter((c) => c.status === "fail").length };
-    const worst: HealthStatus = summary.fail ? "fail" : summary.warn ? "warn" : "ok";
+    const keys = Object.keys(CHECKS);
+    const results = await Promise.all(keys.map((k) => runCheck(CHECKS[k].fn)));
+    const groups: HealthSnapshot["groups"] = { external: {}, internal: {}, background: {}, pulse: {} };
+    keys.forEach((k, i) => {
+      (groups[CHECKS[k].group] as Record<string, HealthCheck>)[k] = results[i];
+      recordHistory(k, results[i]); // every sweep feeds the ring buffer
+    });
+    const { summary, worst } = summarize(groups);
     snapshot = { checkedAt: new Date().toISOString(), summary, worst, groups };
     return snapshot;
   })();

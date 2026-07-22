@@ -83,13 +83,7 @@ authRouter.get("/me", async (req: Request, res: Response) => {
   // Billing tab (server still enforces the endpoint independently).
   permView["billing"] = await can(req.user as any, "billing", "view");
   const lockedPages = (req.user as any)?.tenantId ? await getLockedPages((req.user as any).tenantId) : [];
-  // System Health nav-dot (audit-fixes-health): hub-tier users get the CACHED health
-  // verdict on the boot payload they already fetch — no extra request, no polling.
-  let healthWorst: string | null = null;
-  if (["OWNER", "SUPER_ADMIN", "AUDITOR"].includes((req.user as any).role)) {
-    try { const snap = require("../services/healthService").getHealthSnapshot(); healthWorst = snap ? snap.worst : null; } catch { /* nicety only */ }
-  }
-  res.json({ user: { ...req.user, permView, lockedPages }, features: { smsEnabled: smsEnabled() }, healthWorst });
+  res.json({ user: { ...req.user, permView, lockedPages }, features: { smsEnabled: smsEnabled() } });
 });
 
 authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => {

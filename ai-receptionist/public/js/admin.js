@@ -985,7 +985,10 @@
     const wrap = el("div", "fade-in settings-tiles-shell");
     const tiles = el("div", "settings-tiles");
     const panel = el("div");
-    let active = DEVTOOL_SECTIONS[0] && DEVTOOL_SECTIONS[0].key;
+    // health v2: a ONE-SHOT deep-link hint ({ section, subtab, auditFilter }) lets
+    // health panels jump straight into the Audit Log pre-filtered. Consumed on read.
+    const hint = App.state._devtoolsHint || null;
+    let active = (hint && hint.section) || (DEVTOOL_SECTIONS[0] && DEVTOOL_SECTIONS[0].key);
     function paintTiles() {
       tiles.innerHTML = "";
       DEVTOOL_SECTIONS.forEach((s) => {
@@ -1009,7 +1012,8 @@
   function renderHistorySection(panel) {
     const bar = el("div", "settings-tabs");
     const body = el("div");
-    let active = HISTORY_SUBTABS[0] && HISTORY_SUBTABS[0].key;
+    const hint = App.state._devtoolsHint || null;
+    let active = (hint && hint.subtab) || (HISTORY_SUBTABS[0] && HISTORY_SUBTABS[0].key);
     function paintBar() {
       bar.innerHTML = "";
       HISTORY_SUBTABS.forEach((t) => {
@@ -1058,7 +1062,143 @@
   }
 
   const HEALTH_GROUP_LABELS = { external: "External services", internal: "Internal", background: "Background work", pulse: "Last 24 hours" };
-  const HEALTH_CHECK_LABELS = { twilio: "Twilio", openai: "OpenAI", elevenlabs: "ElevenLabs", mapbox: "Mapbox", google: "Google", database: "Database", process: "Process", scheduler: "Scheduler", geoQueue: "Geocode queue", auditSweep: "Audit retention", automations: "Automations", dripQueue: "Drip queue", requests: "Requests", webhooks: "Webhook deliveries", failedLogins: "Failed logins" };
+  const HEALTH_CHECK_LABELS = { twilio: "Twilio", openai: "OpenAI", elevenlabs: "ElevenLabs", mapbox: "Mapbox", google: "Google Calendar", stripe: "Stripe", database: "Database", process: "Process", scheduler: "Scheduler", geoQueue: "Geocode queue", auditSweep: "Audit retention", automations: "Automations", dripQueue: "Drip queue", requests: "Requests", webhooks: "Webhook deliveries", failedLogins: "Failed logins" };
+
+  // Health v2 — the two FACES. External services wear their integration LOGO (the
+  // same asset set Settings -> Integrations uses); everything else wears a small
+  // inline-SVG mini-widget drawn in the current accent (stroke/fill = currentColor).
+  const HEALTH_LOGOS = { twilio: "/img/twilio.png", openai: "/img/openai.webp", elevenlabs: "/img/elevenlabs.png", mapbox: "/img/mapbox.png", google: "/img/google-calendar.webp", stripe: "/img/stripe.png" };
+  const HW = (inner) => `<svg class="health-widget" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+  const HEALTH_WIDGETS = {
+    database: HW('<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>'),
+    process: HW('<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>'),
+    scheduler: HW('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'),
+    geoQueue: HW('<path d="M12 21s-7-6.1-7-11a7 7 0 1 1 14 0c0 4.9-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/>'),
+    auditSweep: HW('<path d="M12 3l8 3v5c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6z"/><path d="M9 12l2 2 4-4.5"/>'),
+    automations: HW('<path d="M13 2L4.5 13.5H11l-1 8.5L18.5 10H12z"/>'),
+    dripQueue: HW('<path d="M12 3s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/>'),
+    requests: HW('<path d="M2 12h4l3-7 4 14 3-7h6"/>'),
+    webhooks: HW('<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/>'),
+    failedLogins: HW('<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/><path d="M12 14.5v2.5"/>'),
+  };
+
+  // Health v2 — plain-language captions: one honest line per tile (required wording
+  // for Google Calendar / Stripe / ElevenLabs per spec).
+  const HEALTH_CAPTIONS = {
+    twilio: "Provides the phone numbers and call routing for the AI receptionist.",
+    openai: "The language model that powers the AI receptionist's conversations.",
+    elevenlabs: "Premium call voices \u2014 synthesized by Twilio ConversationRelay using ElevenLabs; no direct API connection from Clarity.",
+    mapbox: "Turns addresses into map locations for contact and record maps.",
+    google: "Syncs busy times and bookings with connected Google Calendars.",
+    stripe: "Powers tenant billing \u2014 charges, invoices, and payment records in Billing & Usage.",
+    database: "The Postgres database storing all portal data.",
+    process: "The Clarity app process itself \u2014 uptime and memory.",
+    scheduler: "The heartbeat that runs automations and scheduled work every couple of minutes.",
+    geoQueue: "The background queue that turns contact and record addresses into map locations.",
+    auditSweep: "The hourly cleanup that enforces the audit trail's retention policy.",
+    automations: "Automation runs over the last day \u2014 failures here mean an automation needs attention.",
+    dripQueue: "Delayed and scheduled automation steps waiting for their moment to run.",
+    requests: "Web traffic counters for the last day.",
+    webhooks: "Email delivery reports from the provider over the last day.",
+    failedLogins: "Sign-in attempts that failed in the last day, straight from the audit trail.",
+  };
+
+  // Health v2 — the expanded detail panel. Full width, directly beneath the tile's
+  // SECTION row; a strict accordion (opening another tile's panel closes the open
+  // one in that section); \u2715 closes. Content: caption, full untruncated status,
+  // per-tile extras, the recent-checks ring-buffer table (shared table styling),
+  // and a per-tile Re-check that runs ONLY that check.
+  const healthPanelHosts = {}; // groupKey -> host element (rebuilt each paint)
+  function closeHealthPanel(host) { if (host) { host.innerHTML = ""; host.classList.add("u-hidden"); if (host._openKey) host._openKey = null; } }
+  async function openHealthPanel(groupKey, checkKey, tile) {
+    const host = healthPanelHosts[groupKey];
+    if (!host) return;
+    if (host._openKey === checkKey) { closeHealthPanel(host); return; } // toggling the same tile closes
+    host._openKey = checkKey;
+    host.classList.remove("u-hidden");
+    host.innerHTML = `<div class="card health-panel"><span class="cell-muted">Loading\u2026</span></div>`;
+    let d;
+    try { d = await App.api(`/api/admin/health/detail/${encodeURIComponent(checkKey)}`); }
+    catch (e) { host.innerHTML = `<div class="card health-panel cell-muted">${esc(e.message)}</div>`; return; }
+    if (host._openKey !== checkKey) return; // another tile opened meanwhile
+    paintHealthPanel(host, groupKey, checkKey, tile, d);
+  }
+  function healthHistoryRows(history) {
+    return (history || []).map((h) => `<tr><td class="cell-muted">${fmtDate(h.checkedAt)}</td><td><span class="health-dot ${esc(h.status)}"></span> ${esc(h.status)}</td><td>${h.latencyMs} ms</td><td class="health-hist-detail">${esc(h.detail)}</td></tr>`).join("");
+  }
+  function paintHealthPanel(host, groupKey, checkKey, tile, d) {
+    const label = HEALTH_CHECK_LABELS[checkKey] || checkKey;
+    const cur = d.current;
+    const panel = el("div", "card health-panel");
+    const head = el("div", "health-panel-head");
+    head.innerHTML = `<strong>${esc(label)}</strong>`;
+    const closeBtn = el("button", "icon-btn health-panel-close", "\u2715");
+    closeBtn.setAttribute("aria-label", "Close " + label + " details");
+    head.appendChild(closeBtn);
+    panel.appendChild(head);
+    panel.appendChild(el("p", "cell-muted health-caption", HEALTH_CAPTIONS[checkKey] || ""));
+
+    const statusWrap = el("div", "health-panel-status");
+    function statusHtml(c) {
+      if (!c) return `<span class="cell-muted">No check has run yet \u2014 use Re-check now.</span>`;
+      return `<span class="health-card-head"><span class="health-dot ${esc(c.status)}"></span><strong>${esc(c.status.toUpperCase())}</strong></span><span class="health-panel-detail">${esc(c.detail)}</span><span class="cell-muted health-card-meta">${c.latencyMs} ms \u00b7 checked ${fmtDate(c.checkedAt)}</span>`;
+    }
+    statusWrap.innerHTML = statusHtml(cur);
+    panel.appendChild(statusWrap);
+
+    // per-tile extras (cheap reads served by the detail endpoint)
+    const ex = d.extras || {};
+    if (checkKey === "twilio" && ex.phoneNumber) {
+      panel.appendChild(el("p", "cell-muted health-extra", "Number: " + esc(ex.phoneNumber) + " \u00b7 " + esc(ex.webhookNote || "")));
+    }
+    if ((checkKey === "automations" || checkKey === "dripQueue")) {
+      const fails = ex.recentFailures || [];
+      if (fails.length) {
+        const ul = el("ul", "health-fail-list");
+        fails.forEach((fjob) => { ul.appendChild(el("li", null, `${esc(fjob.automationName || "(automation)")} \u2014 ${esc(fjob.contactName || "\u2014")} \u00b7 <span class="cell-muted">${fmtDate(fjob.createdAt || fjob.dueAt)}</span>${fjob.error ? ` \u00b7 <span class="cell-muted">${esc(fjob.error)}</span>` : ""}`)); });
+        panel.appendChild(el("h4", "settings-sub", "Failures (24h)"));
+        panel.appendChild(ul);
+      }
+      const link = el("button", "btn btn-ghost btn-sm", "Open in Audit Log \u2197");
+      link.onclick = () => {
+        App.state._devtoolsHint = { section: "history", subtab: "auditlog", auditFilter: { group: "automations", from: new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) } };
+        renderDevTools(); // re-enter the shell; the one-shot hint routes to the pre-filtered log
+      };
+      panel.appendChild(link);
+    }
+    if (checkKey === "scheduler") {
+      panel.appendChild(el("p", "cell-muted health-extra", "The table below doubles as the tick log \u2014 each row is one look at the heartbeat."));
+    }
+
+    // the recent-checks table (ring buffer; shared table styling)
+    panel.appendChild(el("h4", "settings-sub", "Recent checks"));
+    const twrap = el("div", "table-wrap card health-history");
+    twrap.innerHTML = `<table><thead><tr><th>Time</th><th>Status</th><th>Latency</th><th>Detail</th></tr></thead><tbody>${healthHistoryRows(d.history) || `<tr><td colspan="4" class="cell-muted">No checks recorded yet.</td></tr>`}</tbody></table>`;
+    panel.appendChild(twrap);
+    panel.appendChild(el("p", "cell-muted health-panel-foot", `History is kept in memory (last ${d.historyLimit || 30} checks per item) and resets when the app restarts.`));
+
+    // per-tile re-check: runs ONLY this check; updates the face + status + table
+    const re = el("button", "btn btn-ghost btn-sm health-recheck-one", "Re-check now");
+    re.onclick = async () => {
+      re.disabled = true;
+      try {
+        const r = await App.api(`/api/admin/health/recheck/${encodeURIComponent(checkKey)}`, { method: "POST" });
+        statusWrap.innerHTML = statusHtml(r.check);
+        twrap.querySelector("tbody").innerHTML = healthHistoryRows(r.history);
+        if (tile) { // repaint BOTH faces' dot + the back detail/meta in place
+          tile.querySelectorAll(".health-dot").forEach((dEl) => { dEl.className = "health-dot " + r.check.status; });
+          const det = tile.querySelector(".health-card-detail"); if (det) det.textContent = r.check.detail;
+          const metaEl = tile.querySelector(".health-card-meta"); if (metaEl) metaEl.textContent = `${r.check.latencyMs} ms \u00b7 ${fmtDate(r.check.checkedAt)}`;
+        }
+      } catch (e) { toast(e.message); }
+      re.disabled = false;
+    };
+    head.insertBefore(re, closeBtn);
+    closeBtn.onclick = () => closeHealthPanel(host);
+
+    host.innerHTML = "";
+    host.appendChild(panel);
+  }
 
   async function renderHealthOverview(host) {
     App.util.showSkeleton(host, "widgets");
@@ -1071,35 +1211,70 @@
   function paintHealth(host, snap) {
     host.innerHTML = "";
     const wrap = el("div", "fade-in");
-    const issues = (snap.summary.warn || 0) + (snap.summary.fail || 0);
-    const banner = el("div", "card health-banner" + (snap.worst === "fail" ? " health-banner--fail" : snap.worst === "warn" ? " health-banner--warn" : ""));
-    const recheck = el("button", "btn btn-ghost btn-sm", "Re-check now");
-    banner.appendChild(el("span", "health-dot " + snap.worst));
-    banner.appendChild(el("strong", null, issues === 0 ? "All systems normal" : issues + (issues === 1 ? " issue" : " issues")));
-    banner.appendChild(el("span", "cell-muted health-banner-when", "Checked " + fmtDate(snap.checkedAt)));
-    banner.appendChild(recheck);
+    // health v2: NO banner — the per-tile dots carry status. One small right-aligned
+    // "Re-check all" above the first section is the only global control.
+    const reAllRow = el("div", "health-reall-row");
+    const recheck = el("button", "btn btn-ghost btn-sm", "Re-check all");
     recheck.onclick = async () => {
       recheck.disabled = true;
       App.util.showSkeleton(host, "widgets");
       try {
         const fresh = await App.api("/api/admin/health/recheck", { method: "POST" });
-        App.state.healthWorst = fresh.worst || null; // keep the nav dot honest without polling
         paintHealth(host, fresh);
       } catch (e) { toast(e.message); paintHealth(host, snap); }
     };
-    wrap.appendChild(banner);
+    reAllRow.appendChild(recheck);
+    wrap.appendChild(reAllRow);
 
     Object.keys(snap.groups).forEach((gk) => {
       const checks = snap.groups[gk] || {};
       wrap.appendChild(el("div", "eyebrow health-group-eyebrow", esc(HEALTH_GROUP_LABELS[gk] || gk)));
+      const scroller = el("div", "health-scroller");
       const grid = el("div", "settings-tiles health-grid");
+      scroller.appendChild(grid);
+      const panelHost = el("div", "health-panel-host u-hidden");
+      healthPanelHosts[gk] = panelHost;
+      // snap-scroll affordance: fades/chevron only where there IS more to scroll
+      const syncFade = () => {
+        scroller.classList.toggle("can-left", grid.scrollLeft > 4);
+        scroller.classList.toggle("can-right", grid.scrollLeft + grid.clientWidth < grid.scrollWidth - 4);
+      };
+      grid.addEventListener("scroll", syncFade, { passive: true });
+      scroller.appendChild(el("span", "health-hint", "\u203a"));
+      requestAnimationFrame(syncFade);
       Object.keys(checks).forEach((ck) => {
         const c = checks[ck];
-        const tile = el("div", "settings-tile health-card");
-        tile.innerHTML = `<span class="health-card-head"><span class="health-dot ${esc(c.status)}"></span><strong>${esc(HEALTH_CHECK_LABELS[ck] || ck)}</strong></span><span class="cell-muted health-card-detail">${esc(c.detail)}</span><span class="cell-muted health-card-meta">${c.latencyMs} ms \u00b7 ${fmtDate(c.checkedAt)}</span>`;
+        // Health v2: a TWO-FACED tile. Hover flips (mouse enter/leave), tap flips
+        // (touch/first click), Enter/Space flips (keyboard); clicking the flipped
+        // BACK — or its "Expand \u2197" affordance — opens the expanded panel.
+        // Identical footprint both faces (absolutely-stacked in a fixed-height
+        // inner), so flipping causes ZERO layout shift. Reduced motion: crossfade.
+        const tile = el("div", "settings-tile health-card health-flip");
+        tile.tabIndex = 0;
+        tile.setAttribute("role", "button");
+        tile.setAttribute("aria-label", (HEALTH_CHECK_LABELS[ck] || ck) + " health tile — press Enter to flip, again to expand");
+        const faceMedia = HEALTH_LOGOS[ck]
+          ? `<img class="intg-logo health-face-logo" src="${esc(HEALTH_LOGOS[ck])}" alt="${esc(HEALTH_CHECK_LABELS[ck] || ck)} logo">`
+          : (HEALTH_WIDGETS[ck] || "");
+        tile.innerHTML = `<div class="health-flip-inner">
+          <div class="health-face health-face-front">${faceMedia}<span class="health-card-head"><span class="health-dot ${esc(c.status)}"></span><strong>${esc(HEALTH_CHECK_LABELS[ck] || ck)}</strong></span></div>
+          <div class="health-face health-face-back"><span class="health-card-head"><span class="health-dot ${esc(c.status)}"></span><strong>${esc(HEALTH_CHECK_LABELS[ck] || ck)}</strong></span><span class="cell-muted health-card-detail">${esc(c.detail)}</span><span class="cell-muted health-card-meta">${c.latencyMs} ms \u00b7 ${fmtDate(c.checkedAt)}</span><button class="btn btn-ghost btn-sm health-expand" type="button">Expand \u2197</button></div>
+        </div>`;
+        const flip = (on) => tile.classList.toggle("flipped", on === undefined ? undefined : !!on);
+        tile.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") flip(true); });
+        tile.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") flip(false); });
+        tile.addEventListener("click", (e) => {
+          if (!tile.classList.contains("flipped")) { flip(true); return; } // first tap (touch) flips
+          openHealthPanel(gk, ck, tile); // the flipped back (or Expand) opens the panel
+        });
+        tile.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!tile.classList.contains("flipped")) flip(true); else openHealthPanel(gk, ck, tile); }
+          if (e.key === "Escape") flip(false);
+        });
         grid.appendChild(tile);
       });
-      wrap.appendChild(grid);
+      wrap.appendChild(scroller);
+      wrap.appendChild(panelHost); // the full-width panel opens directly beneath this section's row
     });
     host.appendChild(wrap);
   }
@@ -1198,6 +1373,11 @@
 
     // filter state (server-side; the DT-2 [status, createdAt] index backs the default view)
     const f = { tenantId: "", actorType: "", group: "", status: "active", from: "", to: "" };
+    // health v2: consume a one-shot deep-link prefilter (e.g. the Automations panel
+    // links here with group=automations + the 7-day range).
+    const hint = App.state._devtoolsHint || null;
+    if (hint && hint.auditFilter) Object.assign(f, hint.auditFilter);
+    App.state._devtoolsHint = null;
     let rows = [];
     let nextCursor = null;
 
@@ -1211,26 +1391,21 @@
     const mkSel = (optionPairs, onchange) => { const s = el("select", "input adm-cadsel"); optionPairs.forEach((pair) => { const o = el("option", null, esc(pair[1])); o.value = pair[0]; s.appendChild(o); }); s.onchange = () => onchange(s.value); return s; };
     bar.appendChild(mkSel([["", "All tenants"]].concat((portals || []).map((p) => [p.id, p.name])), (v) => { f.tenantId = v; reload(); }));
     bar.appendChild(mkSel([["", "All actors"], ["user", "People"], ["ai", "AI receptionist"], ["automation", "Automations"], ["system", "System"]], (v) => { f.actorType = v; reload(); }));
-    bar.appendChild(mkSel([["", "All actions"]].concat(meta.groups.map((g) => [g.key, g.label])), (v) => { f.group = v; reload(); }));
+    const groupSel = mkSel([["", "All actions"]].concat(meta.groups.map((g) => [g.key, g.label])), (v) => { f.group = v; reload(); });
+    if (f.group) groupSel.value = f.group;
+    bar.appendChild(groupSel);
     bar.appendChild(mkSel([["active", "Active"], ["pending_deletion", "Pending deletion"], ["all", "All"]], (v) => { f.status = v; reload(); }));
-    // ONE "Date range" preset select (All time default); Custom\u2026 reveals the pair.
-    // Same server params (from/to) underneath — presets just compute them.
+    // ONE "Date range" preset select — exactly four options (health-v2: the custom
+    // date pair is gone; the Time column's sort covers fine-grained needs).
     const dayIso = (d) => d.toISOString().slice(0, 10);
-    const customWrap = el("span", "adm-audit-customdates u-hidden");
-    const fromEl = el("input", "input adm-cadsel"); fromEl.type = "date"; fromEl.onchange = () => { f.from = fromEl.value; reload(); };
-    const toEl = el("input", "input adm-cadsel"); toEl.type = "date"; toEl.onchange = () => { f.to = toEl.value; reload(); };
-    customWrap.appendChild(fromEl); customWrap.appendChild(toEl);
-    const rangeSel = mkSel([["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["14", "Last 14 days"], ["custom", "Custom\u2026"]], (v) => {
+    const rangeSel = mkSel([["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["14", "Last 14 days"]], (v) => {
       const now = new Date();
-      customWrap.classList.toggle("u-hidden", v !== "custom");
       if (v === "all") { f.from = ""; f.to = ""; }
       else if (v === "today") { f.from = dayIso(now); f.to = dayIso(now); }
-      else if (v === "7" || v === "14") { const d = new Date(now.getTime() - (Number(v) - 1) * 86400000); f.from = dayIso(d); f.to = dayIso(now); }
-      else { f.from = fromEl.value; f.to = toEl.value; }
-      if (v !== "custom") { fromEl.value = f.from; toEl.value = f.to; }
+      else { const d = new Date(now.getTime() - (Number(v) - 1) * 86400000); f.from = dayIso(d); f.to = dayIso(now); }
       reload();
     });
-    bar.appendChild(rangeSel); bar.appendChild(customWrap);
+    bar.appendChild(rangeSel);
     wrap.appendChild(bar);
 
     const tableHost = el("div");

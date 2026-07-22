@@ -2,7 +2,8 @@ import { Router, Request, Response, NextFunction } from "express";
 import { audit } from "../services/auditService";
 import { AUDIT_ACTION_VALUES, AUDIT_ACTION_GROUPS, AUDIT_RETENTION } from "../services/auditCatalog";
 import { queryAuditEvents } from "../services/auditQueryService";
-import { getHealthSnapshot, runHealthChecks } from "../services/healthService";
+import { getHealthSnapshot, runHealthChecks, runSingleCheck, getHealthHistory, HEALTH_CHECK_KEYS, HEALTH_HISTORY_LIMIT } from "../services/healthService";
+import { env } from "../config/env";
 import { AUDIT_ACTIONS } from "../services/auditCatalog";
 import { requireRole } from "../middleware/auth";
 import { listPortals, getPortal, createPortal, updatePortal, isBillingStatus, BILLING_STATUSES } from "../services/portalService";
@@ -436,6 +437,40 @@ adminRouter.get("/health", async (_req: Request, res: Response) => {
 adminRouter.post("/health/recheck", async (_req: Request, res: Response) => {
   try {
     res.json(await runHealthChecks());
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+// Health v2: expanded-panel data for ONE check — current cache entry, the in-memory
+// recent-checks buffer (newest first, bounded), and cheap per-tile extras (reads
+// only; no provider pings beyond what the check itself makes on recheck).
+adminRouter.get("/health/detail/:check", async (req: Request, res: Response) => {
+  try {
+    const key = String(req.params.check);
+    if (!HEALTH_CHECK_KEYS.includes(key)) { res.status(404).json({ error: "unknown check" }); return; }
+    const snap = getHealthSnapshot();
+    let current: any = null;
+    if (snap) for (const g of Object.values(snap.groups)) if ((g as any)[key]) current = (g as any)[key];
+    const extras: Record<string, unknown> = {};
+    if (key === "twilio") {
+      extras.phoneNumber = env.TWILIO_PHONE_NUMBER || null;
+      extras.webhookNote = "Inbound call + SMS webhooks are configured on this number in the Twilio console.";
+    }
+    if (key === "automations") {
+      try { extras.recentFailures = await (prisma as any).automationRun.findMany({ where: { status: "failed", createdAt: { gte: new Date(Date.now() - 24 * 60 * 60_000) } }, orderBy: { createdAt: "desc" }, take: 10, select: { id: true, automationName: true, contactName: true, createdAt: true } }); } catch { extras.recentFailures = []; }
+    }
+    if (key === "dripQueue") {
+      try { extras.recentFailures = await (prisma as any).scheduledJob.findMany({ where: { status: "failed", updatedAt: { gte: new Date(Date.now() - 24 * 60 * 60_000) } }, orderBy: { updatedAt: "desc" }, take: 10, select: { id: true, automationName: true, contactName: true, dueAt: true, error: true } }); } catch { extras.recentFailures = []; }
+    }
+    res.json({ key, current, history: getHealthHistory(key), historyLimit: HEALTH_HISTORY_LIMIT, extras });
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+// Health v2: re-run ONE check (user-initiated; the sweep cadence is untouched).
+adminRouter.post("/health/recheck/:check", async (req: Request, res: Response) => {
+  try {
+    const c = await runSingleCheck(String(req.params.check));
+    if (!c) { res.status(404).json({ error: "unknown check" }); return; }
+    res.json({ check: c, history: getHealthHistory(String(req.params.check)) });
   } catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 

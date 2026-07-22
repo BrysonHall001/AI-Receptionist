@@ -3307,21 +3307,66 @@ body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-t
 .adm-diff-arrow { color: var(--ink-faint); }
 .adm-diff-val { white-space: pre-wrap; overflow-wrap: anywhere; display: inline-block; max-width: 100%; }
 tbody tr.adm-audit-pending td { opacity: 0.55; }
-.adm-audit-customdates { display: inline-flex; gap: 8px; min-width: 0; }
 
 /* System Health (audit-fixes-health; token-only, on the settings-tile pattern) */
-.health-banner { display: flex; align-items: center; gap: 10px; padding: 14px 18px; margin-bottom: 16px; flex-wrap: wrap; min-width: 0; }
-.health-banner--warn { border-color: var(--amber); }
-.health-banner--fail { border-color: var(--red); }
-.health-banner-when { margin-right: auto; }
 .health-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--green); flex: none; display: inline-block; }
 .health-dot.warn { background: var(--amber); }
 .health-dot.fail { background: var(--red); }
 .health-group-eyebrow { margin: 6px 0 8px; }
-.health-grid { align-items: stretch; }
 .health-card { display: flex; flex-direction: column; gap: 6px; cursor: default; max-width: 280px; min-width: 0; }
 .health-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .health-card-detail { font-size: var(--text-sm); overflow-wrap: anywhere; }
 .health-card-meta { font-size: var(--text-xs); }
-.nav-health-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--amber); display: inline-block; margin-left: 8px; flex: none; }
-.nav-health-dot.fail { background: var(--red); }
+
+/* Health v2 — flip tiles (3D on the motion token; reduced motion = crossfade).
+   Both faces are absolutely stacked inside a fixed-height inner, so the footprint
+   is identical flipped or not — zero layout shift. */
+.health-flip { perspective: 900px; padding: 0; cursor: pointer; min-height: 148px; }
+.health-flip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.health-flip-inner { position: relative; width: 100%; height: 148px; transform-style: preserve-3d; transition: transform var(--transition); }
+.health-flip.flipped .health-flip-inner { transform: rotateY(180deg); }
+.health-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; overflow: hidden; }
+.health-face-front { align-items: flex-start; justify-content: center; gap: 10px; }
+.health-face-back { transform: rotateY(180deg); }
+.health-face-logo { width: auto; height: 24px; max-width: 130px; object-fit: contain; }
+.health-widget { width: 32px; height: 32px; color: var(--accent); flex: none; }
+.health-expand { align-self: flex-end; margin-top: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .health-flip-inner { transform-style: flat; }
+  .health-flip.flipped .health-flip-inner { transform: none; }
+  .health-face { transition: none; }
+  .health-face-back { transform: none; opacity: 0; pointer-events: none; }
+  .health-flip.flipped .health-face-front { opacity: 0; pointer-events: none; }
+  .health-flip.flipped .health-face-back { opacity: 1; pointer-events: auto; }
+}
+
+/* Health v2 — expanded detail panels (accordion beneath each section row) */
+.health-panel-host { min-width: 0; margin-bottom: 16px; }
+.health-panel { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; min-width: 0; }
+.health-panel-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; min-width: 0; }
+.health-panel-head strong { margin-right: auto; }
+.health-panel-close { flex: none; }
+.health-caption { margin: 0; }
+.health-panel-status { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.health-panel-detail { overflow-wrap: anywhere; }
+.health-extra { margin: 0; }
+.health-fail-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.health-history { max-height: 300px; overflow: auto; min-width: 0; }
+.health-hist-detail { overflow-wrap: anywhere; }
+.health-panel-foot { margin: 0; font-size: var(--text-xs); }
+
+/* Health v2 — section snap-scrollers. Tiles sit in ONE row per section; when they
+   fit, the row is static and simply ends; when they overflow, the row scroll-snaps
+   horizontally with an edge fade + chevron affordance on the side that has more.
+   Future tiles slot in with zero layout surgery. */
+.health-scroller { position: relative; min-width: 0; margin-bottom: 16px; }
+.health-grid { display: flex; flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; gap: 12px; align-items: stretch; padding-bottom: 6px; min-width: 0; }
+.health-grid > .health-flip { flex: 0 0 236px; scroll-snap-align: start; min-width: 0; }
+.health-scroller::before, .health-scroller::after { content: ""; position: absolute; top: 0; bottom: 6px; width: 34px; pointer-events: none; opacity: 0; transition: opacity var(--transition); z-index: 1; }
+.health-scroller::before { left: 0; background: linear-gradient(to right, var(--bg), transparent); }
+.health-scroller::after { right: 0; background: linear-gradient(to left, var(--bg), transparent); }
+.health-scroller.can-left::before { opacity: 1; }
+.health-scroller.can-right::after { opacity: 1; }
+.health-scroller .health-hint { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); color: var(--ink-faint); opacity: 0; transition: opacity var(--transition); pointer-events: none; z-index: 2; font-size: var(--text-lg); }
+.health-scroller.can-right .health-hint { opacity: 1; }
+.health-reall-row { display: flex; justify-content: flex-end; margin-bottom: 10px; min-width: 0; }
