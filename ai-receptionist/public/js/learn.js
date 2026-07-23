@@ -30,7 +30,7 @@
       cat: "Getting started",
       items: [
         {
-          id: "orientation",
+          id: "orientation", features: ["always"],
           title: "Finding your way around: Modules and Pages",
           blocks: [
             { p: "Clarity's navigation has two parts, and the split is the key to the whole app. The LEFT navigation lists your MODULES — the kinds of data your business keeps, like [[#/contacts|Contacts]], [[#/jobs|Jobs]], and [[#/bookings|Bookings]], plus any modules you create. Modules are highly configurable: their fields are grouped into sections, they offer custom views, and you can rename them to your own words." },
@@ -46,7 +46,7 @@
           ],
         },
         {
-          id: "home-dashboard",
+          id: "home-dashboard", features: ["page:#/dashboard"],
           title: "Your Home Dashboard",
           blocks: [
             { p: "The [[#/dashboard|Home Dashboard]] is a live snapshot of your business built from widgets — the same widgets the [[#/reports|Analytics]] page uses." },
@@ -59,7 +59,7 @@
           ],
         },
         {
-          id: "account-basics",
+          id: "account-basics", features: ["always"],
           title: "Your account: password and email signature",
           blocks: [
             { p: "Personal settings live under [[#/settings/account|Settings → Your account]]." },
@@ -76,7 +76,7 @@
       cat: "Calls & your AI receptionist", page: "#/calls",
       items: [
         {
-          id: "call-log",
+          id: "call-log", features: ["page:#/calls"],
           title: "Reading the call log",
           blocks: [
             { p: "Every call your AI receptionist handles is logged on the [[#/calls|Calls]] page: who called, their number, the reason for the call, its status, and when it happened." },
@@ -88,7 +88,7 @@
           ],
         },
         {
-          id: "receptionist-setup",
+          id: "receptionist-setup", features: ["page:#/calls", "receptionist"],
           title: "Configuring your receptionist",
           blocks: [
             { p: "How the receptionist greets callers and behaves is configured in [[#/settings/aireceptionist|Settings → AI Receptionist]]." },
@@ -101,7 +101,7 @@
           ],
         },
         {
-          id: "lead-capture",
+          id: "lead-capture", features: ["page:#/calls"],
           title: "Capturing leads with a shareable form",
           blocks: [
             { p: "[[#/settings/leadcapture|Settings → Lead capture]] gives you a form you can share or embed; submissions become new contacts automatically." },
@@ -118,7 +118,7 @@
       cat: "Working with records", pagesAll: ["#/contacts", "#/jobs", "#/bookings"],
       items: [
         {
-          id: "how-organized",
+          id: "how-organized", features: ["always"],
           title: "How Clarity is organized: fields \u2192 sections \u2192 modules \u2192 links",
           blocks: [
             { p: "Everything in Clarity hangs off one simple hierarchy. FIELDS are the individual pieces of information — a name, a phone number, a date. Fields live in SECTIONS, which group related fields together on a record's panel (contact details in one section, preferences in another). Sections make up a MODULE — [[#/contacts|Contacts]], [[#/jobs|Jobs]], [[#/bookings|Bookings]], or any module you create — and each module holds one kind of record." },
@@ -132,7 +132,7 @@
           ],
         },
         {
-          id: "add-edit-records",
+          id: "add-edit-records", features: ["always"],
           title: "Adding and editing records",
           blocks: [
             { steps: [
@@ -145,7 +145,7 @@
           ],
         },
         {
-          id: "five-views",
+          id: "five-views", features: ["always"],
           title: "The five views: list, kanban, calendar, gallery, map",
           blocks: [
             { p: "Every module can offer up to five ways of seeing the same records. Switch views with the buttons above the table." },
@@ -153,15 +153,17 @@
               "List — the classic table: sort, filter, and manage columns.",
               "Kanban — cards grouped into status columns; drag a card to change its status.",
               "Calendar — appears when the module has a date field; records land on their date.",
-              "Gallery — large cards, great for records with images.",
-              "Map — appears when the module has an address and mapping is connected.",
             ] },
+            { feature: "view:gallery", steps: ["Gallery — large cards, great for records with images."] },
+            { featureOff: "view:gallery", p: "(This portal doesn't currently use the gallery view.)" },
+            { feature: "view:map", steps: ["Map — appears when the module has an address and mapping is connected."] },
+            { featureOff: "view:map", p: "(This portal doesn't currently use the map view.)" },
             { p: "Which views a module offers is controlled in [[#/settings/fields|Settings → Modules & Fields]] under that module's Views panel." },
             { visual: "views-switcher", note: "animated switch between the five views" },
           ],
         },
         {
-          id: "related-records",
+          id: "related-records", features: ["always"],
           title: "Related records",
           blocks: [
             { p: "A record's panel shows related tabs — one per connected module — so a contact's jobs and bookings are one click away." },
@@ -173,7 +175,7 @@
           ],
         },
         {
-          id: "statuses-pipelines",
+          id: "statuses-pipelines", features: ["always"],
           title: "Statuses and pipelines",
           blocks: [
             { p: "Modules with a stage field have a pipeline: each record sits in exactly one stage, shown as a colored badge in lists and as columns in kanban." },
@@ -190,7 +192,7 @@
       cat: "Finding & organizing", pagesAll: ["#/contacts", "#/jobs", "#/bookings"],
       items: [
         {
-          id: "search-sort-filter",
+          id: "search-sort-filter", features: ["always"],
           title: "Search, sort, and filters",
           blocks: [
             { steps: [
@@ -203,7 +205,7 @@
           ],
         },
         {
-          id: "manage-columns",
+          id: "manage-columns", features: ["always"],
           title: "Choosing your columns",
           blocks: [
             { steps: [
@@ -214,7 +216,7 @@
           ],
         },
         {
-          id: "bulk-actions",
+          id: "bulk-actions", features: ["always"],
           title: "Bulk actions",
           blocks: [
             { steps: [
@@ -225,7 +227,7 @@
           ],
         },
         {
-          id: "import-export",
+          id: "import-export", features: ["always"],
           title: "Importing and exporting",
           blocks: [
             { p: "Bring existing data in from a spreadsheet, or take your data out, from any module's toolbar." },
@@ -238,7 +240,7 @@
           ],
         },
         {
-          id: "recycle-bin",
+          id: "recycle-bin", features: ["always"],
           title: "The recycle bin",
           blocks: [
             { p: "Deleted records aren't gone immediately — they move to the recycle bin in [[#/settings/data/recycle|Settings → Data Administration]]." },
@@ -254,7 +256,7 @@
       cat: "Analytics & dashboards", page: "#/reports",
       items: [
         {
-          id: "dashboards-overview",
+          id: "dashboards-overview", features: ["page:#/reports"],
           title: "Dashboards: Home vs Analytics",
           blocks: [
             { p: "[[#/reports|Analytics]] holds as many dashboards as you like; your [[#/dashboard|Home Dashboard]] is the one that greets you on sign-in. Both are built from the same widgets." },
@@ -265,7 +267,7 @@
           ],
         },
         {
-          id: "build-widget",
+          id: "build-widget", features: ["page:#/reports"],
           title: "Building a widget",
           blocks: [
             { steps: [
@@ -280,7 +282,7 @@
           ],
         },
         {
-          id: "widget-ranges",
+          id: "widget-ranges", features: ["page:#/reports"],
           title: "Filters, grouping, and date ranges",
           blocks: [
             { steps: [
@@ -291,7 +293,7 @@
           ],
         },
         {
-          id: "report-templates",
+          id: "report-templates", features: ["page:#/reports"],
           title: "Starting from a report template",
           blocks: [
             { steps: [
@@ -306,7 +308,7 @@
       cat: "Communication", page: "#/communication",
       items: [
         {
-          id: "send-email",
+          id: "send-email", features: ["page:#/communication"],
           title: "Sending email",
           blocks: [
             { steps: [
@@ -317,7 +319,7 @@
           ],
         },
         {
-          id: "email-templates",
+          id: "email-templates", features: ["page:#/communication"],
           title: "Email templates",
           blocks: [
             { steps: [
@@ -327,7 +329,7 @@
           ],
         },
         {
-          id: "audiences",
+          id: "audiences", features: ["page:#/communication"],
           title: "Audiences: reusable recipient lists",
           blocks: [
             { p: "An Audience is a named, dynamic filter over your contacts — \"Leads from this month\", \"Everyone with an open job\". It's resolved to its CURRENT matches each time you use it." },
@@ -340,7 +342,7 @@
           ],
         },
         {
-          id: "surveys",
+          id: "surveys", features: ["page:#/communication"],
           title: "Surveys",
           blocks: [
             { steps: [
@@ -351,10 +353,12 @@
           ],
         },
         {
-          id: "drips",
+          id: "drips", features: ["page:#/communication"],
           title: "Drip sequences",
           blocks: [
             { p: "A drip sends a series of messages on a schedule — day 1 welcome, day 3 follow-up — to everyone enrolled." },
+            { feature: "sms", p: "Steps can be emails or text messages — mix both in one sequence." },
+            { featureOff: "sms", p: "(Texting isn't enabled on this platform, so drip steps send as email.)" },
             { steps: [
               "Open [[#/communication|Communication]] → Drips and create a sequence of timed messages.",
               "Enroll contacts or an Audience; each person moves through the steps automatically.",
@@ -367,7 +371,7 @@
       cat: "Automations", page: "#/automations",
       items: [
         {
-          id: "automations-basics",
+          id: "automations-basics", features: ["page:#/automations"],
           title: "How automations work",
           blocks: [
             { p: "An automation is a trigger (something happens — a record is created, a stage changes) plus one or more actions (send an email, update a field). Once on, it runs by itself." },
@@ -379,7 +383,7 @@
           ],
         },
         {
-          id: "automation-presets",
+          id: "automation-presets", features: ["page:#/automations"],
           title: "Starting from a preset",
           blocks: [
             { steps: [
@@ -395,7 +399,7 @@
       cat: "Scheduling & team",
       items: [
         {
-          id: "staff-resources",
+          id: "staff-resources", features: ["always"],
           title: "Staff and resources",
           blocks: [
             { steps: [
@@ -405,14 +409,14 @@
           ],
         },
         {
-          id: "business-hours",
+          id: "business-hours", features: ["always"],
           title: "Business hours",
           blocks: [
             { p: "Your hours live in [[#/settings/scheduling|Settings → Scheduling & Resources]] and are the single source of truth — the AI receptionist reads them from here too." },
           ],
         },
         {
-          id: "google-calendar",
+          id: "google-calendar", features: ["google"],
           title: "Connecting Google Calendar",
           blocks: [
             { steps: [
@@ -425,7 +429,7 @@
           ],
         },
         {
-          id: "invite-team",
+          id: "invite-team", features: ["always"],
           title: "Inviting your team & permissions",
           blocks: [
             { steps: [
@@ -441,7 +445,7 @@
       cat: "Customizing your workspace",
       items: [
         {
-          id: "modules-fields",
+          id: "modules-fields", features: ["always"],
           title: "Modules & Fields",
           blocks: [
             { p: "[[#/settings/fields|Settings → Modules & Fields]] is where your workspace takes shape: create modules, add fields of any type, adjust each module's Terms (the words it uses) and which of the five views it offers." },
@@ -454,7 +458,7 @@
           ],
         },
         {
-          id: "appearance",
+          id: "appearance", features: ["always"],
           title: "Appearance: themes, sliders, and your logo",
           blocks: [
             { steps: [
@@ -467,7 +471,7 @@
           ],
         },
         {
-          id: "rename-pages",
+          id: "rename-pages", features: ["always"],
           title: "Renaming pages and hiding pages",
           blocks: [
             { steps: [
@@ -483,14 +487,14 @@
       cat: "Housekeeping",
       items: [
         {
-          id: "integrations",
+          id: "integrations", features: ["always"],
           title: "Integrations at a glance",
           blocks: [
             { p: "[[#/settings/integrations|Settings → Integrations]] shows the connection status of the services your workspace uses: phone/text (Twilio), AI (OpenAI), Google Calendar, and maps (Mapbox)." },
           ],
         },
         {
-          id: "billing",
+          id: "billing", features: ["page:#/billing"],
           title: "Billing & invoices",
           blocks: [
             { steps: [
@@ -500,14 +504,14 @@
           ],
         },
         {
-          id: "data-admin",
+          id: "data-admin", features: ["always"],
           title: "Data Administration",
           blocks: [
             { p: "[[#/settings/data|Settings → Data Administration]] gathers your data housekeeping in one place — including the [[#/settings/data/recycle|recycle bin]] covered under Finding & organizing." },
           ],
         },
         {
-          id: "send-feedback", page: "#/feedback",
+          id: "send-feedback", features: ["page:#/feedback"], page: "#/feedback",
           title: "Sending feedback",
           blocks: [
             { steps: [
@@ -539,6 +543,10 @@
   }
 
   function renderBlock(b) {
+    // feature-lc passage granularity: feature-tagged blocks render only when the
+    // tag is ON; featureOff blocks are the soft alternates shown when it is OFF.
+    if (b.feature && !featureOn(b.feature)) return "";
+    if (b.featureOff && featureOn(b.featureOff)) return "";
     if (b.p) { const p = el("p", "learn-p"); p.innerHTML = richText(b.p); return p; }
     if (b.tip) { const d = el("div", "learn-tip"); d.innerHTML = `<strong>Tip:</strong> ${richText(b.tip)}`; return d; }
     // LC-2: VISUAL markers resolve through the scene registry — a single inert
@@ -578,7 +586,46 @@
     return parts.join(" ").replace(LINK_RE, "$2").toLowerCase();
   }
 
-  function render(host) {
+  // ---- the feature-tag vocabulary + LIVE resolver (feature-lc batch) ----
+  // Every tag maps to a REAL toggle surface; the validator makes an unknown
+  // (e.g. renamed) tag FAIL the self-test rather than silently always-show.
+  const KNOWN_FEATURE_TAGS = ["always", "receptionist", "sms", "google"];
+  const KNOWN_FEATURE_PREFIXES = ["page:", "rt:", "view:"];
+  function isKnownFeatureTag(t) {
+    if (KNOWN_FEATURE_TAGS.indexOf(t) !== -1) return true;
+    for (let i = 0; i < KNOWN_FEATURE_PREFIXES.length; i++) if (t.indexOf(KNOWN_FEATURE_PREFIXES[i]) === 0) return true;
+    return false;
+  }
+  function validateGuideFeatureTags(guideCats) {
+    const problems = [];
+    (guideCats || []).forEach((g) => (g.items || []).forEach((it) => {
+      if (!Array.isArray(it.features) || !it.features.length) problems.push(it.id + ': missing features tag (use ["always"] explicitly)');
+      else it.features.forEach((t) => { if (!isKnownFeatureTag(t)) problems.push(it.id + ': unknown feature tag "' + t + '"'); });
+    }));
+    return problems;
+  }
+  // Live per-render state. Google needs the ONE lightweight lookup (it is not in
+  // boot state); everything else reads what the SPA already loaded.
+  let _googleConnected = null; // per page view only — reset on every render()
+  const pageAvailable = (href) => !(App.isPageLocked && App.isPageLocked(href)) && !(App.navConfig && App.navConfig().hidden.indexOf(href) !== -1);
+  const viewOnAnyModule = (v) => ((App.state && App.state.recordTypes) || []).some((t) => !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)) && Array.isArray(t.enabledViews) && t.enabledViews.indexOf(v) !== -1);
+  function featureOn(tag) {
+    if (tag === "always") return true;
+    if (tag === "receptionist") return !!(App.state && App.state.receptionistEnabled);
+    if (tag === "sms") return !!(App.state && App.state.features && App.state.features.smsEnabled);
+    if (tag === "google") return _googleConnected === true;
+    if (tag.indexOf("page:") === 0) return pageAvailable(tag.slice(5));
+    if (tag.indexOf("rt:") === 0) return !(App.isRecordTypeLocked && App.isRecordTypeLocked(tag.slice(3)));
+    if (tag.indexOf("view:") === 0) return viewOnAnyModule(tag.slice(5));
+    return false; // unknown tags NEVER silently show (the validator catches them in tests)
+  }
+
+  async function render(host) {
+    // LIVE resolution inputs, fresh each view: the current module roster (for
+    // view: tags) and the one lightweight google lookup (absent from boot state).
+    _googleConnected = null;
+    if (App.loadRecordTypes) { try { await App.loadRecordTypes(); } catch (e) { /* fallback kept */ } }
+    try { const g = await App.portalApi("/api/google/status"); _googleConnected = !!(g && g.connected); } catch (e) { _googleConnected = false; }
     host.innerHTML = "";
     const wrap = el("div", "fade-in learn-wrap");
     const head = el("div", "learn-head");
@@ -607,11 +654,17 @@
     // is locked, or (for cross-cutting guides) when EVERY page in its `pagesAll` is
     // locked. Sections with neither tag always show. Filtering runs at BOTH the
     // section and the individual-guide level.
+    // FEATURE-AWARE (feature-lc batch): guides also carry features: [...] tags,
+    // ANDed against the portal's LIVE toggle state (resolved fresh per render —
+    // zero caching beyond this page view, zero migration: flip a toggle, reopen
+    // the LC, and the list reflects it by construction).
     const blocked = (x) => {
-      if (!App.isPageLocked) return false;
-      if (x.page && App.isPageLocked(x.page)) return true;
-      if (x.pagesAll && x.pagesAll.length && x.pagesAll.every((h) => App.isPageLocked(h))) return true;
-      return false;
+      if (App.isPageLocked) {
+        if (x.page && App.isPageLocked(x.page)) return true;
+        if (x.pagesAll && x.pagesAll.length && x.pagesAll.every((h) => App.isPageLocked(h))) return true;
+      }
+      const tags = x.features || [];
+      return !tags.every((t) => featureOn(t));
     };
     const guides = GUIDES
       .filter((g) => !blocked(g))
@@ -623,6 +676,20 @@
     let currentId = guides[0] && guides[0].items[0] && guides[0].items[0].id;
 
     function showGuide(id) {
+      // feature-lc: a deep link into a guide this portal has HIDDEN degrades to a
+      // graceful note — never a 404, never a leak of the hidden content.
+      const visible = guides.some((g) => g.items.some((it) => it.id === id));
+      const existsAtAll = GUIDES.some((g) => (g.items || []).some((it) => it.id === id));
+      if (!visible && existsAtAll) {
+        currentId = null;
+        paintNav();
+        content.innerHTML = "";
+        const note = el("div", "card learn-unavailable");
+        note.appendChild(el("h2", null, "Not available in this portal"));
+        note.appendChild(el("p", "cell-muted", "This guide covers a feature that isn't currently turned on for this workspace. If it gets enabled later, the guide appears here automatically."));
+        content.appendChild(note);
+        return;
+      }
       let found = null, cat = null;
       guides.forEach((g) => g.items.forEach((it) => { if (it.id === id) { found = it; cat = g.cat; } }));
       if (!found) { content.innerHTML = `<div class="card"><p class="cell-muted">Pick a guide from the left.</p></div>`; return; }
@@ -659,5 +726,5 @@
     showGuide(currentId);
   }
 
-  App.learn = { render, GUIDES };
+  App.learn = { render, GUIDES, validateGuideFeatureTags, isKnownFeatureTag };
 })(typeof window !== "undefined" ? window : globalThis);

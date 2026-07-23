@@ -3383,3 +3383,8 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .health-rollup tr.hr-row { cursor: pointer; }
 .health-rollup tr.hr-row:hover td { background: var(--panel-2, var(--panel)); }
 .health-rollup-back { align-self: flex-start; margin-bottom: 8px; }
+
+/* feature-lc — the graceful hidden-guide note */
+.learn-unavailable { padding: 24px; }
+.learn-unavailable h2 { margin: 0 0 8px; }
+.learn-unavailable p { margin: 0; }

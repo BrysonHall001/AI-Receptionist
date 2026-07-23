@@ -108,6 +108,31 @@
   }
 
   const PALETTE = ["#5b5bd6", "#3aa675", "#e0a23b", "#c2453f", "#3b82c4", "#8a4fc4", "#d2689a", "#4cae9e", "#9a8a3b", "#6b7280"];
+  // feature-lc motion: named constants, ONE place. Entry-only (the dashboard's
+  // first paint after entering the page), NEVER on data refresh/filter repaints;
+  // prefers-reduced-motion disables everything (values/charts render final-state
+  // immediately — motion may never delay data).
+  const MOTION = { KPI_COUNTUP_MS: 500, CHART_ANIM_MS: 500 };
+  const reducedMotion = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  // KPI count-up: ease-out from 0 to the final value; formatting preserved by
+  // animating the NUMBER and formatting each frame the same way the static path does.
+  function animateKpiValue(node, value) {
+    if (reducedMotion() || typeof value !== "number" || !isFinite(value)) { node.textContent = String(value); return; }
+    const isInt = Number.isInteger(value);
+    const t0 = performance.now();
+    function frame(t) {
+      const p = Math.min(1, (t - t0) / MOTION.KPI_COUNTUP_MS);
+      const eased = 1 - Math.pow(1 - p, 3); // ease-out cubic
+      const cur = value * eased;
+      node.textContent = isInt ? String(Math.round(cur)) : String(Math.round(cur * 100) / 100);
+      if (p < 1) requestAnimationFrame(frame); else node.textContent = String(value);
+    }
+    requestAnimationFrame(frame);
+  }
+  function chartAnimation(animate) {
+    return animate && !reducedMotion() ? { duration: MOTION.CHART_ANIM_MS, easing: "easeOutQuart" } : false;
+  }
+
   function baseOpts(stacked, hideScales) {
     const o = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: stacked || hideScales } } };
     if (!hideScales) o.scales = { x: { stacked: !!stacked, ticks: { maxRotation: 60, minRotation: 0, autoSkip: true, callback: function (v) { const lab = this.getLabelForValue ? this.getLabelForValue(v) : v; return (typeof lab === "string" && lab.length > 18) ? lab.slice(0, 17) + "…" : lab; } } }, y: { stacked: !!stacked, beginAtZero: true } };
@@ -151,12 +176,12 @@
     host.appendChild(box);
   }
 
-  function renderWidgetBody(host, w, src, rows, fields, charts) {
+  function renderWidgetBody(host, w, src, rows, fields, charts, animate) { // feature-lc: animate = ENTRY paint only
     if (w.type === "list") { renderListWidget(host, w, src, rows, fields); return; }
     const agg = aggregate(src, rows, fields, w);
     host.innerHTML = "";
     const { el, esc } = U();
-    if (agg.kind === "kpi") { const k = el("div", "kpi"); k.appendChild(el("div", "kpi-value", String(agg.value))); k.appendChild(el("div", "kpi-label", measureLabel(w.measure, fields))); host.appendChild(k); return; } // visual fixes 2: no inner pill — the widget CARD is the surface (accent bar lives on the card)
+    if (agg.kind === "kpi") { const k = el("div", "kpi"); const kv = el("div", "kpi-value", String(agg.value)); if (animate) animateKpiValue(kv, agg.value); k.appendChild(kv); k.appendChild(el("div", "kpi-label", measureLabel(w.measure, fields))); host.appendChild(k); return; } // visual fixes 2: no inner pill — the widget CARD is the surface (accent bar lives on the card)
     if (agg.kind === "heatmap") {
       const table = el("table", "heatmap"); const thead = el("thead"); const htr = el("tr"); htr.appendChild(el("th", "", ""));
       agg.cols.forEach((c) => htr.appendChild(el("th", "", esc(c)))); thead.appendChild(htr); table.appendChild(thead);
@@ -173,6 +198,7 @@
     else if (w.type === "pie") config = { type: "pie", data: { labels: agg.labels, datasets: [{ data: agg.data, backgroundColor: agg.labels.map((_, i) => PALETTE[i % PALETTE.length]) }] }, options: baseOpts(false, true) };
     else if (w.type === "line") config = { type: "line", data: { labels: agg.labels, datasets: [{ label: agg.measureLabel, data: agg.data, borderColor: PALETTE[0], backgroundColor: "rgba(91,91,214,0.15)", tension: 0.3, fill: true }] }, options: baseOpts(false) };
     else config = { type: "bar", data: { labels: agg.labels, datasets: [{ label: agg.measureLabel, data: agg.data, backgroundColor: PALETTE[0] }] }, options: baseOpts(false) };
+    config.options.animation = chartAnimation(animate); // entry-only draw-in; false on refresh + reduced motion
     const ch = new Chart(canvas, config); if (charts) charts.push(ch);
   }
 
@@ -645,6 +671,8 @@
 
     function renderBodies(dash) {
       destroyCharts();
+      const animateEntry = !state._entryAnimated; // feature-lc: the FIRST paint after page entry animates; every repaint after (filters, ranges, data refresh) is instant
+      state._entryAnimated = true;
       U().$$(".widget-card", host).forEach((card) => {
         const w = (dash.widgets || []).find((x) => x.id === card.dataset.id);
         const body = card.querySelector(".widget-body");
@@ -655,7 +683,7 @@
             // Per-widget range override wins; otherwise fall back to the source's page range.
             const range = (w.range && w.range.from && w.range.to) ? w.range : (src.rangeFrom && src.rangeTo ? { from: src.rangeFrom, to: src.rangeTo } : null);
             const rows = filterRowsByRange(src, src.rows, range);
-            renderWidgetBody(body, rw, src, rows, src.reportFields, state.charts);
+            renderWidgetBody(body, rw, src, rows, src.reportFields, state.charts, animateEntry);
           } catch (e) { body.innerHTML = `<p class="cell-muted">${esc(e.message)}</p>`; }
         }
       });

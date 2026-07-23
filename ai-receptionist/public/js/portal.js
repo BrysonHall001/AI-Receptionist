@@ -59,7 +59,7 @@
     if (v === "reports") return App.reports.render(view());
     if (v === "communication") return App.communication.render(view());
     if (v === "automations") return App.automations.render(view());
-    if (v === "learn") return App.learn.render(view());
+    if (v === "learn") { void App.learn.render(view()); return; } // feature-lc: async (live toggle resolution)
     if (v === "feedback") return App.feedback.renderPortal(view());
     if (v === "settings") return renderSettings(sub);
     return App.reports.mountHome(view());
@@ -6481,9 +6481,22 @@
         const map = L.map(canvas, { scrollWheelZoom: false });
         L.tileLayer(OSM_URL, { attribution: OSM_ATTR, maxZoom: 19 }).addTo(map);
 
+        // feature-lc motion: a subtle staggered pin drop on ENTRY. Named constants;
+        // the stagger compresses so the whole sequence stays under the cap; large
+        // result sets skip the effect entirely; reduced motion disables it.
+        const PIN_DROP = { STAGGER_MS: 20, TOTAL_CAP_MS: 400, SKIP_ABOVE: 60 };
+        const pinReduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+        const dropPins = !pinReduced && located.length > 0 && located.length <= PIN_DROP.SKIP_ABOVE;
+        const stagger = dropPins ? Math.min(PIN_DROP.STAGGER_MS, PIN_DROP.TOTAL_CAP_MS / located.length) : 0;
         const latlngs = [];
-        located.forEach((r) => {
+        located.forEach((r, pinIdx) => {
           const m = L.marker([r.lat, r.lng], { icon }).addTo(map);
+          if (dropPins && m.getElement) {
+            const pel = m.getElement();
+            // Web Animations API: no inline styles (ratchet-clean), fill backwards
+            // so the pin is invisible until its staggered turn.
+            if (pel && pel.animate) pel.animate([{ transform: "translateY(-14px)", opacity: 0 }, { transform: "translateY(0)", opacity: 1 }], { duration: 240, delay: Math.round(pinIdx * stagger), easing: "ease-out", fill: "backwards" });
+          }
           const title = esc(cfg.titleOf(r));
           const addr = r.addressText ? `<div class="map-pop-addr">${esc(r.addressText)}</div>` : "";
           // Popup: title + address + a link to the row's detail page (existing route).
