@@ -1420,8 +1420,8 @@ apiRouter.post("/record-types/views", async (req: Request, res: Response) => {
   if (!tenantId) return;
   if (!fieldsAdminOnly(req, res)) return;
   try {
-    const { recordType, enabledViews, calendarDateField } = (req.body ?? {}) as any;
-    res.json(await setModuleViews(tenantId, recordType, { enabledViews, calendarDateField }));
+    const { recordType, enabledViews, calendarDateField, calendarLanes, calendarTray } = (req.body ?? {}) as any;
+    res.json(await setModuleViews(tenantId, recordType, { enabledViews, calendarDateField, calendarLanes, calendarTray }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

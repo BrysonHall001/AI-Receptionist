@@ -4572,6 +4572,56 @@
           cal.row.appendChild(pick);
         }
 
+        // Scheduling-calendar sub-settings (Scheduling Calendar batch): two nested
+        // toggles under the Calendar tile, following the date-field picker's nested
+        // pattern above. Shown only while Calendar is ON; both default OFF; the
+        // server validates (setModuleViews) and these mirror its rules for honest
+        // hints. Resource capability mirrors the server's aliased set — today the
+        // typed-appointment modules — via the SAME shared helper (no new module-key
+        // comparisons in this surface; see selfTest_moduleCoverage check 13).
+        if (calAvailable && moduleViewOn(selectedType, "calendar")) {
+          const lanesCapable = usesTypedAppointment(selectedType);
+          const sub = el("div", "mf-view-pick mf-cal-sub");
+          function subRow(o) {
+            const row = el("label", "mf-cal-subrow" + (o.available ? "" : " mf-cal-subrow-off"));
+            const cb = el("input"); cb.type = "checkbox"; cb.checked = !!o.on; cb.disabled = !canEdit || !o.available;
+            const txt = el("span", "mf-cal-subtxt");
+            txt.appendChild(el("span", "mf-cal-subname", o.name));
+            txt.appendChild(el("span", "cell-muted mf-view-hint", o.hint));
+            row.appendChild(cb); row.appendChild(txt);
+            sub.appendChild(row);
+            return cb;
+          }
+          const lanesCb = subRow({
+            name: "Lanes (group by staff)", available: lanesCapable, on: selectedType.calendarLanes === true,
+            hint: lanesCapable
+              ? "Day view becomes one column per staff member, with busy time from the other schedule shaded."
+              : "Lanes need staff assignment — available on Bookings and Work Orders.",
+          });
+          const trayCb = subRow({
+            name: "Unscheduled tray + drag", available: true, on: selectedType.calendarTray === true,
+            hint: "A sidebar of records with no date yet; drag one onto the grid to schedule it.",
+          });
+          function persistSub(cb, field, onMsg, offMsg) {
+            cb.onchange = function () {
+              cb.disabled = true;
+              const payload = { recordType: selectedType.key, enabledViews: moduleEnabledViews(selectedType) };
+              payload[field] = cb.checked;
+              App.portalApi("/api/record-types/views", { method: "POST", body: JSON.stringify(payload) })
+                .then(function (rt) {
+                  if (rt) { selectedType.calendarLanes = rt.calendarLanes; selectedType.calendarTray = rt.calendarTray; selectedType.enabledViews = rt.enabledViews; }
+                  App.util.toast(cb.checked ? onMsg : offMsg);
+                  buildViewsSection(col, selectedType);
+                  if (App._route) App._route();
+                })
+                .catch(function (e) { cb.checked = !cb.checked; cb.disabled = false; App.util.toast(e.message, true); });
+            };
+          }
+          persistSub(lanesCb, "calendarLanes", "Lanes on", "Lanes off");
+          persistSub(trayCb, "calendarTray", "Unscheduled tray on", "Unscheduled tray off");
+          cal.row.appendChild(sub);
+        }
+
         // MAP — available only when the module has at least one address field (mirrors the
         // Calendar tile's date-field rule). Toggling it on shows the Map view on the list page.
         const addrFields = moduleAddressFields(selectedType, fields);
@@ -5437,6 +5487,20 @@
       dblWrap.appendChild(dblL);
       durCard.appendChild(dblWrap);
 
+      // Work orders block availability (Scheduling Calendar batch, per-tenant,
+      // default OFF): when on, a technician's scheduled work orders count as busy
+      // time for slot offering, so the AI receptionist stops offering booking
+      // slots while they're out on a job. Same card, same save button.
+      const woWrap = el("div"); woWrap.classList.add("pt-dblwrap");
+      const woL = el("label"); woL.classList.add("pt-dbll");
+      const woChk = el("input"); woChk.type = "checkbox"; woChk.checked = cfg.workOrdersBlockAvailability === true; woChk.classList.add("u-mt-2");
+      const woTxt = el("div");
+      woTxt.appendChild(el("div", "field-label", "Work orders block availability"));
+      woTxt.appendChild(el("p", "cell-muted", "When on, time a staff member is out on a work order counts as busy, so the AI receptionist won\u2019t offer booking slots over it. Off by default."));
+      woL.appendChild(woChk); woL.appendChild(woTxt);
+      woWrap.appendChild(woL);
+      durCard.appendChild(woWrap);
+
       const saveBtn = el("button", "btn btn-primary btn-sm", "Save scheduling");
       saveBtn.classList.add("u-mt-16");
       saveBtn.onclick = async () => {
@@ -5450,6 +5514,7 @@
           bufferMin: parseInt(bufInp.value, 10) || 0,
           serviceDurations,
           allowDoubleBooking: dblChk.checked,
+          workOrdersBlockAvailability: woChk.checked,
         };
         saveBtn.disabled = true; saveBtn.textContent = "Saving…";
         try { await App.portalApi("/api/booking-config", { method: "PATCH", body: JSON.stringify(payload) }); toast("Scheduling saved"); }
@@ -5989,6 +6054,14 @@
     opts = opts || {};
     const isBooking = !!(type && type.key === "booking");
     const dateField = opts.dateField || (isBooking ? "appointmentAt" : moduleCalendarField(type, fields));
+    // Scheduling-calendar options (Scheduling Calendar batch). Both default OFF and
+    // every behavior below is gated on them, so a module with the toggles off renders
+    // byte-for-byte as before. Drag additionally requires records-edit permission
+    // (me.permEdit, additive on /me; the server's permissionGate stays the enforcer).
+    const lanesOn = !!(type && type.calendarLanes === true);
+    const trayOn = !!(type && type.calendarTray === true);
+    const permEditRecords = !(App.state && App.state.me && App.state.me.permEdit && App.state.me.permEdit.records === false);
+    const canDrag = (lanesOn || trayOn) && permEditRecords;
     const HOUR_H = 44; // px per hour
     // Status styling reuses the app's theme tokens, plus a SECOND, color-independent
     // signal so status is readable when color is washed out or for colorblind users:
@@ -6061,6 +6134,9 @@
       const hours = data.hours || {};
       const bookings = data.bookings || [];
       const resources = data.resources || [];
+      // Cross-module busy shading (lanes on): the OTHER schedulable module's blocks,
+      // read-only. Present in the feed only when this module's lanes toggle is on.
+      const busyBlocks = lanesOn ? (data.busy || []) : [];
       lastResources = resources;
       // If the selected resource was deleted, fall back to All (avoid an empty view).
       if (state.resource !== "all" && !resources.some((r) => r.id === state.resource)) state.resource = "all";
@@ -6295,6 +6371,83 @@
       // a deliberate second action (the "+" on it, or a double-click) opens Create.
       // Only one slot is selected at a time, so a stray click never pops the modal.
       let selBlock = null;
+      // ---- DRAG-TO-SCHEDULE (Scheduling Calendar batch) --------------------------
+      // One PATCH through the EXISTING record update route per drop, so permissions,
+      // audit, automations, and the booking overlap/closed policies fire exactly as
+      // a manual edit. `prior` powers the toast's one-level Undo.
+      //   payload: { kind: "tray"|"block", id, title, stageKey, resourceId, priorAt }
+      //   at: wall-clock "YYYY-MM-DDTHH:MM" (already 15-min snapped)
+      //   lane: { apply: bool, resourceId } — whether the drop position carries a lane
+      async function doDragSchedule(payload, at, lane) {
+        const body = { appointmentAt: at };
+        const prior = { appointmentAt: payload.priorAt || null };
+        const laneChanged = lane.apply && (lane.resourceId || null) !== (payload.resourceId || null);
+        if (lane.apply) { body.resourceId = lane.resourceId || null; prior.resourceId = payload.resourceId || null; }
+        // Stage advance — key-based, drag-only: a record still in "new_request"
+        // getting a date moves to "scheduled" IF the module has that stage key.
+        const hasScheduledStage = ((type && type.recordStages) || []).some((st) => st.key === "scheduled");
+        const advanced = payload.stageKey === "new_request" && hasScheduledStage;
+        if (advanced) { body.stageKey = "scheduled"; prior.stageKey = "new_request"; }
+
+        const ov = { allowOverlap: false, allowClosed: false };
+        const doPatch = (extra) => App.portalApi("/api/records/" + payload.id, { method: "PATCH", body: JSON.stringify({ ...body, ...ov, ...(extra || {}) }) });
+        try {
+          for (;;) {
+            try { await doPatch(); break; }
+            catch (e) {
+              const code = e && e.data && e.data.code;
+              if (code === "overlap" && !ov.allowOverlap) {
+                const ok = await confirmModal({ title: "Overlapping booking", message: "This overlaps an existing booking. Save anyway?", confirmText: "Save anyway" });
+                if (!ok) { load(); return; }
+                ov.allowOverlap = true; continue;
+              }
+              if (code === "closed" && !ov.allowClosed) {
+                const ok = await confirmModal({ title: "Outside open hours", message: (e.message || "This is outside the open hours.") + " Save anyway?", confirmText: "Save anyway" });
+                if (!ok) { load(); return; }
+                ov.allowClosed = true; continue;
+              }
+              toast(e.message || "Could not schedule", true);
+              load();
+              return;
+            }
+          }
+        } catch (e) { toast((e && e.message) || "Could not schedule", true); load(); return; }
+        const laneRes = lane.apply && lane.resourceId ? (calResById[lane.resourceId] || null) : null;
+        const whenLbl = fmtUTC(at.slice(0, 10), { weekday: "short", month: "short", day: "numeric" }) + " " + label12(startMin(at));
+        toast(`Scheduled — ${whenLbl}${laneRes ? " · " + laneRes.name : (lane.apply && laneChanged ? " · Unassigned" : "")}`, false, {
+          label: "Undo",
+          onClick: async () => {
+            try { await App.portalApi("/api/records/" + payload.id, { method: "PATCH", body: JSON.stringify({ ...prior, allowOverlap: true, allowClosed: true }) }); toast("Undone"); }
+            catch (e) { toast(e.message || "Could not undo", true); }
+            load();
+          },
+        });
+        load();
+      }
+      // Shared drop-target wiring for a grid column: snaps to 15 min, reads the
+      // drag payload, and applies the column's lane context (resource columns and
+      // a resource-filtered date view carry a lane; the plain all-staff date view
+      // does not — there a block drag is a pure retime, and a tray drop lands
+      // explicitly Unassigned, per the approved rules).
+      function wireDropTarget(col, c, d) {
+        if (!canDrag) return;
+        col.addEventListener("dragover", (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
+        col.addEventListener("drop", (e) => {
+          e.preventDefault();
+          let payload = null;
+          try { payload = JSON.parse(e.dataTransfer.getData("text/plain") || "null"); } catch (err) { payload = null; }
+          if (!payload || !payload.id) return;
+          const rect = col.getBoundingClientRect();
+          const y = e.clientY - rect.top;
+          let mins = rangeStart + Math.round((y / HOUR_H * 60) / 15) * 15;
+          mins = Math.max(0, Math.min(1425, mins));
+          const at = `${d}T${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
+          const laneCtx = resourceView || !!selResId;
+          const lane = { apply: laneCtx || payload.kind === "tray", resourceId: laneCtx ? (c.slotResourceId || null) : null };
+          doDragSchedule(payload, at, lane);
+        });
+      }
+
       function openSel(at, resourceId) {
         openCreateRecord("booking", fields || [], type, { appointmentAt: at, resourceId: resourceId || null });
       }
@@ -6374,8 +6527,44 @@
           }
           blk.title = `${it.b.title}${it.b.contactName ? " — " + it.b.contactName : ""}\n${label12(it.s)}–${label12(it.e)} · ${it.b.serviceLabel || ""} · ${it.b.stageLabel || ""}${resForTip ? " · " + resForTip.name : ""}`;
           blk.onclick = (e) => { e.stopPropagation(); App.go((opts && opts.eventHrefBase ? opts.eventHrefBase : "#/record/") + it.b.id); };
+          // Drag an existing block to retime (within a column) or reassign (into
+          // another lane). Google-owned blocks stay read-only (the server refuses
+          // anyway); no handles at all without edit permission or with both
+          // toggles off. The drop target wiring lives on the columns.
+          if (canDrag && !isExt) {
+            blk.draggable = true;
+            blk.classList.add("cal-block-draggable");
+            blk.addEventListener("dragstart", (e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "block", id: it.b.id, title: it.b.title || "", stageKey: it.b.stageKey || null, resourceId: it.b.resourceId || null, priorAt: it.b.start }));
+              blk.classList.add("cal-block-dragging");
+            });
+            blk.addEventListener("dragend", () => blk.classList.remove("cal-block-dragging"));
+          }
           col.appendChild(blk);
         });
+
+        // Cross-module BUSY shading (lanes on): read-only blocks from the other
+        // schedulable module, drawn only in columns that carry a lane (resource
+        // columns, or a date column filtered to one staff member). Reuses the
+        // external-block dashed look; not clickable, not draggable, no status.
+        if (busyBlocks.length && c.slotResourceId) {
+          busyBlocks
+            .filter((x) => dpart(x.start) === d && x.resourceId === c.slotResourceId)
+            .forEach((x) => {
+              const s0 = startMin(x.start);
+              const bb = el("div", "cal-block cal-block-busy cal-block-dashed");
+              // setProperty is the sanctioned positioning mechanism (design ratchet);
+              // same pixel math as the regular blocks above.
+              bb.style.setProperty("top", ((s0 - rangeStart) / 60 * HOUR_H) + "px");
+              bb.style.setProperty("height", Math.max(16, (x.durationMin / 60) * HOUR_H - 2) + "px");
+              bb.appendChild(el("div", "cal-block-t", esc(x.sourceLabel || "Busy")));
+              bb.title = `${x.sourceLabel || "Busy"} · ${label12(s0)}–${label12(s0 + x.durationMin)} (read-only here)`;
+              col.appendChild(bb);
+            });
+        }
+        // Drop target for drag-to-schedule (no-op when drag is off).
+        wireDropTarget(col, c, d);
 
         // "Now" line — any column whose day is today, browser-local wall-clock.
         if (d === today && nowMin >= rangeStart && nowMin <= rangeEnd) {
@@ -6409,8 +6598,49 @@
 
       scroll.appendChild(body);
       card.appendChild(scroll);
+
+      // ---- UNSCHEDULED TRAY (tray toggle on): this module's dateless records in a
+      // sidebar beside the grid, so new requests are visible instead of invisible.
+      // Items drag onto the grid (when permitted); clicking one opens the record —
+      // the everywhere-fallback for touch devices this batch.
       host.innerHTML = "";
-      host.appendChild(card);
+      if (trayOn) {
+        const layout = el("div", "cal-tray-layout");
+        const tray = el("aside", "cal-tray card");
+        const items = data.unscheduled || [];
+        const trayHead = el("div", "cal-tray-head");
+        trayHead.appendChild(el("div", "cal-tray-title", "Unscheduled"));
+        trayHead.appendChild(el("span", "cal-tray-count", String(items.length)));
+        tray.appendChild(trayHead);
+        if (!items.length) {
+          tray.appendChild(el("div", "cell-muted cal-tray-empty", "Nothing waiting — every record here has a date."));
+        } else {
+          items.forEach((u) => {
+            const it = el("div", "cal-tray-item");
+            it.appendChild(el("div", "cal-tray-item-t", esc(u.title)));
+            const sub = el("div", "cal-tray-item-sub cell-muted");
+            if (u.stageLabel) { const pillEl = el("span", "pill", esc(u.stageLabel)); sub.appendChild(pillEl); }
+            it.appendChild(sub);
+            it.title = canDrag ? "Drag onto the calendar to schedule, or click to open" : "Click to open";
+            it.onclick = () => App.go((opts && opts.eventHrefBase ? opts.eventHrefBase : "#/record/") + u.id);
+            if (canDrag) {
+              it.draggable = true;
+              it.addEventListener("dragstart", (e) => {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "tray", id: u.id, title: u.title || "", stageKey: u.stageKey || null, resourceId: u.resourceId || null, priorAt: null }));
+                it.classList.add("cal-tray-item-dragging");
+              });
+              it.addEventListener("dragend", () => it.classList.remove("cal-tray-item-dragging"));
+            }
+            tray.appendChild(it);
+          });
+        }
+        layout.appendChild(tray);
+        layout.appendChild(card);
+        host.appendChild(layout);
+      } else {
+        host.appendChild(card);
+      }
 
       // Default scroll: open at business start (or ~now if today is visible) so we
       // don't land on empty early-morning space.

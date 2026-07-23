@@ -20,6 +20,12 @@ export interface BookingConfig {
   bufferMin: number;                   // gap padded around each existing appointment
   serviceDurations: Record<string, number>; // subtypeKey -> minutes (override)
   allowDoubleBooking: boolean;          // when true, overlapping bookings are permitted
+  // Scheduling Calendar batch (approved availability item): when TRUE, a
+  // technician's scheduled work orders count as BUSY time for slot offering
+  // (the AI receptionist + availability preview stop offering booking slots
+  // while they're on a job). DEFAULT OFF — flag off means the work-orders busy
+  // source returns nothing and availability is byte-for-byte unchanged.
+  workOrdersBlockAvailability: boolean;
 }
 
 // Weekday keys, indexed to match JavaScript's Date.getUTCDay() (0=Sunday).
@@ -40,6 +46,7 @@ export const DEFAULT_BOOKING_CONFIG: BookingConfig = {
   bufferMin: 0,
   serviceDurations: {},
   allowDoubleBooking: false,
+  workOrdersBlockAvailability: false,
 };
 
 function posInt(v: any, fallback: number): number {
@@ -68,6 +75,7 @@ export function mergeBookingConfig(raw: any): BookingConfig {
     serviceDurations:
       c.serviceDurations && typeof c.serviceDurations === "object" ? c.serviceDurations : {},
     allowDoubleBooking: c.allowDoubleBooking === true,
+    workOrdersBlockAvailability: c.workOrdersBlockAvailability === true,
   };
 }
 
@@ -151,6 +159,7 @@ export async function saveBookingConfig(tenantId: string, input: any): Promise<B
     bufferMin: nonNegInt(c.bufferMin, DEFAULT_BOOKING_CONFIG.bufferMin),
     serviceDurations,
     allowDoubleBooking: c.allowDoubleBooking === true,
+    workOrdersBlockAvailability: c.workOrdersBlockAvailability === true,
   };
 
   await (prisma as any).tenant.update({ where: { id: tenantId }, data: { bookingConfig: stored } });

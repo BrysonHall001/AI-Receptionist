@@ -18,7 +18,7 @@
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
-import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
+import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY, WORK_ORDER_RECORD_TYPE_KEY } from "./recordTypeService";
 import { resolveResourceDuration, effectiveDurationMin } from "./resourceService";
 
 const db = prisma as any;
@@ -97,8 +97,49 @@ export const clarityBookingsSource: CalendarSource = {
   },
 };
 
-// The registry — exactly ONE source this batch. Add future sources here.
-const SOURCES: CalendarSource[] = [clarityBookingsSource];
+// ---- Second source (Scheduling Calendar batch, approved availability item):
+// Clarity's own Work Orders. A technician's SCHEDULED work orders count as busy
+// time for slot offering — but ONLY when the tenant has opted in via the
+// workOrdersBlockAvailability switch on Scheduling settings (default OFF: the
+// source returns [] and availability is byte-for-byte unchanged). Sizing is
+// endAt-or-business-default (work orders have no service durations); stages
+// keyed completed/cancelled free the time (mirroring the no-show rule above).
+// Note the guard placement: the flag check is INSIDE the source, so slot-finding
+// callers never need to know it exists (the seam's whole point).
+export const clarityWorkOrdersSource: CalendarSource = {
+  name: "clarity-work-orders",
+  async getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null): Promise<BusyInterval[]> {
+    const config = await loadBookingConfig(tenantId);
+    if (config.workOrdersBlockAvailability !== true) return []; // per-tenant opt-in, default OFF
+
+    const recordTypeId = await resolveRecordTypeId(tenantId, WORK_ORDER_RECORD_TYPE_KEY);
+    const from = new Date(fromISO.length === 16 ? fromISO + ":00Z" : fromISO);
+    const to = new Date(toISO.length === 16 ? toISO + ":00Z" : toISO);
+
+    const rows = await db.record.findMany({
+      // Only ASSIGNED work orders consume a lane. When the caller scopes to a
+      // resource we scope the same way; the shop-wide (null) preview never mixes
+      // lanes, matching the bookings source's per-lane rule — an unassigned
+      // slot-search unions per-resource lanes upstream, each scoped here.
+      where: { tenantId, recordTypeId, deletedAt: null, appointmentAt: { gte: from, lt: to }, ...(resourceId ? { resourceId } : { resourceId: { not: null } }) },
+      select: { appointmentAt: true, endAt: true, stageKey: true, resourceId: true },
+    });
+
+    const out: BusyInterval[] = [];
+    for (const r of rows) {
+      if (!r.appointmentAt) continue;
+      if (r.stageKey === "completed" || r.stageKey === "cancelled") continue; // done/called-off frees the time
+      const start = dateToWall(r.appointmentAt);
+      const ms = r.endAt ? new Date(r.endAt).getTime() - new Date(r.appointmentAt).getTime() : 0;
+      const durationMin = ms > 0 ? Math.max(15, Math.round(ms / 60000)) : config.defaultDurationMin;
+      out.push({ start, end: addMinutesWall(start, durationMin), sourceName: clarityWorkOrdersSource.name });
+    }
+    return out;
+  },
+};
+
+// The registry. Add future sources here.
+const SOURCES: CalendarSource[] = [clarityBookingsSource, clarityWorkOrdersSource];
 
 /**
  * Ask EVERY registered source for its busy intervals and merge them into one

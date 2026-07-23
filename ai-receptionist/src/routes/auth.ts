@@ -79,11 +79,15 @@ authRouter.get("/me", async (req: Request, res: Response) => {
   // automatically. Cosmetic nav-hide is applied separately on the client.
   const permView: Record<string, boolean> = {};
   for (const area of NAV_VIEW_AREAS) permView[area] = await can(req.user as any, area, "view");
+  // EDIT rights the client actually needs for UI affordances (Scheduling Calendar
+  // batch: drag handles hide for view-only users). Additive; the server-side
+  // permissionGate remains the enforcer — this is honesty, not enforcement.
+  const permEdit: Record<string, boolean> = { records: await can(req.user as any, "records", "edit") };
   // Billing isn't a nav area, but the client needs its view flag to show/hide the Settings
   // Billing tab (server still enforces the endpoint independently).
   permView["billing"] = await can(req.user as any, "billing", "view");
   const lockedPages = (req.user as any)?.tenantId ? await getLockedPages((req.user as any).tenantId) : [];
-  res.json({ user: { ...req.user, permView, lockedPages }, features: { smsEnabled: smsEnabled() } });
+  res.json({ user: { ...req.user, permView, permEdit, lockedPages }, features: { smsEnabled: smsEnabled() } });
 });
 
 authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => {

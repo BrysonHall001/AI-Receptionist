@@ -22,6 +22,14 @@ export const WORK_ORDER_RECORD_TYPE_KEY = "work_order";
 const TYPED_APPOINTMENT_TYPE_KEYS = new Set<string>([BOOKING_RECORD_TYPE_KEY, WORK_ORDER_RECORD_TYPE_KEY]);
 export function usesTypedAppointment(typeKey: string): boolean { return TYPED_APPOINTMENT_TYPE_KEYS.has(typeKey); }
 
+// RESOURCE-CAPABLE modules (Scheduling Calendar batch): the ones whose records
+// carry the typed Record.resourceId column, so their calendar can group into
+// per-staff LANES. Today this coincides with the typed-appointment set, but it
+// is a deliberately SEPARATE named set so the two concepts can diverge later
+// without archaeology.
+const RESOURCE_CAPABLE_TYPE_KEYS = new Set<string>(TYPED_APPOINTMENT_TYPE_KEYS);
+export function isResourceCapable(typeKey: string): boolean { return RESOURCE_CAPABLE_TYPE_KEYS.has(typeKey); }
+
 // Default fields seeded ONCE when a portal's Equipment type is first created (see the
 // onCreate hook below). Equipment is a flat catalog (no pipeline), so these are plain
 // editable/removable custom fields — the business can rename, reorder, add or delete
@@ -514,6 +522,10 @@ export function serializeRecordType(rt: any) {
     pipelineEnabled,
     enabledViews,
     calendarDateField,
+    // Scheduling-calendar options — false when the column is absent (pre-migration
+    // rows / partial objects), matching the enabledViews fallback style.
+    calendarLanes: rt.calendarLanes === true,
+    calendarTray: rt.calendarTray === true,
     order: rt.order ?? 0,
   };
 }
@@ -640,7 +652,7 @@ export async function imageFieldKeys(tenantId: string, recordTypeId: string): Pr
 export async function setModuleViews(
   tenantId: string,
   recordType: string,
-  input: { enabledViews?: any; calendarDateField?: any },
+  input: { enabledViews?: any; calendarDateField?: any; calendarLanes?: any; calendarTray?: any },
 ): Promise<any> {
   const row = await loadTypeRow(tenantId, recordType);
   const hasPipeline =
@@ -674,9 +686,28 @@ export async function setModuleViews(
     if (!calField || !dateKeys.includes(calField)) calField = dateKeys[0] ?? null;
   }
 
+  // Scheduling-calendar options (Scheduling Calendar batch). Same validate-and-
+  // throw style as the views above; undefined = leave unchanged. Turning the
+  // Calendar view OFF auto-clears both (non-destructive flags; flipping Calendar
+  // back on starts them off again, the safe default).
+  let lanes: boolean = row.calendarLanes === true;
+  let tray: boolean = row.calendarTray === true;
+  if (input.calendarLanes !== undefined) {
+    const want = input.calendarLanes === true;
+    if (want && !next.includes("calendar")) throw new Error("Turn on the Calendar view to enable this.");
+    if (want && !isResourceCapable(row.key)) throw new Error("Lanes need staff assignment — available on Bookings and Work Orders.");
+    lanes = want;
+  }
+  if (input.calendarTray !== undefined) {
+    const want = input.calendarTray === true;
+    if (want && !next.includes("calendar")) throw new Error("Turn on the Calendar view to enable this.");
+    tray = want;
+  }
+  if (!next.includes("calendar")) { lanes = false; tray = false; }
+
   const updated = await db.recordType.update({
     where: { id: row.id },
-    data: { enabledViews: next as any, calendarDateField: calField },
+    data: { enabledViews: next as any, calendarDateField: calField, calendarLanes: lanes, calendarTray: tray },
   });
   return serializeRecordType(updated);
 }

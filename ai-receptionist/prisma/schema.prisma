@@ -510,6 +510,16 @@ model RecordType {
   // Bookings this is the sentinel "appointmentAt" (the typed booking column) so its calendar
   // is unchanged; for other modules it's a FieldDef key. Null = fall back to the first date field.
   calendarDateField String?
+  // Scheduling-calendar options (Scheduling Calendar batch), typed like calendarDateField —
+  // NOT fake enabledViews entries. Both default OFF everywhere so every calendar renders
+  // byte-for-byte identically until an owner opts in on the Views tile.
+  //   calendarLanes: day/week groups into one column per staff resource + busy shading
+  //                  from the other resource-capable module (validated: calendar on AND
+  //                  the module is resource-capable — booking/work_order today).
+  //   calendarTray:  the unscheduled-records sidebar + drag-to-schedule (validated:
+  //                  calendar on).
+  calendarLanes Boolean     @default(false)
+  calendarTray  Boolean     @default(false)
   order        Int          @default(0)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

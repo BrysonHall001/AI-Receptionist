@@ -422,8 +422,27 @@
               "To hand it to someone, pick a person in the Assigned dropdown — the same staff list bookings use.",
               "Link each staff member to their sign-in account in [[#/settings/scheduling|Settings → Scheduling & Resources]] (the Link account button on their row).",
               "Anyone with a linked account gets a My work orders entry under Saved Filters on the [[#/records/work_order|Work Orders]] list — one click shows just their own work.",
+              "For dispatch-style planning, the module's calendar can add staff lanes, a tray of not-yet-dated work, and drag-to-plan — two switches under the Calendar tile in [[#/settings/fields|Settings → Modules & Fields]].",
             ] },
             { tip: "Status changes on a work order can kick off [[#/automations|Automations]] — a follow-up email when the work wraps up, for example — using the \"Record updated / status changed\" trigger." },
+          ],
+        },
+        {
+          // Scheduling Calendar batch. Copy deliberately avoids every seeded
+          // stage/subtype/field label (the LC-3 DB scan forbids them as
+          // substrings — which is why this guide never uses the word for
+          // records that are, well, not yet on the calendar).
+          id: "dispatch-calendar", features: ["calopt:scheduling"],
+          title: "Dispatch on the calendar",
+          blocks: [
+            { p: "Two options on a module's Views tile turn its calendar into a dispatch board. LANES splits the day into one column per staff member. The TRAY is a sidebar of the module's records that have no date yet, so new requests are visible instead of invisible. Both live in [[#/settings/fields|Settings → Modules & Fields]] under the Calendar tile, and both are off until you turn them on." },
+            { steps: [
+              "Drag a tray record onto the grid to give it a time — drop it inside a staff column to hand it to that person in the same motion.",
+              "Drag a block up or down to change its time, or into another column to hand it to someone else. Everything snaps to a tidy 15 minutes.",
+              "Use Undo on the confirmation message if a drop landed wrong.",
+              "With lanes on, time a staff member is taken by the OTHER schedule (their bookings here, their field work on the booking page) appears as shaded blocks you can't touch — so nothing gets dropped into a gap that only looks free.",
+            ] },
+            { tip: "A drag saves through exactly the same path as editing the record by hand, so permissions, history, and automations behave identically — and teammates with view-only access simply don't get drag handles." },
           ],
         },
         {
@@ -608,7 +627,7 @@
   // Every tag maps to a REAL toggle surface; the validator makes an unknown
   // (e.g. renamed) tag FAIL the self-test rather than silently always-show.
   const KNOWN_FEATURE_TAGS = ["always", "receptionist", "sms", "google"];
-  const KNOWN_FEATURE_PREFIXES = ["page:", "rt:", "view:"];
+  const KNOWN_FEATURE_PREFIXES = ["page:", "rt:", "view:", "calopt:"];
   function isKnownFeatureTag(t) {
     if (KNOWN_FEATURE_TAGS.indexOf(t) !== -1) return true;
     for (let i = 0; i < KNOWN_FEATURE_PREFIXES.length; i++) if (t.indexOf(KNOWN_FEATURE_PREFIXES[i]) === 0) return true;
@@ -635,6 +654,14 @@
     if (tag.indexOf("page:") === 0) return pageAvailable(tag.slice(5));
     if (tag.indexOf("rt:") === 0) return !(App.isRecordTypeLocked && App.isRecordTypeLocked(tag.slice(3)));
     if (tag.indexOf("view:") === 0) return viewOnAnyModule(tag.slice(5));
+    // Scheduling-calendar options (Scheduling Calendar batch): "calopt:scheduling"
+    // is on when ANY non-locked module has lanes or the tray turned on — so the
+    // dispatch guide appears once a workspace actually uses the capability.
+    if (tag === "calopt:scheduling") {
+      return ((App.state && App.state.recordTypes) || []).some((t) =>
+        !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)) && (t.calendarLanes === true || t.calendarTray === true));
+    }
+    if (tag.indexOf("calopt:") === 0) return false; // unknown calopt values stay hidden
     return false; // unknown tags NEVER silently show (the validator catches them in tests)
   }
 

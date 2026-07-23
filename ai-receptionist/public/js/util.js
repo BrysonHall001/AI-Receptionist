@@ -206,7 +206,7 @@
     return { OWNER: "Owner", SUPER_ADMIN: "Super Admin", PORTAL_ADMIN: "Portal Admin", CLIENT_USER: "Client User", AUDITOR: "Auditor" }[role] || role;
   }
 
-  function toast(message, isError) {
+  function toast(message, isError, action) {
     let host = $("#toasts");
     if (!host) {
       host = el("div", "toasts");
@@ -216,12 +216,19 @@
     const t = el("div", "toast" + (isError ? " error" : ""));
     t.appendChild(el("span", "toast-dot"));
     t.appendChild(el("span", null, esc(message)));
-    host.appendChild(t);
+    // Optional inline ACTION (Scheduling Calendar batch: the drag "Undo"). Fully
+    // additive: a two-argument call renders exactly the toast it always did. An
+    // action toast lingers a little longer so the button is actually reachable.
+    if (action && action.label && typeof action.onClick === "function") {
+      const btn = el("button", "toast-action", esc(action.label));
+      btn.onclick = () => { try { action.onClick(); } catch (e) { /* action errors surface via their own toasts */ } t.remove(); };
+      t.appendChild(btn);
+    }
     setTimeout(() => {
       t.classList.add("toast-fading");
       
       setTimeout(() => t.remove(), 200);
-    }, 2800);
+    }, action ? 6000 : 2800);
   }
 
   function debounce(fn, ms) {

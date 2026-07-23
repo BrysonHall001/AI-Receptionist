@@ -6,10 +6,10 @@
 import { prisma } from "../db/client";
 import { audit } from "./auditService";
 import { AUDIT_ACTIONS } from "./auditCatalog";
-import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_RECORD_TYPE_KEY, INVOICE_RECORD_TYPE_KEY } from "./recordTypeService";
+import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_RECORD_TYPE_KEY, INVOICE_RECORD_TYPE_KEY, WORK_ORDER_RECORD_TYPE_KEY, isResourceCapable } from "./recordTypeService";
 import { randomUUID } from "crypto";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
-import { resourceExists, resolveResourceHours, resolveResourceDuration, effectiveDurationMin } from "./resourceService";
+import { resourceExists, resolveResourceHours, resolveResourceDuration, effectiveDurationMin, listResources } from "./resourceService";
 import { randomValueForField } from "./contactService";
 import { RETENTION_DAYS } from "./readModels";
 import { emitEvent } from "../events/bus";
@@ -232,6 +232,13 @@ export async function getModuleCalendarData(
   const stageLabel = (k: string | null) => { const s = recStages.find((x) => x.key === k); return s ? s.label : (k || ""); };
   const fieldKey = String(field || "").trim() || "appointmentAt";
 
+  // Scheduling-calendar options (Scheduling Calendar batch). BOTH default false,
+  // and every addition below is gated on them, so with the toggles OFF this
+  // function returns exactly what it returned before — asserted by
+  // selfTest_schedulingCalendar's shape-snapshot test.
+  const lanesOn = rt && rt.calendarLanes === true && isResourceCapable(rt.key);
+  const trayOn = rt && rt.calendarTray === true;
+
   const rows = await db.record.findMany({
     where: { tenantId, recordTypeId, deletedAt: null },
     orderBy: { createdAt: "asc" },
@@ -264,13 +271,68 @@ export async function getModuleCalendarData(
         stageKey: r.stageKey || null,
         stageLabel: stageLabel(r.stageKey || null),
         contactName: null,
-        resourceId: null,
+        // Lanes: expose the real assignment so the renderer can group per staff.
+        // With lanes OFF this stays null — the pre-batch shape, byte-for-byte.
+        resourceId: lanesOn ? (r.resourceId || null) : null,
         externalSource: null,
       };
     })
     .filter((b: any): b is any => b != null);
 
-  return { from: fromDate, to: toDate, hours: {}, bookings, resources: [] as any[] };
+  // Lanes ON → the renderer needs the resource roster (it already knows how to
+  // draw per-resource columns; it just never received resources on this path).
+  const resources = lanesOn ? await listResources(tenantId) : ([] as any[]);
+
+  // Tray ON → this module's DATELESS records (no value in the calendar field),
+  // so new requests are visible instead of invisible. Only THIS module's records
+  // by construction (the recordTypeId is in the query above).
+  let unscheduled: any[] | undefined;
+  if (trayOn) {
+    unscheduled = rows
+      .filter((r: any) => {
+        const raw = fieldKey === "appointmentAt" ? r.appointmentAt : (r.customFields || {})[fieldKey];
+        return valueToWall(raw) == null;
+      })
+      .map((r: any) => ({
+        id: r.id,
+        title: r.title || "Untitled",
+        stageKey: r.stageKey || null,
+        stageLabel: stageLabel(r.stageKey || null),
+        subtypeKey: r.subtypeKey || null,
+        resourceId: r.resourceId || null,
+        createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
+      }));
+  }
+
+  // Lanes ON → cross-module honesty: the OTHER resource-capable module's blocks
+  // for the same window, read-only-flagged, so a dispatcher can't drop work into
+  // time that only looks free. Work-order calendar → booking busy, sized by the
+  // SAME booking duration rule the booking calendar uses (service duration with
+  // a real-end override); the reverse direction lives in getCalendarData.
+  let busy: any[] | undefined;
+  if (lanesOn && rt.key === WORK_ORDER_RECORD_TYPE_KEY) {
+    const otherTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY);
+    const otherRt = await db.recordType.findFirst({ where: { tenantId, id: otherTypeId }, select: { label: true } });
+    const config = await loadBookingConfig(tenantId);
+    const resById: Record<string, any> = {};
+    resources.forEach((x: any) => { resById[x.id] = x; });
+    const win = { gte: new Date(`${fromDate}T00:00:00Z`), lt: new Date(`${toDate}T00:00:00Z`) };
+    const others = await db.record.findMany({
+      where: { tenantId, recordTypeId: otherTypeId, deletedAt: null, resourceId: { not: null }, appointmentAt: win },
+    });
+    busy = others
+      .filter((o: any) => o.appointmentAt && o.stageKey !== "no_show") // a no-show frees the time (same rule as availability)
+      .map((o: any) => {
+        const start = valueToWall(o.appointmentAt)!;
+        const durationMin = effectiveDurationMin(o.appointmentAt, o.endAt, resolveResourceDuration(o.resourceId ? resById[o.resourceId] : null, config, o.subtypeKey));
+        return { id: o.id, start, end: start, durationMin, resourceId: o.resourceId, readOnly: true, sourceLabel: (otherRt && otherRt.label) || "Booking" };
+      });
+  }
+
+  const out: any = { from: fromDate, to: toDate, hours: {}, bookings, resources };
+  if (unscheduled !== undefined) out.unscheduled = unscheduled;
+  if (busy !== undefined) out.busy = busy;
+  return out;
 }
 
 // ---- MAP data (Map view) ----------------------------------------------------

@@ -17,7 +17,7 @@
 import { OpenWindow, loadBookingConfig, durationForService, WEEKDAY_KEYS } from "./bookingConfig";
 import { getBusyTimes } from "./calendarSources";
 import { prisma } from "../db/client";
-import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "./recordTypeService";
+import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY, WORK_ORDER_RECORD_TYPE_KEY } from "./recordTypeService";
 import { isSyncDegradedStale } from "./googleConnectionService";
 import { listResources, ResourceDTO, resolveResourceHours, resolveResourceDuration, resolveResourceBuffer, effectiveDurationMin } from "./resourceService";
 
@@ -483,7 +483,46 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
       };
     });
 
-  return { from: fromDate, to: toDate, hours: config.hours, bookings, resources };
+  // Scheduling-calendar options (Scheduling Calendar batch) — BOTH default false,
+  // and every addition below is gated on them, so with the toggles OFF this feed
+  // is byte-for-byte what it always was (asserted by selfTest_schedulingCalendar).
+  const lanesOn = rt && (rt as any).calendarLanes === true;
+  const trayOn = rt && (rt as any).calendarTray === true;
+
+  const out: any = { from: fromDate, to: toDate, hours: config.hours, bookings, resources };
+
+  // Tray ON → dateless bookings. Native bookings require a time at create, so
+  // this is usually empty — included for symmetry so the renderer has ONE shape.
+  if (trayOn) {
+    const dateless = await db.record.findMany({ where: { tenantId, recordTypeId, deletedAt: null, appointmentAt: null } });
+    out.unscheduled = dateless.map((r: any) => ({
+      id: r.id, title: r.title || "Untitled",
+      stageKey: r.stageKey || null, stageLabel: stageLabel(r.stageKey || null),
+      subtypeKey: r.subtypeKey || null, resourceId: r.resourceId || null,
+      createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
+    }));
+  }
+
+  // Lanes ON → cross-module honesty: the tech's WORK-ORDER time renders as
+  // read-only busy shading on the booking calendar. Sized endAt-or-60 (work
+  // orders have no service durations); completed/cancelled free the time.
+  if (lanesOn) {
+    const woTypeId = await resolveRecordTypeId(tenantId, WORK_ORDER_RECORD_TYPE_KEY);
+    const woRt = await db.recordType.findFirst({ where: { tenantId, id: woTypeId }, select: { label: true } });
+    const others = await db.record.findMany({
+      where: { tenantId, recordTypeId: woTypeId, deletedAt: null, resourceId: { not: null }, appointmentAt: { gte: from, lt: to } },
+    });
+    out.busy = others
+      .filter((o: any) => o.appointmentAt && o.stageKey !== "completed" && o.stageKey !== "cancelled")
+      .map((o: any) => {
+        const start = dateToWall(o.appointmentAt);
+        const ms = o.endAt ? new Date(o.endAt).getTime() - new Date(o.appointmentAt).getTime() : 0;
+        const durationMin = ms > 0 ? Math.max(15, Math.round(ms / 60000)) : 60;
+        return { id: o.id, start, end: addMinutesWallStr(start, durationMin), durationMin, resourceId: o.resourceId, readOnly: true, sourceLabel: (woRt && woRt.label) || "Work Order" };
+      });
+  }
+
+  return out;
 }
 
 // ---------------------------------------------------------------------------
