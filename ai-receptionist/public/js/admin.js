@@ -1090,14 +1090,14 @@
   // for Google Calendar / Stripe / ElevenLabs per spec).
   const HEALTH_CAPTIONS = {
     twilio: "Provides the phone numbers and call routing for the AI receptionist.",
-    openai: "The language model that powers the AI receptionist's conversations.",
-    elevenlabs: "Premium call voices \u2014 synthesized by Twilio ConversationRelay using ElevenLabs; no direct API connection from Clarity.",
-    mapbox: "Turns addresses into map locations for contact and record maps.",
+    openai: "The language model that powers the AI receptionist's conversations \u2014 one platform-wide connection serves every tenant.",
+    elevenlabs: "Premium call voices \u2014 synthesized by Twilio ConversationRelay using ElevenLabs; no direct API connection from Clarity. Voice options are platform-wide.",
+    mapbox: "Turns addresses into map locations for contact and record maps \u2014 a platform-wide service shared by all tenants.",
     google: "Syncs busy times and bookings with connected Google Calendars.",
     stripe: "Powers tenant billing \u2014 charges, invoices, and payment records in Billing & Usage.",
-    database: "The Postgres database storing all portal data.",
-    process: "The Clarity app process itself \u2014 uptime and memory.",
-    scheduler: "The heartbeat that runs automations and scheduled work every couple of minutes.",
+    database: "The Postgres database storing all portal data \u2014 one platform-wide store.",
+    process: "The Clarity app process itself \u2014 uptime and memory; platform-wide by nature.",
+    scheduler: "The one platform-wide heartbeat that runs automations and scheduled work every couple of minutes.",
     geoQueue: "The background queue that turns contact and record addresses into map locations.",
     auditSweep: "The hourly cleanup that enforces the audit trail's retention policy.",
     automations: "Automation runs over the last day \u2014 failures here mean an automation needs attention.",
@@ -1107,6 +1107,92 @@
     errors: "Errors captured from tenant browsers and the server over the last day \u2014 including crashes that would otherwise be invisible.",
     failedLogins: "Sign-in attempts that failed in the last day, straight from the audit trail.",
   };
+
+  // panels-v3 Tier-B — per-tenant CONFIGURATION tables for infra tiles with a real
+  // tenant dimension (Twilio, Google Calendar, Stripe). Grounded read-only fields;
+  // shared table styling; sits between the status header and the check history.
+  const TENANT_CONFIG_COLUMNS = {
+    twilio: [
+      { label: "Phone number", render: (r) => rn(r.phoneNumber) },
+      { label: "Voice mode", render: (r) => esc(r.voiceMode === "OFF" ? "Off" : r.voiceMode === "PREMIUM" ? "Premium" : r.voiceMode === "STANDARD" ? "Standard" : String(r.voiceMode)) },
+      { label: "Webhook OK?", render: (r) => r.webhookOutcome === "ok" ? `<span class="pill success">ok</span> ${rnDate(r.webhookAt)}` : r.webhookOutcome === "fail" ? `<span class="pill skipped">fail</span> ${rnDate(r.webhookAt)}` : "\u2014" },
+    ],
+    google: [
+      { label: "Connected?", render: (r) => r.connected ? `<span class="pill success">connected</span>` : "\u2014" },
+      { label: "Calendars mapped", render: (r) => rn(r.calendars) },
+      { label: "Sync", render: (r) => !r.connected ? "\u2014" : r.lastSyncError ? `<span class="pill skipped">${esc(r.status || "degraded")}</span> <span class="cell-muted">${esc(r.lastSyncError)}</span>` : `${esc(r.status || "connected")} ${rnDate(r.lastSyncedAt)}` },
+    ],
+    stripe: [
+      { label: "Billing status", render: (r) => rn(r.billingStatus) },
+      { label: "Stripe customer?", render: (r) => r.hasStripeCustomer ? `<span class="pill success">yes</span>` : "\u2014" },
+      { label: "Last charge", render: (r) => r.lastChargeStatus ? `${esc(r.lastChargeStatus)} ${rnDate(r.lastChargeAt)}` : "\u2014" },
+    ],
+  };
+  async function mountTenantConfigTable(host, checkKey) {
+    App.util.showSkeleton(host, "table");
+    let d;
+    try { d = await App.api(`/api/admin/health/tenant-config/${encodeURIComponent(checkKey)}`); }
+    catch (e) { host.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+    const cols = TENANT_CONFIG_COLUMNS[checkKey] || [];
+    host.innerHTML = "";
+    const twrap = el("div", "table-wrap card health-rollup");
+    twrap.innerHTML = `<table><thead><tr><th>Tenant</th>${cols.map((c) => `<th>${esc(c.label)}</th>`).join("")}</tr></thead><tbody>` +
+      ((d.rows || []).map((r) => `<tr><td class="cell-strong">${esc(r.tenant)}</td>${cols.map((c) => `<td>${c.render(r)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length + 1}" class="cell-muted">No tenants yet.</td></tr>`) + `</tbody></table>`;
+    host.appendChild(twrap);
+  }
+
+  // panels-v3 — THE tenant-first rollup component. One implementation serves every
+  // Tier-A panel: a shared-styled table with ONE ROW PER TENANT (activity only),
+  // the "All tenants" total PINNED on top, an optional 24h/7d window selector,
+  // tenant-row click-through into the tile's existing detail table (drill-down is
+  // wired by the caller — the detail components from the last batch, never a copy),
+  // and an "All rows" toggle that drills without a tenant filter.
+  async function mountTenantRollup(host, cfg) {
+    // cfg: { checkKey, columns: [{key,label,render(row)}...] AFTER the tenant col,
+    //        windows: true|false, onDrill(tenantId|null, windowKey), emptyText }
+    let windowKey = "24h";
+    async function load() {
+      App.util.showSkeleton(host, "table");
+      let d;
+      try { d = await App.api(`/api/admin/health/rollup/${encodeURIComponent(cfg.checkKey)}${cfg.windows ? `?window=${windowKey}` : ""}`); }
+      catch (e) { host.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
+      paint(d);
+    }
+    function cellRow(r, isTotal, tenantLabel) {
+      const tds = cfg.columns.map((c) => `<td>${c.render(r)}</td>`).join("");
+      return `<tr class="${isTotal ? "hr-total" : "hr-row"}"${isTotal ? "" : ` data-tenant="${esc(r.tenantId || "")}" data-tname="${esc(r.tenant || "")}"`}><td class="${isTotal ? "cell-strong" : "cell-strong hr-tenant"}">${tenantLabel}</td>${tds}</tr>`;
+    }
+    function paint(d) {
+      host.innerHTML = "";
+      const bar = el("div", "adm-auditbar table-lead");
+      if (cfg.windows) {
+        const winSel = el("select", "input adm-cadsel");
+        [["24h", "Last 24 hours"], ["7d", "Last 7 days"]].forEach((p) => { const o = el("option", null, p[1]); o.value = p[0]; winSel.appendChild(o); });
+        winSel.value = windowKey;
+        winSel.onchange = () => { windowKey = winSel.value; load(); };
+        bar.appendChild(winSel);
+      }
+      const allBtn = el("button", "btn btn-ghost btn-sm", "All rows \u2192");
+      allBtn.onclick = () => cfg.onDrill(null, windowKey);
+      bar.appendChild(allBtn);
+      host.appendChild(bar);
+      const twrap = el("div", "table-wrap card health-rollup");
+      const head = `<thead><tr><th>Tenant</th>${cfg.columns.map((c) => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>`;
+      const totalRow = cellRow(d.total || {}, true, "All tenants");
+      const body = (d.rows || []).length
+        ? (d.rows || []).map((r) => cellRow(r, false, esc(r.tenant === null ? "(no tenant \u2014 platform level)" : r.tenant))).join("")
+        : `<tr><td colspan="${cfg.columns.length + 1}" class="cell-muted">${esc(cfg.emptyText || "No activity in this window.")}</td></tr>`;
+      twrap.innerHTML = `<table>${head}<tbody>${totalRow}${body}</tbody></table>`;
+      twrap.addEventListener("click", (e) => {
+        const tr = e.target && e.target.closest("tr.hr-row");
+        if (!tr) return;
+        cfg.onDrill(tr.getAttribute("data-tenant") || null, windowKey, tr.getAttribute("data-tname") || "");
+      });
+      host.appendChild(twrap);
+      host.appendChild(el("p", "cell-muted health-panel-foot", "One row per tenant with activity; click a tenant for its rows, or \u201cAll rows\u201d for everything."));
+    }
+    await load();
+  }
 
   // devtools-data — the Errors table: ONE component serving both the System Health
   // "Errors" sub-tab (full) and the Errors tile's expanded panel (pre-filtered 24h).
@@ -1344,14 +1430,49 @@
   }
 
   // devtools-data — WHICH tiles are data-backed, and what their panel table IS.
-  // ONE wrapper (mountHealthDataPanel) turns these configs into real tables on the
-  // shared machinery; audit-shaped ones EMBED the DT-3 audit component itself.
+  // panels-v3: every Tier-A tile is now ROLLUP-PRIMARY — one row per tenant with
+  // activity, the pinned all-tenants total, 24h/7d where windowed — and clicking a
+  // tenant (or "All rows") DRILLS into last batch's detail tables pre-filtered to
+  // that tenant + the tile's preset. The detail components are reused, never copied.
   const dayIsoAgo = (d) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+  const winFrom = (w) => dayIsoAgo(w === "7d" ? 6 : 1);
+  const rn = (v) => (v === null || v === undefined ? "\u2014" : esc(String(v)));
+  const rnStrong = (v) => (v ? `<strong>${esc(String(v))}</strong>` : "0");
+  const rnDate = (v) => (v ? `<span class="cell-muted">${fmtDate(v)}</span>` : "\u2014");
   const HEALTH_DATA_PANELS = {
-    failedLogins: { audit: () => ({ action: "auth.login_failed", status: "all", from: dayIsoAgo(1), to: dayIsoAgo(0) }), defaultKeys: ["createdAt", "tenant", "actor", "userType", "action", "ip"] },
-    automations: { audit: () => ({ group: "automations", status: "all", from: dayIsoAgo(1), to: dayIsoAgo(0) }), defaultKeys: ["createdAt", "tenant", "actor", "userType", "action", "subject", "details"] },
-    auditSweep: { audit: () => ({ status: "pending_deletion" }) },
+    failedLogins: {
+      rollup: { windows: true, columns: [
+        { key: "failed", label: "Failed", render: (r) => rnStrong(r.failed) },
+        { key: "users", label: "Distinct users", render: (r) => rn(r.users) },
+        { key: "ips", label: "Distinct IPs", render: (r) => rn(r.ips) },
+        { key: "latest", label: "Latest attempt", render: (r) => rnDate(r.latest) },
+      ] },
+      audit: (tenantId, win) => ({ action: "auth.login_failed", status: "all", from: winFrom(win), to: dayIsoAgo(0), tenantId: tenantId || "" }),
+      defaultKeys: ["createdAt", "tenant", "actor", "userType", "action", "ip"],
+    },
+    automations: {
+      rollup: { windows: true, columns: [
+        { key: "failed", label: "Failed runs", render: (r) => rnStrong(r.failed) },
+        { key: "total", label: "Total runs", render: (r) => rn(r.total) },
+        { key: "latest", label: "Latest failure", render: (r) => rnDate(r.latest) },
+      ] },
+      audit: (tenantId, win) => ({ group: "automations", status: "all", from: winFrom(win), to: dayIsoAgo(0), tenantId: tenantId || "" }),
+      defaultKeys: ["createdAt", "tenant", "actor", "userType", "action", "subject", "details"],
+    },
+    auditSweep: {
+      rollup: { windows: false, columns: [
+        { key: "active", label: "Active events", render: (r) => rn(r.active) },
+        { key: "pending", label: "Pending deletion", render: (r) => rnStrong(r.pending) },
+        { key: "oldest", label: "Oldest pending", render: (r) => rnDate(r.oldest) },
+      ] },
+      audit: (tenantId) => ({ status: "pending_deletion", tenantId: tenantId || "" }),
+    },
     geoQueue: {
+      rollup: { windows: false, columns: [
+        { key: "pending", label: "Pending", render: (r) => rn(r.pending) },
+        { key: "failed", label: "Failed", render: (r) => rnStrong(r.failed) },
+        { key: "oldest", label: "Oldest pending", render: (r) => rnDate(r.oldest) },
+      ] },
       fetch: "/api/admin/health/rows/geoQueue",
       columns: () => [
         { key: "updatedAt", label: "Updated", type: "date", get: (r) => r.updatedAt, render: (r) => `<span class="cell-muted">${fmtDate(r.updatedAt)}</span>` },
@@ -1364,6 +1485,11 @@
       ],
     },
     dripQueue: {
+      rollup: { windows: true, columns: [
+        { key: "overdue", label: "Overdue", render: (r) => rnStrong(r.overdue) },
+        { key: "failed", label: "Failed", render: (r) => rnStrong(r.failed) },
+        { key: "latest", label: "Latest", render: (r) => rnDate(r.latest) },
+      ] },
       fetch: "/api/admin/health/rows/dripQueue",
       columns: () => [
         { key: "dueAt", label: "Due", type: "date", get: (r) => r.dueAt, render: (r) => `<span class="cell-muted">${fmtDate(r.dueAt)}</span>` },
@@ -1374,27 +1500,43 @@
         { key: "error", label: "Error", type: "text", get: (r) => r.error, render: (r) => `<span class="cell-muted">${esc(r.error || "\u2014")}</span>` },
       ],
     },
-    errors: { component: (host) => renderErrorsTable(host, { embedId: "panel", filter: { from: new Date(Date.now() - 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) } }) }, // the tile panel = the SAME component, pre-filtered ~24h
-    webhooks: { component: (host) => renderWebhooksTable(host, { embedId: "panel", filter: { from: new Date(Date.now() - 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) } }) }, // ditto: the Task-6 rewire
+    errors: {
+      rollup: { windows: true, columns: [
+        { key: "client", label: "Client errors", render: (r) => rnStrong(r.client) },
+        { key: "server", label: "Server errors", render: (r) => rnStrong(r.server) },
+        { key: "latest", label: "Latest", render: (r) => rnDate(r.latest) },
+      ] },
+      component: (host, tenantId, win) => renderErrorsTable(host, { embedId: "drill", filter: { tenantId: tenantId || "", from: winFrom(win), to: dayIsoAgo(0) } }),
+    },
+    webhooks: {
+      rollup: { windows: true, columns: [
+        { key: "deliveries", label: "Deliveries", render: (r) => rn(r.deliveries) },
+        { key: "failures", label: "Failures", render: (r) => rnStrong(r.failures) },
+        { key: "latest", label: "Latest failure", render: (r) => rnDate(r.latest) },
+      ] },
+      component: (host, tenantId, win) => renderWebhooksTable(host, { embedId: "drill", filter: { tenantId: tenantId || "", from: winFrom(win), to: dayIsoAgo(0) } }),
+    },
   };
 
   // The ONE embedded data-table panel: audit-shaped configs EMBED renderAuditLog
   // (the DT-3 component, preset-filtered); row-shaped configs fetch + mount the
   // SAME App.table.mount machinery with a Tenant filter select. Configurations,
   // not seven implementations.
-  async function mountHealthDataPanel(host, checkKey, cfg) {
-    if (cfg.component) { await cfg.component(host); return; } // e.g. Errors: the sub-tab's own component, pre-filtered
-    if (cfg.audit) { await renderAuditLog(host, { embedded: true, embedId: checkKey, filter: cfg.audit(), defaultKeys: cfg.defaultKeys }); return; }
+  // panels-v3: queue-row tables (geo/drip) are now the DRILL target — callable with
+  // a preselected tenant. The shared machinery + tenant select are unchanged.
+  async function mountQueueRowsTable(host, checkKey, cfg, presetTenantName) {
     App.util.showSkeleton(host, "table");
     let rows = [];
     try { rows = (await App.api(cfg.fetch)).rows || []; }
     catch (e) { host.innerHTML = `<div class="card cell-muted">${esc(e.message)}</div>`; return; }
     host.innerHTML = "";
     const bar = el("div", "adm-auditbar table-lead");
-    let tenantFilter = "";
+    let tenantFilter = presetTenantName || "";
     const tenants = Array.from(new Set(rows.map((r) => r.tenant).filter(Boolean))).sort();
     const mkSel = (pairs, onchange) => { const s = el("select", "input adm-cadsel"); pairs.forEach((p) => { const o = el("option", null, esc(p[1])); o.value = p[0]; s.appendChild(o); }); s.onchange = () => onchange(s.value); return s; };
-    bar.appendChild(mkSel([["", "All tenants"]].concat(tenants.map((t) => [t, t])), (v) => { tenantFilter = v; paint(); }));
+    const tSel = mkSel([["", "All tenants"]].concat(tenants.map((t) => [t, t])), (v) => { tenantFilter = v; paint(); });
+    if (tenantFilter && tenants.includes(tenantFilter)) tSel.value = tenantFilter;
+    bar.appendChild(tSel);
     host.appendChild(bar);
     const tableHost = el("div");
     host.appendChild(tableHost);
@@ -1410,6 +1552,42 @@
       });
     }
     paint();
+  }
+
+  async function mountHealthDataPanel(host, checkKey, cfg) {
+    // panels-v3: ROLLUP-PRIMARY for every Tier-A tile — the per-tenant picture leads;
+    // a tenant click (or "All rows") swaps to LAST BATCH'S detail table pre-filtered,
+    // with a back affordance to the rollup. Detail components are reused, not copied.
+    if (cfg.rollup) {
+      const tenantNameById = {};
+      const paintRollup = () => {
+        host.innerHTML = "";
+        const rHost = el("div");
+        host.appendChild(rHost);
+        mountTenantRollup(rHost, {
+          checkKey,
+          windows: cfg.rollup.windows,
+          columns: cfg.rollup.columns,
+          onDrill: (tenantId, win, tenantName) => { if (tenantId) tenantNameById[tenantId] = tenantName || ""; paintDrill(tenantId, win); },
+        });
+      };
+      const paintDrill = async (tenantId, win) => {
+        host.innerHTML = "";
+        const back = el("button", "btn btn-ghost btn-sm health-rollup-back", "\u2190 Back to tenant summary");
+        back.onclick = paintRollup;
+        host.appendChild(back);
+        const dHost = el("div");
+        host.appendChild(dHost);
+        if (cfg.audit) { await renderAuditLog(dHost, { embedded: true, embedId: checkKey + "-drill", filter: cfg.audit(tenantId, win), defaultKeys: cfg.defaultKeys }); return; }
+        if (cfg.component) { await cfg.component(dHost, tenantId, win); return; }
+        if (cfg.fetch) { await mountQueueRowsTable(dHost, checkKey, cfg, tenantId ? tenantNameById[tenantId] : ""); return; }
+      };
+      paintRollup();
+      return;
+    }
+    if (cfg.component) { await cfg.component(host); return; }
+    if (cfg.audit) { await renderAuditLog(host, { embedded: true, embedId: checkKey, filter: cfg.audit(), defaultKeys: cfg.defaultKeys }); return; }
+    if (cfg.fetch) { await mountQueueRowsTable(host, checkKey, cfg, ""); return; }
   }
 
   // Health v2 — the expanded detail panel. Full width, directly beneath the tile's
@@ -1464,6 +1642,14 @@
     }
     if (checkKey === "scheduler") {
       panel.appendChild(el("p", "cell-muted health-extra", "The table below doubles as the tick log \u2014 each row is one look at the heartbeat."));
+    }
+    // panels-v3 Tier-B: Twilio / Google Calendar / Stripe carry a real tenant
+    // dimension — a per-tenant configuration table sits before the check history.
+    if (!dataCfg && (checkKey === "twilio" || checkKey === "google" || checkKey === "stripe")) {
+      panel.appendChild(el("h4", "settings-sub", "Per-tenant configuration"));
+      const cfgHost = el("div", "health-data-host");
+      panel.appendChild(cfgHost);
+      mountTenantConfigTable(cfgHost, checkKey);
     }
 
     // the recent-checks table (ring buffer; shared table styling). On DATA-BACKED

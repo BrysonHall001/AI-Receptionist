@@ -3375,3 +3375,11 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .health-data-host { min-width: 0; }
 .health-hist-toggle { align-self: flex-start; }
 .err-stack { font-family: var(--font-mono, monospace); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel-2, var(--panel)); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; max-height: 320px; overflow: auto; margin: 0; }
+
+/* panels-v3 — tenant rollup tables */
+.health-rollup { min-width: 0; }
+.health-rollup td, .health-rollup th { padding: 8px 12px; font-size: var(--text-sm); text-align: left; }
+.health-rollup tr.hr-total td { border-bottom: 1px solid var(--line); }
+.health-rollup tr.hr-row { cursor: pointer; }
+.health-rollup tr.hr-row:hover td { background: var(--panel-2, var(--panel)); }
+.health-rollup-back { align-self: flex-start; margin-bottom: 8px; }

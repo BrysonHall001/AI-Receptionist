@@ -465,6 +465,122 @@ adminRouter.get("/health/detail/:check", async (req: Request, res: Response) => 
   } catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
+// panels-v3 Tier-B: per-tenant CONFIGURATION for infra tiles with a real tenant
+// dimension. All grounded reads: Tenant.phoneNumber/voiceMode/billingStatus/
+// stripeCustomerId, GoogleConnection.status/lastSyncedAt/lastSyncError,
+// ResourceCalendarMap counts, latest Charge per tenant. Read-only; fixed query
+// count (never per-tenant loops).
+adminRouter.get("/health/tenant-config/:check", async (req: Request, res: Response) => {
+  try {
+    const key = String(req.params.check);
+    const tenants = await (prisma as any).tenant.findMany({ select: { id: true, name: true, phoneNumber: true, voiceMode: true, billingStatus: true, stripeCustomerId: true }, orderBy: { name: "asc" } });
+    if (key === "twilio") {
+      // Webhook OK?: the latest inbound twilio delivery outcome PER TENANT where the
+      // capture resolved one; platform-level deliveries (null tenantId) can't be
+      // attributed, so unattributed tenants honestly show "—".
+      const latest: any[] = await (prisma as any).$queryRawUnsafe(`
+        SELECT DISTINCT ON ("tenantId") "tenantId", outcome, "createdAt"
+        FROM "WebhookEvent" WHERE provider = 'twilio' AND "tenantId" IS NOT NULL
+        ORDER BY "tenantId", "createdAt" DESC`);
+      const byTenant: Record<string, any> = {};
+      latest.forEach((l: any) => { byTenant[l.tenantId] = l; });
+      res.json({ rows: tenants.map((t: any) => ({ tenantId: t.id, tenant: t.name, phoneNumber: t.phoneNumber || null, voiceMode: t.voiceMode || "OFF", webhookOutcome: byTenant[t.id] ? byTenant[t.id].outcome : null, webhookAt: byTenant[t.id] ? byTenant[t.id].createdAt : null })) });
+      return;
+    }
+    if (key === "google") {
+      const [conns, maps] = await Promise.all([
+        (prisma as any).googleConnection.findMany({ select: { tenantId: true, status: true, lastSyncedAt: true, lastSyncError: true } }),
+        (prisma as any).resourceCalendarMap.groupBy({ by: ["tenantId"], _count: { _all: true } }),
+      ]);
+      const cByT: Record<string, any> = {}; conns.forEach((c: any) => { cByT[c.tenantId] = c; });
+      const mByT: Record<string, number> = {}; maps.forEach((m: any) => { mByT[m.tenantId] = m._count._all; });
+      res.json({ rows: tenants.map((t: any) => ({ tenantId: t.id, tenant: t.name, connected: !!cByT[t.id], status: cByT[t.id] ? cByT[t.id].status : null, calendars: mByT[t.id] || 0, lastSyncedAt: cByT[t.id] ? cByT[t.id].lastSyncedAt : null, lastSyncError: cByT[t.id] ? cByT[t.id].lastSyncError : null })) });
+      return;
+    }
+    if (key === "stripe") {
+      const latest: any[] = await (prisma as any).$queryRawUnsafe(`
+        SELECT DISTINCT ON ("tenantId") "tenantId", status, amount, "createdAt"
+        FROM "Charge" ORDER BY "tenantId", "createdAt" DESC`);
+      const byTenant: Record<string, any> = {};
+      latest.forEach((l: any) => { byTenant[l.tenantId] = l; });
+      res.json({ rows: tenants.map((t: any) => ({ tenantId: t.id, tenant: t.name, billingStatus: t.billingStatus || null, hasStripeCustomer: !!t.stripeCustomerId, lastChargeStatus: byTenant[t.id] ? byTenant[t.id].status : null, lastChargeAt: byTenant[t.id] ? byTenant[t.id].createdAt : null })) });
+      return;
+    }
+    res.status(404).json({ error: "no tenant config for this check" });
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+// panels-v3: per-tenant rollups. Each check maps to ONE raw grouped-aggregate
+// (GROUPING SETS ((tenantId), ()) => tenant rows + the grand-total row together).
+// Read-only; window = 24h | 7d where the tile is windowed; names joined after.
+const ROLLUP_WINDOW_MS: Record<string, number> = { "24h": 24 * 60 * 60_000, "7d": 7 * 24 * 60 * 60_000 };
+export const ROLLUP_SQL: Record<string, { windowed: boolean; sql: (since: Date) => { text: string; params: any[] } }> = { // exported for the panels-v3 self-test (DB-driven rollup correctness)
+  failedLogins: { windowed: true, sql: (since) => ({ text: `
+    SELECT "tenantId", COUNT(*)::int AS failed, COUNT(DISTINCT "actorId")::int AS users,
+           COUNT(DISTINCT (meta->>'ip'))::int AS ips, MAX("createdAt") AS latest, GROUPING("tenantId")::int AS istotal
+    FROM "AuditEvent" WHERE action = 'auth.login_failed' AND "createdAt" >= $1
+    GROUP BY GROUPING SETS (("tenantId"), ())`, params: [since] }) },
+  automations: { windowed: true, sql: (since) => ({ text: `
+    SELECT "tenantId", COUNT(*) FILTER (WHERE status = 'failed')::int AS failed, COUNT(*)::int AS total,
+           MAX("createdAt") FILTER (WHERE status = 'failed') AS latest, GROUPING("tenantId")::int AS istotal
+    FROM "AutomationRun" WHERE "createdAt" >= $1
+    GROUP BY GROUPING SETS (("tenantId"), ())`, params: [since] }) },
+  dripQueue: { windowed: true, sql: (since) => ({ text: `
+    SELECT "tenantId", COUNT(*) FILTER (WHERE status = 'pending' AND "dueAt" < NOW() - INTERVAL '10 minutes')::int AS overdue,
+           COUNT(*) FILTER (WHERE status = 'failed' AND "updatedAt" >= $1)::int AS failed,
+           MAX("updatedAt") AS latest, GROUPING("tenantId")::int AS istotal
+    FROM "ScheduledJob" WHERE (status = 'pending' AND "dueAt" < NOW() - INTERVAL '10 minutes') OR (status = 'failed' AND "updatedAt" >= $1)
+    GROUP BY GROUPING SETS (("tenantId"), ())`, params: [since] }) },
+  geoQueue: { windowed: false, sql: () => ({ text: `
+    SELECT "tenantId", COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
+           COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+           MIN("createdAt") FILTER (WHERE status = 'pending') AS oldest, GROUPING("tenantId")::int AS istotal
+    FROM (SELECT "tenantId", status, "createdAt" FROM "ContactGeo" WHERE status IN ('pending','failed')
+          UNION ALL SELECT "tenantId", status, "createdAt" FROM "RecordGeo" WHERE status IN ('pending','failed')) g
+    GROUP BY GROUPING SETS (("tenantId"), ())`, params: [] }) },
+  webhooks: { windowed: true, sql: (since) => ({ text: `
+    SELECT "tenantId", COUNT(*)::int AS deliveries, COUNT(*) FILTER (WHERE outcome = 'fail')::int AS failures,
+           MAX("createdAt") FILTER (WHERE outcome = 'fail') AS latest, GROUPING("tenantId")::int AS istotal
+    FROM "WebhookEvent" WHERE "createdAt" >= $1
+    GROUP BY GROUPING SETS (("tenantId"), ())`, params: [since] }) },
+  errors: { windowed: true, sql: (since) => ({ text: `
+    SELECT "tenantId", COUNT(*) FILTER (WHERE source = 'client')::int AS client, COUNT(*) FILTER (WHERE source = 'server')::int AS server,
+           MAX("createdAt") AS latest, GROUPING("tenantId")::int AS istotal
+    FROM "ErrorEvent" WHERE "createdAt" >= $1
+    GROUP BY GROUPING SETS (("tenantId"), ())`, params: [since] }) },
+  auditSweep: { windowed: false, sql: () => ({ text: `
+    SELECT "tenantId", COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+           COUNT(*) FILTER (WHERE status = 'pending_deletion')::int AS pending,
+           MIN("createdAt") FILTER (WHERE status = 'pending_deletion') AS oldest, GROUPING("tenantId")::int AS istotal
+    FROM "AuditEvent" GROUP BY GROUPING SETS (("tenantId"), ())`, params: [] }) },
+};
+adminRouter.get("/health/rollup/:check", async (req: Request, res: Response) => {
+  try {
+    const key = String(req.params.check);
+    const def = ROLLUP_SQL[key];
+    if (!def) { res.status(404).json({ error: "no rollup for this check" }); return; }
+    const win = def.windowed ? (String(req.query.window || "24h") === "7d" ? "7d" : "24h") : null;
+    const since = new Date(Date.now() - (win ? ROLLUP_WINDOW_MS[win] : 0));
+    const { text, params } = def.sql(since);
+    const raw: any[] = await (prisma as any).$queryRawUnsafe(text, ...params);
+    const tn: Record<string, string> = {};
+    (await (prisma as any).tenant.findMany({ select: { id: true, name: true } })).forEach((t: any) => { tn[t.id] = t.name; });
+    const num = (v: any) => (typeof v === "bigint" ? Number(v) : v);
+    const rows: any[] = [];
+    let total: any = null;
+    for (const r of raw) {
+      const o: any = {};
+      for (const k of Object.keys(r)) o[k] = num(r[k]);
+      if (o.istotal === 1) { delete o.istotal; delete o.tenantId; total = o; continue; }
+      delete o.istotal;
+      o.tenant = o.tenantId ? tn[o.tenantId] || "(deleted tenant)" : null; // null tenantId => platform-level
+      rows.push(o);
+    }
+    rows.sort((a, b) => String(a.tenant || "\uffff").localeCompare(String(b.tenant || "\uffff")));
+    res.json({ rows, total: total || {}, window: win });
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
 // devtools-data: the ErrorEvent surface — read-only, capped, filtered like its audit
 // sibling (source, tenant, day-inclusive dates, q over message/route). Newest first.
 adminRouter.get("/errors", async (req: Request, res: Response) => {

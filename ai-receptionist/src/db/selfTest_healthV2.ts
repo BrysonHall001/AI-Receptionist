@@ -69,7 +69,7 @@ async function main() {
   check(adminJs.includes("History is kept in memory (last ${d.historyLimit || 30} checks per item) and resets when the app restarts."), "the panel footer says the history is memory-only and resets on restart");
   check(adminJs.includes("<table><thead><tr><th>Time</th><th>Status</th><th>Latency</th><th>Detail</th></tr></thead>") && adminJs.includes('el("div", "table-wrap card health-history")'), "the recent-checks table uses the shared table styling with Time \u00b7 Status \u00b7 Latency \u00b7 Detail");
   check(adminRoutes.includes('adminRouter.get("/health/detail/:check"') && adminJs.includes('App.api(`/api/admin/health/detail/${encodeURIComponent(checkKey)}`)'), "panels load one check's detail (cache entry + history + extras) from the detail endpoint");
-  check(adminJs.includes('automations: { audit: () => ({ group: "automations", status: "all"') && adminJs.includes("if (hint && hint.auditFilter) Object.assign(f, hint.auditFilter);"), "the Automations panel EMBEDS the audit table pre-filtered (devtools-data superseded the deep link; the hint machinery remains for route mapping)");
+  check(adminJs.includes('audit: (tenantId, win) => ({ group: "automations", status: "all"') && adminJs.includes("if (hint && hint.auditFilter) Object.assign(f, hint.auditFilter);"), "the Automations drill EMBEDS the audit table pre-filtered (panels-v3 rollup leads; the hint machinery remains for route mapping)");
 
   // ---------- (4) banner + nav dot removed ----------
   console.log("\n(4) banner + nav-dot removal (orphan scan):");

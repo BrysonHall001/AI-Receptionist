@@ -52,8 +52,8 @@ async function main() {
 
   // ---------- (2) the embedded-panel wrapper ----------
   console.log("\n(2) embedded data panels:");
-  check(adminJs.includes('failedLogins: { audit: () => ({ action: "auth.login_failed", status: "all", from: dayIsoAgo(1), to: dayIsoAgo(0) }), defaultKeys: ["createdAt", "tenant", "actor", "userType", "action", "ip"] }'), "failed logins EMBED the audit table: auth.login_failed + last-24h, with user/user-type/tenant/IP/time columns");
-  check(adminJs.includes('automations: { audit: () => ({ group: "automations", status: "all"') && adminJs.includes('auditSweep: { audit: () => ({ status: "pending_deletion" }) }'), "automations + retention panels are audit-table configurations too");
+  check(adminJs.includes('audit: (tenantId, win) => ({ action: "auth.login_failed", status: "all", from: winFrom(win), to: dayIsoAgo(0), tenantId: tenantId || "" })') && adminJs.includes('defaultKeys: ["createdAt", "tenant", "actor", "userType", "action", "ip"]'), "failed logins DRILL into the audit table: auth.login_failed + window + tenant, with user/user-type/tenant/IP/time columns (panels-v3: rollup-primary)");
+  check(adminJs.includes('audit: (tenantId, win) => ({ group: "automations", status: "all"') && adminJs.includes('audit: (tenantId) => ({ status: "pending_deletion", tenantId: tenantId || "" })'), "automations + retention drills are audit-table configurations too (tenant + preset threaded)");
   check(adminJs.includes("if (cfg.audit) { await renderAuditLog(host, { embedded: true, embedId: checkKey, filter: cfg.audit(), defaultKeys: cfg.defaultKeys }); return; }"), "the wrapper EMBEDS renderAuditLog itself \u2014 the DT-3 component, not a fork (source-asserted)");
   check(adminJs.includes("if (cfg.component) { await cfg.component(host); return; }") && adminJs.includes("async function mountHealthDataPanel(host, checkKey, cfg)"), "ONE wrapper turns configs into panels (audit-embed / fetch-table / component branches)");
   // the endpoints' where-shapes, drift-pinned, then a live DB-driven leg
@@ -161,7 +161,7 @@ async function main() {
   check(HEALTH.ERRORS_24H_WARN === 1 && HEALTH.ERRORS_24H_FAIL === 25 && HEALTH.WEBHOOK_FAILS_24H_WARN === 1 && HEALTH.WEBHOOK_FAILS_24H_FAIL === 25, "tile thresholds are NAMED constants");
   check(HEALTH_CHECK_KEYS.includes("errors") && HEALTH_CHECK_KEYS.length === 17 && adminJs.includes("errors: HW("), "the Errors tile lives in the registry with its accent widget");
   check(read("src/services/healthService.ts").includes("webhookEvent.count") && !read("src/services/healthService.ts").includes("emailLog.count"), "the Webhook-deliveries check reads REAL WebhookEvent counts (the EmailLog read is gone)");
-  check(adminJs.includes('errors: { component: (host) => renderErrorsTable(host, { embedId: "panel"') && adminJs.includes('webhooks: { component: (host) => renderWebhooksTable(host, { embedId: "panel"'), "both tiles' panels ARE their sub-tab components, pre-filtered ~24h (one implementation each)");
+  check(adminJs.includes('component: (host, tenantId, win) => renderErrorsTable(host, { embedId: "drill", filter: { tenantId: tenantId || "", from: winFrom(win), to: dayIsoAgo(0) } })') && adminJs.includes('component: (host, tenantId, win) => renderWebhooksTable(host, { embedId: "drill"'), "both tiles' drills ARE their sub-tab components, tenant+window pre-filtered (one implementation each; panels-v3)");
 
   // ---------- (6) ledger + ratchet ----------
   console.log("\n(6) ledger + ratchet:");
