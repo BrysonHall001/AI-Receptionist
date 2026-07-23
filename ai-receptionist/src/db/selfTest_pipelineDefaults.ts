@@ -34,6 +34,7 @@ async function main() {
   // (2) explicit expectations.
   check(byKey.job && byKey.job.pipelineEnabled === true, "Jobs default pipelineEnabled = TRUE");
   check(byKey.booking && byKey.booking.pipelineEnabled === true, "Bookings default pipelineEnabled = TRUE");
+  check(byKey.work_order && byKey.work_order.pipelineEnabled === true, "Work Orders default pipelineEnabled = TRUE (Work Orders batch)");
   const flat = ["contact", "equipment", "vehicle", "property", "product", "estimate", "task", "invoice"];
   for (const k of flat) check(byKey[k] && byKey[k].pipelineEnabled === false, `${k} default pipelineEnabled = FALSE (flat)`);
 

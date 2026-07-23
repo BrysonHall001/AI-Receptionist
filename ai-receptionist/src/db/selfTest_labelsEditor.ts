@@ -58,7 +58,7 @@ async function main() {
     const aContact = await db.recordType.findFirst({ where: { tenantId: aId, key: "contact" } });
     check(!!aContact && aContact.label === "Client" && aContact.labelPlural === "Clients", "portal A contact type now Client/Clients");
     const aJob = await db.recordType.findFirst({ where: { tenantId: aId, key: "job" } });
-    check(!!aJob && aJob.label === "Job", "portal A job type left unchanged");
+    check(!!aJob && aJob.label === "Job Opening", "portal A job type left unchanged (stock label is now Job Opening — Work Orders batch)");
 
     // (d) stable key untouched
     console.log("(d) the stable key is untouched:");

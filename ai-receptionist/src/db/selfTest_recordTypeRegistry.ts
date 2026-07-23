@@ -28,10 +28,13 @@ async function main() {
   // (1) Fresh tenant lists exactly the three system types, expected keys/labels/order.
   const A = await mkTenant("A");
   const types = await listRecordTypes(A);
-  check(types.length === 10, "fresh tenant has exactly 10 system record types");
+  // Work Orders batch: the registry gained work_order (order 10) and the job
+  // module's DEFAULT label became "Job Opening" (label-only; key/stages/subtypes
+  // unchanged). This suite was updated with that batch per the stale-test rule.
+  check(types.length === 11, "fresh tenant has exactly 11 system record types");
   const want = [
     { key: "contact", label: "Contact", labelPlural: "Contacts", order: 0 },
-    { key: "job", label: "Job", labelPlural: "Jobs", order: 1 },
+    { key: "job", label: "Job Opening", labelPlural: "Job Openings", order: 1 },
     { key: "booking", label: "Booking", labelPlural: "Bookings", order: 2 },
     { key: "equipment", label: "Equipment", labelPlural: "Equipment", order: 3 },
     { key: "invoice", label: "Invoice", labelPlural: "Invoices", order: 4 },
@@ -40,6 +43,7 @@ async function main() {
     { key: "product", label: "Product", labelPlural: "Products", order: 7 },
     { key: "estimate", label: "Estimate", labelPlural: "Estimates", order: 8 },
     { key: "task", label: "Task", labelPlural: "Tasks", order: 9 },
+    { key: "work_order", label: "Work Order", labelPlural: "Work Orders", order: 10 },
   ];
   want.forEach((w, i) => {
     const t = types[i];
@@ -51,6 +55,10 @@ async function main() {
   check(Array.isArray(job.stages) && job.stages.length === 6 && Array.isArray(job.subtypes) && job.subtypes.length === 3, "job keeps its 6 stages + 3 subtypes");
   const booking = types.find((t: any) => t.key === "booking")!;
   check(Array.isArray(booking.recordStages) && booking.recordStages.length === 5, "booking keeps its 5 record statuses");
+  const wo = types.find((t: any) => t.key === "work_order")!;
+  check(Array.isArray(wo.recordStages) && wo.recordStages.length === 5 && Array.isArray(wo.subtypes) && wo.subtypes.length === 4
+    && wo.pipelineEnabled === true && JSON.stringify(wo.enabledViews) === JSON.stringify(["board", "calendar", "map"]) && wo.calendarDateField === "appointmentAt",
+    "work_order seeds 5 statuses + 4 subtypes, board/calendar/map, calendar by appointmentAt");
 
   // (2) resolveRecordTypeId — keys, an arbitrary id, and unknown → contact default.
   const idByKey: Record<string, string> = {};
@@ -63,7 +71,7 @@ async function main() {
   check((await resolveRecordTypeId(A, null)) === idByKey["contact"], "resolveRecordTypeId(null) → contact default");
 
   // (3) ADDITIVE doorway: register a mock system type in the registry only.
-  check(systemRecordTypeKeys().join(",") === "contact,job,booking,equipment,invoice,vehicle,property,product,estimate,task", "registry keys are exactly the ten before adding");
+  check(systemRecordTypeKeys().join(",") === "contact,job,booking,equipment,invoice,vehicle,property,product,estimate,task,work_order", "registry keys are exactly the eleven before adding");
   check(!allowedMapRecordTypeKeys().includes("equipment_mock"), "survey allow-list excludes the mock before adding");
   const MOCK = { key: "equipment_mock", defaults: { key: "equipment_mock", label: "Equipment", labelPlural: "Equipment", system: false, stages: [], recordStages: [], order: 99 } };
   SYSTEM_RECORD_TYPES.push(MOCK);
@@ -79,7 +87,7 @@ async function main() {
     const i = SYSTEM_RECORD_TYPES.indexOf(MOCK);
     if (i >= 0) SYSTEM_RECORD_TYPES.splice(i, 1);
   }
-  check(systemRecordTypeKeys().join(",") === "contact,job,booking,equipment,invoice,vehicle,property,product,estimate,task", "registry restored to the ten after the test");
+  check(systemRecordTypeKeys().join(",") === "contact,job,booking,equipment,invoice,vehicle,property,product,estimate,task,work_order", "registry restored to the eleven after the test");
 }
 
 main()

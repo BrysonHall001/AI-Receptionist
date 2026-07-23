@@ -33,7 +33,7 @@
           id: "orientation", features: ["always"],
           title: "Finding your way around: Modules and Pages",
           blocks: [
-            { p: "Clarity's navigation has two parts, and the split is the key to the whole app. The LEFT navigation lists your MODULES — the kinds of data your business keeps, like [[#/contacts|Contacts]], [[#/jobs|Jobs]], and [[#/bookings|Bookings]], plus any modules you create. Modules are highly configurable: their fields are grouped into sections, they offer custom views, and you can rename them to your own words." },
+            { p: "Clarity's navigation has two parts, and the split is the key to the whole app. The LEFT navigation lists your MODULES — the kinds of data your business keeps, like [[#/contacts|Contacts]], [[#/jobs|Job Openings]], and [[#/bookings|Bookings]], plus any modules you create. Modules are highly configurable: their fields are grouped into sections, they offer custom views, and you can rename them to your own words." },
             { p: "Across the TOP run your PAGES — fixed-purpose screens that work WITH that data: [[#/dashboard|Home Dashboard]], [[#/calls|Calls]], [[#/reports|Analytics]], [[#/automations|Automations]], [[#/communication|Communication]], the Learning Center, and [[#/feedback|Feedback]]." },
             { steps: [
               "Left navigation = modules: one entry per kind of record. Yours may differ from a teammate's screenshots — modules are renameable and you can add your own.",
@@ -121,7 +121,7 @@
           id: "how-organized", features: ["always"],
           title: "How Clarity is organized: fields \u2192 sections \u2192 modules \u2192 links",
           blocks: [
-            { p: "Everything in Clarity hangs off one simple hierarchy. FIELDS are the individual pieces of information — a name, a phone number, a date. Fields live in SECTIONS, which group related fields together on a record's panel (contact details in one section, preferences in another). Sections make up a MODULE — [[#/contacts|Contacts]], [[#/jobs|Jobs]], [[#/bookings|Bookings]], or any module you create — and each module holds one kind of record." },
+            { p: "Everything in Clarity hangs off one simple hierarchy. FIELDS are the individual pieces of information — a name, a phone number, a date. Fields live in SECTIONS, which group related fields together on a record's panel (contact details in one section, preferences in another). Sections make up a MODULE — [[#/contacts|Contacts]], [[#/jobs|Job Openings]], [[#/bookings|Bookings]], or any module you create — and each module holds one kind of record." },
             { p: "Modules LINK to each other: a record's panel shows related tabs, so a contact's jobs and bookings are one click away. And alongside the modules sit the PAGES — the fixed tools like [[#/dashboard|Home Dashboard]] and [[#/reports|Analytics]] that read and chart the data your modules hold." },
             { steps: [
               "Open any record in [[#/contacts|Contacts]] and notice its fields grouped under section headings.",
@@ -406,6 +406,24 @@
               "Open [[#/settings/scheduling|Settings → Scheduling & Resources]].",
               "Add each bookable person or resource; bookings can then be assigned to them.",
             ] },
+          ],
+        },
+        {
+          // Work Orders foundation batch. Copy deliberately never names seeded
+          // stage/subtype/field labels (the LC-3 DB scan forbids them) — it
+          // teaches the flow in generic words, like every other guide.
+          id: "work-orders", features: ["rt:work_order"],
+          title: "Work orders: create, plan, and hand off",
+          blocks: [
+            { p: "A work order is a visit-ready job for your field team: what needs doing, where, and who's going. Open [[#/records/work_order|Work Orders]] to see them all — each one moves through its statuses from first request to done, and can be typed when you create it (both the types and the statuses are yours to rename in [[#/settings/fields|Settings → Modules & Fields]])." },
+            { steps: [
+              "Press Create on the [[#/records/work_order|Work Orders]] page, give it a clear title, pick its type, and fill in the details.",
+              "To put it on the module's calendar, set a start — and optionally an end — in the date and time boxes.",
+              "To hand it to someone, pick a person in the Assigned dropdown — the same staff list bookings use.",
+              "Link each staff member to their sign-in account in [[#/settings/scheduling|Settings → Scheduling & Resources]] (the Link account button on their row).",
+              "Anyone with a linked account gets a My work orders entry under Saved Filters on the [[#/records/work_order|Work Orders]] list — one click shows just their own work.",
+            ] },
+            { tip: "Status changes on a work order can kick off [[#/automations|Automations]] — a follow-up email when the work wraps up, for example — using the \"Record updated / status changed\" trigger." },
           ],
         },
         {

@@ -8,9 +8,12 @@ import { resolve } from "path";
 import vm from "vm";
 
 // The EXACT historical hardcoded portal nav (record items carry their kind as 3rd el).
-const HISTORICAL_NAV: [string, string, string?][] = [
+// Work Orders batch: the job module's stock label is now "Job Openings", so the
+// FALLBACK nav (no live data) carries that word; a live list still wins, so the
+// second case below feeds the old "Jobs" label and must still see "Jobs".
+const navWithJobLabel = (jobPlural: string): [string, string, string?][] => [
   ["#/dashboard", "Home Dashboard"], ["#/calls", "Calls"],
-  ["#/contacts", "Contacts", "contact"], ["#/jobs", "Jobs", "job"], ["#/bookings", "Bookings", "booking"],
+  ["#/contacts", "Contacts", "contact"], ["#/jobs", jobPlural, "job"], ["#/bookings", "Bookings", "booking"],
   ["#/reports", "Analytics"], ["#/automations", "Automations"], ["#/communication", "Communication"],
   ["#/learn", "Learning Center"], ["#/feedback", "Feedback"],
 ];
@@ -35,16 +38,16 @@ console.log("Registry-driven nav — identical today + additive\n===============
 
 // (1) With no live list (fallback) AND with exactly the three system types, the nav
 //     equals the historical hardcoded nav — same hrefs, order, labels, kinds.
-for (const [caseName, rt] of [
-  ["fallback (no fetch)", null],
+for (const [caseName, rt, jobPlural] of [
+  ["fallback (no fetch)", null, "Job Openings"],
   ["live = three system types", [
     { key: "contact", label: "Contact", labelPlural: "Contacts" },
     { key: "job", label: "Job", labelPlural: "Jobs" },
     { key: "booking", label: "Booking", labelPlural: "Bookings" },
-  ]],
-] as [string, any][]) {
+  ], "Jobs"],
+] as [string, any, string][]) {
   const App = loadNav(rt);
-  check(eq(App.buildPortalNav(), HISTORICAL_NAV), `[${caseName}] buildPortalNav() === historical PORTAL_NAV (hrefs/order/labels/kinds)`);
+  check(eq(App.buildPortalNav(), navWithJobLabel(jobPlural)), `[${caseName}] buildPortalNav() === historical PORTAL_NAV shape (job label: ${jobPlural})`);
   check(eq(App.buildPortalNav().map((it: any[]) => it[0]), HISTORICAL_ORDER), `[${caseName}] nav order unchanged`);
   check(eq(App.recordsAreaHrefs(), HISTORICAL_RECORDS_AREA), `[${caseName}] records area === [#/jobs, #/bookings]`);
   check(App.recordTypeHref("contact") === "#/contacts" && App.recordTypeHref("job") === "#/jobs" && App.recordTypeHref("booking") === "#/bookings", `[${caseName}] system types keep bespoke hrefs`);
@@ -61,7 +64,7 @@ const App4 = loadNav([
   { key: "equipment", label: "Equipment", labelPlural: "Equipment" },
 ]);
 const nav4 = App4.buildPortalNav();
-check(nav4.length === HISTORICAL_NAV.length + 1, "a 4th record type yields exactly one extra nav item");
+check(nav4.length === navWithJobLabel("Jobs").length + 1, "a 4th record type yields exactly one extra nav item");
 check(App4.recordTypeHref("equipment") === "#/records/equipment", "the new type uses the #/records/<key> convention");
 const equipItem = nav4.find((it: any[]) => it[2] === "equipment");
 check(!!equipItem && equipItem[0] === "#/records/equipment" && equipItem[1] === "Equipment", "new item is [#/records/equipment, 'Equipment', 'equipment']");
@@ -73,7 +76,7 @@ check(idxBooking < idxEquip && idxEquip < idxReports, "new item sits in the reco
 check(App4.recordsAreaHrefs().indexOf("#/records/equipment") !== -1, "new type is part of the records permission area");
 check(App4.recordTypePortalViews()["/records/equipment"] === null, "new type's router view is null until its page is wired (safe fall-through)");
 // the three are still byte-for-byte present
-check(eq(nav4.slice(0, 5), HISTORICAL_NAV.slice(0, 5)) && eq(nav4.slice(6), HISTORICAL_NAV.slice(5)), "the fixed pages + three system types are unchanged around the new item");
+check(eq(nav4.slice(0, 5), navWithJobLabel("Jobs").slice(0, 5)) && eq(nav4.slice(6), navWithJobLabel("Jobs").slice(5)), "the fixed pages + three system types are unchanged around the new item");
 
 console.log(`\n${failures === 0 ? "ALL PASSED \u2705 (nav unchanged for the three; a new record type auto-appears)" : failures + " FAILED \u274c"}`);
 process.exit(failures ? 1 : 0);

@@ -2537,7 +2537,7 @@
   }
 
   // ---------------- Saved filters dropdown ----------------
-  async function mountSavedFilters(handle, viewName) {
+  async function mountSavedFilters(handle, viewName, systemPresets) {
     const dd = el("div", "saved-wrap");
     const btn = el("button", "btn btn-ghost btn-sm", "Saved Filters &#9662;");
     const menu = el("div", "saved-menu hidden");
@@ -2553,7 +2553,17 @@
     }
     function paint() {
       menu.innerHTML = "";
-      if (!list.length) menu.appendChild(el("div", "saved-empty", "No saved filters yet"));
+      // System presets (e.g. "My work orders") render FIRST: built-in, per-user,
+      // not stored rows — so no delete control, and the empty note only shows
+      // when there are neither presets nor saved rows.
+      (systemPresets || []).forEach((sp) => {
+        const row = el("div", "saved-item");
+        const name = el("button", "saved-name", esc(sp.name));
+        name.onclick = () => { handle.applyState(sp.definition); menu.classList.add("hidden"); App.util.toast(`Applied “${sp.name}”`); };
+        row.appendChild(name);
+        menu.appendChild(row);
+      });
+      if (!list.length && !(systemPresets || []).length) menu.appendChild(el("div", "saved-empty", "No saved filters yet"));
       list.forEach((f) => {
         const row = el("div", "saved-item");
         const name = el("button", "saved-name", esc(f.name));
@@ -4315,9 +4325,15 @@
   function moduleViewOn(t, v) { return moduleEnabledViews(t).indexOf(v) !== -1; }
   // The date/datetime fields a module can lay a calendar out by. Bookings also expose the
   // typed "appointmentAt" column (not a FieldDef) so its calendar maps to what it uses today.
+  // Typed-appointment modules: Bookings and Work Orders lay their calendar out by
+  // the REAL Record.appointmentAt column (not a FieldDef) — frontend mirror of the
+  // backend's usesTypedAppointment() in recordTypeService. The ONLY module-key
+  // comparisons allowed in the views surface live here (asserted by
+  // selfTest_moduleCoverage check 13).
+  function usesTypedAppointment(t) { return !!t && (t.key === "booking" || t.key === "work_order"); }
   function moduleDateFields(t, fields) {
     var out = [];
-    if (t && t.key === "booking") out.push({ key: "appointmentAt", label: "Appointment" });
+    if (usesTypedAppointment(t)) out.push({ key: "appointmentAt", label: "Appointment" });
     (fields || []).forEach(function (f) { if (f.type === "date" || f.type === "datetime") out.push({ key: f.key, label: f.label }); });
     return out;
   }
@@ -5127,14 +5143,17 @@
       let bizDur = {};          // business per-service durations { key: min }
       let bizDefaultDur = 30;   // business default duration
       let bizBuffer = 0;        // business buffer
+      let portalUsers = [];     // for the Resource <-> User link picker (Work Orders batch)
 
       async function load() {
         try {
-          const [res, bc] = await Promise.all([
+          const [res, bc, us] = await Promise.all([
             App.portalApi("/api/resources"),
             App.portalApi("/api/booking-config").catch(() => null),
+            App.portalApi("/api/users").catch(() => []),
           ]);
           items = res || [];
+          portalUsers = Array.isArray(us) ? us : (us && us.users) || [];
           bizHours = (bc && bc.config && bc.config.hours) || {};
           bizServices = (bc && bc.services) || [];
           bizDur = (bc && bc.config && bc.config.serviceDurations) || {};
@@ -5175,8 +5194,19 @@
             const nm = el("div"); nm.classList.add("pt-nm");
             nm.appendChild(document.createTextNode(r.name));
             if (r.hours) { const tag = el("span", "cell-muted pt-fw-400"); tag.textContent = " · custom hours"; nm.appendChild(tag); }
+            // Resource <-> User link (Work Orders batch): show who this staff row
+            // signs in as, powering the "My work orders" filter on Work Orders.
+            if (r.userId) {
+              const lu = portalUsers.find((u) => u.id === r.userId);
+              const tag2 = el("span", "cell-muted pt-fw-400");
+              tag2.textContent = " · linked to " + ((lu && (lu.name || lu.email)) || "a user");
+              nm.appendChild(tag2);
+            }
             const hrs = el("button", "btn btn-ghost btn-sm", "Hours");
             hrs.onclick = () => openResourceHours(r);
+            const lnk = el("button", "btn btn-ghost btn-sm", r.userId ? "Link" : "Link account");
+            lnk.title = "Link this " + wOne.toLowerCase() + " to the person\u2019s sign-in account (enables their \u201cMy work orders\u201d filter)";
+            lnk.onclick = () => openResourceLink(r);
             const ren = el("button", "btn btn-ghost btn-sm", "Rename");
             ren.onclick = async () => {
               const v = await promptModal({ title: "Rename " + wOne, label: "Name", value: r.name, okText: "Rename" });
@@ -5194,11 +5224,43 @@
                 else { toast(e.message, true); }
               }
             };
-            row.appendChild(sw); row.appendChild(nm); row.appendChild(hrs); row.appendChild(ren); row.appendChild(del);
+            row.appendChild(sw); row.appendChild(nm); row.appendChild(hrs); row.appendChild(lnk); row.appendChild(ren); row.appendChild(del);
             card.appendChild(row);
           });
         }
         host.appendChild(card);
+      }
+
+      // Resource <-> User link modal (Work Orders batch): a plain user dropdown.
+      // Saving PATCHes { userId } (null to unlink) through the same resources
+      // route; the server enforces tenant scope + one-linked-resource-per-user
+      // (linking here silently moves the link off any other staff row).
+      function openResourceLink(r) {
+        const inner = el("div");
+        inner.innerHTML = `<div class="modal-head"><h2>Link account \u00b7 ${esc(r.name)}</h2><button class="icon-btn" id="rl-close">&times;</button></div>`;
+        const body2 = el("div", "modal-body");
+        body2.appendChild(el("p", "cell-muted", "Pick the sign-in account this " + wOne.toLowerCase() + " belongs to. Linked people get a \u201cMy work orders\u201d filter showing just the work assigned to them."));
+        const sel = el("select", "input");
+        const none = el("option", null, "\u2014 not linked \u2014"); none.value = ""; sel.appendChild(none);
+        portalUsers.slice().sort((a, b) => String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""))).forEach((u) => {
+          const o = el("option", null, esc(u.name ? (u.name + " (" + (u.email || "") + ")") : (u.email || "Unnamed")));
+          o.value = u.id; sel.appendChild(o);
+        });
+        sel.value = r.userId || "";
+        body2.appendChild(sel);
+        const saveB = el("button", "btn btn-primary btn-sm", "Save link");
+        saveB.classList.add("u-mt-16");
+        saveB.onclick = async () => {
+          saveB.disabled = true; saveB.textContent = "Saving\u2026";
+          try { await App.portalApi("/api/resources/" + r.id, { method: "PATCH", body: JSON.stringify({ userId: sel.value || null }) }); toast("Link saved"); close(); await load(); }
+          catch (e) { toast(e.message, true); saveB.disabled = false; saveB.textContent = "Save link"; }
+        };
+        body2.appendChild(saveB);
+        inner.appendChild(body2);
+        const overlay = modal(inner);
+        const close = () => overlay.remove();
+        inner.querySelector("#rl-close").onclick = close;
+        overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
       }
 
       // Per-resource hours modal: "Use business hours" toggle + the shared weekly
@@ -6679,10 +6741,12 @@
     resById = resById || {};
     const cols = [];
     cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => esc(r.title || "Untitled") + (r.externalSource === "google" ? ` <span class="ext-badge">Google</span>` : "") });
-    // Bookings: the typed appointment date+time as a first-class column (it is a
-    // real DB field, not a custom field, so it's added here explicitly).
-    if (type && type.key === "booking") {
-      cols.push({ key: "appointmentAt", label: "Appointment", type: "date", get: (r) => r.appointmentAt, text: (r) => fmtAppt(r.appointmentAt), render: (r) => r.appointmentAt ? esc(fmtAppt(r.appointmentAt)) : `<span class="cell-muted">—</span>` });
+    // Bookings + Work Orders: the typed appointment date+time as a first-class
+    // column (a real DB field, not a custom field, so it's added here explicitly).
+    // Work Orders reuse the exact booking columns — adapt, don't fork — with a
+    // "Scheduled" label instead of "Appointment".
+    if (type && (type.key === "booking" || type.key === "work_order")) {
+      cols.push({ key: "appointmentAt", label: type.key === "work_order" ? "Scheduled" : "Appointment", type: "date", get: (r) => r.appointmentAt, text: (r) => fmtAppt(r.appointmentAt), render: (r) => r.appointmentAt ? esc(fmtAppt(r.appointmentAt)) : `<span class="cell-muted">—</span>` });
       // Assigned resource (display-only surfacing of the existing resourceId).
       // Labeled with the configurable resource word; shows a color dot + name, or
       // a muted "Unassigned" when none. text() returns the name for sort/search.
@@ -6737,8 +6801,9 @@
         App.portalApi("/api/records?type=" + encodeURIComponent(typeKey)),
         App.portalApi("/api/fields?recordType=" + encodeURIComponent(typeKey)).catch(() => []),
         App.portalApi("/api/record-types").catch(() => []),
-        // Resource names/colors for the bookings list column (display-only).
-        typeKey === "booking" ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
+        // Resource names/colors for the bookings/work-orders list column (display-
+        // only) and, on Work Orders, the "My work orders" preset resolution.
+        (typeKey === "booking" || typeKey === "work_order") ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
       ]);
     } catch (e) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
     const type = (types || []).find((t) => t.key === typeKey) || { key: typeKey, label: App.label("record","one"), labelPlural: "Records", stages: [], recordStages: [] };
@@ -6828,7 +6893,18 @@
       defaultSort: "createdAt", defaultSortDir: "desc",
       emptyHtml: `<div class="empty"><div class="empty-emoji">&#128188;</div><h3>No ${esc((type.labelPlural || App.label("record","many").toLowerCase()).toLowerCase())} yet</h3><p>Create your first ${esc((type.label || App.label("record","one").toLowerCase()).toLowerCase())} to get started.</p></div>`,
     });
-    if (handle && handle.toolbarLeft) mountSavedFilters(handle, typeKey);
+    // "My work orders" (Work Orders batch): a first-class SYSTEM preset atop the
+    // saved-filters menu, shown only when the signed-in user has a linked staff
+    // resource (Resource.userId). Applies the technician column filter for that
+    // resource's name via the same applyState path a saved filter uses. Users
+    // without a link see no entry (nothing to resolve).
+    let systemPresets = [];
+    if (typeKey === "work_order") {
+      const meId = App.state && App.state.me && App.state.me.id;
+      const mine = meId ? (resources || []).find((x) => x.userId === meId) : null;
+      if (mine && mine.name) systemPresets = [{ name: "My work orders", definition: { colFilters: { resourceId: mine.name } } }];
+    }
+    if (handle && handle.toolbarLeft) mountSavedFilters(handle, typeKey, systemPresets);
 
     const bulkWrap = el("div", "bulk-wrap");
     const bulkBtn = el("button", "btn btn-ghost btn-sm", "Bulk Actions &#9662;");
@@ -6895,21 +6971,34 @@
       body.appendChild(stageSel);
     }
 
-    // Bookings: the typed appointment date AND time. A real field (not a custom
-    // field), so it's a first-class input here. Required for bookings.
+    // Bookings + Work Orders: the typed appointment date AND time. A real field
+    // (not a custom field), so it's a first-class input here. Required for
+    // bookings; OPTIONAL for work orders (an unscheduled work order is a normal
+    // "New request"). Work orders additionally get an optional window END —
+    // the same editors, adapted rather than forked.
     const isBooking = type && type.key === "booking";
+    const isWorkOrder = type && type.key === "work_order";
     let apptInp = null;
+    let endInp = null;
     let contactSel = null;
     let resourceSel = null;
-    if (isBooking) {
-      body.appendChild(el("label", "field-label", "Appointment date & time *"));
+    if (isBooking || isWorkOrder) {
+      body.appendChild(el("label", "field-label", isWorkOrder ? "Scheduled start (date & time)" : "Appointment date & time *"));
       apptInp = el("input", "input"); apptInp.type = "datetime-local";
       apptInp.min = "2000-01-01T00:00"; apptInp.max = "2100-12-31T23:59"; // guard impossible years
       if (opts.appointmentAt) apptInp.value = opts.appointmentAt; // prefill from a clicked calendar slot
       body.appendChild(apptInp);
+      if (isWorkOrder) {
+        body.appendChild(el("label", "field-label", "Scheduled end (optional)"));
+        endInp = el("input", "input"); endInp.type = "datetime-local";
+        endInp.min = "2000-01-01T00:00"; endInp.max = "2100-12-31T23:59";
+        body.appendChild(endInp);
+      }
 
       // Optional contact assignment at create (reuses the same record↔contact link
-      // the detail page uses). Populated from the contacts list.
+      // the detail page uses). Populated from the contacts list. Bookings only —
+      // work orders link contacts via the generic Related tabs on the record page.
+      if (isBooking) {
       body.appendChild(el("label", "field-label", "Contact"));
       contactSel = el("select", "input");
       contactSel.appendChild(el("option", null, "— none —"));
@@ -6919,8 +7008,10 @@
           const o = el("option", null, esc(c.name || c.email || c.phone || "Unnamed")); o.value = c.id; contactSel.appendChild(o);
         });
       }).catch(() => {});
+      }
 
-      // Optional resource assignment at create (saved as resourceId).
+      // Optional resource assignment at create (saved as resourceId) — bookings
+      // AND work orders (the technician picker is the same resource dropdown).
       body.appendChild(el("label", "field-label", "Assigned " + App.label("resource", "one")));
       resourceSel = el("select", "input");
       const resNone = el("option", null, "— None —"); resNone.value = ""; resourceSel.appendChild(resNone);
@@ -6942,12 +7033,13 @@
       const title = titleInp.value.trim();
       if (!title) { toast("Title is required", true); titleInp.focus(); return; }
       if (subtypeSel && !subtypeSel.value) { toast("Type is required", true); subtypeSel.focus(); return; }
-      if (apptInp && !apptInp.value) { toast("Appointment date & time is required", true); apptInp.focus(); return; }
+      if (isBooking && apptInp && !apptInp.value) { toast("Appointment date & time is required", true); apptInp.focus(); return; }
       if (apptInp && apptInp.value) { const y = parseInt(apptInp.value.slice(0, 4), 10); if (!(y >= 2000 && y <= 2100)) { toast("Please enter a valid appointment year", true); apptInp.focus(); return; } }
+      if (endInp && endInp.value && apptInp && apptInp.value && endInp.value <= apptInp.value) { toast("Scheduled end must be after the start", true); endInp.focus(); return; }
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Creating…";
-      const basePayload = { type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, resourceId: resourceSel ? (resourceSel.value || null) : undefined, customFields: custom };
+      const basePayload = { type: typeKey, title, subtypeKey: subtypeSel ? (subtypeSel.value || null) : null, stageKey: stageSel ? (stageSel.value || null) : null, appointmentAt: apptInp ? (apptInp.value || null) : undefined, endAt: endInp ? (endInp.value || null) : undefined, resourceId: resourceSel ? (resourceSel.value || null) : undefined, customFields: custom };
       const ov = { allowOverlap: false, allowClosed: false };
       const doCreate = () => App.portalApi("/api/records", { method: "POST", body: JSON.stringify({ ...basePayload, ...ov }) });
       try {
@@ -7295,23 +7387,33 @@
       card.appendChild(stageSel);
     }
 
-    // Bookings: the typed appointment date AND time (a real field, not a custom
-    // field). Required for bookings; the picker shows the stored time of day.
+    // Bookings + Work Orders: the typed appointment date AND time (a real field,
+    // not a custom field). Required for bookings; OPTIONAL for work orders, which
+    // also get the window END. Same editors, adapted rather than forked.
     const isBooking = type && type.key === "booking";
+    const isWorkOrder = type && type.key === "work_order";
     let apptInp = null;
-    if (isBooking) {
-      card.appendChild(el("label", "field-label", "Appointment date & time *"));
+    let endInp = null;
+    if (isBooking || isWorkOrder) {
+      card.appendChild(el("label", "field-label", isWorkOrder ? "Scheduled start (date & time)" : "Appointment date & time *"));
       apptInp = el("input", "input"); apptInp.type = "datetime-local";
       apptInp.min = "2000-01-01T00:00"; apptInp.max = "2100-12-31T23:59"; // guard impossible years
       apptInp.value = isoToLocalInput(rec.appointmentAt);
       card.appendChild(apptInp);
+      if (isWorkOrder) {
+        card.appendChild(el("label", "field-label", "Scheduled end (optional)"));
+        endInp = el("input", "input"); endInp.type = "datetime-local";
+        endInp.min = "2000-01-01T00:00"; endInp.max = "2100-12-31T23:59";
+        endInp.value = isoToLocalInput(rec.endAt);
+        card.appendChild(endInp);
+      }
     }
 
-    // Bookings: the assigned RESOURCE (staff/stylist/...). Single typed attribute,
-    // saved as resourceId. Options load async; the current assignment is preserved
-    // even if the user saves before the list arrives.
+    // Bookings + Work Orders: the assigned RESOURCE (staff/technician/...). Single
+    // typed attribute, saved as resourceId. Options load async; the current
+    // assignment is preserved even if the user saves before the list arrives.
     let resourceSel = null;
-    if (isBooking) {
+    if (isBooking || isWorkOrder) {
       card.appendChild(el("label", "field-label", "Assigned " + App.label("resource", "one")));
       resourceSel = el("select", "input");
       const none0 = document.createElement("option"); none0.value = ""; none0.textContent = "— None —"; resourceSel.appendChild(none0);
@@ -7335,12 +7437,13 @@
     const save = el("button", "btn btn-primary btn-sm", "Save changes");
     save.onclick = async () => {
       if (subtypeSel && !subtypeSel.value) { toast("Type is required", true); subtypeSel.focus(); return; }
-      if (apptInp && !apptInp.value) { toast("Appointment date & time is required", true); apptInp.focus(); return; }
+      if (isBooking && apptInp && !apptInp.value) { toast("Appointment date & time is required", true); apptInp.focus(); return; }
       if (apptInp && apptInp.value) { const y = parseInt(apptInp.value.slice(0, 4), 10); if (!(y >= 2000 && y <= 2100)) { toast("Please enter a valid appointment year", true); apptInp.focus(); return; } }
+      if (endInp && endInp.value && apptInp && apptInp.value && endInp.value <= apptInp.value) { toast("Scheduled end must be after the start", true); endInp.focus(); return; }
       const custom = {};
       (fields || []).forEach((f) => { if (f.type !== "formula") custom[f.key] = values[f.key]; });
       save.disabled = true; save.textContent = "Saving…";
-      const patchBody = { title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, appointmentAt: apptInp ? (apptInp.value || null) : undefined, resourceId: resourceSel ? (resourceSel.value || null) : undefined, customFields: custom };
+      const patchBody = { title: titleInp.value, subtypeKey: subtypeSel ? (subtypeSel.value || null) : undefined, stageKey: stageSel ? (stageSel.value || null) : undefined, appointmentAt: apptInp ? (apptInp.value || null) : undefined, endAt: endInp ? (endInp.value || null) : undefined, resourceId: resourceSel ? (resourceSel.value || null) : undefined, customFields: custom };
       const ov = { allowOverlap: false, allowClosed: false };
       const doPatch = () => App.portalApi("/api/records/" + id, { method: "PATCH", body: JSON.stringify({ ...patchBody, ...ov }) });
       try {

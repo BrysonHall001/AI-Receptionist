@@ -160,6 +160,9 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   sessions         Session[]
+  // Staff resources linked to this user (Work Orders batch; normally 0 or 1 per tenant,
+  // enforced app-level in resourceService.setResourceUser).
+  resources        Resource[]
   feedbackTickets  FeedbackTicket[]  @relation("FeedbackSubmitter")
   resolvedFeedback FeedbackTicket[]  @relation("FeedbackResolver")
   feedbackMessages FeedbackMessage[]
@@ -929,12 +932,21 @@ model Resource {
   durations Json?
   // Optional per-resource buffer (minutes) between appointments. NULL = use business buffer.
   bufferMin Int?
+  // Optional link to the PORTAL USER this staff resource "is" (Work Orders batch).
+  // Nullable + additive: unlinked resources behave exactly as before. Loose in spirit
+  // but a REAL FK with SET NULL so a deleted user can never leave a dangling link.
+  // App-level rule (resourceService.setResourceUser): one linked resource per user per
+  // tenant — linking a user clears any prior link — and the user must belong to this
+  // tenant. Powers "My work orders" now and tech-mobile later.
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
   calendarMap ResourceCalendarMap?
 
   @@index([tenantId])
+  @@index([tenantId, userId])
 }
 
 // ONE Google Calendar connection per business (1:1 with Tenant). The owner

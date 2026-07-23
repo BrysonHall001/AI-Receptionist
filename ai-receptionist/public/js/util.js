@@ -269,7 +269,8 @@
   // normally come from live data and override these.
   const LABEL_DEFAULTS = {
     contact: { one: "Contact", many: "Contacts" },
-    job: { one: "Job", many: "Jobs" },
+    job: { one: "Job Opening", many: "Job Openings" }, // relabeled (Work Orders batch) — recruiting reads as what it is
+    work_order: { one: "Work Order", many: "Work Orders" },
     record: { one: "Record", many: "Records" },
     stage: { one: "Stage", many: "Stages" },
     resource: { one: "Resource", many: "Resources" },
@@ -348,7 +349,9 @@
     swap("Contact", "Contacts", "contact");
     swap("Candidate", "Candidates", "contact"); // candidates = the linked contacts
     if (o.all) {
-      swap("Job", "Jobs", "job");
+      swap("Job Opening", "Job Openings", "job");
+      swap("Job", "Jobs", "job"); // legacy copy still says Job(s); keep swapping it in controlled contexts
+      swap("Work Order", "Work Orders", "work_order");
       swap("Record", "Records", "record");
       swap("Stage", "Stages", "stage");
     }

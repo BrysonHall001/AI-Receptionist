@@ -244,12 +244,21 @@ export async function getModuleCalendarData(
       if (!start) return null;
       const ymd = start.slice(0, 10);
       if (ymd < fromDate || ymd >= toDate) return null; // half-open [from, to)
+      // Scheduled-window end (Work Orders): when the record carries a real endAt
+      // AFTER its start, the block spans the true window; otherwise the 60-minute
+      // default stands (unchanged for every module without endAt).
+      let durationMin = 60;
+      let end = start;
+      if (fieldKey === "appointmentAt" && r.endAt && raw) {
+        const ms = new Date(r.endAt).getTime() - new Date(raw).getTime();
+        if (ms > 0) { durationMin = Math.max(15, Math.round(ms / 60000)); end = valueToWall(r.endAt) || start; }
+      }
       return {
         id: r.id,
         title: r.title || "Untitled",
         start,
-        end: start, // duration drives the block height; end kept for shape parity
-        durationMin: 60,
+        end,
+        durationMin,
         serviceKey: r.subtypeKey || null,
         serviceLabel: "",
         stageKey: r.stageKey || null,
@@ -450,7 +459,7 @@ async function applyAutoNumbers(tenantId: string, recordTypeId: string, customFi
 export async function createRecord(
   tenantId: string,
   recordType: string | null | undefined,
-  input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null },
+  input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; endAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null },
   opts: { source?: "manual" | "ai" } = {},
   actor?: EventActor
 ) {
@@ -465,13 +474,18 @@ export async function createRecord(
   // transaction. Everything else uses the plain insert.
   const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId }, select: { key: true, label: true } });
   const isBooking = rt && rt.key === BOOKING_RECORD_TYPE_KEY && appointmentAt != null;
+  // Scheduled-window END (Work Orders foundation): user-writable for NON-booking
+  // types only. Native bookings MUST keep endAt null — they derive duration from
+  // the service (see the Record.endAt schema comment) and only the Google sync
+  // engine writes their endAt. A booking-supplied endAt is deliberately ignored.
+  const endAt = rt && rt.key !== BOOKING_RECORD_TYPE_KEY ? (parseAppointmentAt(input.endAt) ?? null) : null;
   let customFields = input.customFields ?? {};
   // Invoices: auto invoice number + Status default (Task 3), then keep the computed Total in
   // sync with the line_items rows (Task 2). Both are no-ops for other record types.
   customFields = await applyInvoiceDefaults(tenantId, recordTypeId, rt?.key, customFields);
   customFields = await applyAutoNumbers(tenantId, recordTypeId, customFields);
   customFields = await applyComputedTotal(tenantId, recordTypeId, customFields);
-  const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, resourceId, customFields };
+  const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, endAt, resourceId, customFields };
 
   if (isBooking) {
     const config = await loadBookingConfig(tenantId);
@@ -524,7 +538,7 @@ export async function createRecord(
   return serializeRecord(created);
 }
 
-export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null }, actor: EventActor = { type: "user" }, chainDepth = 0) {
+export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; endAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null }, actor: EventActor = { type: "user" }, chainDepth = 0) {
   const existing = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Record not found");
   // OWNERSHIP GUARD: Google-owned bookings are read-only in Clarity. Only the sync
@@ -551,6 +565,15 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   // modules without a line_items + "total" field pair. Invoice number is create-only.
   if (data.customFields !== undefined) data.customFields = await applyComputedTotal(tenantId, existing.recordTypeId, data.customFields);
   const isBooking = !!(rt && rt.key === BOOKING_RECORD_TYPE_KEY);
+  // Scheduled-window END (Work Orders foundation): writable for NON-booking types
+  // only — native bookings keep endAt null (service-derived duration; only the
+  // Google sync engine writes booking endAt). Applied here, after isBooking is
+  // known, so a booking-supplied endAt is deliberately ignored, byte-for-byte
+  // preserving booking behavior.
+  if (!isBooking) {
+    const parsedEnd = parseAppointmentAt(input.endAt);
+    if (parsedEnd !== undefined) data.endAt = parsedEnd;
+  }
   const finalAppt = data.appointmentAt !== undefined ? data.appointmentAt : existing.appointmentAt;
   const finalSubtype = data.subtypeKey !== undefined ? data.subtypeKey : existing.subtypeKey;
   const finalResourceId = data.resourceId !== undefined ? data.resourceId : (existing.resourceId ?? null);
@@ -634,6 +657,12 @@ function diffRecordFields(existing: any, data: any, input: any): Array<{ field: 
     const before = existing.appointmentAt ? new Date(existing.appointmentAt).toISOString() : null;
     const after = data.appointmentAt ? new Date(data.appointmentAt).toISOString() : null;
     if (before !== after) out.push({ field: "appointmentAt", label: "Appointment", old: before, new: after });
+  }
+  // Scheduled-window end (non-booking types; bookings never set data.endAt here).
+  if (data.endAt !== undefined) {
+    const before = existing.endAt ? new Date(existing.endAt).toISOString() : null;
+    const after = data.endAt ? new Date(data.endAt).toISOString() : null;
+    if (before !== after) out.push({ field: "endAt", label: "Scheduled end", old: before, new: after });
   }
   if (input.customFields !== undefined) {
     const before = existing.customFields || {};

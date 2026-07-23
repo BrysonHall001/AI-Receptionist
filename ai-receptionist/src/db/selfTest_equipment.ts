@@ -40,7 +40,7 @@ async function main() {
     'equipment label + labelPlural are both "Equipment" (uncountable — same word)');
   check(!!byKey.equipment && byKey.equipment.order === 3, "equipment order is 3 (right after booking)");
   check(!!byKey.contact && byKey.contact.order === 0 && byKey.contact.label === "Contact"
-    && !!byKey.job && byKey.job.order === 1 && byKey.job.label === "Job"
+    && !!byKey.job && byKey.job.order === 1 && byKey.job.label === "Job Opening" // relabeled (Work Orders batch), label-only
     && !!byKey.booking && byKey.booking.order === 2 && byKey.booking.label === "Booking",
     "contact/job/booking are unchanged (orders 0/1/2, same labels)");
   check(Array.isArray(byKey.equipment.stages) && byKey.equipment.stages.length === 0

@@ -14,6 +14,13 @@ export const JOB_RECORD_TYPE_KEY = "job";
 export const BOOKING_RECORD_TYPE_KEY = "booking";
 export const EQUIPMENT_RECORD_TYPE_KEY = "equipment";
 export const INVOICE_RECORD_TYPE_KEY = "invoice";
+export const WORK_ORDER_RECORD_TYPE_KEY = "work_order";
+
+// Record types whose calendar lays out by the TYPED Record.appointmentAt column
+// (not a FieldDef): Bookings (as always) and now Work Orders. Registry-derived
+// helper so the calendar wiring never grows another key literal.
+const TYPED_APPOINTMENT_TYPE_KEYS = new Set<string>([BOOKING_RECORD_TYPE_KEY, WORK_ORDER_RECORD_TYPE_KEY]);
+export function usesTypedAppointment(typeKey: string): boolean { return TYPED_APPOINTMENT_TYPE_KEYS.has(typeKey); }
 
 // Default fields seeded ONCE when a portal's Equipment type is first created (see the
 // onCreate hook below). Equipment is a flat catalog (no pipeline), so these are plain
@@ -148,6 +155,44 @@ export async function ensureProductDefaultFields(tenantId: string, recordTypeId:
 export async function ensureEstimateDefaultFields(tenantId: string, recordTypeId: string): Promise<void> { return seedDefaultFields(tenantId, recordTypeId, DEFAULT_ESTIMATE_FIELDS); }
 export async function ensureTaskDefaultFields(tenantId: string, recordTypeId: string): Promise<void> { return seedDefaultFields(tenantId, recordTypeId, DEFAULT_TASK_FIELDS); }
 
+// ---- WORK ORDERS (field-services spine, Work Orders foundation batch) --------
+// A schedulable, assignable field-service job. The scheduled window (typed
+// Record.appointmentAt + endAt) and the assigned technician (typed
+// Record.resourceId) are deliberately NOT FieldDefs — same precedent as Bookings,
+// where appointmentAt "is not a FieldDef" (see calendarDateFieldKeys). Everything
+// below is an ordinary editable/removable custom field seeded once via onCreate.
+// service_address (address type) powers the Map view + geocoding; photos (image
+// type) makes the Gallery view available should the owner turn it on.
+const DEFAULT_WORK_ORDER_FIELDS: SeedField[] = [
+  { key: "description", label: "Description", type: "textarea", order: 0 },
+  { key: "priority", label: "Priority", type: "single_select", order: 1, options: ["Low", "Normal", "High", "Urgent"] },
+  { key: "service_address", label: "Service address", type: "address", order: 2 },
+  { key: "photos", label: "Photos", type: "image", order: 3 },
+  { key: "internal_notes", label: "Internal notes", type: "textarea", order: 4 },
+];
+export async function ensureWorkOrderDefaultFields(tenantId: string, recordTypeId: string): Promise<void> { return seedDefaultFields(tenantId, recordTypeId, DEFAULT_WORK_ORDER_FIELDS); }
+
+// Work-order lifecycle statuses (Record.stageKey), booking-style record statuses:
+// status dropdown + pill column + "Record updated / status changed" automations,
+// all via machinery that exists today. Keys stable; labels freely editable.
+const DEFAULT_WORK_ORDER_RECORD_STAGES = [
+  { key: "new_request", label: "New request", order: 0 },
+  { key: "scheduled", label: "Scheduled", order: 1 },
+  { key: "in_progress", label: "In progress", order: 2 },
+  { key: "completed", label: "Completed", order: 3 },
+  { key: "cancelled", label: "Cancelled", order: 4 },
+];
+
+// Trade-agnostic work categories as subtypes (the Type mechanism, like booking
+// services). Stages intentionally empty — the lifecycle lives in the record
+// statuses above, not per-subtype pipelines. Renamable/deletable on Fields.
+const DEFAULT_WORK_ORDER_SUBTYPES = [
+  { key: "repair", label: "Repair", order: 0, stages: [] as any[] },
+  { key: "maintenance", label: "Maintenance", order: 1, stages: [] as any[] },
+  { key: "installation", label: "Installation", order: 2, stages: [] as any[] },
+  { key: "inspection", label: "Inspection", order: 3, stages: [] as any[] },
+];
+
 // Booking lifecycle statuses (Record.stageKey) — the exact pipeline requested:
 // Requested -> Confirmed -> Completed -> No-show. Keys are stable; labels are
 // freely editable/reorderable on the Fields page like any other record status.
@@ -263,8 +308,13 @@ export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
   { key: CONTACT_RECORD_TYPE_KEY, defaults: {
     key: CONTACT_RECORD_TYPE_KEY, label: "Contact", labelPlural: "Contacts", system: true, stages: [], recordStages: [], order: 0,
   } },
+  // Relabeled (Work Orders batch): this is a RECRUITING pipeline (Applied→…→Hired),
+  // so it now reads as what it is. LABEL ONLY — the stable key "job", the stages,
+  // subtypes, and every existing record are byte-for-byte unchanged. Existing
+  // tenants still on the stock label are relabeled by the 20260723010000 migration;
+  // custom labels are never touched.
   { key: JOB_RECORD_TYPE_KEY, defaults: {
-    key: JOB_RECORD_TYPE_KEY, label: "Job", labelPlural: "Jobs", system: false,
+    key: JOB_RECORD_TYPE_KEY, label: "Job Opening", labelPlural: "Job Openings", system: false,
     stages: DEFAULT_JOB_STAGES, recordStages: DEFAULT_JOB_RECORD_STAGES, subtypes: DEFAULT_JOB_SUBTYPES, pipelineEnabled: true,
     // Board view ON (it has a pipeline) — mirrors the migration backfill so NEW portals match today.
     enabledViews: ["board"], order: 1,
@@ -317,6 +367,20 @@ export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
     key: "task", label: "Task", labelPlural: "Tasks", system: false,
     stages: [], recordStages: [], subtypes: [], order: 9,
   }, onCreate: ensureTaskDefaultFields, defaultHidden: true },
+  // WORK ORDERS — the field-services spine (Work Orders foundation batch). Seeded
+  // VISIBLE for every portal (like Equipment/Invoices, NOT defaultHidden): it is
+  // the flagship of the field-services direction and the base later batches
+  // (dispatch board, customer comms, recurring work, tech mobile) build on.
+  // Board flag is ON but currently inert (record-status pipelines render no
+  // kanban — exactly like Bookings, see the booking entry above); the dispatch
+  // batch lights it up with no config migration. Calendar lays out by the TYPED
+  // appointmentAt column (see usesTypedAppointment); Map is powered by the seeded
+  // service_address field + the existing geocoding foundation.
+  { key: WORK_ORDER_RECORD_TYPE_KEY, defaults: {
+    key: WORK_ORDER_RECORD_TYPE_KEY, label: "Work Order", labelPlural: "Work Orders", system: false,
+    stages: [], recordStages: DEFAULT_WORK_ORDER_RECORD_STAGES, subtypes: DEFAULT_WORK_ORDER_SUBTYPES, pipelineEnabled: true,
+    enabledViews: ["board", "calendar", "map"], calendarDateField: "appointmentAt", order: 10,
+  }, onCreate: ensureWorkOrderDefaultFields },
 ];
 
 /** Keys of the built-in system record types, in registry order. Derived (not a
@@ -372,7 +436,7 @@ export async function ensureBookingRecordType(tenantId: string): Promise<string>
 // Keys we must never let a user-created module take: the system record types plus the
 // fixed page/route words, so a new module can't collide with a nav page or a bespoke href.
 const RESERVED_RT_KEYS = new Set<string>([
-  CONTACT_RECORD_TYPE_KEY, JOB_RECORD_TYPE_KEY, BOOKING_RECORD_TYPE_KEY, EQUIPMENT_RECORD_TYPE_KEY,
+  CONTACT_RECORD_TYPE_KEY, JOB_RECORD_TYPE_KEY, BOOKING_RECORD_TYPE_KEY, EQUIPMENT_RECORD_TYPE_KEY, WORK_ORDER_RECORD_TYPE_KEY,
   "record", "records", "dashboard", "calls", "reports", "analytics", "automations",
   "communication", "learn", "feedback", "settings", "admin", "contacts", "jobs", "bookings",
 ]);
@@ -511,7 +575,7 @@ async function loadTypeRow(tenantId: string, recordType?: string | null) {
 
 function findSubtype(subtypes: any[], subtypeKey: string) {
   const st = subtypes.find((x) => x.key === subtypeKey);
-  if (!st) throw new Error("Job type not found");
+  if (!st) throw new Error("Type not found");
   return st;
 }
 
@@ -553,7 +617,9 @@ const KNOWN_VIEWS = ["board", "calendar", "map", "gallery"]; // all four optiona
 export async function calendarDateFieldKeys(tenantId: string, recordTypeId: string, typeKey: string): Promise<string[]> {
   const defs = await db.fieldDef.findMany({ where: { tenantId, recordTypeId }, select: { key: true, type: true } });
   const keys = defs.filter((f: any) => f.type === "date" || f.type === "datetime").map((f: any) => f.key);
-  if (typeKey === "booking") keys.unshift("appointmentAt");
+  // Typed-appointment modules (Bookings and Work Orders) lay out by the real
+  // Record.appointmentAt column, offered first. Registry-derived — no key literals.
+  if (usesTypedAppointment(typeKey)) keys.unshift("appointmentAt");
   return keys;
 }
 
@@ -655,9 +721,9 @@ export async function countRecordsOfSubtype(tenantId: string, recordTypeId: stri
 export async function deleteSubtype(tenantId: string, recordType: string, key: string) {
   const row = await loadTypeRow(tenantId, recordType);
   const subtypes = normSubtypes(row.subtypes);
-  if (!subtypes.some((s) => s.key === key)) throw new Error("Job type not found");
+  if (!subtypes.some((s) => s.key === key)) throw new Error("Type not found");
   const inUse = await countRecordsOfSubtype(tenantId, row.id, key);
-  if (inUse > 0) throw new Error(`${inUse} job${inUse === 1 ? "" : "s"} use this type — change ${inUse === 1 ? "its" : "their"} type first.`);
+  if (inUse > 0) throw new Error(`${inUse} record${inUse === 1 ? "" : "s"} use${inUse === 1 ? "s" : ""} this type — change ${inUse === 1 ? "its" : "their"} type first.`);
   const next = subtypes.filter((s) => s.key !== key);
   next.forEach((s, i) => (s.order = i));
   await db.recordType.update({ where: { id: row.id }, data: { subtypes: next } });

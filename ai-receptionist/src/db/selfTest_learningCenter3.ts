@@ -58,7 +58,7 @@ async function main() {
   try {
     const { PrismaClient } = require("@prisma/client");
     const prisma = new PrismaClient();
-    const SYSTEM_LABELS = new Set(["contact", "contacts", "job", "jobs", "booking", "bookings", "equipment", "invoice", "invoices", "vehicle", "vehicles", "property", "properties", "product", "products", "estimate", "estimates", "task", "tasks", "record", "records"]);
+    const SYSTEM_LABELS = new Set(["contact", "contacts", "job", "jobs", "job opening", "job openings", "booking", "bookings", "equipment", "invoice", "invoices", "vehicle", "vehicles", "property", "properties", "product", "products", "estimate", "estimates", "task", "tasks", "work order", "work orders", "record", "records"]); // Work Orders batch: work_order + the Job Opening relabel are SYSTEM-seeded module labels (same treatment as jobs/bookings); seeded stage/subtype/field labels stay forbidden, as ever
     const types = await prisma.recordType.findMany({ select: { label: true, labelPlural: true, system: true, stages: true, recordStages: true, subtypes: true } });
     const fields = await prisma.fieldDef.findMany({ select: { label: true } });
     const sections = await prisma.fieldSection.findMany({ select: { label: true } });

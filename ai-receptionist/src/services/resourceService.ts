@@ -44,6 +44,7 @@ export interface ResourceDTO {
   hours: Record<string, { start: string; end: string }[]> | null; // null = uses business hours
   durations: Record<string, number> | null; // per-service overrides; null = business
   bufferMin: number | null; // null = uses business buffer
+  userId: string | null; // linked portal user (Work Orders batch); null = unlinked
 }
 
 function serialize(r: any): ResourceDTO {
@@ -52,6 +53,7 @@ function serialize(r: any): ResourceDTO {
     hours: r.hours ?? null,
     durations: r.durations ?? null,
     bufferMin: typeof r.bufferMin === "number" ? r.bufferMin : null,
+    userId: r.userId ?? null,
   };
 }
 
@@ -156,28 +158,58 @@ export async function updateResource(tenantId: string, id: string, input: { name
   return serialize(row);
 }
 
-/** How many LIVE bookings are currently assigned to this resource. */
+/** How many LIVE records (bookings, work orders, anything with resourceId) are
+ *  currently assigned to this resource. Type-agnostic BY DESIGN: the count is on
+ *  Record.resourceId regardless of record type, so the delete guard below covers
+ *  Work Orders through the exact same query it always used for bookings. */
 export async function assignedBookingCount(tenantId: string, resourceId: string): Promise<number> {
   return db.record.count({ where: { tenantId, resourceId, deletedAt: null } });
 }
 
 /**
- * Delete a resource. BLOCKED while any live booking is still assigned to it
- * (safe: nothing is orphaned and no booking is silently changed). The caller
- * surfaces the count so the user can reassign/unassign first.
+ * Delete a resource. BLOCKED while any live record (a booking OR a work order)
+ * is still assigned to it (safe: nothing is orphaned and nothing is silently
+ * changed). The caller surfaces the count so the user can reassign/unassign
+ * first. Same guard as always — only the message is type-neutral now.
  */
 export async function deleteResource(tenantId: string, id: string): Promise<{ ok: true }> {
   const existing = await db.resource.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Resource not found.");
   const count = await assignedBookingCount(tenantId, id);
   if (count > 0) {
-    const e: any = new Error(`This is assigned to ${count} booking${count === 1 ? "" : "s"}. Reassign or unassign ${count === 1 ? "it" : "them"} first, then delete.`);
+    const e: any = new Error(`This is assigned to ${count} record${count === 1 ? "" : "s"} (bookings or work orders). Reassign or unassign ${count === 1 ? "it" : "them"} first, then delete.`);
     e.code = "resource_in_use";
     e.count = count;
     throw e;
   }
   await db.resource.delete({ where: { id } });
   return { ok: true };
+}
+
+// ---- Resource <-> User link (Work Orders foundation) ------------------------
+// Links a staff resource to the portal user it "is". Portal-scoped: the user must
+// belong to this tenant. One linked resource per user per tenant, enforced here
+// app-level (linking clears any prior link) rather than by a DB unique, so a
+// re-link is a clean move instead of a constraint error. userId null = unlink.
+export async function setResourceUser(tenantId: string, resourceId: string, userId: string | null): Promise<ResourceDTO> {
+  const existing = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null } });
+  if (!existing) throw new Error("Resource not found.");
+  const uid = userId == null || String(userId).trim() === "" ? null : String(userId).trim();
+  if (uid) {
+    const user = await db.user.findFirst({ where: { id: uid, tenantId }, select: { id: true } });
+    if (!user) throw new Error("That user does not belong to this workspace.");
+    // One linked resource per user per tenant: move the link, never duplicate it.
+    await db.resource.updateMany({ where: { tenantId, userId: uid, id: { not: resourceId } }, data: { userId: null } });
+  }
+  const row = await db.resource.update({ where: { id: resourceId }, data: { userId: uid } });
+  return serialize(row);
+}
+
+/** The signed-in user's linked resource (or null). Basis of "My work orders". */
+export async function resourceForUser(tenantId: string, userId: string): Promise<ResourceDTO | null> {
+  if (!userId) return null;
+  const row = await db.resource.findFirst({ where: { tenantId, userId, deletedAt: null }, orderBy: { createdAt: "asc" } });
+  return row ? serialize(row) : null;
 }
 
 /** True if `resourceId` is a real live resource for this tenant (for assignment validation). */

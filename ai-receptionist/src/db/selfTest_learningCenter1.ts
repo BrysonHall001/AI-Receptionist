@@ -65,6 +65,17 @@ console.log("\n(1) deep links vs the real route map:");
 // the route map, grounded from the actual sources:
 const routeMap = new Set<string>(["#/dashboard", "#/calls", "#/contacts", "#/jobs", "#/bookings", "#/reports", "#/automations", "#/communication", "#/learn", "#/feedback", "#/settings"]);
 for (const m of portalJs.matchAll(/\{ key: "([a-z]+)", label: "[^"]+", admin: (?:true|false), build: \w+ \}/g)) routeMap.add("#/settings/" + m[1]);
+// Registry record-type pages (Work Orders batch): every system module lives at
+// #/records/<key> by the navModel convention (bespoke hrefs for the original
+// three). Grounded from the REAL registry source, so a future system module's
+// guide links resolve with no test edit.
+const rtSvcSrc = readFileSync(resolve(__dirname, "../services/recordTypeService.ts"), "utf8");
+const regBlock = rtSvcSrc.slice(rtSvcSrc.indexOf("SYSTEM_RECORD_TYPES: SystemRecordTypeDef[]"), rtSvcSrc.indexOf("export function systemRecordTypeKeys"));
+for (const m of regBlock.matchAll(/key: "([a-z_]+)", label:/g)) routeMap.add("#/records/" + m[1]);
+// …and entries keyed by an exported constant (e.g. WORK_ORDER_RECORD_TYPE_KEY).
+const constKeys: Record<string, string> = {};
+for (const m of rtSvcSrc.matchAll(/export const ([A-Z_]+_RECORD_TYPE_KEY) = "([a-z_]+)";/g)) constKeys[m[1]] = m[2];
+for (const m of regBlock.matchAll(/key: ([A-Z_]+_RECORD_TYPE_KEY), label:/g)) { const k = constKeys[m[1]]; if (k) routeMap.add("#/records/" + k); }
 if (portalJs.includes('"#/settings/data/recycle"')) routeMap.add("#/settings/data/recycle");
 check(routeMap.size >= 20 && appJs.includes('path.indexOf("/settings/") === 0'), `the route map is grounded from portal.js SECTIONS + app.js routing (${routeMap.size} routes)`);
 const badLinks = [...new Set(links)].filter((l) => !routeMap.has(l));

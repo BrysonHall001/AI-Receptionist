@@ -184,9 +184,11 @@ async function main() {
   check(plainMap.addressFieldKey === null, "12.map-endpoint", "a module with no address field reports addressFieldKey: null");
 
   // (13) views-ui-generality — the strip derives tiles from the availability helpers over
-  // live data; NO module-key special-casing may exclude a new module. Exactly ONE module-key
-  // comparison is allowed in the whole views surface: the documented Bookings "appointmentAt"
-  // date source in moduleDateFields. Anything else key-matching is a regression.
+  // live data; NO module-key special-casing may exclude a new module. The ONLY module-key
+  // comparisons allowed in the whole views surface are the documented typed-appointment
+  // set inside usesTypedAppointment (Bookings + Work Orders lay out by the real
+  // Record.appointmentAt column — Work Orders batch). Anything else key-matching is a
+  // regression.
   const portalSrc = readFileSync(resolve(__dirname, "../../public/js/portal.js"), "utf8");
   const helpersBlock = portalSrc.slice(portalSrc.indexOf("function moduleHasStages"), portalSrc.indexOf("function termAppliesToModule"));
   const stripBlock = portalSrc.slice(portalSrc.indexOf("function buildViewsSection"), portalSrc.indexOf("async function renderSettings"));
@@ -197,7 +199,8 @@ async function main() {
   const keyHits: string[] = [];
   let km: RegExpExecArray | null;
   for (const sl of [helpersBlock, stripBlock]) { keyRx.lastIndex = 0; while ((km = keyRx.exec(sl))) keyHits.push(km[1]); }
-  check(keyHits.length === 1 && keyHits[0] === "booking", "13.views-ui-generality", `the ONLY module-key check in the views surface is the documented Bookings appointmentAt case (found: ${JSON.stringify(keyHits)})`);
+  check(keyHits.length === 2 && keyHits[0] === "booking" && keyHits[1] === "work_order", "13.views-ui-generality", `the ONLY module-key checks in the views surface are the documented typed-appointment pair booking+work_order (found: ${JSON.stringify(keyHits)})`);
+  check(/function usesTypedAppointment\(t\)/.test(helpersBlock), "13.views-ui-generality", "the typed-appointment pair lives in the single documented helper (usesTypedAppointment)");
 }
 
 main()

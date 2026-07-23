@@ -10,7 +10,7 @@ import { getStats, listCalls, getCall, listContacts, getContact, listDeletedCont
 import { runSimulatedCall } from "../services/simulationService";
 import { findOpenSlots, getCalendarData } from "../services/availabilityService";
 import { loadBookingConfig, saveBookingConfig } from "../services/bookingConfig";
-import { listResources, createResource, updateResource, deleteResource } from "../services/resourceService";
+import { listResources, createResource, updateResource, deleteResource, setResourceUser } from "../services/resourceService";
 import { importContacts, updateContact, softDeleteContacts, restoreContacts, purgeExpiredContacts, createContact, bulkUpdateField, mergeContacts, generateDummyContact, getContactsMapData, getContactsCalendarData } from "../services/contactService";
 import { listFields, createField, updateField, deleteField, reorderFields, setFieldSection } from "../services/fieldService";
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
@@ -1488,8 +1488,8 @@ apiRouter.post("/records", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { type, title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap, allowClosed, resourceId } = (req.body ?? {}) as any;
-    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }, { source: "manual" }, actorOf(req)));
+    const { type, title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap, allowClosed, resourceId } = (req.body ?? {}) as any;
+    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }, { source: "manual" }, actorOf(req)));
   } catch (err) {
     const code = (err as any).code;
     if (code === "overlap" || code === "closed") { res.status(409).json({ error: (err as Error).message, code }); return; }
@@ -1591,8 +1591,8 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap, allowClosed, resourceId } = (req.body ?? {}) as any;
-    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }));
+    const { title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap, allowClosed, resourceId } = (req.body ?? {}) as any;
+    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }));
   } catch (err) {
     const code = (err as any).code;
     if (code === "overlap" || code === "closed") { res.status(409).json({ error: (err as Error).message, code }); return; }
@@ -1683,7 +1683,12 @@ apiRouter.patch("/resources/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { name, color, hours, durations, bufferMin } = (req.body ?? {}) as any;
+    const { name, color, hours, durations, bufferMin, userId } = (req.body ?? {}) as any;
+    // Resource <-> User link (Work Orders batch): userId present in the body
+    // (including null to unlink) routes through the portal-scoped link setter;
+    // everything else is the same update as before. Same audit row as any
+    // resource edit (SETTINGS_SCHEDULING, matched by the /resources/ pattern).
+    if (userId !== undefined) await setResourceUser(tenantId, req.params.id, userId);
     res.json(await updateResource(tenantId, req.params.id, { name, color, hours, durations, bufferMin }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });

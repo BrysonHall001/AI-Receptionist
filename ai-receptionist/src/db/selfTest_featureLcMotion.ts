@@ -2,7 +2,7 @@
 //
 //   npx tsx src/db/selfTest_featureLcMotion.ts
 //
-// Proves: (1) TAG INTEGRITY — every one of the 38 guides carries a features tag
+// Proves: (1) TAG INTEGRITY — every one of the 39 guides carries a features tag
 // (explicit "always" included), every tag maps to a known resolvable toggle, and a
 // planted unknown/missing tag FAILS validation; (2) the LIVE resolver — featureOn
 // driven headlessly across the whole matrix (page locks + portal-hidden nav,
@@ -51,7 +51,7 @@ function main() {
   console.log("\n(1) tag integrity:");
   const r0 = makeResolver(baseApp());
   const total = GUIDES.reduce((n, g) => n + (g.items || []).length, 0);
-  check(total === 38 && GUIDES.length === 10, `the inventory holds: ${GUIDES.length} sections / ${total} guides`);
+  check(total === 39 && GUIDES.length === 10, `the inventory holds: ${GUIDES.length} sections / ${total} guides`); // 39 since the Work Orders guide (Work Orders batch)
   check(GUIDES.every((g) => (g.items || []).every((it: any) => Array.isArray(it.features) && it.features.length > 0)), "EVERY guide carries a features tag (explicit)");
   check(r0.validateGuideFeatureTags(GUIDES).length === 0, "every tag in the real data maps to a known resolvable toggle (validator clean)");
   check(r0.validateGuideFeatureTags([{ items: [{ id: "x", features: ["renamed:toggle"] }] }]).length === 1, "a planted UNKNOWN tag fails validation (a renamed toggle can't silently always-show)");

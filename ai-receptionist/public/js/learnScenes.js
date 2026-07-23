@@ -47,7 +47,7 @@
   // ============================ THE SCENES ============================
   // (ids match LC-1's VISUAL markers 1:1 — selfTest_learningCenter2 enforces it)
 
-  const MODULES = ["Contacts", "Jobs", "Bookings"];
+  const MODULES = ["Contacts", "Job Openings", "Bookings"];
   const PAGES = ["Home", "Calls", "Analytics"];
   const seg = (on) => { let h = '<span class="fun-seg scene-seg">'; for (let i = 0; i < 10; i++) h += `<span class="fun-seg-i${i < on ? " fun-seg-i--on" : ""}"></span>`; return h + "</span>"; };
 
@@ -84,7 +84,7 @@
     regions: ["page-actions (Create/Import/Export)", "view seg-buttons", "the active view: table | kanban-cols | cal-head grid | gallery | map"],
     frames: [
       { caption: "List — the classic table under the page's action buttons.", html: pageTop("List") + miniTable(["Name", "Stage", "Created"], [["Avery Lane", pill("Open"), "Jul 2"], ["Sam Reyes", pill("Done", "success"), "Jul 9"], ["Kai Moss", pill("Hold", "skipped"), "Jul 12"]]) },
-      { caption: "Kanban — cards in stage columns; drag a card to change its stage (a Jobs board).", html: pageTop("Kanban") + kanban([["Open", ["Fence repair", "Gutter clean"]], ["Done", ["Deck staining"]]]) },
+      { caption: "Kanban — cards in stage columns; drag a card to change its stage (a work board).", html: pageTop("Kanban") + kanban([["Open", ["Fence painting", "Gutter clean"]], ["Done", ["Deck staining"]]]) },
       { caption: "Calendar — records with a date land on their day.", html: pageTop("Calendar") + `<div class="card scene-calwrap"><div class="cal-head scene-calhead"><span class="cal-dayhead">Mon</span><span class="cal-dayhead">Tue</span><span class="cal-dayhead">Wed</span><span class="cal-dayhead">Thu</span><span class="cal-dayhead">Fri</span></div><div class="scene-cal">${calCells(10, { 3: "Avery" })}</div></div>` },
       { caption: "Gallery — large cards, great for records with images.", html: pageTop("Gallery") + `<div class="scene-row"><div class="card scene-gal"><div class="scene-gal-img"></div>Avery Lane</div><div class="card scene-gal"><div class="scene-gal-img"></div>Sam Reyes</div></div>` },
       { caption: "Map — records with an address appear as pins (a Properties map).", html: pageTop("Map") + `<div class="scene-map"><span class="scene-pin"></span><span class="scene-pin scene-pin--b"></span></div>` },
@@ -95,8 +95,8 @@
     sourceFn: "portal.js#renderBoard",
     regions: ["kanban-col (head + cards) per stage"],
     frames: [
-      { caption: "Grab a card in its current stage column\u2026 (a Jobs board)", html: kanban([["Open", ["FOCUS:Fence repair", "Gutter clean"]], ["Done", ["Deck staining"]]]) },
-      { caption: "\u2026and drop it in another — the record's stage updates instantly.", html: kanban([["Open", ["Gutter clean"]], ["Done", ["Deck staining", "FOCUS:Fence repair"]]]) },
+      { caption: "Grab a card in its current stage column\u2026 (a work board)", html: kanban([["Open", ["FOCUS:Fence painting", "Gutter clean"]], ["Done", ["Deck staining"]]]) },
+      { caption: "\u2026and drop it in another — the record's stage updates instantly.", html: kanban([["Open", ["Gutter clean"]], ["Done", ["Deck staining", "FOCUS:Fence painting"]]]) },
     ],
   });
 
@@ -158,8 +158,8 @@
     sourceFn: "portal.js#secFields",
     regions: ["mf-modules-row (module picker)", "mf-views-strip (view toggles)", "two columns: Field library | Fields"],
     frames: [
-      { caption: "Pick a module along the top, then work in two columns: the field LIBRARY on the left, the module's FIELDS on the right.", html: `<div class="scene-row scene-viewstrip"><span class="seg-btn seg-on">Contacts</span><span class="seg-btn">Jobs</span><span class="seg-btn">Bookings</span></div><div class="scene-row"><div class="card scene-drawer"><div class="eyebrow">Field library</div>${pill("Text")}${pill("Number")}${pill("Date")}</div><div class="card scene-drawer"><div class="eyebrow">Fields</div>${pill("Name")}${pill("Phone")}${focus(pill("Status"))}${btn("Add field", false, true)}</div></div>` },
-      { caption: "The views strip decides which of the five views this module offers (calendar needs a date field; map needs an address).", html: `<div class="scene-row scene-viewstrip"><span class="seg-btn seg-on">Contacts</span><span class="seg-btn">Jobs</span></div>${focus('<div class="scene-row">' + pill("List", "success") + pill("Kanban", "success") + pill("Calendar", "success") + pill("Gallery") + pill("Map") + "</div>")}<div class="scene-row"><div class="card scene-drawer"><div class="eyebrow">Field library</div>${pill("Text")}${pill("Date")}</div><div class="card scene-drawer"><div class="eyebrow">Fields</div>${pill("Name")}${pill("Appointment date")}</div></div>` },
+      { caption: "Pick a module along the top, then work in two columns: the field LIBRARY on the left, the module's FIELDS on the right.", html: `<div class="scene-row scene-viewstrip"><span class="seg-btn seg-on">Contacts</span><span class="seg-btn">Job Openings</span><span class="seg-btn">Bookings</span></div><div class="scene-row"><div class="card scene-drawer"><div class="eyebrow">Field library</div>${pill("Text")}${pill("Number")}${pill("Date")}</div><div class="card scene-drawer"><div class="eyebrow">Fields</div>${pill("Name")}${pill("Phone")}${focus(pill("Status"))}${btn("Add field", false, true)}</div></div>` },
+      { caption: "The views strip decides which of the five views this module offers (calendar needs a date field; map needs an address).", html: `<div class="scene-row scene-viewstrip"><span class="seg-btn seg-on">Contacts</span><span class="seg-btn">Job Openings</span></div>${focus('<div class="scene-row">' + pill("List", "success") + pill("Kanban", "success") + pill("Calendar", "success") + pill("Gallery") + pill("Map") + "</div>")}<div class="scene-row"><div class="card scene-drawer"><div class="eyebrow">Field library</div>${pill("Text")}${pill("Date")}</div><div class="card scene-drawer"><div class="eyebrow">Fields</div>${pill("Name")}${pill("Appointment date")}</div></div>` },
     ],
   });
 
@@ -175,7 +175,7 @@
   // small per-scene builders used above
   function pageTop(activeView) {
     const segs = ["List", "Kanban", "Calendar", "Gallery", "Map"].map((v) => `<span class="seg-btn${v === activeView ? " seg-on" : ""}">${v}</span>`).join("");
-    return `<div class="page-actions scene-pageactions">${btn("+ Create Job", true, true)}${btn("Import", false, true)}${btn("Export", false, true)}</div><div class="scene-row scene-viewstrip">${segs}</div>`;
+    return `<div class="page-actions scene-pageactions">${btn("+ Create Record", true, true)}${btn("Import", false, true)}${btn("Export", false, true)}</div><div class="scene-row scene-viewstrip">${segs}</div>`;
   }
   function kanban(cols) {
     return `<div class="scene-board">${cols.map(([name, cards]) => `<div class="kanban-col scene-kancol"><div class="kanban-col-head">${name}</div><div class="kanban-cards">${cards.map((c) => c.indexOf("FOCUS:") === 0 ? focus(`<div class="kanban-card">${c.slice(6)}</div>`) : `<div class="kanban-card">${c}</div>`).join("")}</div></div>`).join("")}</div>`;

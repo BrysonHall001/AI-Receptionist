@@ -22,7 +22,7 @@
     if (Array.isArray(live) && live.length) return live;
     return [
       { key: "contact", label: "Contact", labelPlural: "Contacts" },
-      { key: "job", label: "Job", labelPlural: "Jobs" },
+      { key: "job", label: "Job Opening", labelPlural: "Job Openings" }, // stock label since the Work Orders batch
       { key: "booking", label: "Booking", labelPlural: "Bookings" },
     ];
   };

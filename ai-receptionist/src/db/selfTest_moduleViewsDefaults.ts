@@ -41,6 +41,10 @@ async function main() {
 
   // (2) Jobs: Board on; flat modules: no optional views.
   check(byKey.job && has(byKey.job.enabledViews, "board"), "Jobs default: Board view ON (has a pipeline)");
+  // (2b) Work Orders (Work Orders batch): board (inert like Bookings) + calendar
+  // (typed appointmentAt) + map (seeded service_address) ON by default.
+  check(byKey.work_order && has(byKey.work_order.enabledViews, "board") && has(byKey.work_order.enabledViews, "calendar") && has(byKey.work_order.enabledViews, "map"), "Work Orders default: board + calendar + map ON");
+  check(byKey.work_order && byKey.work_order.calendarDateField === "appointmentAt", "Work Orders calendar maps to the typed appointmentAt column");
   const flat = ["equipment", "vehicle", "property", "product", "estimate", "task", "invoice"];
   for (const k of flat) {
     check(byKey[k] && !has(byKey[k].enabledViews, "board") && !has(byKey[k].enabledViews, "calendar"), `${k}: optional views OFF by default`);
