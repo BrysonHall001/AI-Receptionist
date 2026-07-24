@@ -1888,7 +1888,7 @@
         cellClass: f.key === "name" ? "cell-strong" : f.key === "phone" ? "cell-mono" : f.key === "email" || f.key === "intent" ? "cell-muted" : "",
         render:
           f.type === "image"
-            ? (r) => { const v = get(r); return v && /^data:image\//i.test(String(v)) ? `<img class="cell-thumb" src="${esc(String(v))}" alt="" />` : `<span class="cell-muted">—</span>`; }
+            ? (r) => { const v = get(r); const src = (/^data:image\//i.test(String(v || "")) || String(v || "").indexOf("clarityfile:") === 0) ? App.fields.fileSrc(v) : ""; return src ? `<img class="cell-thumb" src="${esc(src)}" alt="" />` : `<span class="cell-muted">—</span>`; }
             : f.type === "file"
             ? (r) => { const v = get(r); const href = v && (v.data || (typeof v === "string" ? v : "")); const name = (v && v.name) || "file"; return href ? `<a class="cell-link" href="${esc(String(href))}" target="_blank" rel="noopener" download="${esc(name)}">${esc(name)}</a>` : `<span class="cell-muted">—</span>`; }
             : f.type === "rating"
@@ -6869,7 +6869,9 @@
       const c = el("div", "gallery-card");
       c.tabIndex = 0;
       const raw = imgField ? (r.customFields || {})[imgField.key] : null;
-      const src = (typeof raw === "string" && raw) ? raw : null;
+      // File Storage batch: raw may be a pre-sweep data URL (renders as-is) or a
+      // clarityfile reference (resolves to the authenticated serving route).
+      const src = App.fields.fileSrc(raw) || null;
       if (src) {
         const img = el("img", "gallery-thumb");
         img.loading = "lazy";       // values can be ~1 MB of base64 each — never load eagerly
@@ -7008,7 +7010,7 @@
         return;
       }
       let render;
-      if (f.type === "image") render = (r) => { const v = get(r); return v && /^data:image\//i.test(String(v)) ? `<img class="cell-thumb" src="${esc(String(v))}" alt="" />` : `<span class="cell-muted">—</span>`; };
+      if (f.type === "image") render = (r) => { const v = get(r); const src = (/^data:image\//i.test(String(v || "")) || String(v || "").indexOf("clarityfile:") === 0) ? App.fields.fileSrc(v) : ""; return src ? `<img class="cell-thumb" src="${esc(src)}" alt="" />` : `<span class="cell-muted">—</span>`; };
       else if (f.type === "file") render = (r) => { const v = get(r); const href = v && (v.data || (typeof v === "string" ? v : "")); const name = (v && v.name) || "file"; return href ? `<a class="cell-link" href="${esc(String(href))}" target="_blank" rel="noopener" download="${esc(name)}">${esc(name)}</a>` : `<span class="cell-muted">—</span>`; };
       else if (f.type === "rating") render = (r) => { const n = Math.round(Number(get(r)) || 0); return n ? `<span class="cell-stars">${esc("\u2605".repeat(n) + "\u2606".repeat(5 - n))}</span>` : `<span class="cell-muted">—</span>`; };
       else if (f.type === "duration") render = (r) => { const s = App.fields.formatValue(f, get(r)); return s ? esc(s) : `<span class="cell-muted">—</span>`; };

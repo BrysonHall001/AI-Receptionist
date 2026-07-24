@@ -34,6 +34,16 @@ const envSchema = z.object({
   // independent of Twilio creds — turning Twilio on for CALLS never sends a text while
   // this is off.
   SMS_ENABLED: z.enum(["true", "false"]).default("false"),
+  // ---- File storage (File Storage batch) ----
+  // Cloudflare R2 (S3-compatible). ALL FOUR present => mode "r2". Absent in
+  // non-production => mode "local" (gitignored .data/files, same code path minus
+  // the S3 transport, so dev + self-tests run fully offline). Absent in
+  // production => mode "off": the do-nothing path — uploads keep today's
+  // embedded-base64 behavior byte-for-byte and the migration sweep never runs.
+  R2_ACCOUNT_ID: z.string().default(""),
+  R2_ACCESS_KEY_ID: z.string().default(""),
+  R2_SECRET_ACCESS_KEY: z.string().default(""),
+  R2_BUCKET: z.string().default(""),
   MAX_TURNS: z.coerce.number().int().positive().default(12),
   MAX_EMPTY_TURNS: z.coerce.number().int().positive().default(2),
   AI_MAX_RETRIES: z.coerce.number().int().positive().default(3),

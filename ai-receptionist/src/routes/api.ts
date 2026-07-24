@@ -56,6 +56,7 @@ import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteE
 import { ACTION_TYPES } from "../automation/actions";
 import { smsEnabled, geocodingEnabled } from "../config/env";
 import { AUTOMATION_PRESETS, getPreset, PRESET_CATEGORIES } from "../automation/presets";
+import { storage, storageMode, sha256Hex, storageKeyFor, makeFileRef, MAX_IMAGE_BYTES, MAX_FILE_FIELD_BYTES, IMAGE_CAP_COPY, FILE_CAP_COPY } from "../services/fileStorage";
 import { REPORT_PRESET_CATEGORIES, publicReportPresets, publicRecordTypePresets } from "../analytics/reportPresets";
 import { analyzeFlowDefinition, applyFlowDefinition } from "../services/flowProvisioningService";
 import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
@@ -1887,6 +1888,89 @@ apiRouter.post("/simulate", async (req: Request, res: Response) => {
 // resolveTenantScope), never by user id. The master hub (no portal in context)
 // returns a fixed default and cannot be themed. Only PORTAL_ADMIN/SUPER_ADMIN
 // may save; CLIENT_USER can read but not change (enforced here, not just in UI). ----
+// ============================================================================
+// FILE STORAGE (File Storage batch): upload + authenticated serving.
+// Bytes live in object storage (R2, private) or the local fallback dir; the DB
+// holds a StoredFile row and field values carry "clarityfile:<id>" references.
+// With storage mode "off" (prod without keys) the upload route politely 503s —
+// the SPA never calls it in that mode (features.fileStorage is false), so the
+// pre-batch base64 behavior is byte-for-byte intact.
+const fieldFileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_FIELD_BYTES, files: 1, fields: 10 },
+}).single("file");
+
+apiRouter.post("/files", (req: Request, res: Response) => {
+  if (storageMode() === "off") { res.status(503).json({ error: "File storage isn't configured yet." }); return; }
+  fieldFileUpload(req, res, async (uploadErr: any) => {
+    try {
+      if (uploadErr) {
+        const msg = uploadErr?.code === "LIMIT_FILE_SIZE" ? FILE_CAP_COPY : (uploadErr.message || "Upload failed.");
+        res.status(400).json({ error: msg });
+        return;
+      }
+      const tenantId = resolveTenantScope(req);
+      if (!tenantId) { res.status(400).json({ error: "No tenant in scope" }); return; }
+      // WRITE permission: field files only ever hang off records or contacts, so
+      // uploading requires edit rights on at least one of those areas (the same
+      // rights the subsequent record/contact save will demand). Inline check —
+      // the declarative permissionGate table maps one area per route, and this
+      // route legitimately serves two.
+      const mayUpload = (await can(req.user as any, "records", "edit")) || (await can(req.user as any, "contacts", "edit"));
+      if (!mayUpload) { res.status(403).json({ error: "You don't have permission to upload files." }); return; }
+      const f = (req as any).file as { buffer: Buffer; mimetype: string; originalname: string; size: number } | undefined;
+      if (!f || !f.buffer || !f.size) { res.status(400).json({ error: "No file received." }); return; }
+      const kind = String((req.body || {}).kind || "file");
+      if (kind === "image") {
+        if (!/^image\//i.test(f.mimetype || "")) { res.status(400).json({ error: "That field takes an image." }); return; }
+        if (f.size > MAX_IMAGE_BYTES) { res.status(400).json({ error: IMAGE_CAP_COPY }); return; }
+      }
+      const row = await prisma.storedFile.create({
+        data: {
+          tenantId,
+          key: "pending", // real key needs the id; set right below
+          name: (f.originalname || "file").slice(0, 300),
+          mime: f.mimetype || "application/octet-stream",
+          size: f.size,
+          sha256: sha256Hex(f.buffer),
+          origin: "upload",
+          uploadedById: req.user!.id,
+        },
+      });
+      const key = storageKeyFor(tenantId, row.id);
+      await storage().put(key, f.buffer, f.mimetype || "application/octet-stream");
+      await prisma.storedFile.update({ where: { id: row.id }, data: { key } });
+      res.json({ ref: makeFileRef(row.id), name: row.name, size: row.size, mime: row.mime });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+});
+
+// Serving: session-authenticated stream with the approved Option-A permission
+// model — SAME TENANT (hard 404 otherwise; existence is never revealed across
+// tenants) AND records-or-contacts VIEW right (every surface that displays
+// these files is already page-gated by exactly those rights).
+apiRouter.get("/files/:id", async (req: Request, res: Response) => {
+  try {
+    const tenantId = resolveTenantScope(req);
+    if (!tenantId) { res.status(400).json({ error: "No tenant in scope" }); return; }
+    const row = await prisma.storedFile.findFirst({ where: { id: String(req.params.id || ""), tenantId } });
+    if (!row) { res.status(404).json({ error: "Not found" }); return; }
+    const mayView = (await can(req.user as any, "records", "view")) || (await can(req.user as any, "contacts", "view"));
+    if (!mayView) { res.status(403).json({ error: "You don't have permission to view this file." }); return; }
+    const bytes = await storage().get(row.key);
+    if (!bytes) { res.status(404).json({ error: "File is missing from storage" }); return; }
+    res.setHeader("Content-Type", row.mime);
+    res.setHeader("Content-Length", String(bytes.length));
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("Content-Disposition", `inline; filename="${row.name.replace(/[^\w.\- ]+/g, "_")}"`);
+    res.end(bytes);
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
 apiRouter.get("/theme", async (req: Request, res: Response) => {
   const tenantId = resolveTenantScope(req);
   // No portal in context (e.g. super-admin on the master hub): the fixed

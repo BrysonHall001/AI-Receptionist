@@ -6,6 +6,7 @@ import { createSession, destroySession, setSessionCookie, clearSessionCookie, SE
 import { createResetToken, consumeResetToken, publicUser, accountInactive } from "../services/userService";
 import { sendPlainEmail } from "../services/notificationService";
 import { env, smsEnabled } from "../config/env";
+import { storageMode } from "../services/fileStorage";
 import { audit } from "../services/auditService";
 import { AUDIT_ACTIONS } from "../services/auditCatalog";
 import { logger } from "../utils/logger";
@@ -87,7 +88,13 @@ authRouter.get("/me", async (req: Request, res: Response) => {
   // Billing tab (server still enforces the endpoint independently).
   permView["billing"] = await can(req.user as any, "billing", "view");
   const lockedPages = (req.user as any)?.tenantId ? await getLockedPages((req.user as any).tenantId) : [];
-  res.json({ user: { ...req.user, permView, permEdit, lockedPages }, features: { smsEnabled: smsEnabled() } });
+  res.json({ user: { ...req.user, permView, permEdit, lockedPages }, features: {
+    smsEnabled: smsEnabled(),
+    // File Storage batch: when true the SPA's image/file editors upload to
+    // POST /api/files and store references (with the raised caps); when false
+    // they keep the pre-batch embedded-base64 behavior byte-for-byte.
+    fileStorage: storageMode() !== "off",
+  } });
 });
 
 authRouter.post("/forgot", resetLimiter, async (req: Request, res: Response) => {

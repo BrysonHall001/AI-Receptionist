@@ -159,7 +159,7 @@ async function main() {
   const hsub = adminJs.slice(adminJs.indexOf("const HEALTH_SUBTABS"), adminJs.indexOf("];", adminJs.indexOf("const HEALTH_SUBTABS")));
   check(hsub.indexOf('"overview"') < hsub.indexOf('"errors"') && hsub.indexOf('"errors"') < hsub.indexOf('"webhooks"'), "System Health: Overview | Errors | Webhooks (data-driven)");
   check(HEALTH.ERRORS_24H_WARN === 1 && HEALTH.ERRORS_24H_FAIL === 25 && HEALTH.WEBHOOK_FAILS_24H_WARN === 1 && HEALTH.WEBHOOK_FAILS_24H_FAIL === 25, "tile thresholds are NAMED constants");
-  check(HEALTH_CHECK_KEYS.includes("errors") && HEALTH_CHECK_KEYS.length === 17 && adminJs.includes("errors: HW("), "the Errors tile lives in the registry with its accent widget");
+  check(HEALTH_CHECK_KEYS.includes("errors") && HEALTH_CHECK_KEYS.length === 18 && adminJs.includes("errors: HW("), "the Errors tile lives in the registry with its accent widget"); // 18 since fileStorage (File Storage batch)
   check(read("src/services/healthService.ts").includes("webhookEvent.count") && !read("src/services/healthService.ts").includes("emailLog.count"), "the Webhook-deliveries check reads REAL WebhookEvent counts (the EmailLog read is gone)");
   check(adminJs.includes('component: (host, tenantId, win) => renderErrorsTable(host, { embedId: "drill", filter: { tenantId: tenantId || "", from: winFrom(win), to: dayIsoAgo(0) } })') && adminJs.includes('component: (host, tenantId, win) => renderWebhooksTable(host, { embedId: "drill"'), "both tiles' drills ARE their sub-tab components, tenant+window pre-filtered (one implementation each; panels-v3)");
 

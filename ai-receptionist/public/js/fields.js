@@ -136,6 +136,30 @@
   }
 
   // Display string for a field value (used in read contexts).
+  // ---- File Storage batch ----------------------------------------------------
+  // fileSrc: turn a stored image/file VALUE into something the browser can load.
+  //   data URL (pre-batch embedded form)      -> as-is (transition honesty:
+  //                                              old blobs render until swept)
+  //   "clarityfile:<id>" / {ref}              -> the authenticated serving route
+  //                                              (session cookie rides along)
+  function fileSrc(v) {
+    const raw = v && typeof v === "object" ? (v.ref || v.data || "") : (v || "");
+    if (typeof raw !== "string" || !raw) return "";
+    if (raw.indexOf("clarityfile:") === 0) return "/api/files/" + encodeURIComponent(raw.slice("clarityfile:".length));
+    return raw; // data URL or anything else the pre-batch app stored
+  }
+  function storageOn() {
+    return !!(App.state && App.state.me && App.state.me.features && App.state.me.features.fileStorage);
+  }
+  // Upload one file to POST /api/files; resolves {ref, name, size, mime}.
+  function uploadStoredFile(f, kind) {
+    const fd = new FormData();
+    fd.append("kind", kind);
+    fd.append("file", f, f.name);
+    return fetch("/api/files", { method: "POST", body: fd, credentials: "same-origin" })
+      .then((r) => r.json().then((j) => { if (!r.ok) throw new Error(j.error || "Upload failed."); return j; }));
+  }
+
   function formatValue(def, value, fields, values) {
     if (def.type === "formula") return computeFormula(def.formula, fields || [], values || {});
     if (def.type === "percent") return value === "" || value == null ? "" : `${value}%`;
@@ -218,12 +242,25 @@
       } else if (def.type === "image") {
         node = el("div", "form-image");
         const preview = el("img", "form-img-preview");
-        if (values[def.key]) preview.src = values[def.key]; else preview.classList.add("u-hidden");
+        if (values[def.key]) preview.src = fileSrc(values[def.key]); else preview.classList.add("u-hidden");
         node.appendChild(preview);
         if (!readOnly) {
           const file = el("input"); file.type = "file"; file.accept = "image/*"; file.className = "input";
           file.onchange = () => {
             const f = file.files[0]; if (!f) return;
+            // File Storage batch: with storage on, upload and store a small
+            // reference (raised 8 MB cap, server-enforced too). With storage
+            // off — dev without the flag, prod without keys — this branch is
+            // never entered and the pre-batch base64 path below runs unchanged.
+            if (storageOn()) {
+              if (f.size > 8 * 1024 * 1024) { App.util.toast("Images can be up to 8 MB.", true); file.value = ""; return; }
+              file.disabled = true;
+              uploadStoredFile(f, "image")
+                .then((up) => { setVal(up.ref); preview.src = fileSrc(up.ref); preview.classList.remove("u-hidden"); preview.classList.add("u-block"); })
+                .catch((e) => App.util.toast(e.message, true))
+                .finally(() => { file.disabled = false; file.value = ""; });
+              return;
+            }
             if (f.size > 1024 * 1024) { App.util.toast("Image must be under 1 MB", true); file.value = ""; return; }
             const r = new FileReader();
             r.onload = () => { setVal(String(r.result)); preview.src = String(r.result); preview.classList.remove("u-hidden"); preview.classList.add("u-block"); };
@@ -335,7 +372,7 @@
         const renderInfo = () => {
           info.innerHTML = "";
           const v = values[def.key];
-          const href = v && (v.data || (typeof v === "string" ? v : ""));
+          const href = fileSrc(v);
           if (href) {
             const a = el("a", "form-file-link", esc((v && v.name) || "Attachment"));
             a.href = href; a.target = "_blank"; a.rel = "noopener"; a.download = (v && v.name) || "attachment";
@@ -349,6 +386,20 @@
           let rmBtn = null;
           file.onchange = () => {
             const f = file.files[0]; if (!f) return;
+            // File Storage batch: reference path when storage is on (15 MB cap);
+            // byte-for-byte pre-batch base64 path when off.
+            if (storageOn()) {
+              if (f.size > 15 * 1024 * 1024) { App.util.toast("Files can be up to 15 MB.", true); file.value = ""; return; }
+              file.disabled = true;
+              uploadStoredFile(f, "file")
+                .then((up) => {
+                  setVal({ name: f.name, ref: up.ref }); renderInfo();
+                  if (!rmBtn) { rmBtn = el("button", "link-danger", "Remove file"); rmBtn.onclick = () => { setVal(""); renderInfo(); rmBtn.remove(); rmBtn = null; }; node.appendChild(rmBtn); }
+                })
+                .catch((e) => App.util.toast(e.message, true))
+                .finally(() => { file.disabled = false; file.value = ""; });
+              return;
+            }
             if (f.size > 2 * 1024 * 1024) { App.util.toast("File must be under 2 MB", true); file.value = ""; return; }
             const r = new FileReader();
             r.onload = () => {
@@ -446,5 +497,5 @@
     return combinedOnChange;
   }
 
-  App.fields = { TYPE_LABELS, TYPE_ICONS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, renderGroupedEditor, formatValue, computeFormula, fmtDuration, fmtAddress, fmtMoney, lineItemsRows, lineItemsTotal, lineItemsSummary };
+  App.fields = { TYPE_LABELS, TYPE_ICONS, TYPES_WITH_OPTIONS, SYSTEM_KEYS, renderEditor, renderGroupedEditor, formatValue, computeFormula, fmtDuration, fmtAddress, fmtMoney, lineItemsRows, lineItemsTotal, lineItemsSummary, fileSrc };
 })(typeof window !== "undefined" ? window : globalThis);
