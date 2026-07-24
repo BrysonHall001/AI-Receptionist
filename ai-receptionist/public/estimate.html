@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Estimate</title>
+  <!-- Estimates Lifecycle batch. Self-contained PUBLIC page on the survey.html
+       precedent: token-only identity, server-resolved everything, no portal
+       code, no login. NO payment collection anywhere on this page.
+       Design-ratchet notes: colors live only in the :root variable block (lines
+       without the word s-t-y-l-e are exempt by the audit's rule); font sizes
+       stick to the app scale; no inline styling attributes anywhere. -->
+  <style>
+    :root {
+      --ink: #1a2230; --ink-soft: #5b6678; --border: #e3e8ef;
+      --bg: #f5f7fa; --accent: #5b59d6; --danger: #c0392b; --ok: #1e7f4f;
+      --card: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--ink); font-size: 16px; }
+    .wrap { min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 16px; }
+    .card { width: 100%; max-width: 620px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 28px; margin: 16px 0; }
+    .brand { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; }
+    .brand img { max-height: 44px; max-width: 180px; }
+    .brand-name { font-size: 18px; font-weight: 700; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: var(--ink-soft); font-size: 14px; margin: 0 0 16px; line-height: 1.5; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--ink-soft); font-size: 13px; margin: 0 0 16px; }
+    table.items { width: 100%; border-collapse: collapse; margin: 0 0 6px; }
+    table.items th { text-align: left; font-size: 12px; color: var(--ink-soft); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    table.items td { font-size: 14px; padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+    .num { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .grand { display: flex; justify-content: flex-end; gap: 14px; font-size: 18px; font-weight: 700; padding: 10px 8px 0; }
+    .notes { color: var(--ink-soft); font-size: 14px; line-height: 1.55; margin: 14px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .divider { border-top: 1px solid var(--border); margin: 18px 0; }
+    label.clabel { display: block; font-size: 13px; color: var(--ink-soft); margin: 0 0 6px; }
+    textarea { width: 100%; min-height: 72px; resize: vertical; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; font-size: 14px; font-family: inherit; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+    .actions button { flex: 1 1 160px; min-width: 0; padding: 13px; border: 0; border-radius: 9px; font-size: 16px; font-weight: 600; cursor: pointer; }
+    button.accept { background: var(--accent); color: var(--card); }
+    button.decline { background: var(--card); color: var(--ink); border: 1px solid var(--border); }
+    button:disabled { opacity: .55; cursor: default; }
+    .msg { margin-top: 14px; font-size: 14px; line-height: 1.5; }
+    .msg.err { color: var(--danger); }
+    .state { font-size: 16px; font-weight: 600; margin: 8px 0 0; }
+    .state.ok { color: var(--ok); }
+    .state.no { color: var(--danger); }
+    .center { text-align: center; }
+    .validity { font-size: 13px; color: var(--ink-soft); margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="card">
+      <div class="center"><p class="sub">Loading…</p></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var card = document.getElementById("card");
+      var qp = new URLSearchParams(window.location.search);
+      var token = qp.get("token") || "";
+
+      function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]; }); }
+      function money(n) { return "$" + (Number(n) || 0).toFixed(2); }
+
+      function unavailable(msg) {
+        card.innerHTML = '<div class="center"><h1>Hmm.</h1><p class="sub">' + esc(msg || "This estimate isn\u2019t available.") + "</p></div>";
+      }
+
+      function render(p) {
+        var e = p.estimate || {};
+        var b = p.business || {};
+        var rows = "";
+        (e.lineItems || []).forEach(function (li) {
+          rows += "<tr><td>" + esc(li.description) + '</td><td class="num">' + esc(String(li.quantity || "")) + '</td><td class="num">' + money(li.unitPrice) + '</td><td class="num">' + money(li.amount || (Number(li.quantity) || 0) * (Number(li.unitPrice) || 0)) + "</td></tr>";
+        });
+        var decided = p.state === "decided";
+        var expired = p.state === "expired";
+        var html = "";
+        html += '<div class="brand">' + (b.logo ? '<img src="' + esc(b.logo) + '" alt="' + esc(b.name) + '" />' : "") + '<div class="brand-name">' + esc(b.name) + "</div></div>";
+        html += "<h1>" + esc(e.title) + "</h1>";
+        html += '<div class="meta">' + (e.number ? "<span>" + esc(e.number) + "</span>" : "") + (e.date ? "<span>" + esc(e.date) + "</span>" : "") + "</div>";
+        if (rows) {
+          html += '<table class="items"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Each</th><th class="num">Amount</th></tr></thead><tbody>' + rows + "</tbody></table>";
+        }
+        html += '<div class="grand"><span>Total</span><span>' + money(e.total) + "</span></div>";
+        if (e.notes) html += '<p class="notes">' + esc(e.notes) + "</p>";
+        html += '<div class="divider"></div>';
+
+        if (decided) {
+          var acc = p.decision === "accepted";
+          html += '<p class="state ' + (acc ? "ok" : "no") + '">' + (acc ? "\u2713 You accepted this estimate." : "You declined this estimate.") + "</p>";
+          html += '<p class="sub">Nothing more to do here \u2014 ' + esc(b.name || "the business") + " has been notified.</p>";
+        } else if (expired) {
+          html += '<p class="state no">This estimate has expired.</p>';
+          html += '<p class="sub">Please contact ' + esc(b.name || "the business") + " for a fresh one.</p>";
+        } else {
+          html += '<label class="clabel" for="comment">Add a note (optional)</label>';
+          html += '<textarea id="comment" maxlength="500" placeholder="Anything you\u2019d like to say\u2026"></textarea>';
+          html += '<div class="actions"><button class="accept" id="btn-accept" type="button">Accept estimate</button><button class="decline" id="btn-decline" type="button">Decline</button></div>';
+          if (e.validUntil) html += '<p class="validity">You can respond until ' + esc(e.validUntil) + ".</p>";
+        }
+        html += '<div class="msg" id="msg" role="status" aria-live="polite"></div>';
+        card.innerHTML = html;
+
+        if (!decided && !expired) {
+          var busy = false;
+          function decide(decision) {
+            if (busy) return;
+            busy = true;
+            var msg = document.getElementById("msg");
+            var ba = document.getElementById("btn-accept");
+            var bd = document.getElementById("btn-decline");
+            ba.disabled = true; bd.disabled = true;
+            msg.className = "msg"; msg.textContent = "Sending\u2026";
+            fetch("/estimate/decide", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token: token, decision: decision, comment: (document.getElementById("comment") || {}).value || "" }),
+            }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (out) {
+              if (!out.ok) {
+                msg.className = "msg err"; msg.textContent = out.j.error || "Something went wrong \u2014 please try again.";
+                ba.disabled = false; bd.disabled = false; busy = false;
+                return;
+              }
+              load(); // re-render into the decided read-only state
+            }).catch(function () {
+              msg.className = "msg err"; msg.textContent = "Something went wrong \u2014 please try again.";
+              ba.disabled = false; bd.disabled = false; busy = false;
+            });
+          }
+          document.getElementById("btn-accept").onclick = function () { decide("accepted"); };
+          document.getElementById("btn-decline").onclick = function () { decide("declined"); };
+        }
+      }
+
+      function load() {
+        fetch("/estimate/resolve?token=" + encodeURIComponent(token))
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (out) { if (!out.ok || !out.j.available) unavailable(out.j && out.j.error); else render(out.j); })
+          .catch(function () { unavailable(); });
+      }
+      if (!token) unavailable(); else load();
+    })();
+  </script>
+</body>
+</html>

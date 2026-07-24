@@ -1065,6 +1065,38 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
     },
     note: "The daily sweep needs a customer linked to the work order to evaluate it (existing behavior), so contact-less records don't nudge. Nudges your Notify email, never the customer.",
   },
+  {
+    // Estimates Lifecycle batch. Opt-in like everything in the library; applies
+    // as a disabled draft. Fires on the customer's accept/decline from the
+    // public estimate page (the EstimateDecided trigger).
+    key: "estimate_decided_notify",
+    vertical: "general",
+    name: "Estimate decided — notify the owner",
+    description: "The moment a customer accepts or declines an estimate online, email the business so nobody finds out a day later.",
+    category: "pipeline",
+    summary: {
+      trigger: "Customer decides an estimate (accept or decline)",
+      conditions: [],
+      actions: ["Email the business with the outcome and any customer note"],
+    },
+    shape: { trigger: "EstimateDecided", actions: ["notify_business"] },
+    definition: {
+      name: "Estimate decided — notify the owner",
+      triggerType: "EstimateDecided",
+      conditions: [],
+      actions: [
+        {
+          type: "notify_business",
+          config: {
+            channel: "email",
+            subject: "Estimate {{record_title}}: customer decision",
+            body: "The customer just responded to {{record_title}} on its online page.\n\nOpen the estimate in Clarity for the outcome, any note they left, and next steps — if they accepted, one click converts it to a work order.",
+          },
+        },
+      ],
+    },
+    note: "Fires for both outcomes. Want accepted-only? Duplicate it and set the trigger's outcome option.",
+  },
 ];
 
 export function getPreset(key: string): FlowPreset | undefined {

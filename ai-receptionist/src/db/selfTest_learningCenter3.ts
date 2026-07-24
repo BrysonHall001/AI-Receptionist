@@ -70,7 +70,7 @@ async function main() {
       }
     }
     // custom field/section labels beyond the generic ones docs may legitimately use
-    const GENERIC = new Set(["name", "phone", "email", "status", "notes", "title", "type", "date", "address", "created", "amount", "description", "stage"]);
+    const GENERIC = new Set(["name", "phone", "email", "status", "notes", "title", "type", "date", "address", "created", "amount", "description", "stage", "line items"]); // "line items" is a BUILT-IN field TYPE name the product itself displays (fields.js TYPE_LABELS) — same legitimate-docs class as "date"/"address" (Estimates Lifecycle batch; the docs already named the type before estimates could be enabled)
     for (const f of fields) { const t = String(f.label || "").trim().toLowerCase(); if (t.length >= 4 && !GENERIC.has(t)) dbTerms.push(t); }
     for (const sec of sections) { const t = String(sec.label || "").trim().toLowerCase(); if (t.length >= 4 && !GENERIC.has(t) && t !== "details" && t !== "contact details" && t !== "preferences") dbTerms.push(t); }
     await prisma.$disconnect();

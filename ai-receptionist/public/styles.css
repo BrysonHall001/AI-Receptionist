@@ -3420,3 +3420,6 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 /* On-my-way button (Customer Comms batch) — sits at the right edge of the record
    header via the flex head's auto margin; tokens/classes only. */
 .omw-btn { margin-left: auto; flex: 0 0 auto; }
+
+/* ==== Estimates lifecycle (Estimates Lifecycle batch) ==== */
+.est-status { font-size: var(--text-sm); margin-right: var(--sp-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }

@@ -117,6 +117,11 @@ export const EVENT_TYPES = {
   // "acknowledge a new request instantly"); it routes through the same
   // record-subject dispatch as RecordUpdated.
   RecordCreated: "RecordCreated",
+  // Estimates Lifecycle batch: a customer accepted or declined an estimate on
+  // its public page. Record-subject; payload carries decision ("accepted" |
+  // "declined") + optional comment. Triggerable, with "EstimateDecided:accepted"
+  // / ":declined" scoping (same suffix convention as RecordUpdated:status=).
+  EstimateDecided: "EstimateDecided",
   ContactDeleted: "ContactDeleted",
   RecordDeleted: "RecordDeleted",
   ContactRestored: "ContactRestored",
@@ -170,6 +175,7 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: stri
   // destination value. Generic labels ("Record") so portals can relabel.
   { type: EVENT_TYPES.RecordUpdated, label: "Record updated / status changed", group: "When something changes", description: "Runs when a record's own field or status changes." },
   { type: EVENT_TYPES.RecordCreated, label: "Record created", group: "When something changes", description: "Runs once when a new record is created (a work order, an equipment unit, …). Bookings use their own \"Booking created\" trigger instead." },
+  { type: EVENT_TYPES.EstimateDecided, label: "Estimate decided (customer accepted/declined)", group: "When something changes", description: "Runs when a customer accepts or declines an estimate on its public page. Scope it to one outcome with the accepted/declined option." },
   // Manual is a trigger-only entry: it is NOT an emitted event, so the engine's
   // event dispatch never fires it automatically. It runs only when a user clicks
   // "Run automation" on a record (see runManualAutomation in automation/engine).

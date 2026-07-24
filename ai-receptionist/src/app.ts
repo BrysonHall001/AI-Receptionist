@@ -11,6 +11,7 @@ import { internalRouter } from "./routes/internal";
 import { inboundRouter } from "./routes/inbound";
 import { inviteRouter } from "./routes/invites";
 import { surveyRouter } from "./routes/surveyPublic";
+import { estimateRouter } from "./routes/estimatePublic";
 import { authRouter } from "./routes/auth";
 import { clientErrorsRouter } from "./routes/clientErrors";
 import { captureError } from "./services/errorService";
@@ -100,6 +101,7 @@ export function createApp(): express.Express {
   app.use("/hooks/in", webhookRecorder("other"), inboundRouter); // PUBLIC inbound webhook ingest (tenant from token); devtools-data: capture
   app.use("/invites", inviteRouter); // PUBLIC account-activation surface (gated by invite token only)
   app.use("/survey", surveyRouter); // PUBLIC survey response surface (gated by survey token / publicId only)
+  app.use("/estimate", estimateRouter); // PUBLIC estimate accept/decline surface (gated by estimate token only — Estimates Lifecycle batch)
 
   // devtools-data: client error reports (open surface — a white-screen can precede
   // login — but per-IP rate-limited and shape-validated inside; MUST sit before the

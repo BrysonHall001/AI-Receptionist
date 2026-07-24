@@ -186,6 +186,24 @@
             { visual: "kanban-drag", note: "kanban card dragged between stage columns" },
           ],
         },
+        {
+          // Estimates Lifecycle batch. Copy avoids live seeded field labels
+          // (e.g. the expiry-date field's name) per the LC-3 scan; "line items"
+          // is the built-in field TYPE name and is allowlisted as such.
+          id: "estimates-lifecycle", features: ["rt:estimate"],
+          title: "From estimate to job",
+          blocks: [
+            { p: "An estimate can go straight to the customer: open it and tap Send to customer. That creates a private online page \u2014 no sign-in needed \u2014 showing your business name and logo, the line items, the amount, and any note, with Accept and Decline buttons and room for a short comment. You can email the link in one tap or copy it and send it however you like." },
+            { steps: [
+              "Sending stamps how long the page stays open (30 days unless the estimate\u2019s expiry-date field already says otherwise) and marks it Sent.",
+              "The estimate\u2019s page in Clarity shows where things stand: not viewed yet, viewed, the customer\u2019s decision with their comment, or link expired.",
+              "The decision writes itself onto the estimate and the customer\u2019s timeline the moment it happens \u2014 and the [[#/automations|Automations]] library has an opt-in recipe that emails you the outcome instantly.",
+              "Once accepted, a Convert button creates the work order (customer, notes, and address carried over) and, if you leave the box ticked, an invoice with the billed lines \u2014 once only, never duplicated.",
+              "Re-sending replaces the old link, and a decided or expired page becomes read-only on its own.",
+            ] },
+            { tip: "Honesty note: collecting payment isn\u2019t part of this yet \u2014 the page shows amounts and takes a decision, nothing more. Invoicing is created for you; getting paid still happens wherever it happens today." },
+          ],
+        },
       ],
     },
     {

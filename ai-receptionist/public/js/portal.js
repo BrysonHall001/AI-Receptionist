@@ -7609,6 +7609,88 @@
       };
       head.appendChild(omw);
     }
+
+    // ---- ESTIMATE LIFECYCLE (Estimates Lifecycle batch) ----------------------
+    // Send-to-customer + live status + convert-when-accepted, all on the head
+    // row like the on-my-way sibling above. Server enforces everything; these
+    // are honest affordances only. NO payment collection anywhere.
+    if (!ro && type.key === "estimate") {
+      const canEditRecs = !(App.state.me && App.state.me.permEdit && App.state.me.permEdit.records === false);
+      const estStatus = el("span", "cell-muted est-status");
+      head.appendChild(estStatus);
+      const sendBtn = el("button", "btn secondary", "Send to customer");
+      const convertBtn = el("button", "btn", "Convert to work order");
+      convertBtn.classList.add("u-hidden");
+      const refreshStatus = async () => {
+        try {
+          const st = await App.portalApi("/api/records/" + rec.id + "/estimate-status");
+          const bits = [];
+          if (!st.sent) bits.push(st.status || "Draft");
+          else {
+            bits.push(st.status || "Sent");
+            if (st.decision) bits.push("customer " + st.decision + (st.comment ? " — “" + st.comment + "”" : ""));
+            else if (st.state === "expired") bits.push("link expired");
+            else bits.push(st.viewedAt ? "viewed" : "not viewed yet");
+          }
+          estStatus.textContent = bits.join(" · ");
+          convertBtn.classList.toggle("u-hidden", !(canEditRecs && st.status === "Accepted"));
+          sendBtn.textContent = st.sent ? "Re-send to customer" : "Send to customer";
+        } catch (e) { estStatus.textContent = ""; }
+      };
+      if (canEditRecs) {
+        sendBtn.onclick = () => {
+          const inner = el("div");
+          inner.innerHTML = `<div class="modal-head"><h2>Send this estimate</h2><button class="icon-btn" id="est-close">&times;</button></div>`;
+          const body = el("div", "modal-body");
+          body.appendChild(el("p", "cell-muted", "Creates a private link where the customer can review, accept, or decline — no sign-in needed. Re-sending replaces any older link."));
+          const emailBtn = el("button", "btn", "Create link + email the customer");
+          const copyBtn = el("button", "btn secondary u-mt-2", "Create link only (copy it yourself)");
+          const out = el("div", "cell-muted u-mt-2");
+          body.appendChild(emailBtn); body.appendChild(copyBtn); body.appendChild(out);
+          inner.appendChild(body);
+          const overlay = modal(inner);
+          inner.querySelector("#est-close").onclick = () => overlay.remove();
+          const go = async (email) => {
+            emailBtn.disabled = true; copyBtn.disabled = true;
+            try {
+              const r = await App.portalApi("/api/records/" + rec.id + "/estimate-link", { method: "POST", body: JSON.stringify({ email }) });
+              out.textContent = (email ? "Emailed to " + r.emailedTo + ". " : "") + "Link: " + r.url;
+              toast(email ? "Estimate emailed" : "Link created");
+              refreshStatus();
+            } catch (e) { toast(e.message, true); emailBtn.disabled = false; copyBtn.disabled = false; }
+          };
+          emailBtn.onclick = () => go(true);
+          copyBtn.onclick = () => go(false);
+        };
+        convertBtn.onclick = () => {
+          const inner = el("div");
+          inner.innerHTML = `<div class="modal-head"><h2>Convert this estimate</h2><button class="icon-btn" id="cv-close">&times;</button></div>`;
+          const body = el("div", "modal-body");
+          body.appendChild(el("p", "cell-muted", "Creates a work order carrying the customer, notes, and address. This can only happen once."));
+          const invL = el("label", "pt-dbll");
+          const invChk = el("input"); invChk.type = "checkbox"; invChk.checked = true;
+          invL.appendChild(invChk); invL.appendChild(el("span", null, "Also create an invoice with the billed lines"));
+          body.appendChild(invL);
+          const goBtn = el("button", "btn u-mt-2", "Convert");
+          body.appendChild(goBtn);
+          inner.appendChild(body);
+          const overlay = modal(inner);
+          inner.querySelector("#cv-close").onclick = () => overlay.remove();
+          goBtn.onclick = async () => {
+            goBtn.disabled = true;
+            try {
+              const r = await App.portalApi("/api/records/" + rec.id + "/convert-estimate", { method: "POST", body: JSON.stringify({ invoice: invChk.checked }) });
+              overlay.remove();
+              toast(r.already ? "Already converted — opening the work order" : "Converted" + (r.invoiceId ? " (+ invoice)" : ""));
+              App.go("#/record/" + r.workOrderId);
+            } catch (e) { toast(e.message, true); goBtn.disabled = false; }
+          };
+        };
+        head.appendChild(sendBtn);
+      }
+      head.appendChild(convertBtn);
+      refreshStatus();
+    }
     wrap.appendChild(head);
     if (ro) wrap.appendChild(recyclePreviewChrome("record", rec, id));
 

@@ -57,6 +57,7 @@ import { ACTION_TYPES } from "../automation/actions";
 import { smsEnabled, geocodingEnabled } from "../config/env";
 import { AUTOMATION_PRESETS, getPreset, PRESET_CATEGORIES } from "../automation/presets";
 import { storage, storageMode, sha256Hex, storageKeyFor, makeFileRef, MAX_IMAGE_BYTES, MAX_FILE_FIELD_BYTES, IMAGE_CAP_COPY, FILE_CAP_COPY } from "../services/fileStorage";
+import { issueEstimateLink, convertEstimate, estimateLinkStatus } from "../services/estimateService";
 import { REPORT_PRESET_CATEGORIES, publicReportPresets, publicRecordTypePresets } from "../analytics/reportPresets";
 import { analyzeFlowDefinition, applyFlowDefinition } from "../services/flowProvisioningService";
 import { TRIGGERABLE_EVENT_TYPES, EVENT_TYPES } from "../events/types";
@@ -1969,6 +1970,43 @@ apiRouter.get("/files/:id", async (req: Request, res: Response) => {
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
+});
+
+// ============================================================================
+// ESTIMATES LIFECYCLE (Estimates Lifecycle batch): send link / status / convert.
+// All permission-gated to records/edit (issue+convert) or records/view (status)
+// via permissionGate; all writes ride the existing record service paths.
+apiRouter.post("/records/:id/estimate-link", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const out = await issueEstimateLink(tenantId, String(req.params.id || ""), {
+      actor: { id: req.user!.id, name: (req.user as any).name || null },
+      email: (req.body ?? {}).email === true,
+      origin,
+    });
+    res.json(out);
+  } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+});
+
+apiRouter.get("/records/:id/estimate-status", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try { res.json(await estimateLinkStatus(tenantId, String(req.params.id || ""))); }
+  catch (e) { res.status(400).json({ error: (e as Error).message }); }
+});
+
+apiRouter.post("/records/:id/convert-estimate", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const out = await convertEstimate(tenantId, String(req.params.id || ""), {
+      invoice: (req.body ?? {}).invoice !== false,
+      actor: { id: req.user!.id, name: (req.user as any).name || null },
+    });
+    res.json(out);
+  } catch (e) { res.status(400).json({ error: (e as Error).message }); }
 });
 
 apiRouter.get("/theme", async (req: Request, res: Response) => {

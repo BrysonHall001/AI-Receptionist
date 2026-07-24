@@ -1,4 +1,5 @@
 import { prisma } from "../db/client";
+import { env } from "../config/env";
 import { audit } from "../services/auditService";
 import { AUDIT_ACTIONS } from "../services/auditCatalog";
 import { logger } from "../utils/logger";
@@ -112,6 +113,11 @@ async function handleRecordEvent(event: DomainEvent): Promise<void> {
   // per-changed-field variant, plus a field=value variant (e.g.
   // "RecordUpdated:status" and "RecordUpdated:status=filled").
   const triggerTypes: string[] = [event.type];
+  // Estimates Lifecycle batch: outcome-scoped variants, mirroring the
+  // RecordUpdated:status= convention ("EstimateDecided:accepted"/":declined").
+  if (event.type === "EstimateDecided" && event.payload && typeof event.payload.decision === "string" && event.payload.decision) {
+    triggerTypes.push("EstimateDecided:" + event.payload.decision);
+  }
   const changes: any[] = Array.isArray(event.payload?.changes) ? event.payload.changes : [];
   for (const ch of changes) {
     if (ch && ch.field) {
@@ -208,6 +214,13 @@ async function runRecordOne(auto: AutomationRow, event: DomainEvent, record: any
   }
   if (record.endAt) extraTokens.appointment_end = fmtApptWall(new Date(record.endAt));
   if (portal?.name) extraTokens.business = String(portal.name);
+  // Estimates Lifecycle batch: {{estimate_link}} — the record's ACTIVE public
+  // link URL, blank when none (pipe fallbacks apply as everywhere). Only ever
+  // queried for estimate records, one indexed lookup.
+  if (rtRow && rtRow.key === "estimate") {
+    const el = await db.estimateLink.findFirst({ where: { tenantId: event.tenantId, recordId: record.id, revokedAt: null, decidedAt: null }, orderBy: { createdAt: "desc" } });
+    if (el) extraTokens.estimate_link = `${String(env.APP_BASE_URL || "").replace(/\/+$/, "")}/estimate.html?token=${el.token}`;
+  }
   const recCols = buildRecordColumns(recCustom);
   const activeRules = ((auto.conditions as Rule[]) || []).filter(ruleComplete);
   const knownKeys = new Set(recCols.map((c) => c.key));

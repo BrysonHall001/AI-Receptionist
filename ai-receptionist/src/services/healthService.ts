@@ -233,6 +233,22 @@ const checkFailedLogins: CheckFn = async () => {
 // ---------------- the check registry (health v2) ----------------
 // One declarative map: key -> { group, fn }. The sweep, the per-tile single-check
 // re-run, and the history buffer all drive off THIS — adding a check is one entry.
+// File Storage batch: storage mode + migration-sweep progress, read from the
+// sweep's own AppSetting counters. "off" is a deliberate configuration (the
+// do-nothing path) and reports ok with an honest caption — never a warning.
+// (Correction shipped in the Estimates Lifecycle batch: this check was CLAIMED
+// in the File Storage delivery but a scripting fault dropped the edit; the
+// captions + registry-count pin landed then, the check itself lands here.)
+async function checkFileStorage(): Promise<{ status: HealthStatus; detail: string }> {
+  const { storageMode } = await import("./fileStorage");
+  const { getFileSweepStats } = await import("./fileSweepService");
+  const mode = storageMode();
+  if (mode === "off") return { status: "ok", detail: "Not configured (files stay embedded — the do-nothing path)" };
+  const s = await getFileSweepStats();
+  const detail = `Mode ${mode} — ${s.migrated} migrated, ${s.failed} failed attempt${s.failed === 1 ? "" : "s"}${s.lastRunAt ? `, last pass ${s.lastRunAt.slice(0, 16).replace("T", " ")}` : ", no pass yet"}`;
+  return { status: s.failed > 0 ? "warn" : "ok", detail };
+}
+
 const CHECKS: Record<string, { group: keyof HealthSnapshot["groups"]; fn: CheckFn }> = {
   twilio: { group: "external", fn: checkTwilio },
   openai: { group: "external", fn: checkOpenAi },
@@ -247,6 +263,7 @@ const CHECKS: Record<string, { group: keyof HealthSnapshot["groups"]; fn: CheckF
   auditSweep: { group: "background", fn: checkAuditSweep },
   automations: { group: "background", fn: checkAutomations },
   dripQueue: { group: "background", fn: checkDripQueue },
+  fileStorage: { group: "background", fn: checkFileStorage },
   requests: { group: "pulse", fn: checkRequests },
   webhooks: { group: "pulse", fn: checkWebhooks },
   errors: { group: "pulse", fn: checkErrors },
