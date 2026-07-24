@@ -54,6 +54,11 @@ export function recordConditionFields(custom: FieldMeta[]): FieldMeta[] {
     // there is no timezone drift (see evalRule's before/after).
     { key: "appointmentAt", label: "Appointment date/time", type: "date" },
     { key: "resource", label: "Staff", type: "text" },
+    // Synthetic, read-only (Customer Comms batch): the record's TYPE by stable
+    // key, stamped as __recordTypeKey by the engine/sweeps. Lets one flow scope
+    // "record_type is work_order" even though every module shares the
+    // RecordUpdated event stream. Relabel-safe by construction (keys never move).
+    { key: "record_type", label: "Record type (by key)", type: "text" },
     ...custom.filter((f) => !RECORD_CONDITION_RESERVED.has(f.key)),
   ];
 }
@@ -81,6 +86,10 @@ export function recordValueOf(record: any, key: string): any {
   // Booking columns. appointmentAt is returned as-is (a Date whose UTC slot holds
   // the wall-clock digits) so date operators compare it in UTC — no zone drift.
   if (key === "appointmentAt") return record.appointmentAt;
+  // Synthetic record_type (Customer Comms batch): the stable TYPE KEY, stamped by
+  // the engine/sweeps as __recordTypeKey. Lets a flow scope "record_type is
+  // work_order" — labels can be renamed freely, the key can't.
+  if (key === "record_type") return (record as any).__recordTypeKey ?? null;
   // resourceName is pre-resolved by attachResourceNames(); null when unassigned.
   if (key === "resource") return record.resourceName ?? null;
   return (record.customFields || {})[key];

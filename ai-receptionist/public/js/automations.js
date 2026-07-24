@@ -290,6 +290,13 @@
       const fLabel = f ? f.label : (p[1] || "a date field");
       return `${p[2] || "0"} ${p[3] || "days"} ${p[4] || "before"} ${rtLabel} “${fLabel}”`;
     }
+    // "AppointmentReminder:<amount>:<unit>:before[:<recordTypeKey>]" — time before an appointment.
+    if (type && type.indexOf("AppointmentReminder:") === 0) {
+      const p = type.slice("AppointmentReminder:".length).split(":");
+      const rt = (meta.recordTypes || []).find((x) => x.key === (p[3] || "booking"));
+      const rtLabel = rt ? (rt.label || rt.key) : (p[3] || "booking");
+      return `${p[0] || "?"} ${p[1] || "hours"} before a ${rtLabel} appointment`;
+    }
     // "Stalled:<days>" or "Stalled:<days>:<stageKey>" — time-in-stage trigger.
     if (type && type.indexOf("Stalled:") === 0) {
       const p = type.slice("Stalled:".length).split(":");
@@ -385,7 +392,7 @@
   function triggerDescription(type) { const t = (meta.triggers || []).find((x) => x.type === triggerBase(type)); return App.relabelText((t && t.description) || "", { all: true }); }
   function actionDescription(type) { const a = (meta.actions || []).find((x) => x.type === type); return App.relabelText((a && a.description) || "", { all: true }); }
   // A record-subject trigger acts on the record (e.g. a job), not a contact.
-  function isRecordTrigger(tt) { return tt === "RecordUpdated" || (tt && tt.indexOf("RecordUpdated:") === 0); }
+  function isRecordTrigger(tt) { return tt === "RecordUpdated" || tt === "RecordCreated" || (tt && tt.indexOf("RecordUpdated:") === 0); }
   // The record date-reached trigger is evaluated against a RECORD's fields (so its
   // CONDITIONS use record fields), but its ACTIONS run against the record's linked
   // CONTACT (so Send email/SMS/Add note are allowed) — hence it is NOT an
@@ -409,8 +416,11 @@
     if (!meta.smsEnabled) all = all.filter((a) => a.type !== "send_sms");
     // New honest record-acting actions (Option 3 Pass 2) — record subjects only.
     const recordOnly = ["create_record_item", "update_record_item", "find_record_items", "delete_record_items"];
-    if (isRecordTrigger(triggerType)) return all.filter((a) => a.type === "create_note" || a.type === "act_on_linked" || a.type === "move_to_stage" || a.type === "set_record_field" || recordOnly.indexOf(a.type) !== -1);
-    return all.filter((a) => a.type !== "act_on_linked" && recordOnly.indexOf(a.type) === -1);
+    if (isRecordTrigger(triggerType)) return all.filter((a) => a.type === "create_note" || a.type === "act_on_linked" || a.type === "message_linked_contact" || a.type === "move_to_stage" || a.type === "set_record_field" || recordOnly.indexOf(a.type) !== -1);
+    // "Message the customer" also runs from the queued record sweeps (reminder /
+    // record-date), where the job context carries the customer + a stamped record.
+    const remindLike = (triggerType === "AppointmentReminder" || (triggerType || "").indexOf("AppointmentReminder:") === 0 || (triggerType || "").indexOf("RecordDateReached") === 0);
+    return all.filter((a) => a.type !== "act_on_linked" && recordOnly.indexOf(a.type) === -1 && (a.type !== "message_linked_contact" || remindLike));
   }
   // Distinct base triggers actually present in this portal's automations, ordered
   // to match the builder's trigger list. Derived from data — never hardcoded.
@@ -861,7 +871,7 @@
     if (w.baseTrigger === "RecordUpdated") return w.recField ? (w.recValue ? "RecordUpdated:" + w.recField + "=" + w.recValue : "RecordUpdated:" + w.recField) : "RecordUpdated";
     if (w.baseTrigger === "Scheduled") return `Scheduled:${w.sched.field}:${w.sched.amount || 0}:${w.sched.unit}:${w.sched.dir}`;
     if (w.baseTrigger === "RecordDateReached") return `RecordDateReached:${w.recDate.recordType}:${w.recDate.field}:${w.recDate.amount || 0}:${w.recDate.unit}:${w.recDate.dir}`;
-    if (w.baseTrigger === "AppointmentReminder") return `AppointmentReminder:${w.remind.amount || 2}:${w.remind.unit}:before`;
+    if (w.baseTrigger === "AppointmentReminder") return `AppointmentReminder:${w.remind.amount || 2}:${w.remind.unit}:before` + (w.remind.recordType && w.remind.recordType !== "booking" ? `:${w.remind.recordType}` : "");
     if (w.baseTrigger === "Stalled") return "Stalled:" + (w.stall.days || 7) + (w.stall.stageKey ? ":" + w.stall.stageKey : "");
     if (w.baseTrigger === "EnrollAudience") return w.enrollAudienceId ? "EnrollAudience:" + w.enrollAudienceId : "EnrollAudience";
     return w.baseTrigger;
@@ -921,7 +931,7 @@
       recValue: "",
       sched: { field: "", amount: "", unit: "days", dir: "before" },
       recDate: { recordType: "", field: "", amount: "", unit: "days", dir: "before", fields: null, loading: false },
-      remind: { amount: "2", unit: "hours" },
+      remind: { amount: "2", unit: "hours", recordType: "booking" },
       stall: { days: "", stageKey: "" },
       enrollAudienceId: "",
       filters: [],
@@ -1121,14 +1131,23 @@
         if (w.recDate.recordType && w.recDate.fields === null && !w.recDate.loading) loadRecDateFields();
         extra.appendChild(hint("Evaluated by the daily sweep / “Process due jobs now”. Messages the record's linked contact, so Send email/SMS and Add note all work; use {{record_title}} and the date field in your message."));
       } else if (w.baseTrigger === "AppointmentReminder") {
-        extra.appendChild(small("Send this long before a booking's appointment:"));
+        extra.appendChild(small("Send this long before the appointment:"));
         const rowEl = el("div", "wiz-cond-row");
         const amt = el("input", "input"); amt.type = "number"; amt.min = "1"; amt.placeholder = "2"; amt.classList.add("au-flex-70"); amt.value = w.remind.amount; amt.oninput = () => { w.remind.amount = amt.value; };
         const unit = el("select", "input"); [["minutes", "minutes"], ["hours", "hours"], ["days", "days"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (w.remind.unit === v) o.selected = true; unit.appendChild(o); }); unit.onchange = () => { w.remind.unit = unit.value; };
-        const beforeLbl = el("span", "cell-muted", "before the appointment"); beforeLbl.classList.add("au-beforelbl");
-        rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(beforeLbl);
+        const beforeLbl = el("span", "cell-muted", "before the appointment on a"); beforeLbl.classList.add("au-beforelbl");
+        // Module picker (Customer Comms batch): the reminder works for any module
+        // whose records carry the typed appointment column — Bookings (default,
+        // stored WITHOUT a module segment so existing triggers round-trip
+        // byte-identically) and Work Orders. Mirrors the RecordDateReached
+        // type-picker pattern: lock filter + live relabel.
+        const modSel = el("select", "input");
+        const apptTypes = (meta.recordTypes || []).filter((rt) => (rt.key === "booking" || rt.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
+        apptTypes.forEach((rt) => { const o = el("option", null, esc(App.relabelText(rt.label || rt.key, { all: true }))); o.value = rt.key; if (rt.key === (w.remind.recordType || "booking")) o.selected = true; modSel.appendChild(o); });
+        modSel.onchange = () => { w.remind.recordType = modSel.value; };
+        rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(beforeLbl); rowEl.appendChild(modSel);
         extra.appendChild(rowEl);
-        extra.appendChild(hint("Texts/emails the booking's linked contact. Based on the appointment's clock time; if your business isn't on UTC the send time shifts by your timezone offset."));
+        extra.appendChild(hint("Texts/emails the record's linked contact (use the \u201cMessage the customer\u201d action). Based on the appointment's clock time; if your business isn't on UTC the send time shifts by your timezone offset."));
       } else if (w.baseTrigger === "Stalled") {
         extra.appendChild(small("Run when something has sat in its current stage, no movement, for at least this many days:"));
         const rowEl = el("div", "wiz-cond-row");
@@ -1248,6 +1267,7 @@
     if (a.type === "send_survey") { const s = (meta.surveys || []).find((x) => x.id === c.surveyId); return "Send survey" + (s ? ` (“${s.name}”)` : ""); }
     if (a.type === "unenroll") return c.scope === "all" ? "Unenroll from all flows" : "Unenroll from this flow";
     if (a.type === "send_sms") return "Send an SMS";
+    if (a.type === "message_linked_contact") return (a.config && a.config.channel === "email") ? "Email the customer" : "Text the customer";
     if (a.type === "notify_business") { const ch = c.channel || "email"; const chl = ch === "both" ? "email + SMS" : ch === "sms" ? "SMS" : "email"; return `Notify the business (${chl})`; }
     if (a.type === "update_field") return `Set ${fieldLabel(c.field) || "a field"}` + (c.value ? ` to “${c.value}”` : "");
     if (a.type === "add_tag") return `Add tag “${c.value || ""}”` + (c.field ? ` on ${fieldLabel(c.field)}` : "");
@@ -1265,7 +1285,7 @@
     if (a.type === "delete_record_items") return "Delete the found record(s) to recycle bin";
     if (a.type === "compute_field") return "Compute a value into a field";
     if (a.type === "send_webhook") return "Send a webhook";
-    if (a.type === "act_on_linked") { const s = c.subAction || "note"; return s === "email" ? "Email each linked contact (mock)" : s === "sms" ? "Message each linked contact (mock)" : "Note each linked contact"; }
+    if (a.type === "act_on_linked") { const s = c.subAction || "note"; return s === "email" ? "Email each linked contact" : s === "sms" ? "Message each linked contact" : "Note each linked contact"; }
     return actionLabel(a.type);
   }
 
@@ -1566,7 +1586,7 @@
       baseTrigger = "RecordDateReached";
     } else if (baseTrigger.indexOf("AppointmentReminder:") === 0) {
       const p = baseTrigger.slice("AppointmentReminder:".length).split(":");
-      remind.amount = p[0] || "2"; remind.unit = p[1] || "hours";
+      remind.amount = p[0] || "2"; remind.unit = p[1] || "hours"; remind.recordType = p[3] || "booking";
       baseTrigger = "AppointmentReminder";
     } else if (baseTrigger.indexOf("Stalled:") === 0) {
       const p = baseTrigger.slice("Stalled:".length).split(":");
@@ -1579,7 +1599,7 @@
       else if (baseTrigger === "RecordUpdated" && recField) draft.triggerType = recValue ? ("RecordUpdated:" + recField + "=" + recValue) : ("RecordUpdated:" + recField);
       else if (baseTrigger === "Scheduled") draft.triggerType = `Scheduled:${sched.field}:${sched.amount || 0}:${sched.unit}:${sched.dir}`;
       else if (baseTrigger === "RecordDateReached") draft.triggerType = `RecordDateReached:${recDate.recordType}:${recDate.field}:${recDate.amount || 0}:${recDate.unit}:${recDate.dir}`;
-      else if (baseTrigger === "AppointmentReminder") draft.triggerType = `AppointmentReminder:${remind.amount || 2}:${remind.unit}:before`;
+      else if (baseTrigger === "AppointmentReminder") draft.triggerType = `AppointmentReminder:${remind.amount || 2}:${remind.unit}:before` + (remind.recordType && remind.recordType !== "booking" ? `:${remind.recordType}` : "");
       else if (baseTrigger === "Stalled") draft.triggerType = "Stalled:" + (stall.days || 7) + (stall.stageKey ? ":" + stall.stageKey : "");
       else draft.triggerType = baseTrigger;
     }
@@ -1726,17 +1746,25 @@
         note4.textContent = "Evaluated by the daily sweep / “Process due jobs now”. Messages the record's linked contact — use {{record_title}} and the date field in your message.";
         trigExtra.appendChild(note4);
       } else if (baseTrigger === "AppointmentReminder") {
-        trigExtra.appendChild(small("Send this long before a booking's appointment:"));
+        trigExtra.appendChild(small("Send this long before the appointment:"));
         const rowEl = el("div", "u-flex u-gap-6 u-wrap u-ai-center");
         const amt = el("input", "input"); amt.type = "number"; amt.min = "1"; amt.classList.add("au-amt"); amt.placeholder = "2"; amt.value = remind.amount; amt.oninput = () => { remind.amount = amt.value; syncTrigger(); };
         const unitSel = el("select", "input"); unitSel.classList.add("u-mb-0");
         [["minutes", "minutes"], ["hours", "hours"], ["days", "days"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (remind.unit === v) o.selected = true; unitSel.appendChild(o); });
         unitSel.onchange = () => { remind.unit = unitSel.value; syncTrigger(); };
-        const lbl = el("span", "cell-muted", "before the appointment"); lbl.classList.add("u-meta");
-        rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(lbl);
+        const lbl = el("span", "cell-muted", "before the appointment on"); lbl.classList.add("u-meta");
+        // Module picker (Customer Comms batch): the trigger works for any module
+        // whose records carry the typed appointment column — Bookings (default,
+        // stored WITHOUT a module segment so existing triggers round-trip
+        // byte-identically) and Work Orders. Same filter as the canvas editor.
+        const modSel = el("select", "input"); modSel.classList.add("u-mb-0");
+        const apptTypes = (meta.recordTypes || []).filter((rt) => (rt.key === "booking" || rt.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
+        apptTypes.forEach((rt) => { const o = el("option", null, esc(App.relabelText(rt.label || rt.key, { all: true }))); o.value = rt.key; if (rt.key === (remind.recordType || "booking")) o.selected = true; modSel.appendChild(o); });
+        modSel.onchange = () => { remind.recordType = modSel.value; syncTrigger(); };
+        rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(lbl); rowEl.appendChild(modSel);
         trigExtra.appendChild(rowEl);
         const note3 = el("div", "wf-hint", ""); note3.classList.add("au-m-6t");
-        note3.textContent = "Texts/emails the booking's linked contact. Based on the appointment's clock time; if your business isn't on UTC the send time shifts by your timezone offset.";
+        note3.textContent = "Texts/emails the record's linked contact (use the \u201cMessage the customer\u201d action). Based on the appointment's clock time; if your business isn't on UTC the send time shifts by your timezone offset.";
         trigExtra.appendChild(note3);
       } else if (baseTrigger === "Stalled") {
         trigExtra.appendChild(small("Run when something has sat in its current stage, with no movement, for at least this many days:"));
@@ -1987,6 +2015,34 @@
       host.addEventListener("focusout", flush);  // capture when focus leaves (e.g. clicking Save / changing action type)
       _emailEditorFlushers.push(flush);          // guaranteed capture before any rebuild/save
       appendBulkGate();
+    } else if (act.type === "message_linked_contact") {
+      if (!c.channel) c.channel = "sms";
+      // SMS off → OFFER email only and DISPLAY as email, but don't overwrite a
+      // stored sms channel (restores when SMS_ENABLED is flipped back on) —
+      // the notify_business pattern. The executor itself reports a gated text
+      // as "skipped", so even a stale sms config can never silently green-send.
+      const effCh = () => (meta.smsEnabled ? (c.channel || "sms") : "email");
+      cfg.appendChild(small("Reach the customer via"));
+      const chSel = el("select", "input");
+      const chOpts = meta.smsEnabled ? [["sms", "Text (SMS)"], ["email", "Email"]] : [["email", "Email"]];
+      chOpts.forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (effCh() === v) o.selected = true; chSel.appendChild(o); });
+      chSel.onchange = () => { c.channel = chSel.value; rebuildMlc(); };
+      cfg.appendChild(chSel);
+      const mlcSub = el("div"); mlcSub.classList.add("u-mt-8"); cfg.appendChild(mlcSub);
+      function rebuildMlc() {
+        mlcSub.innerHTML = "";
+        if (effCh() === "email") {
+          mlcSub.appendChild(small("Subject (supports {{field}})"));
+          mlcSub.appendChild(text("subject", "About {{record_title}}"));
+          mlcSub.appendChild(small("Email body (supports {{field}})"));
+          mlcSub.appendChild(text("body", "Hi {{name}}, …", true));
+        } else {
+          mlcSub.appendChild(small("Message (supports {{field}})"));
+          mlcSub.appendChild(text("body", "Hi {{name}}, …", true));
+        }
+        mlcSub.appendChild(hint("Goes to the record\u2019s linked customer (the first linked contact). Skips politely \u2014 never errors \u2014 when there\u2019s nobody linked, no number or address on file, or texting is off for the app. Handy tags: {{name}}, {{appointment}}, {{appointment_end}}, {{technician|our technician}}, {{service}}, {{record_title}}, {{business}}."));
+      }
+      rebuildMlc();
     } else if (act.type === "send_sms") {
       const tpls = (meta.templates || []).filter((t) => t.kind === "sms").map((t) => ({ value: t.id, label: t.name }));
       if (tpls.length) { cfg.appendChild(small("Template (optional)")); cfg.appendChild(selectOf("templateId", tpls)); }

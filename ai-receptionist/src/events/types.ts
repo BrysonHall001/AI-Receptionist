@@ -111,8 +111,11 @@ export const EVENT_TYPES = {
   // log. RecordCreated fires for NON-booking records only — bookings already emit
   // BookingCreated from the contact-link step, so they are never double-logged.
   // The Deleted/Restored events carry the same actor captured for the Recycle Bin.
-  // NOTE: these are intentionally NOT in TRIGGERABLE_EVENT_TYPES — they are for the
-  // log only, so no automation can be configured to fire on them.
+  // NOTE: the Deleted/Restored types below are intentionally NOT in
+  // TRIGGERABLE_EVENT_TYPES — log only, no automation can fire on them.
+  // RecordCreated GRADUATED to triggerable in the Customer Comms batch (it powers
+  // "acknowledge a new request instantly"); it routes through the same
+  // record-subject dispatch as RecordUpdated.
   RecordCreated: "RecordCreated",
   ContactDeleted: "ContactDeleted",
   RecordDeleted: "RecordDeleted",
@@ -166,6 +169,7 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: stri
   // "RecordUpdated:<field>=<value>" narrow it to one field (e.g. Status) or one
   // destination value. Generic labels ("Record") so portals can relabel.
   { type: EVENT_TYPES.RecordUpdated, label: "Record updated / status changed", group: "When something changes", description: "Runs when a record's own field or status changes." },
+  { type: EVENT_TYPES.RecordCreated, label: "Record created", group: "When something changes", description: "Runs once when a new record is created (a work order, an equipment unit, …). Bookings use their own \"Booking created\" trigger instead." },
   // Manual is a trigger-only entry: it is NOT an emitted event, so the engine's
   // event dispatch never fires it automatically. It runs only when a user clicks
   // "Run automation" on a record (see runManualAutomation in automation/engine).
@@ -202,7 +206,7 @@ export const TRIGGERABLE_EVENT_TYPES: { type: string; label: string; group: stri
   // Time-based booking trigger: queues a reminder a set time BEFORE the
   // appointment. Stored as "AppointmentReminder:<amount>:<unit>:before". Evaluated
   // by the scheduler sweep (not an instant event). Hour-precise.
-  { type: "AppointmentReminder", label: "Before an appointment (reminder)", group: "Bookings", description: "Runs a set time before a booking's appointment (e.g. 2 hours before) — for sending reminders. Texts/emails the booking's linked contact." },
+  { type: "AppointmentReminder", label: "Before an appointment (reminder)", group: "Bookings", description: "Runs a set time before an appointment (e.g. 2 hours before) — for sending reminders to the linked contact. Works for Bookings and, since the Customer Comms batch, Work Orders (pick the module on the trigger)." },
   // Audience enrollment: on-demand, like Manual but bulk. Not an emitted event — the engine never
   // fires it automatically. Encoded as "EnrollAudience:<audienceId>". You enroll from the automation
   // ("Enroll audience"), and the audience's CURRENT members are resolved fresh at that moment and run

@@ -1,4 +1,5 @@
 import { prisma } from "../db/client";
+import { resolveMergeTags } from "../services/mergeTags";
 import { Column } from "./conditions";
 
 export interface FieldMeta {
@@ -79,6 +80,14 @@ export function templateContext(contact: any, custom: FieldMeta[]): Record<strin
 
 /** Resolve {{field_key}} placeholders in a string against a contact. */
 export function renderTemplate(text: string, ctx: Record<string, string>): string {
-  if (!text) return text;
-  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key) => (ctx[key] != null ? ctx[key] : ""));
+  // Customer Comms fix: delegate to the app's ONE merge-tag resolver so the
+  // {{key|fallback}} pipe syntax works on EVERY automation send path (SMS,
+  // notify-business, notes, act-on-linked, message-the-customer) exactly as it
+  // already did for email blasts and send_email. Behavior for pipe-less
+  // templates is byte-identical (unknown/empty keys still render ""), and a
+  // well-formed raw {{...}} can never be transmitted: the resolver consumes
+  // every match, substituting the value, the fallback, or "".
+  // (The import is call-time only, so the contactRow <-> mergeTags module cycle
+  // is harmless: neither file touches the other during initialization.)
+  return resolveMergeTags(text, ctx);
 }

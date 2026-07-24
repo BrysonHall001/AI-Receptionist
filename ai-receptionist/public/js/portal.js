@@ -7584,6 +7584,29 @@
     head.innerHTML = `<div class="contact-avatar">${esc((rec.title || type.label || "?").charAt(0).toUpperCase())}</div>
       <div><h1 class="contact-name">${esc(rec.title || "Untitled " + (type.label || App.label("record","one").toLowerCase()))}</h1>
       <div class="contact-sub">${esc(type.label || App.label("record","one"))}${rec.stageKey ? " · " + esc(recordStageLabel(type, rec.stageKey)) : ""}</div></div>`;
+    // "On my way" (Customer Comms batch): one-tap en-route text to the record's
+    // linked customer, on WORK ORDER pages only. Server-enforced everything —
+    // records/edit permission (permissionGate), once-per-day idempotence, no-
+    // contact / no-phone / SMS-gate-off — each refusal is a specific message the
+    // toast shows verbatim. Hidden when texting is off for the app (the honest
+    // affordance) or the viewer can't edit records.
+    if (!ro && type.key === "work_order"
+        && !(App.state.features && App.state.features.smsEnabled === false)
+        && !(App.state.me && App.state.me.permEdit && App.state.me.permEdit.records === false)) {
+      const omw = el("button", "btn secondary omw-btn", "\uD83D\uDE97 On my way");
+      omw.title = "Text the linked customer that the technician is en route";
+      omw.onclick = async () => {
+        omw.disabled = true;
+        try {
+          const r = await App.portalApi("/api/records/" + rec.id + "/notify-on-my-way", { method: "POST", body: "{}" });
+          toast("On-my-way text sent to " + (r && r.to ? r.to : "the customer"));
+        } catch (e) {
+          toast((e && e.message) || "Could not send", true);
+        }
+        omw.disabled = false;
+      };
+      head.appendChild(omw);
+    }
     wrap.appendChild(head);
     if (ro) wrap.appendChild(recyclePreviewChrome("record", rec, id));
 

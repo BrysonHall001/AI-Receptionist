@@ -3416,3 +3416,7 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .mf-cal-subname { font-size: var(--text-sm); font-weight: 600; color: var(--ink); }
 .toast-action { margin-left: var(--sp-3); border: 1px solid var(--line); background: var(--surface); color: var(--accent); font-size: var(--text-xs); font-weight: 600; border-radius: var(--radius-sm, 8px); padding: 2px var(--sp-2); cursor: pointer; }
 .toast-action:hover { border-color: var(--accent); }
+
+/* On-my-way button (Customer Comms batch) — sits at the right edge of the record
+   header via the flex head's auto margin; tokens/classes only. */
+.omw-btn { margin-left: auto; flex: 0 0 auto; }

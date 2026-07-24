@@ -3,6 +3,7 @@ import { emitEvent } from "../events/bus";
 import { EVENT_TYPES, EventActor } from "../events/types";
 import { sendRichEmail } from "../services/notificationService";
 import { sendSms } from "../services/smsService";
+import { smsEnabled } from "../config/env";
 import { updateContact, createContact, softDeleteContacts } from "../services/contactService";
 import { addRecordNote, updateRecord, createRecord, listRecords, softDeleteRecords } from "../services/recordService";
 import { listLinksForRecord, updateLink } from "../services/recordLinkService";
@@ -87,7 +88,8 @@ export const ACTION_TYPES: { type: string; label: string; description: string }[
   { type: "send_webhook", label: "Send webhook (POST to a URL)", description: "Send a POST request to a web address." },
   // Record-subject only: fan out to the record's linked contacts (e.g. a job's
   // candidates). Generic label — no "job"/"candidate" hardcoded.
-  { type: "act_on_linked", label: "Act on linked contacts (note / mock email / SMS each)", description: "Run a note or message on each linked contact." },
+  { type: "act_on_linked", label: "Act on linked contacts (note / email / SMS each)", description: "Run a note or a real message on each linked contact." },
+  { type: "message_linked_contact", label: "Message the customer", description: "Email or text the record's linked contact (the first one) — skips cleanly when there's nobody to message." },
   // Record-subject only (Batch A step 2): change the stage of the record's
   // linked contacts, and set a field on the record itself. Both write through
   // the existing chokepoints with actor:"automation" (loop-safe). Generic labels.
@@ -107,7 +109,7 @@ export const ACTION_TYPES: { type: string; label: string; description: string }[
 // Find + Delete from silently emptying a CRM. Everything deleted is soft-deleted
 // (recycle bin) and can be restored regardless.
 const BULK_DELETE_THRESHOLD = 10;
-// A single "act on linked contacts" run may MESSAGE (mock email/SMS) at most
+// A single "act on linked contacts" run may MESSAGE (email/SMS) at most
 // this many linked contacts WITHOUT the action being explicitly set to "Allow
 // bulk send". This is the confirm-before-large-batch-send guard. Internal-note
 // fan-out is exempt (no outbound comms). Change this one number to retune.
@@ -356,8 +358,70 @@ const EXECUTORS: Record<string, Executor> = {
   // Record-subject only. Resolves the record's linked contacts (e.g. a job's
   // candidates) via the EXISTING listLinksForRecord helper (tenant-scoped), then
   // applies one sub-action to EACH: a note on the contact's own timeline, or a
-  // mock email / SMS. Per-candidate templating ({{name}}) plus the job tokens
+  // REAL email / SMS (the same send services every other path uses). Per-candidate templating ({{name}}) plus the job tokens
   // ({{record_title}}) are both available.
+  // "Message the customer" (Customer Comms batch): email or text the record's
+  // FIRST linked contact — the customer-notification semantic, distinct from
+  // act_on_linked's bulk all-linked semantics. DUAL-MODE by design:
+  //   - record-subject runs (RecordCreated / status-change): resolves the first
+  //     linked contact from ctx.recordId;
+  //   - queued reminder jobs (contact context): the sweep already resolved the
+  //     linked contact at enqueue time — act on ctx.contactId directly, with the
+  //     source record id stamped into cfg.recordId for the breadcrumb.
+  // SKIP-CLEAN CONTRACT: no linked contact / no email or phone / SMS master gate
+  // off are all SKIPPED with an explicit detail — never a failure (nothing being
+  // wrong is normal for e.g. internal work orders), and never a silent success
+  // (unlike raw sendSms, the gate is checked HERE and reported).
+  // Every real send also drops a record-note breadcrumb on the source record, so
+  // the record itself answers "was the customer told?".
+  async message_linked_contact(cfg, ctx) {
+    const channel = String(cfg.channel || "sms"); // "sms" | "email"
+    const T = "message_linked_contact";
+
+    // Resolve WHO to message.
+    let contact: any = null;
+    if (ctx.subjectType === "record" && ctx.recordId) {
+      const link = await prisma.recordLink.findFirst({ where: { tenantId: ctx.tenantId, recordId: ctx.recordId, parentType: "contact", deletedAt: null } as any, orderBy: { createdAt: "asc" } as any });
+      if (link) contact = await prisma.contact.findFirst({ where: { id: (link as any).parentId, tenantId: ctx.tenantId, deletedAt: null } as any });
+      if (!contact) return { type: T, status: "skipped", detail: "No linked customer on this record" };
+    } else if (ctx.contactId) {
+      contact = await prisma.contact.findUnique({ where: { id: ctx.contactId } });
+      if (!contact || contact.tenantId !== ctx.tenantId) return { type: T, status: "skipped", detail: "Contact no longer available" };
+    } else {
+      return { type: T, status: "skipped", detail: "No customer in this run's context" };
+    }
+
+    const recordId = (ctx.subjectType === "record" && ctx.recordId) ? ctx.recordId : (cfg.recordId ? String(cfg.recordId) : null);
+    const contactFieldDefs = await loadFieldDefs(ctx.tenantId);
+    const tokens = { ...templateContext(contact, contactFieldDefs), ...(ctx.extraTokens || {}) };
+    const who = contact.name || contact.email || contact.phone || contact.id;
+
+    if (channel === "email") {
+      if (!contact.email) return { type: T, status: "skipped", detail: `${who} has no email` };
+      const subject = renderTemplate(String(cfg.subject ?? ""), tokens);
+      const html = renderTemplate(String(cfg.html ?? cfg.body ?? ""), tokens);
+      if (!html.trim()) return { type: T, status: "skipped", detail: "Empty message" };
+      await sendRichEmail({ to: contact.email, subject, html, fromEmail: ctx.portal.notifyEmail || "", fromName: ctx.portal.name }, {
+        type: "automation", tenantId: ctx.tenantId, contactId: contact.id, toName: contact.name ?? null,
+      });
+      await logActivity({ tenantId: ctx.tenantId, contactId: contact.id, type: "email_sent", summary: `Email sent: ${subject}`, detail: { subject, to: contact.email, via: "automation", fromRecord: recordId }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
+      await emitEvent({ tenantId: ctx.tenantId, type: EVENT_TYPES.EmailSent, actor: ctx.actor, subject: { type: "contact", id: contact.id }, payload: { subject, to: contact.email } });
+      if (recordId) { try { await addRecordNote(ctx.tenantId, recordId, `Emailed customer (${who}): ${subject || "(no subject)"}`, { id: ctx.actor.id, name: ctx.actor.name, type: "automation" }); } catch { /* breadcrumb only */ } }
+      return { type: T, status: "success", detail: `emailed ${contact.email}` };
+    }
+
+    // SMS channel.
+    if (!contact.phone) return { type: T, status: "skipped", detail: `${who} has no phone` };
+    if (!smsEnabled()) return { type: T, status: "skipped", detail: "Texting is turned off for this app (SMS gate) — nothing was sent" };
+    const body = renderTemplate(String(cfg.body ?? ""), tokens);
+    if (!body.trim()) return { type: T, status: "skipped", detail: "Empty message" };
+    await sendSms({ to: contact.phone, body, from: ctx.portal.phoneNumber });
+    await logActivity({ tenantId: ctx.tenantId, contactId: contact.id, type: "text_sent", summary: "Text message sent", detail: { to: contact.phone, body, via: "automation", fromRecord: recordId }, actor: { id: ctx.actor.id, name: ctx.actor.name, type: "automation" } });
+    await emitEvent({ tenantId: ctx.tenantId, type: EVENT_TYPES.SMSSent, actor: ctx.actor, subject: { type: "contact", id: contact.id }, payload: { to: contact.phone } });
+    if (recordId) { try { await addRecordNote(ctx.tenantId, recordId, `Texted customer (${who}): ${body.slice(0, 140)}`, { id: ctx.actor.id, name: ctx.actor.name, type: "automation" }); } catch { /* breadcrumb only */ } }
+    return { type: T, status: "success", detail: `texted ${contact.phone}` };
+  },
+
   async act_on_linked(cfg, ctx) {
     if (ctx.subjectType !== "record" || !ctx.recordId) {
       return { type: "act_on_linked", status: "failed", error: "This action only runs on record-subject automations (e.g. a Record/Status-change trigger)." };
@@ -426,7 +490,7 @@ const EXECUTORS: Record<string, Executor> = {
       } catch (e) { fail++; errs.push(`${who}: ${(e as Error).message}`); }
     }
 
-    const verb = sub === "note" ? "noted" : sub === "email" ? "emailed (mock)" : "messaged (mock)";
+    const verb = sub === "note" ? "noted" : sub === "email" ? "emailed" : "messaged";
     // ANTI-SILENT-GREEN: any per-candidate failure makes the whole result FAILED,
     // with succeeded/failed counts and reasons — never a blanket green.
     if (fail > 0) {

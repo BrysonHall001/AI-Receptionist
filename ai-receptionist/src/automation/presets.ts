@@ -907,6 +907,164 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
     },
     note: "Uses the Tasks module's 'Due date' and skips tasks already marked Done (the scheduled-jobs sweep honors the status condition). Adds an internal note, so it applies cleanly. Runs once per task per date.",
   },
+
+  // ==== CUSTOMER COMMS (Customer Comms batch) ============================
+  // The field-service customer journey as OPT-IN library entries. Nothing here
+  // ever auto-applies: like every preset above, applying one creates an
+  // INACTIVE DRAFT the owner reviews and turns on. Every trigger/action/token
+  // is a first-class builder capability, so each flow can also be built from
+  // scratch by hand. Texts honor the SMS master gate (a gated send reports
+  // itself as skipped, never silently green).
+  {
+    key: "wo_visit_reminder_day",
+    name: "Visit reminder — day before",
+    description: "The day before a scheduled work order, text the customer the time and who's coming.",
+    category: "follow_ups",
+    vertical: "home_services",
+    summary: {
+      trigger: "24 hours before a work order's appointment time",
+      conditions: ["Runs for every upcoming work order with a linked customer"],
+      actions: ["Text the customer a reminder"],
+    },
+    shape: { trigger: "24 hours before the visit", actions: ["Message the customer"] },
+    definition: {
+      name: "Visit reminder — day before",
+      triggerType: "AppointmentReminder:24:hours:before:work_order",
+      conditions: [],
+      actions: [
+        {
+          type: "message_linked_contact",
+          config: {
+            channel: "sms",
+            body: "Reminder from {{business}}: {{technician|our technician}} is coming for {{record_title}} on {{appointment}}. Reply here if anything's changed.",
+          },
+        },
+      ],
+    },
+    note: "Times follow your business's wall clock. Texts only send while texting is enabled for the app; when it's off the run reports the step as skipped. Fires once per work order.",
+  },
+  {
+    key: "wo_visit_reminder_2h",
+    name: "Visit reminder — 2 hours before",
+    description: "A couple of hours out, text the customer a short heads-up.",
+    category: "follow_ups",
+    vertical: "home_services",
+    summary: {
+      trigger: "2 hours before a work order's appointment time",
+      conditions: ["Runs for every upcoming work order with a linked customer"],
+      actions: ["Text the customer a heads-up"],
+    },
+    shape: { trigger: "2 hours before the visit", actions: ["Message the customer"] },
+    definition: {
+      name: "Visit reminder — 2 hours before",
+      triggerType: "AppointmentReminder:2:hours:before:work_order",
+      conditions: [],
+      actions: [
+        {
+          type: "message_linked_contact",
+          config: {
+            channel: "sms",
+            body: "{{business}}: {{technician|our technician}} will be with you around {{appointment}} for {{record_title}}. See you soon!",
+          },
+        },
+      ],
+    },
+    note: "Times follow your business's wall clock. Texts only send while texting is enabled for the app; when it's off the run reports the step as skipped. Fires once per work order.",
+  },
+  {
+    key: "wo_request_received",
+    name: "Request received — instant acknowledgment",
+    description: "The moment a work order is created, email the customer that the request is in.",
+    category: "lead_capture",
+    vertical: "home_services",
+    summary: {
+      trigger: "When a work order is created",
+      conditions: ["Only work orders (other modules are ignored)"],
+      actions: ["Email the customer an acknowledgment"],
+    },
+    shape: { trigger: "Work order created", actions: ["Message the customer"] },
+    definition: {
+      name: "Request received — instant acknowledgment",
+      triggerType: "RecordCreated",
+      conditions: [{ field: "record_type", op: "is", value: "work_order" }],
+      actions: [
+        {
+          type: "message_linked_contact",
+          config: {
+            channel: "email",
+            subject: "We got your request — {{record_title}}",
+            html: "<p>Hi {{name}},</p><p>Thanks for reaching out to {{business}}. We've logged <strong>{{record_title}}</strong> and we'll follow up shortly to set a time.</p>",
+          },
+        },
+      ],
+    },
+    note: "Needs a customer linked to the work order (the receptionist links the caller automatically). Email won't send until Resend is connected.",
+  },
+  {
+    key: "wo_review_ask",
+    name: "Job done — thank you + review ask",
+    description: "When a work order is completed, thank the customer and ask how it went.",
+    category: "stay_in_touch",
+    vertical: "home_services",
+    summary: {
+      trigger: "When a work order's status changes to Completed",
+      conditions: ["Only work orders (other modules are ignored)"],
+      actions: ["Email the customer a thank-you with a reply-back ask"],
+    },
+    shape: { trigger: "Work order completed", actions: ["Message the customer"] },
+    definition: {
+      name: "Job done — thank you + review ask",
+      triggerType: "RecordUpdated:status=completed",
+      conditions: [{ field: "record_type", op: "is", value: "work_order" }],
+      actions: [
+        {
+          type: "message_linked_contact",
+          config: {
+            channel: "email",
+            subject: "Thanks from {{business}} — how did we do?",
+            html: "<p>Hi {{name}},</p><p>{{technician|Our technician}} just wrapped up <strong>{{record_title}}</strong>. Thank you for choosing {{business}}!</p><p>If you have a minute, reply and tell us how it went — it means a lot.</p>",
+          },
+        },
+      ],
+    },
+    note: "Fires on the Completed status of work orders only (the record-type condition keeps bookings and other modules out). Email won't send until Resend is connected.",
+  },
+  {
+    key: "wo_stale_request_nudge",
+    name: "Request waiting 3 days — nudge the business",
+    description: "If a new request sits three days without moving, email your team a nudge.",
+    category: "pipeline",
+    vertical: "home_services",
+    summary: {
+      trigger: "3 days after a work order was created",
+      conditions: ["Status is still the first one — or was never set"],
+      actions: ["Email your business a nudge (not the customer)"],
+    },
+    shape: { trigger: "3 days after creation", actions: ["Notify the business"] },
+    definition: {
+      name: "Request waiting 3 days — nudge the business",
+      triggerType: "RecordDateReached:work_order:createdAt:3:days:after",
+      // Stable KEY match on the first status — OR no status at all: records
+      // created through the API/automations carry no stage until someone moves
+      // them, and those are exactly the "nobody has touched this" cases the
+      // nudge exists for.
+      conditions: [
+        { field: "status", op: "is", value: "new_request" },
+        { conj: "OR", field: "status", op: "empty" },
+      ],
+      actions: [
+        {
+          type: "notify_business",
+          config: {
+            viaEmail: true,
+            subject: "A request is waiting: {{record_title}}",
+            body: "{{record_title}} came in three days ago and hasn't moved past its first status. Worth a look before the customer chases you.",
+          },
+        },
+      ],
+    },
+    note: "The daily sweep needs a customer linked to the work order to evaluate it (existing behavior), so contact-less records don't nudge. Nudges your Notify email, never the customer.",
+  },
 ];
 
 export function getPreset(key: string): FlowPreset | undefined {

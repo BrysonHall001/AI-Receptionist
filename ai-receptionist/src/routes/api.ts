@@ -16,7 +16,7 @@ import { listFields, createField, updateField, deleteField, reorderFields, setFi
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
 import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType, setPipelineEnabled, setModuleViews } from "../services/recordTypeService";
 import { addRecordStatus, renameRecordStatus, reorderRecordStatuses, deleteRecordStatus } from "../services/recordTypeService";
-import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, listDeletedRecords, restoreRecords, purgeExpiredRecords, getModuleCalendarData, getModuleMapData } from "../services/recordService";
+import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, notifyOnMyWay, listDeletedRecords, restoreRecords, purgeExpiredRecords, getModuleCalendarData, getModuleMapData } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
@@ -1752,6 +1752,19 @@ apiRouter.post("/records/:id/notes", async (req: Request, res: Response) => {
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
+// ---- On my way (Customer Comms batch): one-tap "we're en route" text to the
+// record's linked customer. Permission-gated to records/edit (permissionGate);
+// idempotent once per record per day; every can't-send case is a specific 400
+// the button shows verbatim. The send/logging live in notifyOnMyWay().
+apiRouter.post("/records/:id/notify-on-my-way", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const a = actorOf(req);
+    res.json(await notifyOnMyWay(tenantId, req.params.id, { id: a.id, name: a.name }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // ---- Record links (relationships between a parent and a record) ----
 apiRouter.get("/records/:id/links", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
@@ -2514,6 +2527,9 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
   // see recordRow/evalRule for the wall-clock-safe comparison.
   recCondMap.set("appointmentAt", { label: "Appointment date/time", type: "date" });
   recCondMap.set("resource", { label: "Staff", type: "text" });
+  // Synthetic record_type (Customer Comms batch): scope a shared-event flow to one
+  // module by STABLE KEY ("record_type is work_order"); see recordRow.recordValueOf.
+  recCondMap.set("record_type", { label: "Record type (by key)", type: "text" });
   for (const d of recFieldDefs as any[]) if (d.key && !String(d.key).startsWith("__")) recCondMap.set(String(d.key), { label: String(d.label ?? d.key), type: String(d.type || "text") });
   const recordConditionFields = Array.from(recCondMap, ([key, v]) => ({ key, label: v.label, type: v.type }));
   // Record TYPES (key + label + their statuses/subtypes) so the new record-acting
@@ -2543,6 +2559,10 @@ apiRouter.get("/automations/meta", async (req: Request, res: Response) => {
     // and surveys (for the Send survey action) — so the wizard can offer these without extra calls.
     audiences: (await listAudiences(tenantId)).map((a: any) => ({ id: a.id, name: a.name })),
     surveys: (await listSurveys(tenantId)).map((s: any) => ({ id: s.id, name: s.name })),
+    // SMS master gate for the builder's affordances (hide "Send SMS", flip the
+    // "Message the customer" channel picker to email-only). The presets route
+    // already ships the same flag; the executors are the real enforcers.
+    smsEnabled: smsEnabled(),
   });
 });
 

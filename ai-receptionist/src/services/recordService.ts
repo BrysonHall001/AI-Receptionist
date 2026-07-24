@@ -18,6 +18,10 @@ import { EventActor, deletedByFromActor } from "../events/types";
 // (reads the UTC-slot digits verbatim, never zone-converts). Reused here so the
 // reschedule event's old/new values are wall-clock, per the wall-clock rule.
 import { fmtApptWall } from "../automation/scheduler";
+import { sendSms } from "./smsService";
+import { smsEnabled } from "../config/env";
+import { log as logActivity } from "./activityService";
+import { resolveMergeTags } from "./mergeTags";
 import { markRecordGeoStale, scheduleGeocodeSweep } from "./geocodingService";
 import { geocodingEnabled } from "../config/env";
 import { logger } from "../utils/logger";
@@ -864,6 +868,76 @@ export async function addRecordNote(
   cf.__activity = activity.slice(0, 200); // cap to keep the JSON bounded
   await db.record.update({ where: { id: recordId }, data: { customFields: cf } });
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// ON MY WAY (Customer Comms batch). One tap on a scheduled record texts its
+// FIRST linked contact that the assigned technician is en route. Deliberately a
+// SERVER-FIXED template (merge-tagged, resolved through the single resolver) —
+// the editable-copy version of this journey lives in the automation library,
+// where the message is the tenant's to change. Rules:
+//   - permission: gated at the route (permissionGate: records/edit).
+//   - idempotent: at most ONE per record per day, enforced by checking today's
+//     activity log for this record's on-my-way entry (double-tap ≠ double text).
+//   - SMS gate: refused with a friendly message when texting is off — nothing
+//     transmitted, nothing logged as sent.
+//   - audit: contact activity + a record-note breadcrumb + the SMSSent event —
+//     the same trio every automation send leaves.
+// ---------------------------------------------------------------------------
+export async function notifyOnMyWay(
+  tenantId: string,
+  recordId: string,
+  actor: { id?: string | null; name?: string | null },
+): Promise<{ sent: true; to: string }> {
+  const rec = await db.record.findFirst({ where: { id: recordId, tenantId, deletedAt: null } });
+  if (!rec) throw new Error("Record not found");
+
+  // Who to text: the record's first linked contact (the established convention).
+  const link = await db.recordLink.findFirst({ where: { tenantId, recordId, parentType: "contact", deletedAt: null }, orderBy: { createdAt: "asc" } });
+  const contact = link ? await db.contact.findFirst({ where: { id: link.parentId, tenantId, deletedAt: null } }) : null;
+  if (!contact) throw new Error("No customer is linked to this record, so there's nobody to text.");
+  if (!contact.phone) throw new Error(`${contact.name || "The linked customer"} has no phone number on their contact.`);
+  if (!smsEnabled()) throw new Error("Texting is turned off for this app, so the message can't be sent.");
+
+  // Idempotence: one per record per day (server-side; a double-tap or a second
+  // user tapping later the same day gets a friendly refusal, not a second text).
+  const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
+  const already = await db.activityLog.findFirst({
+    where: { tenantId, contactId: contact.id, type: "text_sent", createdAt: { gte: dayStart }, detail: { path: ["omwRecordId"], equals: recordId } },
+  });
+  if (already) throw new Error("An on-my-way text already went out for this record today.");
+
+  // The message: server-fixed copy, personalized through the ONE merge-tag
+  // resolver (so empty values degrade cleanly, e.g. an unassigned tech).
+  const portal = await db.tenant.findUnique({ where: { id: tenantId } });
+  let technician = "";
+  if (rec.resourceId) {
+    const r = await db.resource.findFirst({ where: { id: rec.resourceId, tenantId, deletedAt: null }, select: { name: true } });
+    technician = (r && r.name) || "";
+  }
+  const values: Record<string, string> = {
+    name: contact.name || "",
+    record_title: rec.title || "",
+    technician,
+    business: (portal as any)?.name || "",
+    appointment: rec.appointmentAt ? fmtApptWall(new Date(rec.appointmentAt)) : "",
+  };
+  // Assembled in two parts (the appointment clause only when a time exists), each
+  // resolved through the ONE merge-tag resolver so empty values degrade cleanly.
+  const lead = resolveMergeTags("{{business|We}}: {{technician|our technician}} is on the way for {{record_title|your visit}}", values);
+  const finalBody = values.appointment ? `${lead} (scheduled ${values.appointment}).` : `${lead}.`;
+
+  await sendSms({ to: contact.phone, body: finalBody, from: (portal as any)?.phoneNumber });
+  const actorInfo = { id: actor.id ?? null, name: actor.name ?? null, type: "user" as const };
+  await logActivity({
+    tenantId, contactId: contact.id, type: "text_sent",
+    summary: "On-my-way text sent",
+    detail: { to: contact.phone, body: finalBody, via: "on_my_way", omwRecordId: recordId },
+    actor: actorInfo,
+  });
+  try { await addRecordNote(tenantId, recordId, `On-my-way text sent to ${contact.name || contact.phone}: ${finalBody.slice(0, 140)}`, { id: actorInfo.id, name: actorInfo.name, type: "user" }); } catch { /* breadcrumb only */ }
+  try { await emitEvent({ tenantId, type: "SMSSent", actor: { type: "user", id: actor.id ?? "user", name: actor.name ?? "User" }, subject: { type: "contact", id: contact.id }, payload: { to: contact.phone, via: "on_my_way", record_id: recordId } }); } catch { /* audit only */ }
+  return { sent: true, to: contact.phone };
 }
 
 /** Soft-delete records (recycle-bin style) and soft-delete their links too.

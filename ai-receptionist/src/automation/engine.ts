@@ -103,7 +103,7 @@ export async function handleEvent(event: DomainEvent): Promise<void> {
 // loaded from the record table — never the contact loader. Only actions that
 // make sense on a record are allowed; anything else is logged as a clear FAILED
 // result (never a silent green no-op).
-const RECORD_SUBJECT_ACTIONS = new Set(["create_note", "act_on_linked", "move_to_stage", "set_record_field", "create_record_item", "update_record_item", "find_record_items", "delete_record_items"]);
+const RECORD_SUBJECT_ACTIONS = new Set(["create_note", "act_on_linked", "message_linked_contact", "move_to_stage", "set_record_field", "create_record_item", "update_record_item", "find_record_items", "delete_record_items"]);
 
 async function handleRecordEvent(event: DomainEvent): Promise<void> {
   const recordId = event.subject?.id || null;
@@ -189,9 +189,25 @@ async function runRecordOne(auto: AutomationRow, event: DomainEvent, record: any
   // actually evaluate. The contact path (runOne) is untouched and still uses the
   // contact loader.
   const recCustom = await loadRecordFieldDefs(auto.tenantId, record.recordTypeId);
+  // Customer Comms batch: one record-type lookup powers three things — the stable
+  // type KEY for the synthetic record_type condition column (stamped below), the
+  // subtype LABEL for {{service}}, and nothing else. Best-effort: a missing row
+  // leaves the tokens blank and the record_type value null (conditions on it then
+  // fail closed, never silently pass).
+  const rtRow = await db.recordType.findFirst({ where: { tenantId: auto.tenantId, id: record.recordTypeId }, select: { key: true, subtypes: true } }).catch(() => null);
+  (record as any).__recordTypeKey = rtRow?.key ?? null;
   // Resolve the assigned staff name onto the record so a "resource" condition reads
   // the name (not the raw id). No-op for records without a resource.
   await attachResourceNames(auto.tenantId, [record]);
+  // Customer-comms tokens (additive; blank when absent, so nothing renders "null"):
+  // {{technician}}, {{service}} (subtype LABEL), {{appointment_end}}, {{business}}.
+  if (record.resourceName) extraTokens.technician = String(record.resourceName);
+  if (record.subtypeKey && rtRow) {
+    const st = (((rtRow.subtypes as any[]) || []).find((x: any) => x && x.key === record.subtypeKey));
+    extraTokens.service = st ? String(st.label || record.subtypeKey) : String(record.subtypeKey);
+  }
+  if (record.endAt) extraTokens.appointment_end = fmtApptWall(new Date(record.endAt));
+  if (portal?.name) extraTokens.business = String(portal.name);
   const recCols = buildRecordColumns(recCustom);
   const activeRules = ((auto.conditions as Rule[]) || []).filter(ruleComplete);
   const knownKeys = new Set(recCols.map((c) => c.key));
@@ -229,7 +245,7 @@ async function runRecordOne(auto: AutomationRow, event: DomainEvent, record: any
       // email/SMS — a record has no inbox) is BLOCKED with a clear reason, so it
       // can never silently "send to nothing". (Delays/other actions land here
       // too in this stage.)
-      results.push({ type: action.type, status: "failed", error: `Action "${action.type}" can't target a record in this stage. Only "Create internal note" is supported.` });
+      results.push({ type: action.type, status: "failed", error: `Action "${action.type}" can't target a record — a record has no inbox. Use "Message the customer" or "Act on linked contacts" to reach the record's people.` });
       continue;
     }
     results.push(await runAction(action, ctx));

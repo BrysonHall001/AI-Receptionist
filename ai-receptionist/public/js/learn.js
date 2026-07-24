@@ -393,6 +393,25 @@
             { tip: "Presets that include a text-message step are hidden while texting is turned off for your workspace." },
           ],
         },
+        {
+          // Customer Comms batch. Copy deliberately avoids every seeded
+          // stage/subtype/field label as a lowercase substring (the LC-3 DB
+          // scan), hence the careful phrasing around statuses and work types.
+          id: "customer-updates", features: ["page:#/automations"],
+          title: "Keeping customers in the loop",
+          blocks: [
+            { p: "The library ships five ready-made customer-update recipes for field work: a visit heads-up the day before, another two hours out, an instant \u201cwe got it\u201d note the moment a work order is created, a thank-you with a review ask when the work wraps up, and an internal nudge when a brand-new work order sits three days untouched. Nothing is pre-installed — each one exists only after you apply it, arrives as a draft, and does nothing until you switch it on." },
+            { steps: [
+              "Open the library on [[#/automations|Automations]] and apply the recipes you want — they load as drafts.",
+              "Open each draft and make the words yours. Handy tags: {{name}}, {{appointment}}, {{technician|our technician}}, {{service}}, {{record_title}}, {{business}} — an empty value simply drops out, and the bit after the | is the stand-in.",
+              "Turn each one on when the copy reads right. Times follow your business\u2019s wall clock.",
+            ] },
+            { feature: "sms", tip: "The two visit heads-up recipes send texts, and every text respects the app-wide texting switch — if it\u2019s ever off, the run records the step as skipped rather than quietly pretending." },
+            { featureOff: "sms", tip: "Texting is currently off for your workspace, so the text-based recipes are hidden. The email ones (the instant acknowledgment and the review ask) work today." },
+            { p: "Every recipe is also buildable by hand, piece by piece: the \u201cBefore an appointment\u201d trigger now has a module picker (Bookings or Work Orders) with real hour-level timing, \u201cRecord created\u201d is a trigger of its own, the \u201cMessage the customer\u201d action emails or texts the record\u2019s linked contact — skipping politely when there\u2019s nobody linked or no number on file — and a \u201crecord type\u201d condition keeps a flow scoped to one module." },
+            { p: "On a work order\u2019s page there\u2019s also a one-tap On my way button — it texts the linked customer that the technician is en route, at most once a day, and leaves a note on the work order. In fact every customer message sent about a record leaves one, so \u201cdid anyone tell the customer?\u201d is answered right on the record." },
+          ],
+        },
       ],
     },
     {
@@ -424,7 +443,7 @@
               "Anyone with a linked account gets a My work orders entry under Saved Filters on the [[#/records/work_order|Work Orders]] list — one click shows just their own work.",
               "For dispatch-style planning, the module's calendar can add staff lanes, a tray of not-yet-dated work, and drag-to-plan — two switches under the Calendar tile in [[#/settings/fields|Settings → Modules & Fields]].",
             ] },
-            { tip: "Status changes on a work order can kick off [[#/automations|Automations]] — a follow-up email when the work wraps up, for example — using the \"Record updated / status changed\" trigger." },
+            { tip: "Status changes on a work order can kick off [[#/automations|Automations]] — a follow-up email when the work wraps up, for example — using the \"Record updated / status changed\" trigger. The library\u2019s customer-update recipes (visit heads-ups, an instant acknowledgment, a review ask) are pre-built for exactly this, and a one-tap On my way button on each work order\u2019s page texts the linked customer that help is en route." },
           ],
         },
         {
@@ -435,7 +454,7 @@
           id: "dispatch-calendar", features: ["calopt:scheduling"],
           title: "Dispatch on the calendar",
           blocks: [
-            { p: "Two options on a module's Views tile turn its calendar into a dispatch board. LANES splits the day into one column per staff member. The TRAY is a sidebar of the module's records that have no date yet, so new requests are visible instead of invisible. Both live in [[#/settings/fields|Settings → Modules & Fields]] under the Calendar tile, and both are off until you turn them on." },
+            { p: "Two options on a module's Views tile turn its calendar into a dispatch board. LANES splits the day into one column per staff member. The TRAY is a sidebar of the module's records that have no date yet, so brand-new work is visible instead of invisible. Both live in [[#/settings/fields|Settings → Modules & Fields]] under the Calendar tile, and both are off until you turn them on." },
             { steps: [
               "Drag a tray record onto the grid to give it a time — drop it inside a staff column to hand it to that person in the same motion.",
               "Drag a block up or down to change its time, or into another column to hand it to someone else. Everything snaps to a tidy 15 minutes.",

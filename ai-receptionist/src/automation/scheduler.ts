@@ -4,7 +4,7 @@ import { ActionConfig, ActionContext, ActionResult, runAction } from "./actions"
 import { loadFieldDefs, buildColumns, valueOf } from "./contactRow";
 import { loadRecordFieldDefs, buildRecordColumns, recordValueOf } from "./recordRow";
 import { evalRules } from "./conditions";
-import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY } from "../services/recordTypeService";
+import { resolveRecordTypeId, BOOKING_RECORD_TYPE_KEY, WORK_ORDER_RECORD_TYPE_KEY, usesTypedAppointment } from "../services/recordTypeService";
 import { runGoogleCalendarSync } from "../services/googleSyncService";
 import { geocodePending } from "../services/geocodingService";
 
@@ -95,6 +95,13 @@ async function buildJobContext(job: any): Promise<ActionContext | null> {
 // ---- date helpers (UTC, "YYYY-MM-DD"), matching the rest of the app ----
 function todayUtc(): string { return new Date().toISOString().slice(0, 10); }
 function shiftDateString(dateStr: any, amount: number, unit: string): string | null {
+  // Accept real Date values too (Customer Comms batch): recordValueOf returns the
+  // typed createdAt/appointmentAt columns as Dates, whose default String() form
+  // ("Mon Jul 20 2026 …") the regex below can never match — so a
+  // "RecordDateReached:…:createdAt:…" flow silently never fired. Normalizing to
+  // ISO here fixes that for every typed-column date while leaving string date
+  // fields byte-identical.
+  if (dateStr instanceof Date) dateStr = isNaN(dateStr.getTime()) ? "" : dateStr.toISOString();
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr ?? "").trim());
   if (!m) return null;
   const dt = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
@@ -131,14 +138,18 @@ export function parseScheduleTrigger(triggerType: string): ScheduleTrigger | nul
 // business NOT operating in UTC will see the reminder shift by its UTC offset.
 // Exact local-time reminders need the future per-business-timezone setting.
 // ===========================================================================
-interface ReminderTrigger { amount: number; unit: string; }
+interface ReminderTrigger { amount: number; unit: string; recordTypeKey: string; }
 export function parseAppointmentReminderTrigger(triggerType: string): ReminderTrigger | null {
   if (!triggerType || triggerType.indexOf("AppointmentReminder:") !== 0) return null;
   const parts = triggerType.slice("AppointmentReminder:".length).split(":");
   const amount = Number(parts[0]);
   if (!isFinite(amount) || amount <= 0) return null;
   const unit = parts[1] || "hours";
-  return { amount, unit };
+  // Customer Comms batch: optional 4th segment picks WHICH typed-appointment
+  // module the reminder watches — "AppointmentReminder:24:hours:before:work_order".
+  // Absent = booking, so every pre-existing trigger parses byte-identically.
+  const recordTypeKey = parts[3] || BOOKING_RECORD_TYPE_KEY;
+  return { amount, unit, recordTypeKey };
 }
 
 export function reminderOffsetMs(amount: number, unit: string): number {
@@ -147,6 +158,12 @@ export function reminderOffsetMs(amount: number, unit: string): number {
 }
 
 const TERMINAL_BOOKING_STATUSES = new Set(["no_show", "completed", "canceled", "cancelled"]);
+// Work orders have no "no_show" stage; done/called-off means don’t remind —
+// the same pair that frees busy time on the scheduling calendar.
+const TERMINAL_WORK_ORDER_STATUSES = new Set(["completed", "cancelled"]);
+function terminalStatusesFor(recordTypeKey: string): Set<string> {
+  return recordTypeKey === WORK_ORDER_RECORD_TYPE_KEY ? TERMINAL_WORK_ORDER_STATUSES : TERMINAL_BOOKING_STATUSES;
+}
 
 // Wall-clock formatter for the appointment (reads UTC-slot digits; NO timezone
 // conversion), matching how the app stores/reads appointmentAt elsewhere.
@@ -158,14 +175,25 @@ export function fmtApptWall(d: Date): string {
 
 // Pre-render the booking-specific tokens into the action body at queue time (we
 // know the booking now); contact tokens like {{name}} are left for run time.
-export function injectBookingTokens(action: ActionConfig, booking: any): ActionConfig {
+// `extras` (Customer Comms batch) carries per-tenant lookups the sweep resolves
+// once: the subtype LABEL map (so {{service}} renders the label, not the raw
+// key — the old raw-key behavior was a bug), the resource-name map for
+// {{technician}}, and the portal name for {{business}}. All optional: a caller
+// without extras renders those tokens blank via the merge-tag fallback rules.
+export function injectBookingTokens(action: ActionConfig, booking: any, extras?: { subtypeLabels?: Record<string, string>; resourceNames?: Record<string, string>; businessName?: string }): ActionConfig {
   const cfg: any = { ...(action.config || {}) };
   const appt = booking.appointmentAt ? new Date(booking.appointmentAt) : null;
   const apptStr = appt ? fmtApptWall(appt) : "";
+  const endStr = booking.endAt ? fmtApptWall(new Date(booking.endAt)) : "";
+  const svcLabel = (extras?.subtypeLabels && booking.subtypeKey && extras.subtypeLabels[booking.subtypeKey]) || booking.subtypeKey || "";
+  const techName = (extras?.resourceNames && booking.resourceId && extras.resourceNames[booking.resourceId]) || "";
   const subst = (s: string) => s
     .replace(/\{\{\s*appointment\s*\}\}/g, apptStr)
     .replace(/\{\{\s*appointment_time\s*\}\}/g, apptStr)
-    .replace(/\{\{\s*service\s*\}\}/g, booking.subtypeKey || "")
+    .replace(/\{\{\s*appointment_end\s*(?:\|([^}]*))?\}\}/g, (_m, fb) => endStr || (fb != null ? fb : ""))
+    .replace(/\{\{\s*service\s*\}\}/g, svcLabel)
+    .replace(/\{\{\s*technician\s*(?:\|([^}]*))?\}\}/g, (_m, fb) => techName || (fb != null ? fb : ""))
+    .replace(/\{\{\s*business\s*\}\}/g, extras?.businessName || "")
     .replace(/\{\{\s*record_title\s*\}\}/g, booking.title || "");
   for (const k of ["body", "html", "subject", "text"]) {
     if (typeof cfg[k] === "string") cfg[k] = subst(cfg[k]);
@@ -183,32 +211,52 @@ export async function runAppointmentReminderSweep(scope?: string): Promise<numbe
   const now = new Date();
   let swept = 0;
 
-  // One booking-type lookup + one upcoming-bookings query per tenant.
-  const byTenant: Record<string, any[]> = {};
-  for (const a of reminders) { (byTenant[a.tenantId] = byTenant[a.tenantId] || []).push(a); }
+  // One module lookup + one upcoming-records query per (tenant, module). The
+  // module comes from each trigger's optional 4th segment (default booking) and
+  // must be a typed-appointment module — anything else is skipped, never guessed.
+  const byTenantType: Record<string, any[]> = {};
+  for (const a of reminders) {
+    const parsed = parseAppointmentReminderTrigger(a.triggerType)!;
+    (byTenantType[`${a.tenantId}\u0000${parsed.recordTypeKey}`] = byTenantType[`${a.tenantId}\u0000${parsed.recordTypeKey}`] || []).push(a);
+  }
 
-  for (const tenantId of Object.keys(byTenant)) {
-    const bookingTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY).catch(() => null);
-    if (!bookingTypeId) continue;
-    const bookings = await db.record.findMany({
-      where: { tenantId, recordTypeId: bookingTypeId, deletedAt: null, appointmentAt: { gte: now } },
+  for (const groupKey of Object.keys(byTenantType)) {
+    const [tenantId, recordTypeKey] = groupKey.split("\u0000");
+    if (!usesTypedAppointment(recordTypeKey)) continue; // reminders key off the typed appointmentAt column
+    const typeId = await resolveRecordTypeId(tenantId, recordTypeKey).catch(() => null);
+    if (!typeId) continue;
+    const records = await db.record.findMany({
+      where: { tenantId, recordTypeId: typeId, deletedAt: null, appointmentAt: { gte: now } },
       take: 2000,
     });
-    if (!bookings.length) continue;
+    if (!records.length) continue;
 
-    for (const auto of byTenant[tenantId]) {
+    // Per-tenant token lookups, resolved ONCE per group: subtype labels (so
+    // {{service}} renders the label), resource names ({{technician}}), and the
+    // portal name ({{business}}).
+    const rtRow = await db.recordType.findFirst({ where: { tenantId, id: typeId }, select: { subtypes: true } });
+    const subtypeLabels: Record<string, string> = {};
+    for (const st of ((rtRow && rtRow.subtypes) || []) as any[]) { if (st && st.key) subtypeLabels[st.key] = st.label || st.key; }
+    const resRows = await db.resource.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true } });
+    const resourceNames: Record<string, string> = {};
+    for (const r of resRows) resourceNames[r.id] = r.name;
+    const portalRow = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    const extras = { subtypeLabels, resourceNames, businessName: (portalRow as any)?.name || "" };
+    const terminal = terminalStatusesFor(recordTypeKey);
+
+    for (const auto of byTenantType[groupKey]) {
       const parsed = parseAppointmentReminderTrigger(auto.triggerType)!;
       const off = reminderOffsetMs(parsed.amount, parsed.unit);
       const actions: ActionConfig[] = (auto.actions as any) || [];
 
-      for (const b of bookings) {
-        if (b.stageKey && TERMINAL_BOOKING_STATUSES.has(String(b.stageKey))) continue; // canceled/done/no-show
+      for (const b of records) {
+        if (b.stageKey && terminal.has(String(b.stageKey))) continue; // done/called-off (and booking no-shows)
         const appt = new Date(b.appointmentAt);
         const dueAt = new Date(appt.getTime() - off);
         if (dueAt > now) continue;   // reminder window not reached yet
         if (appt <= now) continue;   // never remind at/after the appointment itself
 
-        // The booking's first linked contact is who we text.
+        // The record's first linked contact is who we message.
         const link = await db.recordLink.findFirst({ where: { tenantId, recordId: b.id, parentType: "contact", deletedAt: null }, orderBy: { createdAt: "asc" } });
         if (!link) continue;
         const contact = await db.contact.findFirst({ where: { id: link.parentId, tenantId, deletedAt: null } });
@@ -217,11 +265,16 @@ export async function runAppointmentReminderSweep(scope?: string): Promise<numbe
 
         for (let i = 0; i < actions.length; i++) {
           if (actions[i].type === "wait") continue;
-          // Stable dedupeKey per (automation, booking, action) → fires once.
+          const injected = injectBookingTokens(actions[i], b, extras);
+          // "Message the customer" runs in a CONTACT job context here; stamp the
+          // source record id into its config so the executor can still drop the
+          // record-note breadcrumb ("was the customer told?") on the record.
+          if (injected.type === "message_linked_contact") (injected.config as any) = { ...(injected.config || {}), recordId: b.id };
+          // Stable dedupeKey per (automation, record, action) → fires once.
           const row = await enqueueJob({
             tenantId, automationId: auto.id, automationName: auto.name,
             contactId: contact.id, contactName,
-            action: injectBookingTokens(actions[i], b),
+            action: injected,
             dueAt, kind: "schedule",
             dedupeKey: `apptrem:${auto.id}:${b.id}:${i}`,
           });
@@ -349,6 +402,9 @@ export async function runRecordDateSweep(scope?: string): Promise<number> {
     const actions: ActionConfig[] = (auto.actions as any) || [];
 
     for (const rec of records) {
+      // Stamp the stable type key so a "record_type" condition evaluates here the
+      // same way it does in the event-driven path (fail-closed rules included).
+      (rec as any).__recordTypeKey = parsed.recordTypeKey;
       const dateVal = recordValueOf(rec, parsed.field);
       const delta = parsed.dir === "after" ? parsed.amount : -parsed.amount;
       const fireDate = shiftDateString(dateVal, delta, parsed.unit);
@@ -368,11 +424,16 @@ export async function runRecordDateSweep(scope?: string): Promise<number> {
       const contactName = contact.name || contact.phone || contact.email || contact.id;
       for (let i = 0; i < actions.length; i++) {
         if (actions[i].type === "wait") continue;
+        const injected = injectRecordTokens(actions[i], rec, custom);
+        // "Message the customer" runs in a CONTACT job context here; stamp the
+        // source record id so the executor's record-note breadcrumb still lands
+        // on the record (same parity as the appointment-reminder sweep).
+        if (injected.type === "message_linked_contact") (injected.config as any) = { ...(injected.config || {}), recordId: rec.id };
         // Stable dedupeKey per (automation, record, fire-date, action) → fires ONCE.
         const row = await enqueueJob({
           tenantId: auto.tenantId, automationId: auto.id, automationName: auto.name,
           contactId: contact.id, contactName,
-          action: injectRecordTokens(actions[i], rec, custom),
+          action: injected,
           dueAt: new Date(fireDate + "T00:00:00Z"), kind: "schedule",
           dedupeKey: `recdate:${auto.id}:${rec.id}:${fireDate}:${i}`,
         });
