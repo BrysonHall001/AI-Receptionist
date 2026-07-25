@@ -136,7 +136,7 @@ async function main() {
   const portal = readFileSync(resolve(__dirname, "../../public/js/portal.js"), "utf8");
   const bv = portal.slice(portal.indexOf("function buildViewsSection"), portal.indexOf("async function renderSettings"));
   check(!/isContact/.test(bv), "the strip's Map-only restriction for Contacts is GONE (all four tiles, standard rules)");
-  check(/name: "Board", available: hasPipeline/.test(bv) && /name: "Calendar", available: calAvailable/.test(bv) && /name: "Map", available: mapAvailable/.test(bv) && /name: "Gallery", available: galAvailable/.test(bv), "all four tiles render with their standard availability rules");
+  check(/name: "Board", available: boardAvailable/.test(bv) && /name: "Calendar", available: calAvailable/.test(bv) && /name: "Map", available: mapAvailable/.test(bv) && /name: "Gallery", available: galAvailable/.test(bv), "all four tiles render with their standard availability rules"); // boardAvailable since FS Punch List 1 (pipeline OR record statuses)
   check(/if \(canEdit && selectedType\) \{\s*\n\s*if \(structureMount\) \{ structureMount\.innerHTML = ""; structureMount\.appendChild\(structureSection\(\)\); \}/.test(portal), "Structure & behavior (the pipeline toggle) renders for Contacts too — now in the full-width panel (space pass)");
   const rc = portal.slice(portal.indexOf("async function renderContacts()"), portal.indexOf("function openManageColumns("));
   check(/moduleBoardEnabled\(contactType\)/.test(rc) && /mountStageBoard\(boardHost, \{/.test(rc), "renderContacts registers a Board mode on the SHARED stage board");

@@ -810,6 +810,28 @@
   }
   App.portalPageTitle = portalPageTitle; // exposed for the layout self-test
 
+  // LIST-PAGE INTEGRITY (Issue 1): ONE resolution path for a detail page's chrome.
+  // A record page can't know its module until the record is fetched, so the route
+  // builds the shell with NO anchor and the renderer calls this once the type is
+  // known — setting nav-active (sidebar modules + top pages row) AND the content
+  // H1 from the SAME href through the SAME portalPageTitle the shell uses. This is
+  // what keeps H1, nav-active, breadcrumb, and subtitle from ever disagreeing again.
+  App.setPortalPageContext = function (href) {
+    document.querySelectorAll(".nav-item").forEach(function (a) {
+      a.classList.toggle("active", !!a.dataset && a.dataset.href === href);
+    });
+    const t = portalPageTitle(href) || "";
+    let h = document.querySelector(".content-page-title");
+    if (!t) { if (h) h.remove(); return; }
+    if (!h) {
+      const content = document.querySelector(".content");
+      if (!content) return;
+      h = el("h1", "page-title content-page-title");
+      content.insertBefore(h, content.firstChild);
+    }
+    h.textContent = t;
+  };
+
   function route() {
     const { path, query } = parseHash();
     const me = App.state.me;
@@ -868,11 +890,16 @@
       return App.portal.renderContact(id);
     }
 
-    // Record (e.g. Job) detail page
+    // Record detail page (ANY module). LIST-PAGE INTEGRITY (Issue 1): this used
+    // to hardcode buildShell("portal", "#/jobs"), which drove the H1 AND the
+    // nav-active state to the Jobs module for EVERY record type — the "Job
+    // Openings" chrome on a Work Order. The shell now builds with no anchor and
+    // renderRecord sets the real context (App.setPortalPageContext) once the
+    // record's type is known.
     if (path.indexOf("/record/") === 0) {
       const id = path.slice("/record/".length);
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
-      buildShell("portal", "#/jobs");
+      buildShell("portal", null);
       return App.portal.renderRecord(id);
     }
 

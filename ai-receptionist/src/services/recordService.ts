@@ -1093,22 +1093,99 @@ export async function bulkUpdateRecordField(tenantId: string, ids: string[], fie
   return n;
 }
 
-/** Dummy record with ALL fields populated (testing aid) — mirrors generateDummyContact. */
+// ---- MODULE-AWARE dummy profiles (List-Page Integrity, Issue 5) --------------
+// Registry-driven, keyed by record-type key: a module WITH a profile gets
+// realistic demo data; every module WITHOUT one keeps the original generic path
+// byte-for-byte (titles from D_RECORD_TITLES, no dates, no assignment). Adding a
+// profile for a future module = one entry here, no generator forks.
+interface DummyProfile {
+  titles: string[];
+  descriptions?: string[];
+  /** Real-looking, geocodable street addresses (street/city/state/postal). */
+  addresses?: Array<{ street: string; city: string; state: string; postal: string }>;
+  /** ~Half the dummies get a near-future appointment (varied), half stay dateless. */
+  halfScheduled?: boolean;
+  /** Assign a random live resource when the dummy got a date and one exists. */
+  assignResource?: boolean;
+  /** Field keys whose values the profile supplies (skipped by the generic filler). */
+  ownedFieldKeys?: string[];
+}
+const DUMMY_RECORD_PROFILES: Record<string, DummyProfile> = {
+  [WORK_ORDER_RECORD_TYPE_KEY]: {
+    titles: [
+      "AC not cooling — Unit 2B", "Water heater replacement", "Quarterly HVAC maintenance",
+      "Leaking kitchen faucet", "Furnace ignition fault", "Panel upgrade — site visit",
+      "Garage door off track", "Thermostat replacement", "Sprinkler zone 3 not firing",
+      "Duct cleaning — whole house", "Dishwasher install", "Gutter cleaning — rear elevation",
+    ],
+    descriptions: [
+      "Customer reports intermittent operation; verify at arrival and photograph the nameplate.",
+      "Parts on the truck; confirm shutoff access with the tenant before starting.",
+      "Recurring seasonal service — check filters, belts, and drain lines.",
+      "Second visit: prior fix held two weeks, then the fault returned.",
+      "Quote approved; full replacement, haul away the old unit.",
+      "Access through the side gate; dog is friendly but keep the gate closed.",
+    ],
+    addresses: [
+      { street: "412 Maple Ave", city: "Raleigh", state: "NC", postal: "27604" },
+      { street: "88 Bishop St", city: "Durham", state: "NC", postal: "27701" },
+      { street: "1509 Holloway St", city: "Durham", state: "NC", postal: "27703" },
+      { street: "231 Glenwood Ave", city: "Raleigh", state: "NC", postal: "27603" },
+      { street: "742 Ninth St", city: "Durham", state: "NC", postal: "27705" },
+      { street: "56 Chapel Hill Rd", city: "Cary", state: "NC", postal: "27513" },
+    ],
+    halfScheduled: true,
+    assignResource: true,
+    ownedFieldKeys: ["description", "service_address", "photos", "internal_notes"],
+  },
+};
+
+/** A varied near-future wall-clock appointment: 1–10 days out, business hours,
+ *  snapped to 15 minutes — parked in the UTC slot like every appointment write. */
+function rndFutureAppointment(): Date {
+  const days = 1 + Math.floor(Math.random() * 10);
+  const hour = 8 + Math.floor(Math.random() * 9);        // 08:00–16:00
+  const min = [0, 15, 30, 45][Math.floor(Math.random() * 4)];
+  const base = new Date(Date.now() + days * 86400000);
+  return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), hour, min, 0));
+}
+
+/** Dummy record with ALL fields populated (testing aid) — mirrors generateDummyContact.
+ *  Issue 5: profiled modules (registry above) get realistic titles/addresses/dates
+ *  instead of the recruiting-flavored generic list; unprofiled modules unchanged. */
 export async function generateDummyRecord(tenantId: string, recordType?: string | null) {
   const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
   const fields = await db.fieldDef.findMany({ where: { tenantId, recordTypeId } });
   const rtRow = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
   const recStages: any[] = (rtRow && rtRow.recordStages) || [];
   const subtypes: any[] = (rtRow && rtRow.subtypes) || [];
+  const profile = rtRow ? DUMMY_RECORD_PROFILES[rtRow.key] : undefined;
+  const owned = new Set(profile?.ownedFieldKeys ?? []);
   const custom: Record<string, any> = {};
   for (const f of fields as any[]) {
     if (f.system) continue;
+    if (owned.has(f.key)) continue; // the profile supplies (or deliberately omits) these
     custom[f.key] = randomValueForField(f);
   }
-  const title = `${rndPick(D_RECORD_TITLES)} ${Math.random().toString(36).slice(2, 5)}`;
+  let title = `${rndPick(D_RECORD_TITLES)} ${Math.random().toString(36).slice(2, 5)}`;
+  let appointmentAt: Date | null = null;
+  let resourceId: string | null = null;
+  if (profile) {
+    title = rndPick(profile.titles); // realistic — no gibberish suffix
+    if (profile.descriptions) custom.description = rndPick(profile.descriptions);
+    if (profile.addresses) custom.service_address = rndPick(profile.addresses);
+    if (profile.halfScheduled && Math.random() < 0.5) {
+      appointmentAt = rndFutureAppointment();
+      if (profile.assignResource) {
+        const resources = await db.resource.findMany({ where: { tenantId, deletedAt: null }, select: { id: true } });
+        if (resources.length) resourceId = rndPick(resources as any[]).id;
+      }
+    }
+  }
   const stageKey = recStages.length ? rndPick(recStages).key : null;
   const subtypeKey = subtypes.length ? rndPick(subtypes).key : null;
-  const created = await db.record.create({ data: { tenantId, recordTypeId, title, stageKey, subtypeKey, customFields: custom } });
+  const created = await db.record.create({ data: { tenantId, recordTypeId, title, stageKey, subtypeKey, customFields: custom, ...(profile ? { appointmentAt, resourceId } : {}) } });
+  await markGeoSafe(tenantId, created); // profiled addresses are geocodable — queue pins
   return serializeRecord(created);
 }
 

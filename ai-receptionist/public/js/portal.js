@@ -2054,48 +2054,6 @@
       });
     }
 
-    // ---- Board view (FS Punch List 1 / F1) — the records-list kanban. One column
-    // per RECORD STATUS (recordStages), cards drag between columns and save the
-    // status through the EXISTING record PATCH path — permissions, audit, and
-    // automations fire exactly as a manual edit — with the calendar's toast+Undo.
-    // Exact sibling of the Calendar/Map/Gallery blocks above: same .table-layout
-    // wrapper, additive, never touches the table below. Generic for ANY module
-    // with record statuses + the Board view on (nothing work-order-specific).
-    if (moduleRecordBoardEnabled(type)) {
-      const boardLayout = el("div", "table-layout");
-      boardLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
-      const boardArea = el("div", "table-area");
-      boardLayout.appendChild(boardArea);
-      container.appendChild(boardLayout);
-      renderRecordBoard(boardArea, type, typeKey);
-    }
-
-    // ---- "Get set up" nudge (FS Punch List 1 / F7): a dismissible house
-    // empty-state card on an EMPTY Work Orders list only — three pointers and a
-    // create shortcut, nothing else. Dismissal is a local flag (no new machinery);
-    // any created work order retires it naturally.
-    if (type.key === "work_order" && !(records || []).length && localStorage.getItem("wo-setup-dismissed") !== "1") {
-      const setup = el("div", "card wo-setup");
-      const closeBtn = el("button", "icon-btn wo-setup-close", "&times;");
-      closeBtn.title = "Dismiss";
-      closeBtn.onclick = function () { try { localStorage.setItem("wo-setup-dismissed", "1"); } catch (_e) { /* private mode */ } setup.remove(); };
-      setup.appendChild(closeBtn);
-      const box = el("div", "empty");
-      box.appendChild(el("div", "empty-emoji", "&#128736;"));
-      box.appendChild(el("h3", null, "Get set up for field work"));
-      const ul = el("ul", "wo-setup-list");
-      const li1 = el("li"); li1.innerHTML = `Link each staff member to their sign-in account in <a href="#/settings/scheduling">Scheduling &amp; Resources</a> so they get a personal "My work orders" filter.`;
-      const li2 = el("li"); li2.innerHTML = `Browse the customer-update recipes (visit heads-ups, review asks) in the <a href="#/automations">Automations library</a>.`;
-      const li3 = el("li"); li3.innerHTML = `New here? The <a href="#/learn">Learning Center</a> has a short Work Orders guide.`;
-      ul.appendChild(li1); ul.appendChild(li2); ul.appendChild(li3);
-      box.appendChild(ul);
-      const first = el("button", "btn btn-primary btn-sm", "Create your first " + esc((type.label || "work order").toLowerCase()));
-      first.onclick = function () { openCreateRecord(typeKey, fields, type); };
-      box.appendChild(first);
-      setup.appendChild(box);
-      container.appendChild(setup);
-    }
-
     const tableHost = el("div");
     container.appendChild(tableHost);
     view().appendChild(container);
@@ -4683,15 +4641,17 @@
             sub.appendChild(row);
             return cb;
           }
+          // Issue 4 (comprehension): each hint names its HOME — these live inside
+          // the Calendar view now that the list page has real view tabs.
           const lanesCb = subRow({
             name: "Lanes (group by staff)", available: lanesCapable, on: selectedType.calendarLanes === true,
             hint: lanesCapable
-              ? "Day view becomes one column per staff member, with busy time from the other schedule shaded."
+              ? "In the Calendar view's day layout: one column per staff member, with busy time from the other schedule shaded."
               : "Lanes need staff assignment — available on Bookings and Work Orders.",
           });
           const trayCb = subRow({
             name: "Unscheduled tray + drag", available: true, on: selectedType.calendarTray === true,
-            hint: "A sidebar of records with no date yet; drag one onto the grid to schedule it.",
+            hint: "In the Calendar view: a sidebar of records with no date yet — drag one onto the grid to schedule it.",
           });
           function persistSub(cb, field, onMsg, offMsg) {
             cb.onchange = function () {
@@ -7278,53 +7238,93 @@
     bar.appendChild(exportBtn);
     container.appendChild(bar);
 
-    // ---- Calendar view — a month/week/day grid of this module's records. Shown when the
-    // module's Calendar view is turned on (Batch 2 generalized the old bookings-only gate).
-    // Bookings render through the identical booking path (resources, hours, sync) so their
-    // calendar is byte-for-byte unchanged; other modules lay records out by their chosen date
-    // field with a read-only grid. Wrapped in the table's own layout wrapper so its edges line
-    // up with the list below. ----
-    if (moduleCalendarEnabled(type)) {
-      const calLayout = el("div", "table-layout");
-      calLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
-      const calArea = el("div", "table-area");
-      calLayout.appendChild(calArea);
-      container.appendChild(calLayout);
-      // renderBookingCalendar internally uses the booking-specific path for the bookings
-      // module and the generic records-calendar path for everything else.
-      renderBookingCalendar(calArea, type, fields, { dateField: moduleCalendarField(type, fields) });
+    // ---- "Get set up" nudge (FS Punch List 1 / F7): a dismissible house
+    // empty-state card on an EMPTY Work Orders list only — three pointers and a
+    // create shortcut, nothing else. Dismissal is a local flag (no new machinery);
+    // any created work order retires it naturally.
+    if (type.key === "work_order" && !(records || []).length && localStorage.getItem("wo-setup-dismissed") !== "1") {
+      const setup = el("div", "card wo-setup");
+      const closeBtn = el("button", "icon-btn wo-setup-close", "&times;");
+      closeBtn.title = "Dismiss";
+      closeBtn.onclick = function () { try { localStorage.setItem("wo-setup-dismissed", "1"); } catch (_e) { /* private mode */ } setup.remove(); };
+      setup.appendChild(closeBtn);
+      const box = el("div", "empty");
+      box.appendChild(el("div", "empty-emoji", "&#128736;"));
+      box.appendChild(el("h3", null, "Get set up for field work"));
+      const ul = el("ul", "wo-setup-list");
+      const li1 = el("li"); li1.innerHTML = `Link each staff member to their sign-in account in <a href="#/settings/scheduling">Scheduling &amp; Resources</a> so they get a personal "My work orders" filter.`;
+      const li2 = el("li"); li2.innerHTML = `Browse the customer-update recipes (visit heads-ups, review asks) in the <a href="#/automations">Automations library</a>.`;
+      const li3 = el("li"); li3.innerHTML = `New here? The <a href="#/learn">Learning Center</a> has a short Work Orders guide.`;
+      ul.appendChild(li1); ul.appendChild(li2); ul.appendChild(li3);
+      box.appendChild(ul);
+      const first = el("button", "btn btn-primary btn-sm", "Create your first " + esc((type.label || "work order").toLowerCase()));
+      first.onclick = function () { openCreateRecord(typeKey, fields, type); };
+      box.appendChild(first);
+      setup.appendChild(box);
+      container.appendChild(setup);
     }
 
-    // ---- Map view — plot this module's address records as pins (OSM tiles via Leaflet),
-    // reading the coordinates the geocoding foundation caches. Shown when the module's Map view
-    // is turned on (which requires an address field). Sibling of the Calendar block above:
-    // same inline .table-layout wrapper, additive, never touches the table below. ----
-    if (moduleMapEnabled(type)) {
-      const mapLayout = el("div", "table-layout");
-      mapLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
-      const mapArea = el("div", "table-area");
-      mapLayout.appendChild(mapArea);
-      container.appendChild(mapLayout);
-      renderRecordMap(mapArea, type, fields);
-    }
+    // ==================== VIEW SWITCHER (List-Page Integrity, Issue 3) ====================
+    // ONE house tab strip (the .tabs/.tab pattern the record page + Data Administration
+    // use) replaces the old STACKED panels: List always, plus Board/Calendar/Map/Gallery
+    // per enabledViews + availability. Views are ALTERNATIVES — selecting one renders it
+    // alone in the content area (the table stays mounted but hidden off-List, so its
+    // toolbar/filter/selection machinery is preserved intact). The chosen view persists
+    // per module in localStorage, the same store the table-layout machinery uses
+    // (loadRecordLayout precedent); first visit defaults to List.
+    const availableViews = [["list", "List"]];
+    if (moduleRecordBoardEnabled(type)) availableViews.push(["board", "Board"]);
+    if (moduleCalendarEnabled(type)) availableViews.push(["calendar", "Calendar"]);
+    if (moduleMapEnabled(type)) availableViews.push(["map", "Map"]);
+    if (moduleGalleryEnabled(type)) availableViews.push(["gallery", "Gallery"]);
+    const viewKeys = availableViews.map(function (v) { return v[0]; });
+    let activeRecordView = "list";
+    try { const saved = localStorage.getItem("recordView:" + typeKey); if (saved && viewKeys.indexOf(saved) !== -1) activeRecordView = saved; } catch (_e) { /* private mode */ }
 
-    // ---- Gallery view — a visual card grid of this module's records, built from its first
-    // image field. Shown when the module's Gallery view is turned on (which requires an image
-    // field). Renders from the SAME records the table below already fetched — no extra fetch.
-    // Exact sibling of the Calendar/Map blocks: same inline .table-layout wrapper, additive,
-    // never touches the table. ----
-    if (moduleGalleryEnabled(type)) {
-      const galLayout = el("div", "table-layout");
-      galLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
-      const galArea = el("div", "table-area");
-      galLayout.appendChild(galArea);
-      container.appendChild(galLayout);
-      renderRecordGallery(galArea, type, fields, records);
+    let viewTabs = null;
+    const viewHost = el("div", "record-view-host");
+    if (availableViews.length > 1) {
+      viewTabs = el("div", "tabs record-view-tabs");
+      availableViews.forEach(function (v) {
+        const t = el("button", "tab" + (v[0] === activeRecordView ? " active" : ""), esc(v[1]));
+        t.dataset.tab = v[0];
+        t.onclick = function () { setRecordView(v[0]); };
+        viewTabs.appendChild(t);
+      });
+      container.appendChild(viewTabs);
+    }
+    container.appendChild(viewHost);
+
+    function viewWrap() {
+      // Every non-List view keeps the list page's layout wrapper so its edges line
+      // up with the table (the same wrapper the old stacked panels used).
+      const layout = el("div", "table-layout");
+      layout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
+      const area = el("div", "table-area");
+      layout.appendChild(area);
+      viewHost.appendChild(layout);
+      return area;
+    }
+    function paintRecordView() {
+      if (viewTabs) App.util.$$(".tab", viewTabs).forEach(function (t) { t.classList.toggle("active", t.dataset.tab === activeRecordView); });
+      viewHost.innerHTML = "";
+      tableHost.classList.toggle("hidden", activeRecordView !== "list");
+      if (activeRecordView === "board") renderRecordBoard(viewWrap(), type, typeKey);
+      else if (activeRecordView === "calendar") renderBookingCalendar(viewWrap(), type, fields, { dateField: moduleCalendarField(type, fields) });
+      else if (activeRecordView === "map") renderRecordMap(viewWrap(), type, fields);
+      else if (activeRecordView === "gallery") renderRecordGallery(viewWrap(), type, fields, records);
+    }
+    function setRecordView(k) {
+      if (k === activeRecordView) return;
+      activeRecordView = k;
+      try { localStorage.setItem("recordView:" + typeKey, k); } catch (_e) { /* private mode */ }
+      paintRecordView();
     }
 
     const tableHost = el("div");
     container.appendChild(tableHost);
     view().appendChild(container);
+    paintRecordView();
 
     const selCount = el("span", "bulk-count", "");
     let handle;
@@ -7798,16 +7798,17 @@
     try { [fields, fieldSections] = await Promise.all([App.portalApi("/api/fields?recordType=" + encodeURIComponent(type.key)), App.portalApi("/api/field-sections?recordType=" + encodeURIComponent(type.key)).catch(() => [])]); } catch (e) { fields = []; }
 
     const wrap = el("div", "fade-in contact-page");
+    // LIST-PAGE INTEGRITY (Issue 1): EVERY piece of module context — the back
+    // link's target, the nav-active item, and the content H1 — derives from the
+    // record's ACTUAL type through one href. Client mirror of the server's
+    // recordTypeHref (recordTypeService): the three original system types keep
+    // their bespoke routes; every other module lives at #/records/<key>.
+    const typeHref = type.key === "contact" ? "#/contacts" : type.key === "job" ? "#/jobs" : type.key === "booking" ? "#/bookings" : ("#/records/" + type.key);
     const back = el("a", "back-link", ro ? "← Back to Recycle Bin" : ("← " + esc(type.labelPlural || App.label("record","many"))));
-    back.href = ro ? "#/settings/data/recycle" : (type.key === "booking" ? "#/bookings" : "#/jobs");
-    // The /record/:id route highlights "Jobs" by default; now that we know the
-    // record's real type, re-mark the correct sidebar item so a Booking shows
-    // Bookings active (not Jobs). In the read-only preview we DON'T re-mark —
-    // Recycle Bin stays highlighted.
-    if (!ro) {
-      const navHref = type.key === "booking" ? "#/bookings" : type.key === "contact" ? "#/contacts" : "#/jobs";
-      document.querySelectorAll(".sidebar-nav .nav-item").forEach((a) => a.classList.toggle("active", a.dataset.href === navHref));
-    }
+    back.href = ro ? "#/settings/data/recycle" : typeHref;
+    // One resolution path (Issue 1): H1 + nav-active set together from typeHref.
+    // The read-only Recycle Bin preview keeps its Settings context untouched.
+    if (!ro && App.setPortalPageContext) App.setPortalPageContext(typeHref);
     wrap.appendChild(back);
 
     const head = el("div", "contact-head");

@@ -3413,18 +3413,26 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 /* FS Punch List 1 (F4): sub-options are switch rows now — same visual language as
    the view tiles, nested one step in. The old cursor:pointer label styling gave
    way to the switch's own affordance. Tokens only. */
-.mf-cal-subrow { display: flex; align-items: flex-start; gap: var(--sp-3); padding: 8px 0 8px 2px; border-top: 1px solid var(--line); }
-.mf-cal-subrow:first-child { border-top: 0; }
+.mf-cal-subrow { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-2) 0 var(--sp-2) var(--sp-1); border-top: 1px solid var(--line); }
+.mf-cal-subrow:first-child { border-top: 0; padding-top: 0; }
+.mf-cal-subrow:last-child { padding-bottom: 0; }
 .mf-cal-subrow .switch { margin-top: 2px; flex: none; }
 .mf-cal-subrow-off { opacity: 0.72; }
-.mf-cal-sub { border-left: 2px solid var(--line); padding-left: var(--sp-3); }
-.mf-view-pick { border-left: 2px solid var(--line); padding-left: var(--sp-3); }
+/* List-Page Integrity (Issue 4): the nested block gets real breathing room — a clear
+   indent off the tile's rule, a gap above the divider, and inner padding so hint
+   text never touches the rail. Spacing tokens only. */
+.mf-cal-sub { border-left: 2px solid var(--line); margin-top: var(--sp-3); margin-left: var(--sp-2); padding: var(--sp-2) 0 var(--sp-2) var(--sp-4); }
+.mf-view-pick { border-left: 2px solid var(--line); margin-top: var(--sp-3); margin-left: var(--sp-2); padding: var(--sp-2) 0 var(--sp-2) var(--sp-4); }
 /* FS Punch List 1 (F1): the records-list board rides the existing .kanban family;
    these add only layout (horizontal scroll for many status columns) + card meta. */
 .rb-board { display: flex; gap: var(--sp-3); overflow-x: auto; padding-bottom: var(--sp-2); align-items: flex-start; }
 .rb-col { flex: 0 0 240px; min-width: 240px; }
 .rb-card { margin-bottom: var(--sp-2); }
 .rb-card-meta { font-size: var(--text-xs); margin-top: 2px; }
+/* List-Page Integrity (Issue 3): the module list's view switcher — the house .tabs
+   strip above the content area; the host just spaces the active view. Tokens only. */
+.record-view-tabs { margin-top: var(--sp-2); margin-bottom: 14px; }
+.record-view-host .table-layout { margin-bottom: var(--sp-3); }
 /* FS Punch List 1 (F7): the Work Orders "get set up" nudge — house empty-state
    card with a dismiss corner and a short link list. Tokens only. */
 .wo-setup { position: relative; margin-bottom: var(--sp-3); }

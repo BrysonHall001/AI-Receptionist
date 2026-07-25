@@ -1590,6 +1590,29 @@ apiRouter.get("/records/map", async (req: Request, res: Response) => {
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
+// ---- Generic module calendar: lay ANY module's records on the calendar grid by its
+// chosen date field. Same response shape as /bookings/calendar (so one renderer draws
+// both), but with empty hours + no resources. Bookings keep /bookings/calendar above.
+// LIST-PAGE INTEGRITY (Issue 2): registered BEFORE "/records/:id" — it previously sat
+// AFTER it, so Express matched :id with id="calendar", getRecord threw, and every
+// generic module calendar rendered {error:"Record not found"} (the phantom panel). ----
+apiRouter.get("/records/calendar", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  try {
+    const type = String(req.query.type ?? "");
+    const field = String(req.query.field ?? "");
+    const from = String(req.query.from ?? "");
+    const to = String(req.query.to ?? "");
+    if (!type) { res.status(400).json({ error: "type is required" }); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      res.status(400).json({ error: "from and to must be YYYY-MM-DD" });
+      return;
+    }
+    res.json(await getModuleCalendarData(tenantId, type, field, from, to));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 apiRouter.get("/records/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
@@ -1727,26 +1750,6 @@ apiRouter.get("/bookings/calendar", async (req: Request, res: Response) => {
       return;
     }
     res.json(await getCalendarData(tenantId, from, to));
-  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
-});
-
-// ---- Generic module calendar: lay ANY module's records on the calendar grid by its
-// chosen date field. Same response shape as /bookings/calendar (so one renderer draws
-// both), but with empty hours + no resources. Bookings keep /bookings/calendar above. ----
-apiRouter.get("/records/calendar", async (req: Request, res: Response) => {
-  const tenantId = tenantOr400(req, res);
-  if (!tenantId) return;
-  try {
-    const type = String(req.query.type ?? "");
-    const field = String(req.query.field ?? "");
-    const from = String(req.query.from ?? "");
-    const to = String(req.query.to ?? "");
-    if (!type) { res.status(400).json({ error: "type is required" }); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-      res.status(400).json({ error: "from and to must be YYYY-MM-DD" });
-      return;
-    }
-    res.json(await getModuleCalendarData(tenantId, type, field, from, to));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
