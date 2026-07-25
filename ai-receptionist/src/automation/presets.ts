@@ -1097,6 +1097,41 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
     },
     note: "Fires for both outcomes. Want accepted-only? Duplicate it and set the trigger's outcome option.",
   },
+  {
+    // Recurring Work batch. Opt-in, draft-on-apply like every library entry.
+    // Scopes RecordCreated to work orders that carry a repeat plan — i.e. the
+    // successors the recurrence engine spawns (and any hand-made plan starts).
+    key: "recurring_wo_spawned_notify",
+    vertical: "general",
+    name: "Recurring work order created — notify the business",
+    description: "The moment a repeat plan drops its next visit into the tray, email the business so it gets placed on the calendar instead of sitting unnoticed.",
+    category: "pipeline",
+    summary: {
+      trigger: "Record created",
+      conditions: ["Record type is Work Order", "It carries a repeat plan"],
+      actions: ["Email the business that the next visit is waiting in the tray"],
+    },
+    shape: { trigger: "RecordCreated", actions: ["notify_business"] },
+    definition: {
+      name: "Recurring work order created — notify the business",
+      triggerType: "RecordCreated",
+      conditions: [
+        { field: "record_type", op: "is", value: "work_order" },
+        { field: "repeat_rule", op: "not_empty" },
+      ],
+      actions: [
+        {
+          type: "notify_business",
+          config: {
+            channel: "email",
+            subject: "Repeat plan: {{record_title}} is ready to place",
+            body: "The repeat plan just created the next visit for {{record_title}}.\n\nIt's waiting, date-free, in the tray — open the calendar and drop it where it fits.",
+          },
+        },
+      ],
+    },
+    note: "Also fires when someone starts a brand-new plan by hand — that first one is a recurring work order too.",
+  },
 ];
 
 export function getPreset(key: string): FlowPreset | undefined {

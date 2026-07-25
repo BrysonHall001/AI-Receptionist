@@ -3423,3 +3423,13 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 
 /* ==== Estimates lifecycle (Estimates Lifecycle batch) ==== */
 .est-status { font-size: var(--text-sm); margin-right: var(--sp-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
+
+/* ==== Recurring work (Recurring Work batch) ==== */
+.rw-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+.rw-every { flex: 0 1 72px; min-width: 0; max-width: 90px; }
+.rw-unit, .rw-wd { flex: 0 1 auto; min-width: 0; }
+.rw-until { flex: 0 1 160px; min-width: 0; max-width: 180px; }
+.rw-on { display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; font-size: var(--text-sm); font-weight: 600; color: var(--ink); }
+.rw-summary { font-size: var(--text-sm); margin: var(--sp-2) 0 0; }
+.rw-hint { font-size: var(--text-xs); margin-top: var(--sp-2); }
+.rw-mark { color: var(--accent); font-weight: 700; }

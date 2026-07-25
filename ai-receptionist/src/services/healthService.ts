@@ -249,6 +249,14 @@ async function checkFileStorage(): Promise<{ status: HealthStatus; detail: strin
   return { status: s.failed > 0 ? "warn" : "ok", detail };
 }
 
+// Recurring Work batch: spawn-sweep progress from its AppSetting counters.
+async function checkRecurringWork(): Promise<{ status: HealthStatus; detail: string }> {
+  const { getRecurringStats } = await import("./recurringWorkService");
+  const s = await getRecurringStats();
+  const detail = `${s.spawned} spawned, ${s.skipped} skipped${s.lastRunAt ? `, last pass ${s.lastRunAt.slice(0, 16).replace("T", " ")}` : ", no pass yet"}`;
+  return { status: "ok", detail };
+}
+
 const CHECKS: Record<string, { group: keyof HealthSnapshot["groups"]; fn: CheckFn }> = {
   twilio: { group: "external", fn: checkTwilio },
   openai: { group: "external", fn: checkOpenAi },
@@ -264,6 +272,7 @@ const CHECKS: Record<string, { group: keyof HealthSnapshot["groups"]; fn: CheckF
   automations: { group: "background", fn: checkAutomations },
   dripQueue: { group: "background", fn: checkDripQueue },
   fileStorage: { group: "background", fn: checkFileStorage },
+  recurringWork: { group: "background", fn: checkRecurringWork },
   requests: { group: "pulse", fn: checkRequests },
   webhooks: { group: "pulse", fn: checkWebhooks },
   errors: { group: "pulse", fn: checkErrors },

@@ -422,7 +422,10 @@ model ScheduledReport {
   // default attachment-notice text. Round-trips through the builder on edit.
   emailBody   String?
   mode        String   @default("immediate") // "immediate" | "recurring"
-  // Recurrence spec; null until the recurring scheduler lands (batch 3).
+  // Recurrence spec for the LIVE recurring-reports scheduler (reportScheduler +
+  // reportSchedule.ts — weekly cadence, DST-correct). NOTE (Recurring Work
+  // batch): this is a SEND SCHEDULE and deliberately separate from the
+  // repeat-the-work engine (services/recurrence.ts + Record.repeatRule).
   cadence     Json?
   active      Boolean  @default(true)
   createdById String?
@@ -555,6 +558,17 @@ model Record {
   // (status), NOT a RecordLink. Nullable: only bookings use it; loose id (the
   // Resource.id) with app-level integrity (delete is blocked while assigned).
   resourceId   String?
+  // Recurring Work batch (typed-and-honest, calendarLanes precedent):
+  //   repeatRule    — nullable JSON { every, unit: days|weeks|months, weekday?,
+  //                   until? }. DB-NULL = the recurrence engine never sees this
+  //                   record (rule-less rows are byte-identical, filtered out
+  //                   at the query). Work-order lifecycle only today.
+  //   spawnedNextId — the exactly-once claim + pointer: set atomically by the
+  //                   spawn sweep BEFORE the successor is created (conditional
+  //                   updateMany, the reportScheduler claim pattern), so a
+  //                   completed occurrence can never spawn twice.
+  repeatRule    Json?
+  spawnedNextId String?
   customFields Json         @default("{}")
   // Two-way Google Calendar sync (provenance/ownership). All nullable + additive:
   //   externalSource    "google" = Google-owned (read-only in Clarity); null = Clarity-native.

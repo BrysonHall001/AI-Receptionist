@@ -483,6 +483,24 @@
           ],
         },
         {
+          // Recurring Work batch. Copy avoids every seeded stage/subtype/field
+          // label as a substring (LC-3) — including the seeded work-type word
+          // this guide is conceptually about, hence "repeat plans" throughout.
+          id: "repeat-plans", features: ["rt:work_order"],
+          title: "Work that comes back",
+          blocks: [
+            { p: "Some work isn\u2019t one-and-done \u2014 the same visit, every month or every quarter, for years. Open a work order and give it a repeat plan in its Repeats card: how often (every N days, weeks, or months), optionally pinned to a weekday, optionally ending on a date. The plain-language line under the controls always tells you exactly what you\u2019ve set." },
+            { steps: [
+              "When a visit that carries a plan is marked done, the next one appears on its own: a fresh work order, no date yet, straight into the calendar\u2019s tray for the dispatcher to place.",
+              "What carries over: the title, the work type, the write-up, the address, the customer, and the plan itself. What never does: old pictures, old notes, the previously assigned staff member, or dates \u2014 every visit starts clean.",
+              "The new visit is an ordinary work order \u2014 drag it from the tray, assign it, message the customer about it; everything works exactly as usual.",
+              "Records that are part of a plan show a small \u21BB next to their name in lists and the tray.",
+              "Calling a visit off ends its plan \u2014 nothing more spawns. Setting an end date does the same, politely, when the date passes.",
+            ] },
+            { tip: "The [[#/automations|Automations]] library has an opt-in recipe that emails the business the moment a plan drops its next visit into the tray." },
+          ],
+        },
+        {
           id: "business-hours", features: ["always"],
           title: "Business hours",
           blocks: [

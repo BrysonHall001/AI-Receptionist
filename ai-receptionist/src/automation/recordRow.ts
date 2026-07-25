@@ -59,6 +59,9 @@ export function recordConditionFields(custom: FieldMeta[]): FieldMeta[] {
     // "record_type is work_order" even though every module shares the
     // RecordUpdated event stream. Relabel-safe by construction (keys never move).
     { key: "record_type", label: "Record type (by key)", type: "text" },
+    // Recurring Work batch: "" when the record has no repeat rule, a summary
+    // string when it does — so a flow can scope with is-empty / not-empty.
+    { key: "repeat_rule", label: "Repeat plan", type: "text" },
     ...custom.filter((f) => !RECORD_CONDITION_RESERVED.has(f.key)),
   ];
 }
@@ -90,6 +93,7 @@ export function recordValueOf(record: any, key: string): any {
   // the engine/sweeps as __recordTypeKey. Lets a flow scope "record_type is
   // work_order" — labels can be renamed freely, the key can't.
   if (key === "record_type") return (record as any).__recordTypeKey ?? null;
+  if (key === "repeat_rule") return record.repeatRule ? "yes" : null; // Recurring Work batch: presence marker for conditions
   // resourceName is pre-resolved by attachResourceNames(); null when unassigned.
   if (key === "resource") return record.resourceName ?? null;
   return (record.customFields || {})[key];

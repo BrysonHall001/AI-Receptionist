@@ -253,8 +253,11 @@ const EXECUTORS: Record<string, Executor> = {
   // Deliberately does NOT emit EmailSent/SMSSent or log to the lead's timeline —
   // this is an internal alert about the lead, not a message to the lead.
   async notify_business(cfg, ctx) {
-    const contact = await freshContact(ctx);
-    const tmpl = templateTokens(contact, ctx);
+    // Record-subject runs (e.g. "recurring work order created") have NO contact —
+    // the business alert still works: contact tokens simply aren't available
+    // (pipe fallbacks apply) and record tokens ride in via ctx.extraTokens.
+    const contact = ctx.contactId ? await freshContact(ctx) : null;
+    const tmpl = contact ? templateTokens(contact, ctx) : { ...(ctx.extraTokens || {}) };
     const ch = cfg.channel === "sms" || cfg.channel === "both" ? cfg.channel : "email";
     const wantEmail = ch === "email" || ch === "both";
     const wantSms = ch === "sms" || ch === "both";

@@ -6617,7 +6617,7 @@
         } else {
           items.forEach((u) => {
             const it = el("div", "cal-tray-item");
-            it.appendChild(el("div", "cal-tray-item-t", esc(u.title)));
+            it.appendChild(el("div", "cal-tray-item-t", (u.repeatRule ? '<span class="rw-mark" title="Part of a repeat plan">\u21BB</span> ' : "") + esc(u.title)));
             const sub = el("div", "cal-tray-item-sub cell-muted");
             if (u.stageLabel) { const pillEl = el("span", "pill", esc(u.stageLabel)); sub.appendChild(pillEl); }
             it.appendChild(sub);
@@ -6972,7 +6972,7 @@
   function recordColumnDefs(fields, type, resById) {
     resById = resById || {};
     const cols = [];
-    cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => esc(r.title || "Untitled") + (r.externalSource === "google" ? ` <span class="ext-badge">Google</span>` : "") });
+    cols.push({ key: "title", label: "Title", type: "text", get: (r) => r.title, text: (r) => r.title || "", cellClass: "cell-strong", render: (r) => (r.repeatRule ? `<span class="rw-mark" title="Part of a repeat plan">\u21BB</span> ` : "") + esc(r.title || "Untitled") + (r.externalSource === "google" ? ` <span class="ext-badge">Google</span>` : "") });
     // Bookings + Work Orders: the typed appointment date+time as a first-class
     // column (a real DB field, not a custom field, so it's added here explicitly).
     // Work Orders reuse the exact booking columns — adapt, don't fork — with a
@@ -7814,6 +7814,64 @@
     saveBar.appendChild(save);
     card.appendChild(saveBar);
     wrap.appendChild(card);
+
+    // ---- REPEATS (Recurring Work batch): the repeat-plan editor, work orders
+    // only. Plain-language summary; saves ride the normal record PATCH; the
+    // server's recurrence engine validates. Read-only preview + view-only users
+    // get the summary without controls.
+    if (type.key === "work_order") {
+      const rcard = el("div", "card");
+      rcard.appendChild(el("div", "drawer-section-title", "Repeats"));
+      const canEditRule = !ro && !(App.state.me && App.state.me.permEdit && App.state.me.permEdit.records === false);
+      const rr = rec.repeatRule || null;
+      const summary = el("p", "cell-muted rw-summary");
+      const WD = { 1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday", 5: "Friday", 6: "Saturday", 7: "Sunday" };
+      const describe = (r) => {
+        if (!r) return "Doesn\u2019t repeat.";
+        const unitOne = { days: "day", weeks: "week", months: "month" }[r.unit] || r.unit;
+        return "Repeats every " + (Number(r.every) === 1 ? unitOne : r.every + " " + r.unit) +
+          (r.weekday ? " (on a " + WD[r.weekday] + ")" : "") + (r.until ? " until " + r.until : "") + ".";
+      };
+      summary.textContent = describe(rr);
+      rcard.appendChild(summary);
+      if (canEditRule) {
+        const row = el("div", "rw-row");
+        const onCb = el("input"); onCb.type = "checkbox"; onCb.checked = !!rr;
+        const onL = el("label", "rw-on"); onL.appendChild(onCb); onL.appendChild(el("span", null, "Repeat this work"));
+        row.appendChild(onL);
+        const every = el("input", "input rw-every"); every.type = "number"; every.min = "1"; every.max = "365"; every.value = String((rr && rr.every) || 1);
+        const unit = el("select", "input rw-unit");
+        [["days", "days"], ["weeks", "weeks"], ["months", "months"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; unit.appendChild(o); });
+        unit.value = (rr && rr.unit) || "months";
+        const wd = el("select", "input rw-wd");
+        const anyO = el("option", null, "any day"); anyO.value = ""; wd.appendChild(anyO);
+        Object.keys(WD).forEach((k) => { const o = el("option", null, "on a " + WD[k]); o.value = k; wd.appendChild(o); });
+        wd.value = rr && rr.weekday ? String(rr.weekday) : "";
+        const until = el("input", "input rw-until"); until.type = "date"; until.value = (rr && rr.until) || "";
+        row.appendChild(el("span", "cell-muted", "every")); row.appendChild(every); row.appendChild(unit); row.appendChild(wd);
+        row.appendChild(el("span", "cell-muted", "until")); row.appendChild(until);
+        rcard.appendChild(row);
+        const saveRule = el("button", "btn secondary u-mt-2", "Save repeat plan");
+        rcard.appendChild(saveRule);
+        const controls = [every, unit, wd, until];
+        const syncOn = () => { controls.forEach((c) => { c.disabled = !onCb.checked; }); };
+        syncOn();
+        onCb.onchange = syncOn;
+        saveRule.onclick = async () => {
+          saveRule.disabled = true;
+          const rule = onCb.checked ? { every: Number(every.value) || 1, unit: unit.value, weekday: wd.value ? Number(wd.value) : null, until: until.value || null } : null;
+          try {
+            const upd = await App.portalApi("/api/records/" + rec.id, { method: "PATCH", body: JSON.stringify({ repeatRule: rule }) });
+            rec.repeatRule = upd.repeatRule;
+            summary.textContent = describe(upd.repeatRule);
+            toast(upd.repeatRule ? "Repeat plan saved" : "Repeat plan removed");
+          } catch (e) { toast(e.message, true); }
+          saveRule.disabled = false;
+        };
+        rcard.appendChild(el("p", "cell-muted rw-hint", "When a visit with a plan is marked done, the next one appears automatically in the tray \u2014 same details, same customer, fresh slate \u2014 for the dispatcher to place."));
+      }
+      wrap.appendChild(rcard);
+    }
 
     // Read-only preview: disable every Details input and hide Save — the SAME
     // technique used below for Google-synced bookings.

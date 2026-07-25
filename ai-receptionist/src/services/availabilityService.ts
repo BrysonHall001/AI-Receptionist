@@ -499,6 +499,7 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
       id: r.id, title: r.title || "Untitled",
       stageKey: r.stageKey || null, stageLabel: stageLabel(r.stageKey || null),
       subtypeKey: r.subtypeKey || null, resourceId: r.resourceId || null,
+      repeatRule: r.repeatRule ?? null, // Recurring Work batch: the tray's ↻ marker
       createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
     }));
   }

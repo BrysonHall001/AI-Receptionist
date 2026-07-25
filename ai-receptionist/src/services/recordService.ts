@@ -10,6 +10,7 @@ import { resolveRecordTypeId, validateSubtypeForType, stagesForSubtype, BOOKING_
 import { randomUUID } from "crypto";
 import { loadBookingConfig, durationForService } from "./bookingConfig";
 import { resourceExists, resolveResourceHours, resolveResourceDuration, effectiveDurationMin, listResources } from "./resourceService";
+import { validateRepeatRule, describeRepeatRule } from "./recurrence";
 import { randomValueForField } from "./contactService";
 import { RETENTION_DAYS } from "./readModels";
 import { emitEvent } from "../events/bus";
@@ -151,6 +152,7 @@ function serializeRecord(r: any) {
     // with a date-and-time picker; it is NEVER part of customFields.
     appointmentAt: r.appointmentAt ? new Date(r.appointmentAt).toISOString() : null,
     resourceId: r.resourceId ?? null,
+    repeatRule: r.repeatRule ?? null, // Recurring Work batch
     customFields: r.customFields ?? {},
     // Provenance/ownership (read-only state) so the client can hide/disable edit
     // controls for Google-owned bookings. Enforcement is server-side regardless.
@@ -304,6 +306,7 @@ export async function getModuleCalendarData(
         stageLabel: stageLabel(r.stageKey || null),
         subtypeKey: r.subtypeKey || null,
         resourceId: r.resourceId || null,
+        repeatRule: r.repeatRule ?? null, // Recurring Work batch: the tray's ↻ marker
         createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
       }));
   }
@@ -525,7 +528,7 @@ async function applyAutoNumbers(tenantId: string, recordTypeId: string, customFi
 export async function createRecord(
   tenantId: string,
   recordType: string | null | undefined,
-  input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; endAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null },
+  input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; endAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null; repeatRule?: any },
   opts: { source?: "manual" | "ai" } = {},
   actor?: EventActor
 ) {
@@ -551,7 +554,14 @@ export async function createRecord(
   customFields = await applyInvoiceDefaults(tenantId, recordTypeId, rt?.key, customFields);
   customFields = await applyAutoNumbers(tenantId, recordTypeId, customFields);
   customFields = await applyComputedTotal(tenantId, recordTypeId, customFields);
-  const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, endAt, resourceId, customFields };
+  // Recurring Work batch: an optional repeat rule, validated by the ONE engine.
+  let repeatRule: any = undefined;
+  if (input.repeatRule !== undefined) {
+    const v = validateRepeatRule(input.repeatRule);
+    if (!v.ok) throw new Error(v.error!);
+    repeatRule = v.rule ?? null;
+  }
+  const recData = { tenantId, recordTypeId, title: (input.title || "").trim() || null, stageKey: input.stageKey ?? null, subtypeKey, appointmentAt, endAt, resourceId, customFields, ...(repeatRule !== undefined ? { repeatRule } : {}) };
 
   if (isBooking) {
     const config = await loadBookingConfig(tenantId);
@@ -604,7 +614,7 @@ export async function createRecord(
   return serializeRecord(created);
 }
 
-export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; endAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null }, actor: EventActor = { type: "user" }, chainDepth = 0) {
+export async function updateRecord(tenantId: string, id: string, input: { title?: string; stageKey?: string | null; subtypeKey?: string | null; appointmentAt?: any; endAt?: any; customFields?: any; allowOverlap?: boolean; allowClosed?: boolean; resourceId?: string | null; repeatRule?: any }, actor: EventActor = { type: "user" }, chainDepth = 0) {
   const existing = await db.record.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Record not found");
   // OWNERSHIP GUARD: Google-owned bookings are read-only in Clarity. Only the sync
@@ -613,6 +623,15 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   if (existing.externalSource === "google" && !isSyncActor(actor)) throw externalReadOnlyError();
   const data: any = {};
   if (input.title !== undefined) data.title = (input.title || "").trim() || null;
+  // Recurring Work batch: rule edits ride the same write path (validated by the
+  // ONE engine; null clears). Editing the rule also re-opens the spawn claim so
+  // a plan revived after its end date can spawn again.
+  if (input.repeatRule !== undefined) {
+    const v = validateRepeatRule(input.repeatRule);
+    if (!v.ok) throw new Error(v.error!);
+    data.repeatRule = v.rule ?? null;
+    if (existing.spawnedNextId === "done") data.spawnedNextId = null;
+  }
   if (input.stageKey !== undefined) data.stageKey = input.stageKey ?? null;
   if (input.resourceId !== undefined) data.resourceId = await resolveResourceId(tenantId, input.resourceId);
   if (input.subtypeKey !== undefined) {
@@ -718,6 +737,11 @@ function diffRecordFields(existing: any, data: any, input: any): Array<{ field: 
   }
   if (input.subtypeKey !== undefined && norm(existing.subtypeKey) !== norm(data.subtypeKey)) {
     out.push({ field: "subtype", label: "Type", old: existing.subtypeKey ?? null, new: data.subtypeKey ?? null });
+  }
+  // Recurring Work batch: rule changes are audited like any field (values as
+  // plain-language summaries so the timeline reads honestly).
+  if (input.repeatRule !== undefined && JSON.stringify(existing.repeatRule ?? null) !== JSON.stringify(data.repeatRule ?? null)) {
+    out.push({ field: "repeat_rule", label: "Repeat plan", old: describeRepeatRule(existing.repeatRule) || null, new: describeRepeatRule(data.repeatRule) || null });
   }
   if (data.appointmentAt !== undefined) {
     const before = existing.appointmentAt ? new Date(existing.appointmentAt).toISOString() : null;

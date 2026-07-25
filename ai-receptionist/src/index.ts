@@ -17,6 +17,7 @@ import { recomputeUsageDaily, backfillUsageDailyIfEmpty } from "./services/usage
 import { backfillCallDurationsFromTwilio } from "./services/usageBackfillService";
 import { runBillingAutomationSweep } from "./services/billingSweepService";
 import { runFileMigrationSweep } from "./services/fileSweepService";
+import { runRecurringSpawnSweep } from "./services/recurringWorkService";
 
 // Safety net: a single in-flight request's unexpected error must NEVER take down
 // the whole server for every tenant. Node's default is to crash the process on an
@@ -118,6 +119,9 @@ async function main(): Promise<void> {
     // A no-op when storage mode is "off" (prod without keys) and once the
     // backlog is clean; errors are contained and retried next tick.
     runFileMigrationSweep().catch((e) => logger.error(`[fileSweep] pass failed (will retry next tick): ${(e as Error).message}`));
+    // Recurring Work batch: spawn successors for completed repeat-plan work
+    // orders. Rule-less records are excluded in the query; overlaps skip.
+    runRecurringSpawnSweep().catch((e) => logger.error(`[recurring] pass failed (will retry next tick): ${(e as Error).message}`));
   }, 2 * 60_000); // health: the scheduler-age check watches this tick
   automationSweepTimer.unref();
 

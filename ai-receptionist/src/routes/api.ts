@@ -1490,8 +1490,8 @@ apiRouter.post("/records", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { type, title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap, allowClosed, resourceId } = (req.body ?? {}) as any;
-    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }, { source: "manual" }, actorOf(req)));
+    const { type, title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap, allowClosed, resourceId, repeatRule } = (req.body ?? {}) as any;
+    res.json(await createRecord(tenantId, type ?? null, { title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId, repeatRule }, { source: "manual" }, actorOf(req)));
   } catch (err) {
     const code = (err as any).code;
     if (code === "overlap" || code === "closed") { res.status(409).json({ error: (err as Error).message, code }); return; }
@@ -1593,8 +1593,8 @@ apiRouter.patch("/records/:id", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const { title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap, allowClosed, resourceId } = (req.body ?? {}) as any;
-    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId }));
+    const { title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap, allowClosed, resourceId, repeatRule } = (req.body ?? {}) as any;
+    res.json(await updateRecord(tenantId, req.params.id, { title, stageKey, subtypeKey, appointmentAt, endAt, customFields, allowOverlap: allowOverlap === true, allowClosed: allowClosed === true, resourceId, repeatRule }));
   } catch (err) {
     const code = (err as any).code;
     if (code === "overlap" || code === "closed") { res.status(409).json({ error: (err as Error).message, code }); return; }

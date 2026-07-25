@@ -104,7 +104,11 @@ export async function handleEvent(event: DomainEvent): Promise<void> {
 // loaded from the record table — never the contact loader. Only actions that
 // make sense on a record are allowed; anything else is logged as a clear FAILED
 // result (never a silent green no-op).
-const RECORD_SUBJECT_ACTIONS = new Set(["create_note", "act_on_linked", "message_linked_contact", "move_to_stage", "set_record_field", "create_record_item", "update_record_item", "find_record_items", "delete_record_items"]);
+// Recurring Work batch fix: notify_business is record-legal — it messages the
+// BUSINESS (the tenant's Notify email / a configured phone), never the record,
+// so "a record has no inbox" doesn't apply to it. Contact tokens render blank
+// on record runs (pipe fallbacks apply); record tokens come from extraTokens.
+const RECORD_SUBJECT_ACTIONS = new Set(["create_note", "act_on_linked", "message_linked_contact", "notify_business", "move_to_stage", "set_record_field", "create_record_item", "update_record_item", "find_record_items", "delete_record_items"]);
 
 async function handleRecordEvent(event: DomainEvent): Promise<void> {
   const recordId = event.subject?.id || null;
