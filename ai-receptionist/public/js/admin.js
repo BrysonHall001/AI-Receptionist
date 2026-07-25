@@ -1065,12 +1065,12 @@
   }
 
   const HEALTH_GROUP_LABELS = { external: "External services", internal: "Internal", background: "Background work", pulse: "Last 24 hours" };
-  const HEALTH_CHECK_LABELS = { twilio: "Twilio", openai: "OpenAI", elevenlabs: "ElevenLabs", mapbox: "Mapbox", google: "Google Calendar", stripe: "Stripe", database: "Database", process: "Process", scheduler: "Scheduler", geoQueue: "Geocode queue", auditSweep: "Audit retention", automations: "Automations", dripQueue: "Drip queue", fileStorage: "File storage", recurringWork: "Repeat plans", requests: "Requests", webhooks: "Webhook deliveries", errors: "Errors", failedLogins: "Failed logins" };
+  const HEALTH_CHECK_LABELS = { twilio: "Twilio", openai: "OpenAI", elevenlabs: "ElevenLabs", mapbox: "Mapbox", google: "Google Calendar", stripe: "Stripe", database: "Database", process: "Process", scheduler: "Scheduler", geoQueue: "Geocode queue", auditSweep: "Audit retention", automations: "Automations", dripQueue: "Drip queue", fileStorage: "File storage", objectStorage: "Object storage", recurringWork: "Repeat plans", requests: "Requests", webhooks: "Webhook deliveries", errors: "Errors", failedLogins: "Failed logins" };
 
   // Health v2 — the two FACES. External services wear their integration LOGO (the
   // same asset set Settings -> Integrations uses); everything else wears a small
   // inline-SVG mini-widget drawn in the current accent (stroke/fill = currentColor).
-  const HEALTH_LOGOS = { twilio: "/img/twilio.png", openai: "/img/openai.webp", elevenlabs: "/img/elevenlabs.png", mapbox: "/img/mapbox.png", google: "/img/google-calendar.webp", stripe: "/img/stripe.png" };
+  const HEALTH_LOGOS = { twilio: "/img/twilio.png", openai: "/img/openai.webp", elevenlabs: "/img/elevenlabs.png", mapbox: "/img/mapbox.png", google: "/img/google-calendar.webp", stripe: "/img/stripe.png", objectStorage: "/img/cloudflare.png" };
   const HW = (inner) => `<svg class="health-widget" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
   const HEALTH_WIDGETS = {
     database: HW('<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>'),
@@ -1103,6 +1103,7 @@
     automations: "Automation runs over the last day \u2014 failures here mean an automation needs attention.",
     dripQueue: "Delayed and scheduled automation steps waiting for their moment to run.",
     fileStorage: "Where uploaded images and files live, and the sweep moving old embedded ones there.",
+    objectStorage: "Cloud file storage — whether uploads can reach it right now, and the migration sweep's last pass.",
     recurringWork: "The sweep that spawns the next visit for completed repeat-plan work orders.",
     requests: "Web traffic counters for the last day.",
     webhooks: "Inbound webhook deliveries \u2014 calls, texts, billing events, and email reports arriving from connected services.",

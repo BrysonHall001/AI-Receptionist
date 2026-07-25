@@ -452,7 +452,7 @@
           id: "work-orders", features: ["rt:work_order"],
           title: "Work orders: create, plan, and hand off",
           blocks: [
-            { p: "A work order is a visit-ready job for your field team: what needs doing, where, and who's going. Open [[#/records/work_order|Work Orders]] to see them all — each one moves through its statuses from first request to done, and can be typed when you create it (both the types and the statuses are yours to rename in [[#/settings/fields|Settings → Modules & Fields]])." },
+            { p: "A work order is a visit-ready job for your field team: what needs doing, where, and who's going. Open [[#/records/work_order|Work Orders]] to see them all — each one moves through its statuses from first request to done, and can be typed when you create it (both the types and the statuses are yours to rename in [[#/settings/fields|Settings → Modules & Fields]]). The page shows off out of the box: a Board (one column per status — drag a card to update it, with an Undo on the confirmation), a calendar, and a map all sit above the list, and each can be switched off on the module's Views tile." },
             { steps: [
               "Press Create on the [[#/records/work_order|Work Orders]] page, give it a clear title, pick its type, and fill in the details.",
               "To put it on the module's calendar, set a start — and optionally an end — in the date and time boxes.",
@@ -472,7 +472,7 @@
           id: "dispatch-calendar", features: ["calopt:scheduling"],
           title: "Dispatch on the calendar",
           blocks: [
-            { p: "Two options on a module's Views tile turn its calendar into a dispatch board. LANES splits the day into one column per staff member. The TRAY is a sidebar of the module's records that have no date yet, so brand-new work is visible instead of invisible. Both live in [[#/settings/fields|Settings → Modules & Fields]] under the Calendar tile, and both are off until you turn them on." },
+            { p: "Two options on a module's Views tile turn its calendar into a dispatch board. LANES splits the day into one column per staff member. The TRAY is a sidebar of the module's records that have no date yet, so brand-new work is visible instead of invisible. Both live in [[#/settings/fields|Settings → Modules & Fields]] under the Calendar tile — on from the start for Work Orders, off until you choose them everywhere else." },
             { steps: [
               "Drag a tray record onto the grid to give it a time — drop it inside a staff column to hand it to that person in the same motion.",
               "Drag a block up or down to change its time, or into another column to hand it to someone else. Everything snaps to a tidy 15 minutes.",

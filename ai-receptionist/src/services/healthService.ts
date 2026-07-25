@@ -249,6 +249,31 @@ async function checkFileStorage(): Promise<{ status: HealthStatus; detail: strin
   return { status: s.failed > 0 ? "warn" : "ok", detail };
 }
 
+// FS Punch List 1 (F6b): OBJECT STORAGE as an external service — mode, a cheap
+// reachability probe, and the migration sweep's last run. EXACT CALL: one
+// storage-client exists() on a key that can never exist (a HEAD under the hood
+// for R2) — auth + transport exercised, nothing written, nothing read back.
+// Probe failures degrade to "unreachable" (fail status), NEVER a crash.
+async function checkObjectStorage(): Promise<{ status: HealthStatus; detail: string }> {
+  const { storageMode, storage } = await import("./fileStorage");
+  const { getFileSweepStats } = await import("./fileSweepService");
+  const mode = storageMode();
+  if (mode === "off") return { status: "warn", detail: "Not configured (files stay embedded — the do-nothing path)" };
+  let reach = "reachable";
+  let status: HealthStatus = "ok";
+  try {
+    const t0 = Date.now();
+    await storage().exists(`healthprobe/${Date.now().toString(36)}-never-written`);
+    reach = `reachable (probe ${Date.now() - t0}ms)`;
+  } catch (e) {
+    reach = `unreachable — ${(e as Error).message.slice(0, 80)}`;
+    status = "fail";
+  }
+  const sw = await getFileSweepStats();
+  const sweep = sw.lastRunAt ? `sweep last pass ${sw.lastRunAt.slice(0, 16).replace("T", " ")}` : "sweep: no pass yet";
+  return { status, detail: `Mode ${mode} — ${reach}; ${sweep}` };
+}
+
 // Recurring Work batch: spawn-sweep progress from its AppSetting counters.
 async function checkRecurringWork(): Promise<{ status: HealthStatus; detail: string }> {
   const { getRecurringStats } = await import("./recurringWorkService");
@@ -264,6 +289,7 @@ const CHECKS: Record<string, { group: keyof HealthSnapshot["groups"]; fn: CheckF
   mapbox: { group: "external", fn: checkMapbox },
   google: { group: "external", fn: checkGoogle },
   stripe: { group: "external", fn: checkStripe },
+  objectStorage: { group: "external", fn: checkObjectStorage },
   database: { group: "internal", fn: checkDb },
   process: { group: "internal", fn: checkProcess },
   scheduler: { group: "background", fn: checkScheduler },

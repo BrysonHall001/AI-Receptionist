@@ -993,6 +993,31 @@
       }
     })();
 
+    // ---- File Storage (FS Punch List 1 / F6a): status-only, read-only, exactly the
+    // Mapbox precedent — reflects the server's storage mode from /api/settings,
+    // never credentials, never config. "r2" = cloud storage; "local" = the dev
+    // fallback; "off" = files stay embedded until the server keys are set. ----
+    (function fileStorageCard() {
+      const mode = (s.storage && s.storage.mode) || "off";
+      const cloud = mode === "r2";
+      const body = card(cloud ? "/img/cloudflare.png" : "/img/clarity-icon.svg", "File Storage");
+      const desc = el("p", "cell-muted", "Where uploaded photos and files live.");
+      desc.classList.add("intg-desc");
+      body.appendChild(desc);
+      const statLine = el("div");
+      statLine.className = "intg-toggle-row";
+      const dot = el("span");
+      dot.className = "intg-status-dot" + (mode !== "off" ? " on" : "");
+      statLine.appendChild(dot);
+      statLine.appendChild(el("span", null, cloud ? "Cloud storage active" : (mode === "local" ? "Local storage" : "Not configured")));
+      body.appendChild(statLine);
+      if (mode === "off") {
+        const note = el("p", "cell-muted", "Uploads stay embedded until the server storage keys are set.");
+        note.classList.add("intg-note");
+        body.appendChild(note);
+      }
+    })();
+
     host.appendChild(wrap);
   }
 
@@ -2029,6 +2054,48 @@
       });
     }
 
+    // ---- Board view (FS Punch List 1 / F1) — the records-list kanban. One column
+    // per RECORD STATUS (recordStages), cards drag between columns and save the
+    // status through the EXISTING record PATCH path — permissions, audit, and
+    // automations fire exactly as a manual edit — with the calendar's toast+Undo.
+    // Exact sibling of the Calendar/Map/Gallery blocks above: same .table-layout
+    // wrapper, additive, never touches the table below. Generic for ANY module
+    // with record statuses + the Board view on (nothing work-order-specific).
+    if (moduleRecordBoardEnabled(type)) {
+      const boardLayout = el("div", "table-layout");
+      boardLayout.appendChild(el("aside", "filter-rail")); // collapsed, like the table's
+      const boardArea = el("div", "table-area");
+      boardLayout.appendChild(boardArea);
+      container.appendChild(boardLayout);
+      renderRecordBoard(boardArea, type, typeKey);
+    }
+
+    // ---- "Get set up" nudge (FS Punch List 1 / F7): a dismissible house
+    // empty-state card on an EMPTY Work Orders list only — three pointers and a
+    // create shortcut, nothing else. Dismissal is a local flag (no new machinery);
+    // any created work order retires it naturally.
+    if (type.key === "work_order" && !(records || []).length && localStorage.getItem("wo-setup-dismissed") !== "1") {
+      const setup = el("div", "card wo-setup");
+      const closeBtn = el("button", "icon-btn wo-setup-close", "&times;");
+      closeBtn.title = "Dismiss";
+      closeBtn.onclick = function () { try { localStorage.setItem("wo-setup-dismissed", "1"); } catch (_e) { /* private mode */ } setup.remove(); };
+      setup.appendChild(closeBtn);
+      const box = el("div", "empty");
+      box.appendChild(el("div", "empty-emoji", "&#128736;"));
+      box.appendChild(el("h3", null, "Get set up for field work"));
+      const ul = el("ul", "wo-setup-list");
+      const li1 = el("li"); li1.innerHTML = `Link each staff member to their sign-in account in <a href="#/settings/scheduling">Scheduling &amp; Resources</a> so they get a personal "My work orders" filter.`;
+      const li2 = el("li"); li2.innerHTML = `Browse the customer-update recipes (visit heads-ups, review asks) in the <a href="#/automations">Automations library</a>.`;
+      const li3 = el("li"); li3.innerHTML = `New here? The <a href="#/learn">Learning Center</a> has a short Work Orders guide.`;
+      ul.appendChild(li1); ul.appendChild(li2); ul.appendChild(li3);
+      box.appendChild(ul);
+      const first = el("button", "btn btn-primary btn-sm", "Create your first " + esc((type.label || "work order").toLowerCase()));
+      first.onclick = function () { openCreateRecord(typeKey, fields, type); };
+      box.appendChild(first);
+      setup.appendChild(box);
+      container.appendChild(setup);
+    }
+
     const tableHost = el("div");
     container.appendChild(tableHost);
     view().appendChild(container);
@@ -3061,7 +3128,17 @@
       card.appendChild(head);
       const note = el("p", "muted");
       note.classList.add("field-note");
-      note.textContent = `Each ${(((selectedType && selectedType.label) || App.label("job","one")).toLowerCase())} type has its own pipeline. A ${(((selectedType && selectedType.label) || App.label("job","one")).toLowerCase())}'s Type chooses which pipeline its ${App.label("contact","many").toLowerCase()} move through. Renaming changes labels only; a type with ${(((selectedType && selectedType.labelPlural) || App.label("job","many")).toLowerCase())} (or a ${App.label("stage","one").toLowerCase()} with ${App.label("contact","many").toLowerCase()}) can't be deleted until those are moved.`;
+      // FS Punch List 1 (F5): this note used to say "contacts move through" for
+      // EVERY module — recruiting wording leaking from the Jobs pipeline. Now the
+      // wording matches what types actually do here: modules whose subtypes carry
+      // linked-contact pipelines keep the pipeline sentence; every other module
+      // (e.g. Work Orders) gets the honest generic one about grouping records.
+      const oneLbl = (((selectedType && selectedType.label) || App.label("job", "one")).toLowerCase());
+      const manyLbl = (((selectedType && selectedType.labelPlural) || App.label("job", "many")).toLowerCase());
+      const subtypePipelines = ((selectedType && selectedType.subtypes) || []).some(function (st) { return Array.isArray(st.stages) && st.stages.length; });
+      note.textContent = subtypePipelines
+        ? `Each ${oneLbl} type has its own pipeline. A ${oneLbl}'s Type chooses which pipeline its ${App.label("contact", "many").toLowerCase()} move through. Renaming changes labels only; a type with ${manyLbl} (or a ${App.label("stage", "one").toLowerCase()} with ${App.label("contact", "many").toLowerCase()}) can't be deleted until those are moved.`
+        : `Types group your ${manyLbl} — pick one when creating a ${oneLbl} (for example, different kinds of work). Renaming changes labels only; a type that still has ${manyLbl} can't be deleted until they're moved.`;
       card.appendChild(note);
 
       const subtypes = (((selectedType && selectedType.subtypes) || []).slice()).sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -4339,6 +4416,12 @@
   }
   // Board is offered only when the module has a pipeline AND the Board view is turned on.
   function moduleBoardEnabled(t) { return moduleHasStages(t) && moduleViewOn(t, "board"); }
+  // RECORDS-LIST board (FS Punch List 1 / F1): columns are the module's RECORD
+  // STATUSES, so availability keys on recordStages — the contact-pipeline gate
+  // above keeps powering the contact-page boards untouched.
+  function moduleRecordBoardEnabled(t) {
+    return !!(t && Array.isArray(t.recordStages) && t.recordStages.length) && moduleViewOn(t, "board");
+  }
   // Calendar is offered when the Calendar view is turned on (the editor only lets it be
   // turned on for modules that actually have a date field).
   function moduleCalendarEnabled(t) { return moduleViewOn(t, "calendar"); }
@@ -4526,10 +4609,13 @@
           return { cb, row };
         }
 
-        // BOARD — available only with a pipeline.
+        // BOARD — available with a pipeline (contact boards) OR record statuses
+        // (the records-list kanban, FS Punch List 1 / F1). One rule, stated honestly.
+        const hasRecordStatuses = Array.isArray(selectedType.recordStages) && selectedType.recordStages.length > 0;
+        const boardAvailable = hasPipeline || hasRecordStatuses;
         const board = viewRow({
-          name: "Board", available: hasPipeline, on: moduleViewOn(selectedType, "board"),
-          hint: hasPipeline ? "A kanban of records grouped by pipeline stage." : "Turn on a pipeline to enable the Board view.",
+          name: "Board", available: boardAvailable, on: moduleViewOn(selectedType, "board"),
+          hint: hasRecordStatuses ? "A kanban on the list page — one column per status; drag cards to update." : (hasPipeline ? "A kanban of records grouped by pipeline stage." : "Add statuses (or turn on a pipeline) to enable the Board view."),
         });
         board.cb.onchange = function () {
           board.cb.disabled = true;
@@ -4582,13 +4668,18 @@
         if (calAvailable && moduleViewOn(selectedType, "calendar")) {
           const lanesCapable = usesTypedAppointment(selectedType);
           const sub = el("div", "mf-view-pick mf-cal-sub");
+          // FS Punch List 1 (F4): the sub-options wear the SAME switch the view
+          // tiles wear (label.switch + track), nested + indented — no more bare
+          // checkboxes beside switch-styled rows. Wiring is unchanged.
           function subRow(o) {
-            const row = el("label", "mf-cal-subrow" + (o.available ? "" : " mf-cal-subrow-off"));
+            const row = el("div", "mf-cal-subrow" + (o.available ? "" : " mf-cal-subrow-off"));
+            const toggle = el("label", "switch");
             const cb = el("input"); cb.type = "checkbox"; cb.checked = !!o.on; cb.disabled = !canEdit || !o.available;
+            toggle.appendChild(cb); toggle.appendChild(el("span", "switch-track"));
             const txt = el("span", "mf-cal-subtxt");
             txt.appendChild(el("span", "mf-cal-subname", o.name));
             txt.appendChild(el("span", "cell-muted mf-view-hint", o.hint));
-            row.appendChild(cb); row.appendChild(txt);
+            row.appendChild(toggle); row.appendChild(txt);
             sub.appendChild(row);
             return cb;
           }
@@ -7025,6 +7116,111 @@
     return cols;
   }
 
+  // ---- RECORDS-LIST BOARD (FS Punch List 1 / F1) ------------------------------
+  // A kanban of a module's records grouped by RECORD STATUS. Data comes from the
+  // board endpoint (server-gated on the same rule as the client); a drag between
+  // columns is ONE PATCH through the existing record update route, so permissions,
+  // audit, and automations behave identically to editing the record by hand. The
+  // confirmation toast carries a one-level Undo (the scheduling calendar's house
+  // pattern). View-only users (permEdit.records === false) get no drag handles.
+  async function renderRecordBoard(host, type, typeKey) {
+    host.innerHTML = "";
+    let data;
+    try { data = await App.portalApi("/api/records/board?type=" + encodeURIComponent(typeKey)); }
+    catch (e) { host.appendChild(el("p", "cell-muted", esc(e.message || "The board couldn't load."))); return; }
+    if (!data || !data.boardEnabled || !Array.isArray(data.columns) || !data.columns.length) return;
+    const canEditRecs = !(App.state && App.state.me && App.state.me.permEdit && App.state.me.permEdit.records === false);
+    const records = Array.isArray(data.records) ? data.records : [];
+    const known = {};
+    data.columns.forEach(function (c) { known[c.key] = true; });
+    const hasStray = records.some(function (r) { return !r.stageKey || !known[r.stageKey]; });
+
+    const board = el("div", "kanban rb-board");
+    let dragHandled = false;
+
+    function cardFor(r) {
+      const cd = el("div", "kanban-card rb-card");
+      cd.appendChild(el("div", "kanban-card-name", esc(r.title || "Untitled")));
+      const bits = [];
+      if (r.subtypeKey) { const st = ((type.subtypes || []).find(function (x) { return x.key === r.subtypeKey; })); bits.push(esc((st && st.label) || r.subtypeKey)); }
+      if (r.appointmentAt) bits.push(esc(fmtAppt(r.appointmentAt)));
+      if (bits.length) cd.appendChild(el("div", "cell-muted rb-card-meta", bits.join(" \u00b7 ")));
+      if (r.repeatRule) cd.appendChild(el("span", "rw-mark", "\u21bb"));
+      cd.onclick = function () { App.go("#/record/" + r.id); };
+      if (canEditRecs) {
+        cd.draggable = true;
+        cd.addEventListener("dragstart", function (e) {
+          dragHandled = false;
+          cd.classList.add("dragging");
+          try { e.dataTransfer.setData("text/plain", r.id); } catch (_e) { /* older engines */ }
+          cd._rec = r;
+        });
+        cd.addEventListener("dragend", function () {
+          cd.classList.remove("dragging");
+          board.querySelectorAll(".kanban-col--over").forEach(function (c) { c.classList.remove("kanban-col--over"); });
+          if (!dragHandled) renderRecordBoard(host, type, typeKey); // snap back
+        });
+      }
+      return cd;
+    }
+
+    async function moveCard(r, toKey, toLabel) {
+      const prior = { stageKey: r.stageKey || null };
+      try { await App.portalApi("/api/records/" + r.id, { method: "PATCH", body: JSON.stringify({ stageKey: toKey }) }); }
+      catch (e) { toast(e.message || "Could not move", true); renderRecordBoard(host, type, typeKey); return; }
+      toast("Moved to " + toLabel, false, {
+        label: "Undo",
+        onClick: async function () {
+          try { await App.portalApi("/api/records/" + r.id, { method: "PATCH", body: JSON.stringify(prior) }); toast("Undone"); }
+          catch (e) { toast(e.message || "Could not undo", true); }
+          renderRecordBoard(host, type, typeKey);
+        },
+      });
+      renderRecordBoard(host, type, typeKey);
+    }
+
+    function columnFor(key, label, rows) {
+      const col = el("div", "kanban-col rb-col");
+      const head = el("div", "kanban-col-head");
+      head.appendChild(el("span", "kanban-col-title", esc(label)));
+      head.appendChild(el("span", "kanban-col-count cell-muted", String(rows.length)));
+      col.appendChild(head);
+      const cards = el("div", "kanban-cards");
+      rows.forEach(function (r) { cards.appendChild(cardFor(r)); });
+      col.appendChild(cards);
+      if (canEditRecs && key !== null) {
+        col.addEventListener("dragover", function (e) {
+          const d = board.querySelector(".kanban-card.dragging");
+          if (!d) return;
+          e.preventDefault();
+          col.classList.add("kanban-col--over");
+        });
+        col.addEventListener("dragleave", function () { col.classList.remove("kanban-col--over"); });
+        col.addEventListener("drop", function (e) {
+          const d = board.querySelector(".kanban-card.dragging");
+          if (!d || !d._rec) return;
+          e.preventDefault();
+          col.classList.remove("kanban-col--over");
+          if ((d._rec.stageKey || null) === key) { return; } // same column — nothing to save
+          dragHandled = true;
+          moveCard(d._rec, key, label);
+        });
+      }
+      return col;
+    }
+
+    data.columns.forEach(function (c) {
+      board.appendChild(columnFor(c.key, c.label, records.filter(function (r) { return r.stageKey === c.key; })));
+    });
+    // Records whose status is blank (or points at a removed status) still show —
+    // in a read-only "No status" column — so the board never hides work. Dragging
+    // OUT of it assigns a status; nothing can be dropped INTO it.
+    if (hasStray) {
+      board.appendChild(columnFor(null, "No status", records.filter(function (r) { return !r.stageKey || !known[r.stageKey]; })));
+    }
+    host.appendChild(board);
+  }
+
   async function renderRecordList(typeKey) {
     loading();
     let records, fields, types, resources;
@@ -7037,7 +7233,22 @@
         // only) and, on Work Orders, the "My work orders" preset resolution.
         (typeKey === "booking" || typeKey === "work_order") ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
       ]);
-    } catch (e) { view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
+    } catch (e) {
+      // FS Punch List 1 (F3): never surface a raw server message ("Record not
+      // found") as a page — a friendly house card with a retry, instead.
+      view().innerHTML = "";
+      const errCard = el("div", "card");
+      const errBox = el("div", "empty");
+      errBox.appendChild(el("div", "empty-emoji", "&#128268;"));
+      errBox.appendChild(el("h3", null, "This list couldn\u2019t load"));
+      errBox.appendChild(el("p", "cell-muted", esc(e.message || "Something went wrong talking to the server.")));
+      const retry = el("button", "btn btn-primary btn-sm", "Try again");
+      retry.onclick = function () { renderRecordList(typeKey); };
+      errBox.appendChild(retry);
+      errCard.appendChild(errBox);
+      view().appendChild(errCard);
+      return;
+    }
     const type = (types || []).find((t) => t.key === typeKey) || { key: typeKey, label: App.label("record","one"), labelPlural: "Records", stages: [], recordStages: [] };
     const titleEl = document.querySelector(".page-title"); if (titleEl) titleEl.textContent = type.labelPlural || type.label;
 
@@ -7562,7 +7773,24 @@
     loading();
     let rec, types;
     try { [rec, types] = await Promise.all([App.portalApi("/api/records/" + id + (ro ? "?includeDeleted=1" : "")), App.portalApi("/api/record-types").catch(() => [])]); }
-    catch (e) { if (ro) return recycleMissing(); view().innerHTML = `<div class="card"><p class="cell-muted">${esc(e.message)}</p></div>`; return; }
+    catch (e) {
+      if (ro) return recycleMissing();
+      // FS Punch List 1 (F3): the raw server message ("Record not found") used to
+      // render bare here — the walkthrough's leak. A friendly house card instead,
+      // with a way back (we can't know the record's module when the load failed).
+      view().innerHTML = "";
+      const errCard = el("div", "card");
+      const errBox = el("div", "empty");
+      errBox.appendChild(el("div", "empty-emoji", "&#128269;"));
+      errBox.appendChild(el("h3", null, "This record isn\u2019t here"));
+      errBox.appendChild(el("p", "cell-muted", "It may have been deleted, or the link is out of date. Check the Recycle Bin if you think it was removed by mistake."));
+      const backBtn = el("button", "btn btn-primary btn-sm", "Go back");
+      backBtn.onclick = function () { if (history.length > 1) history.back(); else App.go("#/dashboard"); };
+      errBox.appendChild(backBtn);
+      errCard.appendChild(errBox);
+      view().appendChild(errCard);
+      return;
+    }
     if (ro && !rec.deletedAt) return recycleMissing(); // restored/purged since the bin was opened
     const type = (types || []).find((t) => t.id === rec.recordTypeId) || { key: "record", label: App.label("record","one"), labelPlural: "Records", stages: [], recordStages: [] };
     let fields = [];

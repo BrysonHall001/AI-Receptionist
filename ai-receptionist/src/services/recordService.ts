@@ -402,6 +402,24 @@ export async function getModuleMapData(tenantId: string, recordType: string) {
   return { addressFieldKey: primary.key as string | null, geocodingEnabled: enabled, records };
 }
 
+// ---- BOARD data (FS Punch List 1 / F1) --------------------------------------
+// The records-list kanban: one column per RECORD STATUS (recordStages), cards =
+// the module's live records. Server-gated the same way the client gates: the
+// Board view must be ON and the module must have record statuses — a module
+// without either gets an explicitly-disabled payload (never leaked cards).
+// Read-only: drags write through the EXISTING updateRecord path (permissions,
+// audit, automations identical to a manual edit) — this endpoint never mutates.
+export async function getModuleBoardData(tenantId: string, recordType: string) {
+  const recordTypeId = await resolveRecordTypeId(tenantId, recordType);
+  const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
+  const recStages: any[] = (rt && rt.recordStages) || [];
+  const enabled = !!(rt && Array.isArray(rt.enabledViews) && rt.enabledViews.indexOf("board") !== -1);
+  if (!enabled || !recStages.length) return { boardEnabled: false, columns: [], records: [] };
+  const columns = recStages.slice().sort((a: any, b: any) => (a.order || 0) - (b.order || 0)).map((s: any) => ({ key: s.key, label: s.label }));
+  const rows = await db.record.findMany({ where: { tenantId, recordTypeId, deletedAt: null }, orderBy: { updatedAt: "desc" } });
+  return { boardEnabled: true, columns, records: rows.map(serializeRecord) };
+}
+
 export async function getRecord(tenantId: string, id: string, opts: { includeDeleted?: boolean } = {}) {
   const where: any = { id, tenantId };
   if (!opts.includeDeleted) where.deletedAt = null; // live page excludes deleted; the bin preview includes it

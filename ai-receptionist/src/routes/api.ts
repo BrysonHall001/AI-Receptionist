@@ -16,7 +16,7 @@ import { listFields, createField, updateField, deleteField, reorderFields, setFi
 import { listSections, createSection, renameSection, reorderSections, deleteSection } from "../services/fieldSectionService";
 import { listRecordTypes, addStage, renameStage, reorderStages, deleteStage, addSubtype, renameSubtype, reorderSubtypes, deleteSubtype, setRecordTypeLabels, createRecordType, setPipelineEnabled, setModuleViews } from "../services/recordTypeService";
 import { addRecordStatus, renameRecordStatus, reorderRecordStatuses, deleteRecordStatus } from "../services/recordTypeService";
-import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, notifyOnMyWay, listDeletedRecords, restoreRecords, purgeExpiredRecords, getModuleCalendarData, getModuleMapData } from "../services/recordService";
+import { listRecords, getRecord, createRecord, updateRecord, softDeleteRecords, bulkUpdateRecordField, generateDummyRecord, bulkCreateRecords, addRecordNote, notifyOnMyWay, listDeletedRecords, restoreRecords, purgeExpiredRecords, getModuleCalendarData, getModuleMapData, getModuleBoardData } from "../services/recordService";
 import { listLinksForRecord, listLinksForContact, createLink, updateLink, softDeleteLink } from "../services/recordLinkService";
 import { listPipelineLinks } from "../services/pipelineService";
 import { listTimeline, log as logActivity } from "../services/activityService";
@@ -1479,6 +1479,15 @@ apiRouter.patch("/fields/:id/section", async (req: Request, res: Response) => {
 });
 
 // ---- Records (generic record-type instances, e.g. Jobs) ----
+// Board view data (FS Punch List 1 / F1). Registered BEFORE /records/:id-style
+// routes ever match; tenant-scoped by the same guard as the list.
+apiRouter.get("/records/board", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  const type = req.query.type ? String(req.query.type) : null;
+  res.json(await getModuleBoardData(tenantId, type || ""));
+});
+
 apiRouter.get("/records", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
@@ -2049,7 +2058,10 @@ export async function getSettingsHandler(req: Request, res: Response) {
   }
   // Geocoding status (Map view): a platform-wide, read-only flag from the server's
   // MAPBOX_TOKEN gate — same for every tenant, never exposes the token itself.
-  res.json({ ...portal, geocoding: { enabled: geocodingEnabled() } });
+  // File-storage status (FS Punch List 1 / F6a): mode only — read-only, platform-
+  // level, mirrors the Mapbox precedent (no credentials, no config, ever).
+  const { storageMode } = await import("../services/fileStorage");
+  res.json({ ...portal, geocoding: { enabled: geocodingEnabled() }, storage: { mode: storageMode() } });
 }
 apiRouter.get("/settings", getSettingsHandler);
 
