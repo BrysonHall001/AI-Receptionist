@@ -3390,6 +3390,19 @@
           <input id="fm-an-pad" class="input" type="number" min="0" max="12" placeholder="e.g. 4 → 0001" />
           <p class="muted fm-inline-note">A unique number is assigned automatically when a record is saved. Example: prefix “INV-” + pad 4 → INV-0001.</p>
         </div>
+        <div id="fm-libook-wrap" class="u-hidden">
+          <label class="field-label">Catalog source</label>
+          <select id="fm-li-module" class="input"></select>
+          <div id="fm-li-map" class="u-hidden">
+            <label class="field-label">Row description comes from</label>
+            <select id="fm-li-desc" class="input"></select>
+            <label class="field-label">Unit price comes from</label>
+            <select id="fm-li-price" class="input"></select>
+            <label class="field-label">Extra details (appended to the description)</label>
+            <select id="fm-li-details" class="input"></select>
+          </div>
+          <p class="muted fm-inline-note">Rows can be picked from this module's records (copied in, then freely editable). Typing rows by hand always works.</p>
+        </div>
         <label class="form-check"><input type="checkbox" id="fm-required" ${existing && existing.required ? "checked" : ""} /> <span>Required</span></label>
         <button id="fm-save" class="btn btn-primary btn-block u-mt-14">${isEdit ? "Save field" : "Add field"}</button>
       </div>`;
@@ -3406,10 +3419,49 @@
     const anCfg = (existing && existing.options && !Array.isArray(existing.options)) ? existing.options : {};
     if (anCfg.prefix != null) inner.querySelector("#fm-an-prefix").value = String(anCfg.prefix);
     if (anCfg.pad != null) inner.querySelector("#fm-an-pad").value = String(anCfg.pad);
+    // PRICE BOOK: catalog-source config for line_items — stored on `options` as
+    // an object { source: { module, map } } (the autonumber options-as-object
+    // precedent). "None" = free entry = today's behavior, byte-for-byte.
+    const liWrap = inner.querySelector("#fm-libook-wrap");
+    const liModule = inner.querySelector("#fm-li-module");
+    const liMap = inner.querySelector("#fm-li-map");
+    const liDesc = inner.querySelector("#fm-li-desc");
+    const liPrice = inner.querySelector("#fm-li-price");
+    const liDetails = inner.querySelector("#fm-li-details");
+    const liCfg = (existing && existing.options && !Array.isArray(existing.options) && existing.options.source) ? existing.options.source : null;
+    (function buildModuleOptions() {
+      liModule.innerHTML = "";
+      const none = document.createElement("option"); none.value = ""; none.textContent = "None — free entry only"; liModule.appendChild(none);
+      (App.state.recordTypes || [])
+        .filter((t) => t.key !== (recordTypeKey || "contact")) // cycle-safe: never its own module
+        .forEach((t) => { const o = document.createElement("option"); o.value = t.key; o.textContent = t.labelPlural || t.label || t.key; liModule.appendChild(o); });
+      if (liCfg && liCfg.module) liModule.value = liCfg.module;
+    })();
+    async function buildMapSelects() {
+      const mod = liModule.value;
+      liMap.classList.toggle("u-hidden", !mod);
+      if (!mod) return;
+      let srcFields = [];
+      try { srcFields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(mod)); } catch (e) { srcFields = []; }
+      const fill = (sel, allowTitle, preferTypes, chosen) => {
+        sel.innerHTML = "";
+        if (sel === liDetails) { const n = document.createElement("option"); n.value = ""; n.textContent = "— none —"; sel.appendChild(n); }
+        if (allowTitle) { const t = document.createElement("option"); t.value = "__title"; t.textContent = "Record title"; sel.appendChild(t); }
+        const sorted = srcFields.slice().sort((a, b) => (preferTypes.includes(a.type) ? 0 : 1) - (preferTypes.includes(b.type) ? 0 : 1));
+        sorted.forEach((f) => { const o = document.createElement("option"); o.value = f.key; o.textContent = f.label; sel.appendChild(o); });
+        if (chosen != null && Array.from(sel.options).some((o) => o.value === chosen)) sel.value = chosen;
+      };
+      fill(liDesc, true, ["text"], liCfg ? liCfg.map && liCfg.map.description : "__title");
+      fill(liPrice, false, ["currency", "number"], liCfg ? liCfg.map && liCfg.map.unitPrice : (srcFields.some((f) => f.key === "price") ? "price" : null));
+      fill(liDetails, true, ["textarea", "text"], liCfg ? (liCfg.map && liCfg.map.details) || "" : "");
+    }
+    liModule.onchange = buildMapSelects;
+    if (liCfg) buildMapSelects();
     function syncType() {
       optsWrap.classList.toggle("u-hidden", !App.fields.TYPES_WITH_OPTIONS.includes(typeSel.value));
       formulaWrap.classList.toggle("u-hidden", typeSel.value !== "formula");
       anWrap.classList.toggle("u-hidden", typeSel.value !== "autonumber");
+      liWrap.classList.toggle("u-hidden", typeSel.value !== "line_items");
     }
     typeSel.onchange = syncType;
     syncType();
@@ -3424,6 +3476,13 @@
         const padRaw = inner.querySelector("#fm-an-pad").value.trim();
         const pad = padRaw === "" ? 0 : Math.max(0, Math.min(12, parseInt(padRaw, 10) || 0));
         options = { prefix: inner.querySelector("#fm-an-prefix").value || "", pad: pad };
+      }
+      if (type === "line_items") {
+        // Price Book: None → [] (free entry, today's shape); a module → the
+        // source object. Server-side validateLineItemsSource is the enforcer.
+        options = liModule.value
+          ? { source: { module: liModule.value, map: { description: liDesc.value || "__title", unitPrice: liPrice.value || "", details: liDetails.value || "" } } }
+          : [];
       }
       const formula = type === "formula" ? inner.querySelector("#fm-formula").value : null;
       const required = inner.querySelector("#fm-required").checked;

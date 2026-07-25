@@ -322,6 +322,52 @@
           const tot = el("tr", "li-total-row"); const tl = el("td", "li-total-label"); tl.colSpan = 3; tl.textContent = "Total"; tot.appendChild(tl); tot.appendChild(el("td", "li-num li-grand", esc(fmtMoney(lineItemsTotal(items))))); tbl.appendChild(tot);
           node.appendChild(tbl);
         } else {
+          // PRICE BOOK: when this field carries a catalog source, the Description
+          // cell becomes a typeahead over the source module's records (link-picker
+          // pattern: prefetch once, filter client-side, dropdown of matches).
+          // Picking COPIES values into the ordinary row — no reference, every cell
+          // editable after — and free typing always works. If the source module is
+          // gone (or the fetch fails), the editor degrades to plain free entry
+          // with a quiet hint, never an error.
+          const liSrc = (def.options && !Array.isArray(def.options) && def.options.source) ? def.options.source : null;
+          let catalog = null; // null = no source / unavailable; [] = loaded but empty
+          let catalogHint = "";
+          if (liSrc && liSrc.module) {
+            const known = (window.App && App.state && App.state.recordTypes || []).some(function (t) { return t.key === liSrc.module; });
+            if (!known) { catalogHint = "Catalog unavailable — rows are free entry."; }
+            else {
+              App.portalApi("/api/records?type=" + encodeURIComponent(liSrc.module))
+                .then(function (rows) { catalog = Array.isArray(rows) ? rows : []; })
+                .catch(function () { catalogHint = "Catalog unavailable — rows are free entry."; drawHint(); });
+            }
+          }
+          const hintEl = el("div", "cell-muted li-cat-hint u-hidden");
+          function drawHint() { hintEl.textContent = catalogHint; hintEl.classList.toggle("u-hidden", !catalogHint); }
+          const catValue = function (rec, mapped) {
+            if (!mapped) return "";
+            if (mapped === "__title") return rec.title || "";
+            const v = (rec.customFields || {})[mapped];
+            return v == null ? "" : v;
+          };
+          const catMatches = function (q) {
+            if (!catalog || !catalog.length) return [];
+            const needle = q.trim().toLowerCase();
+            const scored = catalog.filter(function (rec) {
+              if (!needle) return true;
+              const hay = [rec.title, (rec.customFields || {}).sku, catValue(rec, (liSrc.map || {}).details)].map(function (x) { return String(x == null ? "" : x).toLowerCase(); }).join(" ");
+              return hay.indexOf(needle) !== -1;
+            });
+            return scored.slice(0, 8);
+          };
+          const applyPick = function (r, rec) {
+            const map = liSrc.map || {};
+            const title = String(catValue(rec, map.description || "__title") || rec.title || "");
+            const details = String(catValue(rec, map.details) || "");
+            r.description = details && details !== title ? title + " \u2014 " + details : title;
+            const price = Number(catValue(rec, map.unitPrice));
+            r.unitPrice = isFinite(price) && price > 0 ? price : 0;
+            if (!Number(r.quantity)) r.quantity = 1;
+          };
           const tbl = el("table", "li-table");
           const grand = el("span", "li-grand");
           function drawTotals() {
@@ -335,7 +381,36 @@
             tbl.appendChild(head);
             work.forEach((r, idx) => {
               const tr = el("tr", "li-row");
-              const dTd = el("td"); const dIn = el("input", "input"); dIn.value = r.description || ""; dIn.placeholder = "Description"; dIn.oninput = () => { r.description = dIn.value; commit(); }; dTd.appendChild(dIn); tr.appendChild(dTd);
+              const dTd = el("td", "li-desc-cell"); const dIn = el("input", "input"); dIn.value = r.description || "";
+              dIn.placeholder = liSrc ? "Description \u2014 type to search the catalog" : "Description";
+              const drop = el("div", "link-results u-hidden li-cat-results");
+              function hideDrop() { drop.classList.add("u-hidden"); drop.innerHTML = ""; }
+              function showDrop() {
+                if (!liSrc || catalog == null) return;
+                const matches = catMatches(dIn.value);
+                drop.innerHTML = "";
+                if (!matches.length) { hideDrop(); return; }
+                matches.forEach(function (rec) {
+                  const it = el("button", "link-result link-result-tight li-cat-item");
+                  it.type = "button";
+                  const price = Number(catValue(rec, (liSrc.map || {}).unitPrice));
+                  it.innerHTML = '<span class="link-result-title">' + esc(rec.title || "Untitled") + '</span>' +
+                    '<span class="link-result-meta">' + esc(((rec.customFields || {}).sku ? (rec.customFields || {}).sku + " \u00b7 " : "") + (isFinite(price) && price > 0 ? fmtMoney(price) : "")) + "</span>";
+                  // mousedown (not click) so the pick lands before the input's blur hides the list
+                  it.addEventListener("mousedown", function (e) {
+                    e.preventDefault();
+                    applyPick(r, rec);
+                    dIn.value = r.description; hideDrop(); render(); commit();
+                  });
+                  drop.appendChild(it);
+                });
+                drop.classList.remove("u-hidden");
+              }
+              dIn.oninput = () => { r.description = dIn.value; commit(); showDrop(); };
+              dIn.onfocus = () => { if (liSrc && !dIn.value.trim()) showDrop(); };
+              dIn.addEventListener("blur", function () { setTimeout(hideDrop, 120); });
+              dIn.addEventListener("keydown", function (e) { if (e.key === "Escape") hideDrop(); });
+              dTd.appendChild(dIn); if (liSrc) dTd.appendChild(drop); tr.appendChild(dTd);
               const qTd = el("td", "li-num"); const qIn = el("input", "input li-qty"); qIn.type = "number"; qIn.min = "0"; qIn.step = "any"; qIn.value = r.quantity == null ? "" : r.quantity; qIn.oninput = () => { r.quantity = qIn.value; drawTotals(); commit(); }; qTd.appendChild(qIn); tr.appendChild(qTd);
               const pTd = el("td", "li-num"); const pWrap = el("div", "form-currency li-price-wrap"); pWrap.appendChild(el("span", "form-prefix", "$")); const pIn = el("input", "input li-price"); pIn.type = "number"; pIn.min = "0"; pIn.step = "0.01"; pIn.inputMode = "decimal"; pIn.value = r.unitPrice == null ? "" : r.unitPrice; pIn.oninput = () => { r.unitPrice = pIn.value; drawTotals(); commit(); }; pWrap.appendChild(pIn); pTd.appendChild(pWrap); tr.appendChild(pTd);
               const tTd = el("td", "li-num"); tTd.appendChild(el("span", "li-row-total", fmtMoney(lineItemRowTotal(r)))); tr.appendChild(tTd);
@@ -347,6 +422,8 @@
           }
           render();
           node.appendChild(tbl);
+          drawHint();
+          node.appendChild(hintEl);
           const addBtn = el("button", "btn btn-ghost btn-sm li-add", "+ Add row"); addBtn.type = "button";
           addBtn.onclick = () => { work.push({ description: "", quantity: "", unitPrice: "" }); render(); };
           node.appendChild(addBtn);

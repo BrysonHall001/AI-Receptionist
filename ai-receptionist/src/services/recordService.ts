@@ -676,6 +676,20 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   // Keep the computed Total in sync when line items change on update (Task 2). No-op for
   // modules without a line_items + "total" field pair. Invoice number is create-only.
   if (data.customFields !== undefined) data.customFields = await applyComputedTotal(tenantId, existing.recordTypeId, data.customFields);
+  // PRICE BOOK (B) — the smallest honest "mark paid" tie-in: on an INVOICE, when
+  // the status field moves to "Paid" and paid_date is blank, prefill today
+  // (YYYY-MM-DD, the date type's stored shape). The field stays fully editable —
+  // this is a nudge, not workflow. Gated on the paid_date field actually
+  // existing, so a portal that removed it is untouched.
+  if (rt && rt.key === INVOICE_RECORD_TYPE_KEY && data.customFields !== undefined) {
+    const prevStatus = String(((existing.customFields || {}) as any).status ?? "");
+    const nextStatus = String((data.customFields as any).status ?? "");
+    const paidBlank = !String((data.customFields as any).paid_date ?? "").trim();
+    if (nextStatus === "Paid" && prevStatus !== "Paid" && paidBlank) {
+      const pdDef = await db.fieldDef.findFirst({ where: { tenantId, recordTypeId: existing.recordTypeId, key: "paid_date" } });
+      if (pdDef) (data.customFields as any).paid_date = new Date().toISOString().slice(0, 10);
+    }
+  }
   const isBooking = !!(rt && rt.key === BOOKING_RECORD_TYPE_KEY);
   // Scheduled-window END (Work Orders foundation): writable for NON-booking types
   // only — native bookings keep endAt null (service-derived duration; only the

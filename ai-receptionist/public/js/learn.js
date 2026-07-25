@@ -195,6 +195,7 @@
           blocks: [
             { p: "An estimate can go straight to the customer: open it and tap Send to customer. That creates a private online page \u2014 no sign-in needed \u2014 showing your business name and logo, the line items, the amount, and any note, with Accept and Decline buttons and room for a short comment. You can email the link in one tap or copy it and send it however you like." },
             { steps: [
+              "Building the line items is quicker now: with a price list kept in your catalog module, typing in a row\u2019s description searches it \u2014 pick an entry and its wording and price drop in, ready to adjust. Typed-by-hand rows work exactly as before.",
               "Sending stamps how long the page stays open (30 days unless the estimate\u2019s expiry-date field already says otherwise) and marks it Sent.",
               "The estimate\u2019s page in Clarity shows where things stand: not viewed yet, viewed, the customer\u2019s decision with their comment, or link expired.",
               "The decision writes itself onto the estimate and the customer\u2019s timeline the moment it happens \u2014 and the [[#/automations|Automations]] library has an opt-in recipe that emails you the outcome instantly.",

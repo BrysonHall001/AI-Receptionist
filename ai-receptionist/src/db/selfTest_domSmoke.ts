@@ -195,6 +195,77 @@ async function main() {
   check(!!bookCalTab && (await until(() => /AM|PM/.test((($(".record-view-host") || { textContent: "" }).textContent || "")))),
     "bookings calendar mounts unchanged through its own feed (regression)");
 
+  // ---- PRICE BOOK: the line-items editor + field-modal machinery ----
+  // An estimate with a picked-shape row; its module list is enough to open the
+  // record page, where the "All fields" edit form builds the line-items editor.
+  await db.record.create({ data: { tenantId: T, recordTypeId: (await db.recordType.findFirst({ where: { tenantId: T, key: "product" } })).id, title: "Smoke Widget", customFields: { price: 25, sku: "SW-1", description: "for the harness" } } });
+  const estType = await db.recordType.findFirst({ where: { tenantId: T, key: "estimate" } });
+  const estRec = await db.record.create({ data: { tenantId: T, recordTypeId: estType.id, title: "PB Smoke Estimate", customFields: { status: "Draft", line_items: [{ description: "Smoke Widget \u2014 for the harness", quantity: 1, unitPrice: 25 }] } } });
+  await go("#/record/" + estRec.id);
+  // The record page's Details card mounts the line-items editor inline (always
+  // editable). Its values live in input .value (not textContent), so assert there.
+  const roOk = await until(() => bodyText().includes("$25.00") && $$(".form-line-items .input").some((i: any) => String(i.value || "").includes("Smoke Widget")));
+  check(roOk, "PRICE BOOK: a picked-row estimate renders its stored row values (shape unchanged)");
+  const editorUp = await until(() => !!$(".form-line-items .li-desc-cell"));
+  check(editorUp, "\u2026and the editor carries the catalog cell (source configured)");
+  const typeaheadOk = await until(() => {
+    const inp: any = $(".form-line-items .li-desc-cell .input");
+    if (!inp) return false;
+    inp.value = "Smoke"; inp.dispatchEvent(new w.Event("input"));
+    return $$(".li-cat-item").length > 0 && ($$(".li-cat-item")[0].textContent || "").includes("Smoke Widget");
+  }, 12000);
+  check(typeaheadOk, "\u2026typing in the Description cell surfaces the catalog match (typeahead live)");
+  // The field modal: line_items type shows the Catalog source block.
+  await go("#/settings/fields");
+  await until(() => bodyText().includes("Modules & Fields") || !!$(".content-page-title"));
+  // Select the Estimates module on the fields page, then EDIT its Line items
+  // field (field creation is drag-from-library; Edit opens the modal).
+  w.App.state.fieldsType = "estimate"; w.App._route();
+  const rowUp = await until(() => bodyText().includes("Line items") && $$("button").some((b: any) => b.textContent.trim() === "Edit"));
+  if (!rowUp) console.log("    [debug fields]", bodyText().slice(0, 500).replace(/\s+/g, " "));
+  let modalOk = false, liBlockOk = false, preselected = false, noneOk = false;
+  if (rowUp) {
+    // The Edit button that shares a field ROW with the "Line items" label — walk
+    // to the nearest ancestor holding a .field-row-label and require the match
+    // THERE (an unbounded walk matches the whole card and picks the wrong row).
+    const editBtns = $$("button").filter((b: any) => b.textContent.trim() === "Edit");
+    const liEdit = editBtns.find((b: any) => {
+      let n: any = b;
+      for (let i = 0; i < 6 && n; i++) {
+        const lbl = n.querySelector && n.querySelector(".field-row-label");
+        if (lbl) return (lbl.textContent || "").trim() === "Line items";
+        n = n.parentElement;
+      }
+      return false;
+    });
+    if (liEdit) (liEdit as any).click();
+    modalOk = await until(() => !!$("#fm-type") && ($("#fm-type") as any).value === "line_items");
+    liBlockOk = await until(() => { const wrap: any = $("#fm-libook-wrap"); return !!wrap && !wrap.classList.contains("u-hidden") && !!$("#fm-li-module"); });
+    preselected = liBlockOk && (($("#fm-li-module") as any).value === "product");
+    const opts: any[] = liBlockOk ? Array.from(($("#fm-li-module") as any).options) : [];
+    noneOk = opts.length > 0 && /None/.test(opts[0].textContent) && !opts.some((o: any) => o.value === "estimate");
+  }
+  check(modalOk && liBlockOk, "field modal: the estimate's Line items field opens with the Catalog source block visible");
+  check(preselected, "\u2026the stored source round-trips (Products preselected)");
+  check(noneOk, "\u2026None (free entry only) leads the list and the field's OWN module is excluded (cycle-safe)");
+  const closeFm: any = $("#fm-close"); if (closeFm) closeFm.click();
+
+  // Unconfigured control: a plain line-items field (no source) must mount the
+  // ORIGINAL editor — no catalog dropdown machinery, plain placeholder.
+  const { createRecordType: mkType } = require("../services/recordTypeService");
+  const { createField: mkField } = require("../services/fieldService");
+  const plainType: any = await mkType(T, "PBPlain");
+  const plainField: any = await mkField(T, { label: "Bill lines", type: "line_items" }, plainType.key);
+  const plainRec = await db.record.create({ data: { tenantId: T, recordTypeId: plainType.id, title: "Plain One", customFields: { [plainField.key]: [{ description: "Hand-typed", quantity: 1, unitPrice: 3 }] } } });
+  await go("#/record/" + plainRec.id);
+  await until(() => bodyText().includes("Plain One"));
+  const editBtn2 = $$("button").find((b: any) => /^Edit/.test(b.textContent.trim()));
+  if (editBtn2) (editBtn2 as any).click();
+  const plainUp = await until(() => !!$(".form-line-items"));
+  const plainInp: any = $(".form-line-items .input");
+  check(plainUp && !$(".li-cat-results") && !!plainInp && plainInp.placeholder === "Description",
+    "an UNCONFIGURED line-items field mounts the original editor — no catalog machinery, byte-identical placeholder");
+
   // ---- Contacts regression: the page that silently swallowed misplaced code
   // in batch 14 must mount clean (the harness exists so this class never ships).
   await go("#/contacts");

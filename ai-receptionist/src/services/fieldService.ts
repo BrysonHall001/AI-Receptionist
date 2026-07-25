@@ -102,11 +102,41 @@ async function uniqueKey(tenantId: string, recordTypeId: string, base: string): 
   return key;
 }
 
+// ---- PRICE BOOK (catalog-backed line items) ---------------------------------
+// A line_items field's `options` may be an OBJECT carrying a catalog source
+// (autonumber precedent: options-as-object { prefix, pad }):
+//   { source: { module: "<recordType key>", map: { description, unitPrice, details? } } }
+// map values are the SOURCE module's field keys, or "__title" for the record's
+// built-in Title. Validation (fail-closed, save-time only — the editor itself
+// degrades gracefully at runtime if the source later disappears):
+//   - the source module must exist for this tenant and must not be the field's
+//     own module (cycle-safe: a catalog can't source itself);
+//   - every mapped key must be "__title" or a real field on the source module.
+// A missing/empty source (or array options) means free entry — today's behavior.
+export async function validateLineItemsSource(tenantId: string, ownModuleTypeId: string, options: any): Promise<void> {
+  if (!options || Array.isArray(options) || typeof options !== "object") return; // free entry
+  const src = (options as any).source;
+  if (!src) return;
+  const moduleKey = String(src.module || "").trim();
+  if (!moduleKey) throw new Error("Pick a source module, or choose None (free entry only).");
+  const rt = await (prisma as any).recordType.findFirst({ where: { tenantId, key: moduleKey } });
+  if (!rt) throw new Error("The catalog source module doesn't exist.");
+  if (rt.id === ownModuleTypeId) throw new Error("A line-items field can't use its own module as the catalog.");
+  const srcFields = await prisma.fieldDef.findMany({ where: { tenantId, recordTypeId: rt.id } as any, select: { key: true } });
+  const keys = new Set((srcFields as any[]).map((f) => f.key));
+  const map = (src.map && typeof src.map === "object") ? src.map : {};
+  for (const k of ["description", "unitPrice", "details"]) {
+    const v = map[k];
+    if (v == null || v === "") continue;
+    if (v !== "__title" && !keys.has(String(v))) throw new Error(`The mapped field "${v}" doesn't exist on the source module.`);
+  }
+}
+
 export async function createField(tenantId: string, input: {
   label: string;
   type: string;
   required?: boolean;
-  options?: string[];
+  options?: any; // string[] for select types; an OBJECT for autonumber + line-items catalog config
   formula?: string | null;
   sectionId?: string | null;
 }, recordType?: string | null) {
@@ -120,6 +150,7 @@ export async function createField(tenantId: string, input: {
     const section = await (prisma as any).fieldSection.findFirst({ where: { id: sectionId, tenantId } });
     if (!section || (section.recordTypeId && section.recordTypeId !== recordTypeId)) sectionId = null;
   }
+  if (input.type === "line_items") await validateLineItemsSource(tenantId, recordTypeId, input.options);
   const key = await uniqueKey(tenantId, recordTypeId, slugify(input.label));
   const max = await prisma.fieldDef.aggregate({ where: { tenantId, recordTypeId } as any, _max: { order: true } });
   const order = (max._max.order ?? -1) + 1;
@@ -146,7 +177,7 @@ export async function updateField(tenantId: string, id: string, input: {
   label?: string;
   type?: string;
   required?: boolean;
-  options?: string[];
+  options?: any; // string[] for select types; an OBJECT for autonumber + line-items catalog config
   formula?: string | null;
 }) {
   const field = await prisma.fieldDef.findUnique({ where: { id } });
@@ -154,7 +185,13 @@ export async function updateField(tenantId: string, id: string, input: {
   const data: any = {};
   if (input.label != null) data.label = input.label.trim();
   if (input.required != null) data.required = !!input.required;
-  if (input.options != null) data.options = input.options as any;
+  if (input.options != null) {
+    // Price Book: a line-items field's catalog source is validated on every save
+    // (module exists, not itself, mapped keys real). Other types unchanged.
+    const effType = input.type != null && !field.system ? input.type : field.type;
+    if (effType === "line_items") await validateLineItemsSource(tenantId, field.recordTypeId as any, input.options);
+    data.options = input.options as any;
+  }
   if (input.formula != null) data.formula = input.formula;
   // System fields can be relabeled but their type/key are locked.
   if (!field.system && input.type != null) {

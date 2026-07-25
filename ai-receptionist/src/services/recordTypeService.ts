@@ -70,9 +70,15 @@ const DEFAULT_INVOICE_FIELDS = [
   { key: "status", label: "Status", type: "single_select", order: 1, options: ["Draft", "Sent", "Paid", "Void"] },
   { key: "invoice_date", label: "Invoice date", type: "date", order: 2, options: [] as string[] },
   { key: "due_date", label: "Due date", type: "date", order: 3, options: [] as string[] },
-  { key: "line_items", label: "Line items", type: "line_items", order: 4, options: [] as string[] },
+  // Price Book: catalog-backed by default — rows can be picked from Products
+  // (copy-on-pick; free typing always allowed; owner-configurable per field).
+  { key: "line_items", label: "Line items", type: "line_items", order: 4, options: { source: { module: "product", map: { description: "__title", unitPrice: "price", details: "description" } } } as any },
   { key: "total", label: "Total", type: "currency", order: 5, options: [] as string[] },
   { key: "notes", label: "Notes", type: "textarea", order: 6, options: [] as string[] },
+  // Price Book batch (B): invoice completion fields. Ordinary editable custom
+  // fields; "mark paid" nudges paid_date=today server-side (editable after).
+  { key: "paid_date", label: "Paid date", type: "date", order: 7, options: [] as string[] },
+  { key: "payment_method", label: "Payment method", type: "single_select", order: 8, options: ["Cash", "Check", "Card", "Bank transfer", "Other"] },
 ];
 
 /** Seed Invoices' default fields (idempotent by key). Runs once, at type creation. */
@@ -93,7 +99,7 @@ export async function ensureInvoiceDefaultFields(tenantId: string, recordTypeId:
 // deliberately have NO "name"/"title" field — the record's built-in Title is their name,
 // matching the Equipment precedent (avoids a duplicate). Estimates' "total" is a currency
 // field keyed "total" so it auto-computes from the line_items rows (same as Invoices).
-type SeedField = { key: string; label: string; type: string; order: number; options?: string[]; required?: boolean };
+type SeedField = { key: string; label: string; type: string; order: number; options?: any; required?: boolean }; // options: string[] for selects; an OBJECT for the line-items catalog source (Price Book)
 
 /** Shared idempotent seeder used by the pre-built modules' onCreate hooks. */
 async function seedDefaultFields(tenantId: string, recordTypeId: string, defs: SeedField[]): Promise<void> {
@@ -144,7 +150,8 @@ const DEFAULT_ESTIMATE_FIELDS: SeedField[] = [
   { key: "status", label: "Status", type: "single_select", order: 1, options: ["Draft", "Sent", "Accepted", "Declined", "Expired"] },
   { key: "estimate_date", label: "Estimate date", type: "date", order: 2 },
   { key: "valid_until", label: "Valid until", type: "date", order: 3 },
-  { key: "line_items", label: "Line items", type: "line_items", order: 4 },
+  // Price Book: catalog-backed by default (same source object as Invoices).
+  { key: "line_items", label: "Line items", type: "line_items", order: 4, options: { source: { module: "product", map: { description: "__title", unitPrice: "price", details: "description" } } } as any },
   { key: "total", label: "Total", type: "currency", order: 5 }, // auto-computed from line_items
   { key: "notes", label: "Notes", type: "textarea", order: 6 },
 ];
