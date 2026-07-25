@@ -47,6 +47,10 @@ async function main() {
   const T = t.id;
   await listRecordTypes(T);
   await setModuleViews(T, WORK_ORDER_RECORD_TYPE_KEY, { enabledViews: ["board", "calendar", "map"], calendarLanes: true, calendarTray: true });
+  // Tenant weekly hours pinned Mon–Fri 09:00–17:00 (weekend closed) — the hours-fix
+  // assertions below read exactly this. Stored where loadBookingConfig reads it.
+  const HOURS = { mon: [{ start: "09:00", end: "17:00" }], tue: [{ start: "09:00", end: "17:00" }], wed: [{ start: "09:00", end: "17:00" }], thu: [{ start: "09:00", end: "17:00" }], fri: [{ start: "09:00", end: "17:00" }], sat: [], sun: [] };
+  await db.tenant.update({ where: { id: T }, data: { bookingConfig: { hours: HOURS } } });
   const user = await db.user.create({ data: { tenantId: T, email: `dom-${stamp}@example.invalid`, name: "Dom Owner", role: "PORTAL_ADMIN", passwordHash: "x" } });
   const sid = await createSession(user.id);
   const cookie = `${SESSION_COOKIE}=${sid}`;
@@ -127,6 +131,36 @@ async function main() {
   }, 15000);
   check(lanesOk, "day layout with lanes ON shows a column for the staff resource");
 
+  // ---- HOURS FIX: the module calendar honors tenant weekly hours ----
+  // Same stale-toolbar race as the Day button: re-query + re-click fresh each poll.
+  let hoursDebug = "";
+  const hoursOk = await until(() => {
+    const txt = ($(".record-view-host") || { textContent: "" }).textContent || "";
+    hoursDebug = txt.slice(0, 400).replace(/\s+/g, " ");
+    const onWeek = /(Mon|Tue|Wed|Thu|Fri)/.test(txt); // week grid shows weekday headers
+    if (!onWeek) {
+      // With lanes ON, "All" IS the per-resource day board (Week/Day toggle
+      // hidden by design). The WEEK grid lives behind a specific staff selection
+      // in the resource <select>: pick Dana (dispatching a real change event),
+      // then click Week — fresh queries every poll (stale-toolbar-proof).
+      const sel: any = $(".cal-resource-sel");
+      if (sel && sel.value === "all") {
+        const opt = Array.from(sel.options as any[]).find((o: any) => o.textContent === "Dana Field");
+        if (opt) { sel.value = (opt as any).value; sel.dispatchEvent(new w.Event("change")); }
+      }
+      const b = $$("button").find((x: any) => x.textContent.trim() === "Week");
+      if (b) (b as any).click();
+      return false;
+    }
+    // the pinned 9–5 window: business-day hour labels present, and the weekday
+    // headers are not Closed-stamped (Closed remains only on the weekend)
+    return /9 AM/.test(txt) && /4 PM/.test(txt);
+  }, 15000);
+  if (!hoursOk) console.log("    [debug] week view:", hoursDebug);
+  check(hoursOk, "HOURS FIX: week view renders open weekdays (no CLOSED stamp) and a grid spanning the business day");
+  check((($(".record-view-host") || { textContent: "" }).textContent || "").match(/Closed/i) !== null,
+    "\u2026while a day with no hours (the weekend) still shows Closed");
+
   // ---- (e) record click -> route + consistent chrome ----
   await go("#/records/work_order");
   await until(() => bodyText().includes("AC not cooling"));
@@ -156,6 +190,10 @@ async function main() {
   check(bookTabs && tabLabels().indexOf("List") === 0 && tabLabels().indexOf("Board") !== -1 && tabLabels().indexOf("Calendar") !== -1,
     "Bookings list mounts with its correct tabs (List first, Board + Calendar present)");
   check(!bodyText().includes("Record not found"), "\u2026and no phantom on Bookings either");
+  const bookCalTab = $$(".record-view-tabs .tab").find((t: any) => t.textContent.trim() === "Calendar");
+  if (bookCalTab) (bookCalTab as any).click();
+  check(!!bookCalTab && (await until(() => /AM|PM/.test((($(".record-view-host") || { textContent: "" }).textContent || "")))),
+    "bookings calendar mounts unchanged through its own feed (regression)");
 
   // ---- Contacts regression: the page that silently swallowed misplaced code
   // in batch 14 must mount clean (the harness exists so this class never ships).

@@ -336,7 +336,16 @@ export async function getModuleCalendarData(
       });
   }
 
-  const out: any = { from: fromDate, to: toDate, hours: {}, bookings, resources };
+  // HOURS FIX (work-orders calendar): the feed's `hours` used to be the original
+  // booking-parity stub ({}), so the renderer — which derives day open/closed and
+  // the grid's display range from feed hours — stamped every day CLOSED for any
+  // generic module. Populate it from the SAME resolved source the bookings feed
+  // uses (loadBookingConfig → tenant weekly hours). Per-resource lane hours were
+  // already carried (listResources serializes each resource's own hours; the
+  // renderer's resolveHours falls back to this feed value), so lanes needed only
+  // this business-hours fallback. Renderer + bookings feed untouched.
+  const hoursConfig = await loadBookingConfig(tenantId);
+  const out: any = { from: fromDate, to: toDate, hours: hoursConfig.hours || {}, bookings, resources };
   if (unscheduled !== undefined) out.unscheduled = unscheduled;
   if (busy !== undefined) out.busy = busy;
   return out;
