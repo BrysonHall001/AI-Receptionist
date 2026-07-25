@@ -56,8 +56,8 @@ async function main() {
   let dbTerms: string[] = [];
   let dbOk = false;
   try {
-    const { PrismaClient } = require("@prisma/client");
-    const prisma = new PrismaClient();
+    // Shared client (honors the sandbox adapter) instead of a raw PrismaClient.
+    const { prisma } = require("./client");
     const SYSTEM_LABELS = new Set(["contact", "contacts", "job", "jobs", "job opening", "job openings", "booking", "bookings", "equipment", "invoice", "invoices", "vehicle", "vehicles", "property", "properties", "product", "products", "estimate", "estimates", "task", "tasks", "work order", "work orders", "record", "records"]); // Work Orders batch: work_order + the Job Opening relabel are SYSTEM-seeded module labels (same treatment as jobs/bookings); seeded stage/subtype/field labels stay forbidden, as ever
     const types = await prisma.recordType.findMany({ select: { label: true, labelPlural: true, system: true, stages: true, recordStages: true, subtypes: true } });
     const fields = await prisma.fieldDef.findMany({ select: { label: true } });
@@ -73,9 +73,27 @@ async function main() {
     const GENERIC = new Set(["name", "phone", "email", "status", "notes", "title", "type", "date", "address", "created", "amount", "description", "stage", "line items"]); // "line items" is a BUILT-IN field TYPE name the product itself displays (fields.js TYPE_LABELS) — same legitimate-docs class as "date"/"address" (Estimates Lifecycle batch; the docs already named the type before estimates could be enabled)
     for (const f of fields) { const t = String(f.label || "").trim().toLowerCase(); if (t.length >= 4 && !GENERIC.has(t)) dbTerms.push(t); }
     for (const sec of sections) { const t = String(sec.label || "").trim().toLowerCase(); if (t.length >= 4 && !GENERIC.has(t) && t !== "details" && t !== "contact details" && t !== "preferences") dbTerms.push(t); }
-    await prisma.$disconnect();
+    // SHIPPED-SEED VOCABULARY (field-services era): the product now SEEDS modules
+    // whose field/stage labels are ordinary English words (Products: Price/Unit/
+    // Category; Vehicles: Make/Year/Color; Equipment: Brand; the job pipeline's
+    // Applied/Offer/...). Those are OUR shipped vocabulary — the same legitimate-
+    // docs class as the system module labels above — not live-portal data. Derive
+    // the set MECHANICALLY: everything a FRESH tenant is seeded with is, by
+    // definition, shipped vocabulary; only labels beyond that set are a human's
+    // own words and stay forbidden. (No hardcoded list — future seeds auto-join.)
+    const { listRecordTypes: lcListTypes } = require("../services/recordTypeService");
+    const seedTenant = await prisma.tenant.create({ data: { name: `lc3-seedscan-${Date.now()}`, notifyEmail: `lc3-${Date.now()}@example.invalid`, billingStatus: "active" } });
+    const seedVocab = new Set<string>();
+    const addSeed = (v: any) => { const t = String(v || "").trim().toLowerCase(); if (t) seedVocab.add(t); };
+    for (const t of await lcListTypes(seedTenant.id)) {
+      addSeed(t.label); addSeed(t.labelPlural);
+      for (const coll of [t.stages, t.recordStages, t.subtypes]) for (const st of Array.isArray(coll) ? coll : []) { addSeed(st && st.label); for (const sub of (st && st.stages) || []) addSeed(sub && sub.label); }
+    }
+    for (const f of await prisma.fieldDef.findMany({ where: { tenantId: seedTenant.id }, select: { label: true } })) addSeed((f as any).label);
+    await prisma.tenant.delete({ where: { id: seedTenant.id } }).catch(() => { /* best-effort */ });
+    await (prisma as any).$disconnect?.();
     dbOk = true;
-    dbTerms = [...new Set(dbTerms)];
+    dbTerms = [...new Set(dbTerms)].filter((t) => !seedVocab.has(t));
     const hits = dbTerms.filter((t) => ALL.includes(t));
     check(hits.length === 0, `NO live-portal label appears anywhere in the docs (${dbTerms.length} DB labels checked)${hits.length ? " — LEAKED: " + hits.join(", ") : ""}`);
   } catch (e: any) {

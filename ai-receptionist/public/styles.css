@@ -3448,6 +3448,16 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .li-cat-item .link-result-title { display: block; }
 .li-cat-item .link-result-meta { display: block; }
 .li-cat-hint { font-size: var(--text-xs); margin-top: 4px; }
+/* LINK CONVENTIONS: record-page panels — rows of linked records with key facts;
+   the add box hosts the shared .link-results dropdown. Tokens only. */
+.conv-panel .conv-row { display: flex; align-items: center; gap: var(--sp-2); padding: 6px 0; border-top: 1px solid var(--line); }
+.conv-panel .conv-row:first-child { border-top: 0; }
+.conv-title { font-weight: 600; color: var(--ink); }
+.conv-facts { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
+.conv-date { font-size: var(--text-xs); }
+.conv-x { flex: none; }
+.conv-add { position: relative; margin-top: var(--sp-2); }
+.conv-empty { padding: 4px 0; }
 .mf-cal-subtxt { display: flex; flex-direction: column; min-width: 0; }
 .mf-cal-subname { font-size: var(--text-sm); font-weight: 600; color: var(--ink); }
 .toast-action { margin-left: var(--sp-3); border: 1px solid var(--line); background: var(--surface); color: var(--accent); font-size: var(--text-xs); font-weight: 600; border-radius: var(--radius-sm, 8px); padding: 2px var(--sp-2); cursor: pointer; }

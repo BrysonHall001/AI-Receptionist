@@ -117,8 +117,11 @@ async function main() {
   await db.fieldDef.deleteMany({ where: { tenantId: T3, recordTypeId: t3InvType, key: { in: ["paid_date", "payment_method"] } } });
   await db.fieldDef.create({ data: { tenantId: T3, recordTypeId: t3InvType, scope: "record", key: "paid_date", label: "My own paid date", type: "text", required: false, options: [], order: 30, system: false } });
   await db.fieldDef.updateMany({ where: { tenantId: T3, recordTypeId: t3InvType, key: "line_items" }, data: { options: [] } });
-  await db.$executeRawUnsafe(MIGRATION_SQL);
-  await db.$executeRawUnsafe(MIGRATION_SQL); // twice — idempotence
+  // The engine runs raw SQL as a PREPARED statement — one command per call
+  // (multi-statement files die with Postgres 42601). Execute the migration
+  // statement-by-statement, twice, to prove idempotence.
+  const stmts = MIGRATION_SQL.split(/;\s*\n/).map((x) => x.trim()).filter((x) => x.replace(/--.*$/gm, "").trim().length);
+  for (let pass = 0; pass < 2; pass++) for (const st of stmts) await db.$executeRawUnsafe(st);
   const ownPaid = await db.fieldDef.findMany({ where: { tenantId: T3, recordTypeId: t3InvType, key: "paid_date" } });
   const pm3 = await db.fieldDef.findMany({ where: { tenantId: T3, recordTypeId: t3InvType, key: "payment_method" } });
   const li3 = await db.fieldDef.findFirst({ where: { tenantId: T3, recordTypeId: t3InvType, key: "line_items" } });

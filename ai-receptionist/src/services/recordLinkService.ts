@@ -50,7 +50,9 @@ export async function listLinksForRecord(tenantId: string, recordId: string) {
   const recById: any = {}; recRows.forEach((r: any) => (recById[r.id] = r));
 
   const contactDisp = (c: any) => (c ? { id: c.id, name: c.name, email: c.email, phone: c.phone } : null);
-  const recDisp = (r: any) => (r ? { id: r.id, title: r.title, recordTypeId: r.recordTypeId, stageKey: r.stageKey, subtypeKey: r.subtypeKey ?? null, customFields: r.customFields ?? {} } : null);
+  // appointmentAt/createdAt: additive (LINK CONVENTIONS — the panels' key-facts
+  // date rule reads the module's calendarDateField value or falls back to these).
+  const recDisp = (r: any) => (r ? { id: r.id, title: r.title, recordTypeId: r.recordTypeId, stageKey: r.stageKey, subtypeKey: r.subtypeKey ?? null, customFields: r.customFields ?? {}, appointmentAt: r.appointmentAt ?? null, createdAt: r.createdAt ?? null } : null);
 
   const out: any[] = [];
   // (A) forward — historical shape preserved byte-for-byte.

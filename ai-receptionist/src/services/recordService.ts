@@ -1132,6 +1132,9 @@ interface DummyProfile {
   assignResource?: boolean;
   /** Field keys whose values the profile supplies (skipped by the generic filler). */
   ownedFieldKeys?: string[];
+  /** Link the dummy to a demo record in this module with this role, when the
+   *  module exists for the tenant (LINK CONVENTIONS batch: panels demo). */
+  linkTo?: { moduleKey: string; role: string; demoTitles: string[] };
 }
 const DUMMY_RECORD_PROFILES: Record<string, DummyProfile> = {
   [WORK_ORDER_RECORD_TYPE_KEY]: {
@@ -1160,6 +1163,7 @@ const DUMMY_RECORD_PROFILES: Record<string, DummyProfile> = {
     halfScheduled: true,
     assignResource: true,
     ownedFieldKeys: ["description", "service_address", "photos", "internal_notes"],
+    linkTo: { moduleKey: "equipment", role: "serviced_equipment", demoTitles: ["Rooftop AC \u2014 Unit 3", "Basement furnace", "Garage water heater"] },
   },
 };
 
@@ -1209,6 +1213,20 @@ export async function generateDummyRecord(tenantId: string, recordType?: string 
   const subtypeKey = subtypes.length ? rndPick(subtypes).key : null;
   const created = await db.record.create({ data: { tenantId, recordTypeId, title, stageKey, subtypeKey, customFields: custom, ...(profile ? { appointmentAt, resourceId } : {}) } });
   await markGeoSafe(tenantId, created); // profiled addresses are geocodable — queue pins
+  // LINK CONVENTIONS (D): link the dummy to a demo record of the convention's
+  // module (find-or-create by title) so the record-page panels demo out of the
+  // box. Writes through createLink — the ONE link machinery, role included.
+  if (profile?.linkTo) {
+    const lt = profile.linkTo;
+    const targetType = await (db as any).recordType.findFirst({ where: { tenantId, key: lt.moduleKey } });
+    if (targetType) {
+      const title2 = rndPick(lt.demoTitles);
+      let target = await db.record.findFirst({ where: { tenantId, recordTypeId: targetType.id, title: title2, deletedAt: null } });
+      if (!target) target = await db.record.create({ data: { tenantId, recordTypeId: targetType.id, title: title2, customFields: {} } });
+      const { createLink } = require("./recordLinkService");
+      await createLink(tenantId, { recordId: created.id, parentType: "record", parentId: target.id, role: lt.role }).catch(() => { /* duplicate link on re-roll: fine */ });
+    }
+  }
   return serializeRecord(created);
 }
 

@@ -538,10 +538,51 @@ export function serializeRecordType(rt: any) {
 }
 
 /** All record types for a portal (ensures every system type exists first). */
+// ---- LINK CONVENTIONS (typed roles over record links) -----------------------
+// Registry defaults, seeded per tenant idempotently by the (tenantId, role,
+// fromKey, toKey) unique — the same "defaults become tenant data" pattern the
+// module fields/views use. Conventions only ADD presentation: no existing link
+// is modified, no role is ever written onto a link by seeding (the collision
+// rule): role-less links between these modules stay raw forever unless a user
+// links through the panel.
+const DEFAULT_LINK_CONVENTIONS = [
+  { fromKey: WORK_ORDER_RECORD_TYPE_KEY, toKey: "equipment", role: "serviced_equipment", labelFrom: "Serviced equipment", labelTo: "Service history", cardinality: "many", surfaced: true },
+  { fromKey: WORK_ORDER_RECORD_TYPE_KEY, toKey: "estimate", role: "converted_from_estimate", labelFrom: "Source estimate", labelTo: "Created work order", cardinality: "one", surfaced: true },
+  // Recurrence lineage: role DECLARED (one concept, no parallel notion) but NOT
+  // surfaced as a panel — the record page keeps its subtle lineage line.
+  { fromKey: "record", toKey: "record", role: "recurrence_successor", labelFrom: "Created by plan", labelTo: "Next in plan", cardinality: "one", surfaced: false },
+];
+
+export async function ensureLinkConventions(tenantId: string): Promise<void> {
+  const have = await (db as any).linkConvention.findMany({ where: { tenantId }, select: { role: true, fromKey: true, toKey: true } });
+  const key = (c: any) => c.role + "|" + c.fromKey + "|" + c.toKey;
+  const haveSet = new Set(have.map(key));
+  const toCreate = DEFAULT_LINK_CONVENTIONS.filter((c) => !haveSet.has(key(c)));
+  if (toCreate.length) {
+    await (db as any).linkConvention.createMany({ data: toCreate.map((c) => ({ tenantId, ...c })), skipDuplicates: true });
+  }
+}
+
+export async function listLinkConventions(tenantId: string) {
+  await ensureLinkConventions(tenantId);
+  return (db as any).linkConvention.findMany({ where: { tenantId }, orderBy: { createdAt: "asc" } });
+}
+
 export async function listRecordTypes(tenantId: string) {
   await ensureAllSystemRecordTypes(tenantId);
+  await ensureLinkConventions(tenantId);
   const rows = await db.recordType.findMany({ where: { tenantId }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] });
-  return rows.map(serializeRecordType);
+  // Convention resolution rides the EXISTING record-types serialization (the
+  // registry payload the client already caches in App.state.recordTypes) — no
+  // new endpoint. Each type carries the conventions it participates in.
+  const conventions = await (db as any).linkConvention.findMany({ where: { tenantId } });
+  return rows.map((rt: any) => {
+    const out: any = serializeRecordType(rt);
+    out.linkConventions = conventions
+      .filter((c: any) => c.fromKey === rt.key || c.toKey === rt.key)
+      .map((c: any) => ({ fromKey: c.fromKey, toKey: c.toKey, role: c.role, labelFrom: c.labelFrom, labelTo: c.labelTo, cardinality: c.cardinality, surfaced: c.surfaced }));
+    return out;
+  });
 }
 
 /** Resolve a record type given a key ("contact"/"job"/…) or an id, to its id. Defaults to contact. */

@@ -266,6 +266,25 @@ async function main() {
   check(plainUp && !$(".li-cat-results") && !!plainInp && plainInp.placeholder === "Description",
     "an UNCONFIGURED line-items field mounts the original editor — no catalog machinery, byte-identical placeholder");
 
+  // ---- LINK CONVENTIONS: the record-page panels ----
+  const eqType = await db.recordType.findFirst({ where: { tenantId: T, key: "equipment" } });
+  const unit = await db.record.create({ data: { tenantId: T, recordTypeId: eqType.id, title: "Rooftop AC \u2014 Smoke Unit", customFields: { status: "Active" } } });
+  await db.recordLink.create({ data: { tenantId: T, recordId: r2.id, parentType: "record", parentId: unit.id, role: "serviced_equipment" } });
+  await go("#/record/" + r2.id);
+  const woPanel = await until(() => $$(".conv-panel .drawer-section-title").some((t: any) => t.textContent === "Serviced equipment") && bodyText().includes("Rooftop AC \u2014 Smoke Unit"));
+  check(woPanel, "LINK CONVENTIONS: the work order mounts a populated Serviced equipment panel");
+  check(!!$(".conv-add .link-search"), "\u2026with the add-link typeahead (cardinality many, editor rights)");
+  await go("#/record/" + unit.id);
+  const eqPanel = await until(() => $$(".conv-panel .drawer-section-title").some((t: any) => t.textContent === "Service history") && bodyText().includes("Water heater swap"));
+  check(eqPanel, "the equipment record mounts Service history with the linked work order");
+  check(await until(() => $$(".conv-panel .pill").length > 0), "\u2026key facts render (status pill present)");
+  await go("#/record/" + estRec.id);
+  const emptyPanel = await until(() => $$(".conv-panel .drawer-section-title").some((t: any) => t.textContent === "Created work order") && !!$(".conv-empty"));
+  check(emptyPanel, "an estimate shows the reverse convention panel EMPTY state (nothing linked yet)");
+  await go("#/record/" + plainRec.id);
+  await until(() => bodyText().includes("Plain One"));
+  check(!$(".conv-panel"), "a module pair with NO convention mounts zero panels \u2014 raw Related UI unchanged");
+
   // ---- Contacts regression: the page that silently swallowed misplaced code
   // in batch 14 must mount clean (the harness exists so this class never ships).
   await go("#/contacts");

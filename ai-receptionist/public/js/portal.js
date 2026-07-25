@@ -4124,6 +4124,105 @@
   // `anchor` describes whose page we're on: { kind:"contact"|"record", id, typeKey, type?, obj }.
   // Each tab is one OTHER module; a record never shows a tab for its own type, and a contact
   // anchor omits the Contacts tab (it IS the contact). Reuses the symmetric record-link API.
+  // ============ LINK-CONVENTION PANELS (typed roles over record links) ============
+  // One panel per SURFACED convention this module participates in. Reads the
+  // conventions off App.state.recordTypes (the registry payload), the links off
+  // the existing /links endpoint, and writes adds/removes through the existing
+  // link routes — one machinery, no parallel system.
+  async function mountConventionPanels(host, type, recordId) {
+    host.innerHTML = "";
+    const convs = (type.linkConventions || []).filter(function (c) { return c.surfaced; });
+    if (!convs.length) return;
+    const permEditRecords = !(App.state && App.state.me && App.state.me.permEdit && App.state.me.permEdit.records === false);
+    let links = [];
+    try { links = await App.portalApi("/api/records/" + recordId + "/links"); } catch (e) { links = []; }
+    if (!Array.isArray(links)) links = [];
+    const typeById = {}; const typeByKey = {};
+    (App.state.recordTypes || []).forEach(function (t) { typeById[t.id] = t; typeByKey[t.key] = t; });
+
+    convs.forEach(function (c) {
+      const iAmFrom = c.fromKey === type.key;
+      const otherKey = iAmFrom ? c.toKey : c.fromKey;
+      const otherType = typeByKey[otherKey];
+      if (!otherType) return; // the other module isn't live for this tenant — no panel
+      const mine = links.filter(function (l) { return l.role === c.role && l.otherType === "record" && l.other && l.other.recordTypeId === otherType.id; });
+      // Newest first on the reverse (history) side — appointment date, then created.
+      const when = function (r) { return (otherType.calendarDateField && (r.customFields || {})[otherType.calendarDateField]) || r.appointmentAt || r.createdAt || ""; };
+      if (!iAmFrom) mine.sort(function (a, b) { return String(when(b.other)).localeCompare(String(when(a.other))); });
+
+      const card = el("div", "card conv-panel");
+      card.appendChild(el("div", "drawer-section-title", esc(iAmFrom ? c.labelFrom : c.labelTo)));
+      const list = el("div", "conv-list");
+      if (!mine.length) list.appendChild(el("div", "cell-muted conv-empty", iAmFrom ? "Nothing linked yet." : "No linked " + esc((typeByKey[c.fromKey] || {}).labelPlural || "records").toLowerCase() + " yet."));
+      mine.forEach(function (l) {
+        const r = l.other;
+        const row = el("div", "conv-row");
+        const a = el("a", "conv-title", esc(r.title || "Untitled"));
+        a.href = "#/record/" + r.id;
+        row.appendChild(a);
+        const facts = el("span", "conv-facts");
+        // Status pill: the module's status FIELD when present, else its record
+        // STATUS label (work orders keep status in stageKey/recordStages).
+        const stageLbl = r.stageKey ? (((otherType.recordStages || []).find(function (st) { return st.key === r.stageKey; }) || {}).label || "") : "";
+        const status = (r.customFields || {}).status || stageLbl;
+        if (status) facts.appendChild(el("span", "pill", esc(String(status))));
+        const w = when(r);
+        if (w) facts.appendChild(el("span", "cell-muted conv-date", esc(App.util.fmtDateOnly ? App.util.fmtDateOnly(w) : String(w).slice(0, 10))));
+        row.appendChild(facts);
+        if (permEditRecords) {
+          const x = el("button", "li-x conv-x", "\u00d7"); x.type = "button"; x.title = "Remove link";
+          x.onclick = async function () {
+            try { await App.portalApi("/api/record-links/" + l.id, { method: "DELETE" }); App.util.toast("Link removed"); mountConventionPanels(host, type, recordId); }
+            catch (e) { App.util.toast(e.message || "Could not remove", true); }
+          };
+          row.appendChild(x);
+        }
+        list.appendChild(row);
+      });
+      card.appendChild(list);
+
+      // Add — hidden for viewers without edit, and for cardinality "one" once filled.
+      if (permEditRecords && !(c.cardinality === "one" && mine.length >= 1)) {
+        const addWrap = el("div", "conv-add");
+        const input = el("input", "input link-search");
+        input.placeholder = "Link " + (otherType.label || "a record").toLowerCase() + " \u2014 type a title\u2026";
+        const results = el("div", "link-results u-hidden");
+        let all = null;
+        function hide() { results.classList.add("u-hidden"); results.innerHTML = ""; }
+        async function show() {
+          if (all == null) { try { all = await App.portalApi("/api/records?type=" + encodeURIComponent(otherKey)); } catch (e) { all = []; } }
+          const q = input.value.trim().toLowerCase();
+          const linked = {}; mine.forEach(function (l) { linked[l.other.id] = 1; });
+          const matches = (all || []).filter(function (r) { return !linked[r.id] && (!q || String(r.title || "").toLowerCase().indexOf(q) !== -1); }).slice(0, 8);
+          results.innerHTML = "";
+          if (!matches.length) { hide(); return; }
+          matches.forEach(function (r) {
+            const it = el("button", "link-result link-result-tight li-cat-item");
+            it.type = "button";
+            it.innerHTML = '<span class="link-result-title">' + esc(r.title || "Untitled") + "</span>";
+            it.addEventListener("mousedown", async function (e) {
+              e.preventDefault();
+              try {
+                await App.portalApi("/api/records/" + recordId + "/links", { method: "POST", body: JSON.stringify({ parentType: "record", parentId: r.id, role: c.role }) });
+                App.util.toast("Linked");
+                mountConventionPanels(host, type, recordId);
+              } catch (err) { App.util.toast(err.message || "Could not link", true); }
+            });
+            results.appendChild(it);
+          });
+          results.classList.remove("u-hidden");
+        }
+        input.oninput = show;
+        input.onfocus = show;
+        input.addEventListener("blur", function () { setTimeout(hide, 120); });
+        input.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
+        addWrap.appendChild(input); addWrap.appendChild(results);
+        card.appendChild(addWrap);
+      }
+      host.appendChild(card);
+    });
+  }
+
   async function mountRelatedTabs(tabsBar, body, anchor) {
     tabsBar.innerHTML = ""; body.innerHTML = `<div class="cell-muted">Loading…</div>`;
     let types = [];
@@ -4226,7 +4325,14 @@
       if (isContactTab) {
         return arr.filter(function (l) { return l.otherType === "contact" && l.other; }).map(function (l) { return { id: l.id, stageKey: l.stageKey, rec: l.other }; });
       }
-      return arr.filter(function (l) { return l.otherType === "record" && l.other && l.other.recordTypeId === type.id; }).map(function (l) { return { id: l.id, stageKey: l.stageKey, rec: l.other }; });
+      // LINK CONVENTIONS: links carrying a SURFACED convention role for this
+      // module pair render in their first-class panel instead — exclude them
+      // here so nothing shows twice. Role-less/raw links: byte-identical UI.
+      const surfacedRoles = {};
+      (((anchor.type || {}).linkConventions) || []).forEach(function (c) {
+        if (c.surfaced && ((c.fromKey === anchor.typeKey && c.toKey === type.key) || (c.toKey === anchor.typeKey && c.fromKey === type.key))) surfacedRoles[c.role] = 1;
+      });
+      return arr.filter(function (l) { return l.otherType === "record" && l.other && l.other.recordTypeId === type.id && !(l.role && surfacedRoles[l.role]); }).map(function (l) { return { id: l.id, stageKey: l.stageKey, rec: l.other }; });
     }
 
     async function load() {
@@ -8179,6 +8285,20 @@
       saveBar.classList.add("u-hidden");
     }
 
+    // ---- LINK-CONVENTION PANELS: where a convention is surfaced for this module,
+    // a first-class card replaces that role's raw Related entry. Both directions
+    // (fromKey side = labelFrom, toKey side = labelTo, newest first). Key facts per
+    // the registry rule: status pill + the module's calendar-date value (falling
+    // back to created). Add/remove write through the EXISTING link routes, so the
+    // global permissionGate + audit apply identically; the affordances also hide
+    // for viewers without records-edit (same idiom as the calendar's drag gate). ----
+    const convHost = el("div");
+    let remountConventions = function () {};
+    if (!ro) {
+      wrap.appendChild(convHost);
+      remountConventions = function () { mountConventionPanels(convHost, type, id); };
+    }
+
     // ---- Related tabs: one tab per OTHER module (link existing + create new; Board where
     // that module has stages) — the SAME generalized component the Contact page uses.
     // Hidden in the read-only Recycle Bin preview. ----
@@ -8193,6 +8313,7 @@
       wrap.appendChild(relatedCard);
       remountRelated = function () { mountRelatedTabs(relTabsBar, relBody, { kind: "record", id: id, typeKey: type.key, type: type, obj: rec }); };
     }
+    remountConventions();
 
     // ---- Activity card (Stage 2a): internal notes on this record. Notes live in
     // the record's customFields.__activity; automations and the box below write here.

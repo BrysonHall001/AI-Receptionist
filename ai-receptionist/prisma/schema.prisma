@@ -121,6 +121,7 @@ model Tenant {
   calendarMaps     ResourceCalendarMap[]
   records          Record[]
   recordLinks      RecordLink[]
+  linkConventions  LinkConvention[]
   stageHistory     StageHistory[]
   invites          Invite[]
   feedbackTickets  FeedbackTicket[]
@@ -647,6 +648,27 @@ model RecordGeo {
 // so an Account/Property object can become a parent later with no redesign;
 // because it's polymorphic there is intentionally NO DB foreign key on the
 // parent (orphan cleanup is handled in code).
+// LINK CONVENTIONS (typed roles over record links): per-tenant declarative rows —
+// "links from module X to module Y carrying role R mean <labelFrom>/<labelTo>".
+// Pure presentation + role metadata over the ONE existing link machinery; seeded
+// from registry defaults the way fields/views are, owner-editable in a later batch.
+model LinkConvention {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromKey     String   // the module whose record page titles the link labelFrom
+  toKey       String
+  role        String   // the RecordLink.role this convention declares
+  labelFrom   String   // shown on the FROM module's page (e.g. "Serviced equipment")
+  labelTo     String   // shown on the TO module's page (e.g. "Service history")
+  cardinality String   @default("many") // "one" | "many" — an add-affordance hint
+  surfaced    Boolean  @default(true)   // false = role known but no panel
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, role, fromKey, toKey])
+  @@index([tenantId])
+}
+
 model RecordLink {
   id           String     @id @default(cuid())
   tenantId     String
