@@ -28,6 +28,34 @@ export const ExtractedSchema = z.object({
   // matches what you told the caller. Null ONLY when no staff was named or announced.
   // Fuzzy-matched to a real configured resource at booking time.
   resource: z.string().nullable().optional(),
+  // ---- SERVICE REQUEST capture (AI intake batch). A caller describing a PROBLEM
+  // that needs someone sent out — without booking a specific time — is a service
+  // request. These fields are CAPTURE-ONLY; the work order is created at
+  // finalization, never mid-call. request_title non-null IS the signal that this
+  // call contains a service request — never fill it for a plain booking,
+  // question, or message.
+  // A SHORT problem label in plain words, e.g. "AC not cooling" or "Water heater
+  // leaking" — the work order's title. Fill it the moment the caller has described
+  // a problem needing service; null on calls that aren't service requests.
+  request_title: z.string().nullable().optional(),
+  // The caller's OWN description of the problem — their words, lightly cleaned
+  // (what's wrong, since when, anything they tried). Grows as they add detail.
+  request_details: z.string().nullable().optional(),
+  // The address the visit should go to, AS SPOKEN, in one line (street, city,
+  // and anything else they give). Only ask when the visit location isn't already
+  // known from caller knowledge — for a known caller with a service address on
+  // file, CONFIRM it instead ("still at 12 Main St?") and leave this null unless
+  // they give a DIFFERENT address. Null when not stated.
+  service_address: z.string().nullable().optional(),
+  // How urgent the caller says it is: EXACTLY "emergency" (no heat/water actively
+  // flooding/safety issue — needs someone ASAP), "soon" (days), or "whenever"
+  // (routine, no rush). Infer from their words; ask only if unclear. Null when
+  // this isn't a service request.
+  urgency: z.string().nullable().optional(),
+  // The caller's VERBATIM words about a specific unit or equipment, e.g. "the
+  // water heater you installed last year". CAPTURE ONLY — never invent, never
+  // paraphrase; null when no unit was mentioned.
+  equipment_mention: z.string().nullable().optional(),
 });
 export type Extracted = z.infer<typeof ExtractedSchema>;
 

@@ -942,6 +942,7 @@ apiRouter.get("/account/ai-instructions", async (req: Request, res: Response) =>
   res.json({
     aiInstructions: (portal as any)?.aiInstructions ?? "",
     aiKnowledgeModules: Array.isArray((portal as any)?.aiKnowledgeModules) ? (portal as any).aiKnowledgeModules : [],
+    aiCreateWorkOrders: (portal as any)?.aiCreateWorkOrders !== false, // AI intake (default ON)
     aiKnowledgePages: Array.isArray((portal as any)?.aiKnowledgePages) ? (portal as any).aiKnowledgePages : [],
     // Curated non-module knowledge sources (the "Pages" checklist). Extensible;
     // Calls (prior call history) is the only source today.
@@ -1037,6 +1038,22 @@ const aiDocUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES, fields: 40 },
 }).array("files", MAX_FILES);
+
+// AI intake: the "AI can create" toggle (work orders). Same permission wall as
+// the other AI Receptionist settings.
+apiRouter.patch("/account/ai-create", async (req: Request, res: Response) => {
+  const tenantId = tenantOr400(req, res);
+  if (!tenantId) return;
+  if (!aiInstructionsEditable(req)) {
+    res.status(403).json({ error: "You don't have permission to edit AI Receptionist settings." });
+    return;
+  }
+  try {
+    const on = (req.body ?? {}).aiCreateWorkOrders !== false;
+    await prisma.tenant.update({ where: { id: tenantId }, data: { aiCreateWorkOrders: on } as any });
+    res.json({ aiCreateWorkOrders: on });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
 
 apiRouter.post("/account/ai-instructions/parse-docs", (req: Request, res: Response) => {
   if (!aiInstructionsEditable(req)) { res.status(403).json({ error: "You don't have permission to edit AI Instructions." }); return; }
@@ -1888,7 +1905,7 @@ apiRouter.post("/simulate", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   try {
-    const result = await runSimulatedCall(tenantId);
+    const result = await runSimulatedCall(tenantId, ((req.body ?? {}) as any).scenario ?? null);
     res.json(result);
   } catch (err) {
     logger.error(`simulate failed: ${(err as Error).message}`);

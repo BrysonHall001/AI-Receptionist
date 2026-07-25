@@ -7,6 +7,35 @@ import { AITurnInput } from "./engine";
  * whatever is still missing — no network or API key required. This is what lets
  * the "Simulate call" button produce realistic leads with placeholder keys.
  */
+// ---- service-request extractors (deterministic, offline) ----
+function extractServiceRequest(said: string): { title: string; details: string; mention: string | null } | null {
+  const t = said.toLowerCase();
+  const PROBLEMS: Array<[RegExp, string]> = [
+    [/(ac|air condition\w*).{0,30}(not cooling|stopped|broken|warm air)/, "AC not cooling"],
+    [/water heater.{0,30}(leak\w*|broken|no hot water)/, "Water heater leaking"],
+    [/furnace.{0,30}(won't|wont|not|broken|fault)/, "Furnace not starting"],
+    [/(leak\w*)/, "Leak reported"],
+  ];
+  for (const [re, title] of PROBLEMS) {
+    if (re.test(t)) {
+      const mentionMatch = said.match(/the ([\w\s]{1,40}?)(?: you installed| you put in)([\w\s]{0,15})/i);
+      return { title, details: said.trim(), mention: mentionMatch ? mentionMatch[0].trim() : null };
+    }
+  }
+  return null;
+}
+function extractSpokenAddress(said: string): string | null {
+  const m = said.match(/\b(\d{1,5}\s+[A-Za-z][\w\s.]{2,40}?(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln|court|ct|way|blvd)\b[^.,!?]*)/i);
+  return m ? m[1].trim() : null;
+}
+function extractUrgency(said: string): string | null {
+  const t = said.toLowerCase();
+  if (/emergency|asap|right away|flooding|no heat|urgent/.test(t)) return "emergency";
+  if (/soon|this week|next few days|couple of days/.test(t)) return "soon";
+  if (/whenever|no rush|anytime/.test(t)) return "whenever";
+  return null;
+}
+
 export async function runMockTurn(input: AITurnInput): Promise<AIResponse> {
   const said = input.latestCallerUtterance || "";
   const prev = input.context.alreadyExtracted || {};
@@ -20,8 +49,19 @@ export async function runMockTurn(input: AITurnInput): Promise<AIResponse> {
   // parseable date+time produces a value; otherwise null (no junk booking).
   const appointment_datetime = extractAppointment(said) ?? prev.appointment_datetime ?? null;
   const service = extractService(said) ?? prev.service ?? null;
+  // SERVICE-REQUEST capture (AI intake): deterministic problem-call path. Gated
+  // on the SAME context flag as the real prompt block — when intake is off the
+  // mock never captures a request, mirroring "the model never gathers what
+  // finalization won't persist".
+  const intakeOn = input.context.serviceRequestIntake === true;
+  const req = intakeOn ? extractServiceRequest(said) : null;
+  const request_title = (req && req.title) ?? prev.request_title ?? null;
+  const request_details = (req && req.details) ?? prev.request_details ?? null;
+  const service_address = (intakeOn ? extractSpokenAddress(said) : null) ?? prev.service_address ?? null;
+  const urgency = (intakeOn ? extractUrgency(said) : null) ?? prev.urgency ?? null;
+  const equipment_mention = (req && req.mention) ?? prev.equipment_mention ?? null;
 
-  const extracted = { name, phone, email, intent, appointment_datetime, service };
+  const extracted = { name, phone, email, intent, appointment_datetime, service, request_title, request_details, service_address, urgency, equipment_mention };
   const firstName = name ? name.split(/\s+/)[0] : null;
 
   let message: string;
@@ -36,6 +76,16 @@ export async function runMockTurn(input: AITurnInput): Promise<AIResponse> {
   } else if (!intent) {
     message = `Got it. And how can we help you today, ${firstName}?`;
     state = "COLLECTING_INFO";
+  } else if (request_title && !appointment_datetime && !service_address) {
+    message = `Oh no — sorry to hear about that. And what's the address we'd be coming out to?`;
+    state = "COLLECTING_INFO";
+  } else if (request_title && !appointment_datetime) {
+    // Confirm the request back (the real prompt's confirm-back rule) and wrap.
+    message =
+      `So that's ${request_title.toLowerCase()} at ${service_address}` +
+      (urgency === "emergency" ? ", and it's urgent" : "") +
+      ` — I'll get this straight to the team and someone will reach out. Thanks, ${firstName}!`;
+    state = "COMPLETED";
   } else if (service && !appointment_datetime) {
     // A booking is in progress but we don't have a concrete time yet — pin it
     // down before wrapping up (mirrors the real receptionist's behavior).

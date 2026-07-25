@@ -101,6 +101,18 @@
           ],
         },
         {
+          id: "service-request-intake", features: ["receptionist", "rt:work_order"],
+          title: "Callers with a problem become work orders",
+          blocks: [
+            { p: "When a caller describes a problem that needs someone out \u2014 \u201cmy AC stopped cooling\u201d \u2014 without booking a time, the receptionist gathers the essentials (what\u2019s wrong, where, how urgent) and, when the call ends, files it as a dateless work order in your dispatch tray, linked to the caller. Nothing is created mid-call, and the receptionist never promises an arrival time or price \u2014 dispatch stays your team\u2019s call." },
+            { steps: [
+              "Open the record from the tray: the problem is the title, the caller\u2019s words are the description, and urgency set the priority.",
+              "The record\u2019s Activity notes who created it \u2014 \u201cCreated by the AI receptionist from a phone call\u201d \u2014 and the call\u2019s own page shows the captured request.",
+              "Turn this on or off under [[#/settings/aireceptionist|Settings \u2192 AI Receptionist]] \u2192 AI can create. A caller who books a real time slot gets a booking instead \u2014 one artifact per call, never both.",
+            ] },
+          ],
+        },
+        {
           id: "lead-capture", features: ["page:#/calls"],
           title: "Capturing leads with a shareable form",
           blocks: [
@@ -453,7 +465,7 @@
           id: "work-orders", features: ["rt:work_order"],
           title: "Work orders: create, plan, and hand off",
           blocks: [
-            { p: "A work order is a visit-ready job for your field team: what needs doing, where, and who's going. Open [[#/records/work_order|Work Orders]] to see them all — each one moves through its statuses from first request to done, and can be typed when you create it (both the types and the statuses are yours to rename in [[#/settings/fields|Settings → Modules & Fields]]). The page shows off out of the box: switch views with the tabs on the list page — List, a Board (one column per status; drag a card to update it, with an Undo on the confirmation), a Calendar, and a Map — and each optional view can be switched off on the module's Views tile. On a work order's page, link the unit you serviced under Serviced equipment — the unit's record then carries its full Service history, newest visit first." },
+            { p: "A work order is a visit-ready job for your field team: what needs doing, where, and who's going. Open [[#/records/work_order|Work Orders]] to see them all — each one moves through its statuses from first request to done, and can be typed when you create it (both the types and the statuses are yours to rename in [[#/settings/fields|Settings → Modules & Fields]]). The page shows off out of the box: switch views with the tabs on the list page — List, a Board (one column per status; drag a card to update it, with an Undo on the confirmation), a Calendar, and a Map — and each optional view can be switched off on the module's Views tile. On a work order's page, link the unit you serviced under Serviced equipment — the unit's record then carries its full Service history, newest visit first. And with the receptionist on, callers who describe a problem needing service arrive here on their own — as dateless records in the dispatch tray." },
             { steps: [
               "Press Create on the [[#/records/work_order|Work Orders]] page, give it a clear title, pick its type, and fill in the details.",
               "To put it on the module's calendar, set a start — and optionally an end — in the date and time boxes.",

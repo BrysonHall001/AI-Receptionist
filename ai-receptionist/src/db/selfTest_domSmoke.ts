@@ -43,7 +43,7 @@ async function main() {
   const port = (srv.address() as any).port;
   const base = `http://127.0.0.1:${port}`;
   const stamp = Date.now();
-  const t = await db.tenant.create({ data: { name: `dom-${stamp}`, notifyEmail: `dom-${stamp}@example.invalid`, billingStatus: "active" } });
+  const t = await db.tenant.create({ data: { name: `dom-${stamp}`, notifyEmail: `dom-${stamp}@example.invalid`, billingStatus: "active", receptionistEnabled: true } }); // receptionist ON: the Calls page + AI-intake surfaces render
   const T = t.id;
   await listRecordTypes(T);
   await setModuleViews(T, WORK_ORDER_RECORD_TYPE_KEY, { enabledViews: ["board", "calendar", "map"], calendarLanes: true, calendarTray: true });
@@ -284,6 +284,17 @@ async function main() {
   await go("#/record/" + plainRec.id);
   await until(() => bodyText().includes("Plain One"));
   check(!$(".conv-panel"), "a module pair with NO convention mounts zero panels \u2014 raw Related UI unchanged");
+
+  // ---- AI INTAKE: the settings card + simulator buttons + calls drawer ----
+  await go("#/settings/aireceptionist");
+  const knowledgeTab = await until(() => $$("button, .tab").some((b: any) => b.textContent.trim() === "System knowledge"));
+  if (knowledgeTab) ($$("button, .tab").find((b: any) => b.textContent.trim() === "System knowledge") as any).click();
+  const aiCardOk = await until(() => bodyText().includes("AI can create") && !!$("#ai-create-wo") && ($("#ai-create-wo") as any).checked);
+  check(aiCardOk, "AI INTAKE: the AI-can-create card mounts with the work-orders toggle ON by default");
+  check(bodyText().includes("Bookings \u2014 always on"), "\u2026and shows bookings honestly as always-on");
+  await go("#/calls");
+  const simBtns = await until(() => !!$("#simulate-btn") && !!$("#simulate-wo-btn"));
+  check(simBtns, "the Calls toolbar carries BOTH simulate buttons (service request visible: module live)");
 
   // ---- Contacts regression: the page that silently swallowed misplaced code
   // in batch 14 must mount clean (the harness exists so this class never ships).

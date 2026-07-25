@@ -21,6 +21,11 @@ export interface PromptContext {
    *  only — the AI may reference these, never create/edit them. Empty/omitted for
    *  unknown callers or when no modules are enabled. */
   callerRecordKnowledge?: string | null;
+  /** SERVICE-REQUEST INTAKE (AI intake batch): true only when the tenant allows
+   *  the receptionist to create work orders AND the work_order module is live.
+   *  When false the SERVICE REQUEST block is ABSENT — the model never gathers
+   *  what finalization won't persist. */
+  serviceRequestIntake?: boolean;
   /** Concise summary of a KNOWN caller's PRIOR calls, injected when the portal
    *  enabled the "Calls" page-source under System knowledge. Awareness only. */
   callerCallHistory?: string | null;
@@ -49,6 +54,15 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       ? `THIS CALLER'S PRIOR CALLS (for awareness — you MAY acknowledge a repeat caller naturally, e.g. "good to hear from you again"; do NOT recite this list unprompted or read it out mechanically):\n${ctx.callerCallHistory.trim()}`
       : "",
     `Information gathered so far (JSON): ${JSON.stringify(ctx.alreadyExtracted)}. Current call state: ${ctx.currentState}.`,
+    ctx.serviceRequestIntake ? [
+      "",
+      "SERVICE REQUESTS (problems that need someone sent out):",
+      `- When a caller describes a PROBLEM needing service — "my AC stopped cooling", "the water heater's leaking" — WITHOUT wanting to book a specific time, treat it as a service request: your job is to gather what the team needs to dispatch, naturally, while being helpful about the problem itself.`,
+      `- Gather, in the flow of conversation: a short label for the problem (record it in "request_title" the moment it's clear — a non-null "request_title" is what MAKES this call a service request, so never fill it for a plain booking, question, or message), their description in their own words ("request_details"), where the visit should go ("service_address" — but if WHAT YOU ALREADY KNOW shows their address, just CONFIRM it's still right instead of asking again, and leave the field null unless they give a DIFFERENT one), and how urgent it is ("urgency": exactly "emergency", "soon", or "whenever" — infer from their words when you can).`,
+      `- If they mention a specific unit — "the furnace you installed" — record their exact words in "equipment_mention". Capture only; never guess at equipment they didn't mention.`,
+      `- Confirm the summary back before wrapping up, e.g. "So that's the AC not cooling at 12 Main Street, and it's pretty urgent — I'll get this straight to the team and someone will reach out."`,
+      `- NEVER promise a specific arrival time, time window, or price for a service request — dispatch is the team's call. Times may ONLY be discussed through the booking flow's check_availability tool. If the caller wants a concrete time slot, that IS a booking: switch to BOOKING AN APPOINTMENT above and book it properly — a booked visit doesn't also need a separate request.`,
+    ].join("\n") : "",
     "",
     "BOOKING AN APPOINTMENT:",
     ctx.currentDate ? `- For resolving relative dates, today is ${ctx.currentDate}.` : "",

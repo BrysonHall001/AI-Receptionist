@@ -231,8 +231,18 @@
     if (handle && handle.toolbarRight) {
       const sim = el("button", "btn btn-primary btn-sm", `<span class="btn-icon">&#9654;</span> Simulate call`);
       sim.id = "simulate-btn";
-      sim.onclick = simulate;
+      sim.onclick = () => simulate();
       handle.toolbarRight.insertBefore(sim, handle.toolbarRight.firstChild);
+      // AI intake: a DETERMINISTIC service-request simulation — visible only when
+      // the Work Orders module is live (same visibility rule as the settings
+      // toggle). Runs the scripted problem call end-to-end: extract -> finalize
+      // -> dateless work order in the dispatch tray.
+      if ((App.state.recordTypes || []).some((t) => t.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order"))) {
+        const simWo = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#128736;</span> Simulate service request`);
+        simWo.id = "simulate-wo-btn";
+        simWo.onclick = () => simulate("service_request");
+        handle.toolbarRight.insertBefore(simWo, sim.nextSibling);
+      }
       // Export calls — same shared exporter/history as Contacts (saves to history).
       const exportBtn = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#8679;</span> Export`);
       exportBtn.onclick = () => openExport(callExportOpts(handle ? handle.getColumns() : columns, calls));
@@ -3544,6 +3554,17 @@
         <div class="field field-full"><span class="field-label">Reason for calling</span><span class="field-value">${esc(c.intent || "—")}</span></div>
         ${field("Received", fmtDate(c.createdAt))}
         ${field("Notified", c.emailSentAt ? fmtDate(c.emailSentAt) : "—")}</div>`;
+      // AI intake: the captured service request, shown only when present.
+      const sr = c.serviceRequest;
+      const srHtml = sr
+        ? `<div class="drawer-section-title">Service request captured</div><div class="field-grid call-sr-block">
+            <div class="field field-full"><span class="field-label">Problem</span><span class="field-value">${esc(sr.title || "—")}</span></div>
+            ${sr.details ? `<div class="field field-full"><span class="field-label">Details</span><span class="field-value">${esc(sr.details)}</span></div>` : ""}
+            ${sr.address ? field("Address", sr.address) : ""}
+            ${sr.urgency ? field("Urgency", sr.urgency) : ""}
+            ${sr.equipment ? `<div class="field field-full"><span class="field-label">Equipment mentioned</span><span class="field-value">${esc(sr.equipment)}</span></div>` : ""}
+          </div>`
+        : "";
       const turns = Array.isArray(c.transcript) ? c.transcript : [];
       let tHtml = `<div class="drawer-section-title">Transcript</div>`;
       if (!turns.length) tHtml += `<p class="cell-muted">No transcript recorded.</p>`;
@@ -3555,7 +3576,7 @@
         });
         tHtml += `</div>`;
       }
-      App.util.$("#drawer-body").innerHTML = grid + tHtml;
+      App.util.$("#drawer-body").innerHTML = grid + srHtml + tHtml;
     } catch (err) { App.util.$("#drawer-body").innerHTML = `<p class="cell-muted">${esc(err.message)}</p>`; }
   }
 
@@ -3754,14 +3775,14 @@
   function scalarStr(v) { return v == null ? "" : Array.isArray(v) ? v.join(", ") : String(v); }
 
   // ---------------- Simulate ----------------
-  async function simulate() {
-    const btn = App.util.$("#simulate-btn");
+  async function simulate(scenario) {
+    const btn = App.util.$(scenario ? "#simulate-wo-btn" : "#simulate-btn");
     const original = btn ? btn.innerHTML : null;
     if (btn) { btn.disabled = true; btn.innerHTML = `<span class="btn-icon">&#8987;</span> Simulating…`; }
     try {
-      const result = await App.portalApi("/api/simulate", { method: "POST" });
+      const result = await App.portalApi("/api/simulate", { method: "POST", body: JSON.stringify(scenario ? { scenario } : {}) });
       App._highlightCallId = result.id;
-      toast("Call simulated — lead captured");
+      toast(scenario === "service_request" ? "Call simulated — check the dispatch tray" : "Call simulated — lead captured");
       await refresh();
     } catch (err) { toast(err.message, true); }
     finally { if (btn) { btn.disabled = false; btn.innerHTML = original; } }
@@ -5003,13 +5024,14 @@
       const status = el("div"); host.appendChild(status);
       status.appendChild(el("p", "cell-muted", "Loading…"));
 
-      let editable = true, savedModules = [], savedPages = [], pageOptions = [];
+      let editable = true, savedModules = [], savedPages = [], pageOptions = [], aiCreateWorkOrders = true;
       try {
         const data = await App.portalApi("/api/account/ai-instructions");
         editable = !!data.editable;
         savedModules = Array.isArray(data.aiKnowledgeModules) ? data.aiKnowledgeModules : [];
         savedPages = Array.isArray(data.aiKnowledgePages) ? data.aiKnowledgePages : [];
         pageOptions = Array.isArray(data.aiKnowledgePageOptions) ? data.aiKnowledgePageOptions : [];
+        aiCreateWorkOrders = data.aiCreateWorkOrders !== false; // AI intake toggle state
       } catch (e) {}
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
@@ -5044,6 +5066,37 @@
         (p) => p.label + (p.description ? " — " + p.description : ""),
         (p) => p.key,
       );
+
+      // ---- AI CAN CREATE (AI intake batch) — the same card style as the two
+      // checklists above. Bookings: always on when the receptionist is on
+      // (grounded reality, shown honestly, not toggleable — never regressed).
+      // Service requests → work orders: the tenant flag, VISIBLE only when the
+      // Work Orders module is live for this portal; OFF removes the prompt block
+      // AND finalization skips (both ends server-side).
+      const woType = (Array.isArray(types) ? types : []).find((t) => t && t.key === "work_order");
+      const woLive = !!woType && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order"));
+      const createCard = el("div", "card"); createCard.classList.add("pt-card3", "ai-create-card");
+      createCard.innerHTML = `<h4 class="pt-t11">AI can create</h4><p class="cell-muted pt-t12">What the receptionist may create from a call. Everything is captured during the call and created only when it ends.</p>`;
+      const bkRow = el("label", "adm-row-click u-cursor-default");
+      const bkCb = el("input"); bkCb.type = "checkbox"; bkCb.checked = true; bkCb.disabled = true;
+      bkRow.appendChild(bkCb); bkRow.appendChild(document.createTextNode(" Bookings — always on with the receptionist"));
+      createCard.appendChild(bkRow);
+      if (woLive) {
+        const woRow = el("label", "adm-row-click" + (editable ? "" : " u-cursor-default"));
+        const woCb = el("input"); woCb.type = "checkbox"; woCb.id = "ai-create-wo";
+        woCb.checked = aiCreateWorkOrders !== false; woCb.disabled = !editable;
+        woCb.onchange = async () => {
+          woCb.disabled = true;
+          try {
+            await App.portalApi("/api/account/ai-create", { method: "PATCH", body: JSON.stringify({ aiCreateWorkOrders: woCb.checked }) });
+            toast(woCb.checked ? "The receptionist can now create " + (App.relabelText ? App.relabelText("work orders", { all: true }) : "work orders") : "Service-request intake turned off");
+          } catch (e) { woCb.checked = !woCb.checked; toast(e.message, true); }
+          woCb.disabled = !editable;
+        };
+        woRow.appendChild(woCb); woRow.appendChild(document.createTextNode(" Service requests → " + (App.relabelText ? App.relabelText("Work Orders", { all: true }) : "Work Orders") + " (callers describing a problem land in your dispatch tray)"));
+        createCard.appendChild(woRow);
+      }
+      host.appendChild(createCard);
 
       if (editable) {
         const save = el("button", "btn btn-primary btn-sm", "Save");

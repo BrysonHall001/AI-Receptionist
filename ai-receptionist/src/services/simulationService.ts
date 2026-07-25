@@ -4,6 +4,8 @@ import { logger } from "../utils/logger";
 import { startCall, handleTurn, finalizeCall } from "./callOrchestrator";
 
 interface Scenario {
+  /** Optional stable key so devtools can request a SPECIFIC scenario. */
+  key?: string;
   label: string;
   // The caller's lines, in order. The simulator feeds these one per turn; the REAL
   // AI generates every receptionist reply and decides what to ask next. Lines are
@@ -15,6 +17,19 @@ interface Scenario {
 }
 
 const SCENARIOS: Scenario[] = [
+  // --- AI intake: the deterministic service-request scenario (key-selectable
+  // from devtools; drives extract -> finalize -> dateless work order in the tray
+  // -> RecordCreated -> any applied "request received" automation, all offline).
+  {
+    key: "service_request",
+    label: "Service request — AC not cooling",
+    utterances: [
+      "Hi, this is Casey Morgan.",
+      "You can reach me at 919-555-7431.",
+      "My AC is not cooling at all — it's blowing warm air, and honestly it's an emergency in this heat. It's the AC you installed a while back.",
+      "The address is 44 Oakwood Drive, Raleigh.",
+    ],
+  },
   // --- A couple of easy baselines (clean info on the first ask) ---
   {
     label: "Easy — clear leak",
@@ -25,6 +40,7 @@ const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    key: "booking_tuneup", // stable key: the deterministic BOOKING control (AI intake suite)
     label: "Easy — tune-up booking",
     utterances: [
       "Hi, it's Maria Gonzalez.",
@@ -35,6 +51,7 @@ const SCENARIOS: Scenario[] = [
 
   // --- Books a real appointment with a concrete date + time (capture-only) ---
   {
+    key: "booking_concrete", // stable key: the deterministic booking CONTROL (AI intake suite)
     label: "Booking — concrete appointment",
     utterances: [
       "Hi, this is Sarah Chen.",
@@ -181,10 +198,12 @@ function randomPhone(): string {
 }
 
 /** Run a complete scripted call into a specific portal (tenant). */
-export async function runSimulatedCall(tenantId?: string | null): Promise<{ id: string; callSid: string }> {
+export async function runSimulatedCall(tenantId?: string | null, scenarioKey?: string | null): Promise<{ id: string; callSid: string }> {
   const targetTenantId = tenantId || (await ensureTenantId());
 
-  const scenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
+  // A named scenario (devtools "Simulate service request") is deterministic;
+  // otherwise the historical random pick is unchanged.
+  const scenario = (scenarioKey && SCENARIOS.find((sc: any) => (sc as any).key === scenarioKey)) || SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
   const phone = randomPhone();
   const callSid = `SIM-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
   const fromNumber = "+1" + phone.replace(/\D/g, "");

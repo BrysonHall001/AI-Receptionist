@@ -19,6 +19,7 @@ import {
 import { createOrUpdateContact, phoneFromExtracted } from "./contactService";
 import { sendCallSummaryEmail } from "./notificationService";
 import { createBookingFromCall, looksLikeBookingIntent } from "./bookingCaptureService";
+import { createWorkOrderFromCall } from "./workOrderCaptureService";
 import { buildHoursContext } from "./availabilityService";
 import { buildCallerRecordKnowledge, buildCallerCallHistory } from "../ai/callerKnowledge";
 
@@ -157,6 +158,11 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
     } catch (e) {
       logger.warn(`[orchestrator] buildHoursContext failed: ${(e as Error).message}`);
     }
+    // SERVICE-REQUEST INTAKE (AI intake batch): the ONE resolution both ends use —
+    // the prompt block below and finalization's createWorkOrderFromCall gate call
+    // this same helper, so "OFF or module hidden" is zero-behavior-change at BOTH
+    // ends by construction.
+    const serviceRequestIntake = await serviceRequestIntakeEnabled(tenant);
     // System knowledge: for a KNOWN caller, summarize their linked records of the
     // modules the portal enabled. Best-effort; never blocks a turn. Empty when no
     // modules are enabled or the caller is unknown (so nothing changes by default).
@@ -192,6 +198,7 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
         hoursSummary,
         callerRecordKnowledge,
         callerCallHistory,
+        serviceRequestIntake,
       },
       history: toOpenAIMessages(transcript),
       latestCallerUtterance: speech,
@@ -338,9 +345,10 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
   const committedAppointmentAt: string | null = (session as any).committedAppointmentAt ?? null;
   const appointmentDatetime = committedAppointmentAt ?? extracted.appointment_datetime ?? null;
 
+  let createdBookingId: string | null = null;
   if (contactId) {
     try {
-      await createBookingFromCall({
+      createdBookingId = await createBookingFromCall({
         tenantId: tenant.id,
         contactId,
         appointmentDatetime,
@@ -362,6 +370,36 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
         `[finalize] booking NOT attempted for ${callSid} because no contact was persisted (contact upsert failed earlier) — ` +
           `committed=${committedAppointmentAt ?? "-"} resource=${extracted.resource ?? "-"} service=${extracted.service ?? "-"} intent=${extracted.intent ?? "-"}`,
       );
+    }
+  }
+
+  // ---- SERVICE-REQUEST capture (AI intake) — the booking sibling's twin. ----
+  // BOUNDARY RULE (approved): a created booking WINS — one artifact per call, so
+  // a request is attempted ONLY when no booking was created. Same gate as the
+  // prompt block (serviceRequestIntakeEnabled), so OFF/hidden is a no-op at BOTH
+  // ends. Guarded exactly like booking capture: a failure logs LOUDLY and never
+  // breaks finalization or the summary email.
+  if ((extracted.request_title || "").toString().trim() && !createdBookingId) {
+    const intakeOn = await serviceRequestIntakeEnabled(tenant);
+    if (!intakeOn) {
+      logger.info(`[finalize] service request captured but intake is OFF (or module hidden) for ${callSid} — nothing persisted, by design.`);
+    } else if (!contactId) {
+      logger.warn(`[finalize] service request NOT persisted for ${callSid} because no contact was persisted (contact upsert failed earlier) — title=${extracted.request_title}`);
+    } else {
+      try {
+        await createWorkOrderFromCall({
+          tenantId: tenant.id,
+          contactId,
+          requestTitle: extracted.request_title ?? null,
+          requestDetails: extracted.request_details ?? null,
+          serviceAddress: extracted.service_address ?? null,
+          urgency: extracted.urgency ?? null,
+          equipmentMention: extracted.equipment_mention ?? null,
+          callSid,
+        });
+      } catch (err) {
+        logger.error(`[finalize] service-request capture FAILED for ${callSid} (call still finalizes): ${(err as Error).message}`);
+      }
     }
   }
 
@@ -399,6 +437,20 @@ export async function failCall(callSid: string, reason: string): Promise<void> {
 }
 
 /** Merge newly extracted fields over prior ones; backfill phone from caller ID. */
+/** SERVICE-REQUEST INTAKE gate (shared by prompt assembly AND finalization):
+ *  the tenant flag (default ON) AND the work_order module live for the tenant
+ *  AND its page not owner-locked. Fail-closed on any lookup error. */
+async function serviceRequestIntakeEnabled(tenant: any): Promise<boolean> {
+  try {
+    if ((tenant as any).aiCreateWorkOrders === false) return false;
+    const rt = await prisma.recordType.findFirst({ where: { tenantId: tenant.id, key: "work_order" }, select: { id: true } });
+    if (!rt) return false;
+    const locked = Array.isArray((tenant as any).lockedPages) ? ((tenant as any).lockedPages as string[]) : [];
+    if (locked.includes("#/records/work_order")) return false;
+    return true;
+  } catch { return false; }
+}
+
 function mergeExtracted(prev: Extracted, next: Extracted, fallbackPhone: string): Extracted {
   const pick = (a?: string | null, b?: string | null): string | null => {
     const bn = (b ?? "").trim();
@@ -423,6 +475,13 @@ function mergeExtracted(prev: Extracted, next: Extracted, fallbackPhone: string)
     // the safety net auto-assigned the first free staff ("books bob"). Carrying it
     // forward makes the announced staff survive to finalize. (Bug #1 from audit.)
     resource: pick(prev.resource, next.resource),
+    // Service-request capture (AI intake): carried forward exactly like the
+    // booking fields — a later turn omitting them must never lose the request.
+    request_title: pick(prev.request_title, next.request_title),
+    request_details: pick(prev.request_details, next.request_details),
+    service_address: pick(prev.service_address, next.service_address),
+    urgency: pick(prev.urgency, next.urgency),
+    equipment_mention: pick(prev.equipment_mention, next.equipment_mention),
   };
 }
 

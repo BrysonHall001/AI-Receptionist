@@ -83,12 +83,19 @@ export async function getCall(id: string, tenantId?: string | null): Promise<Cal
   const r = await prisma.callSession.findUnique({ where: { id }, include: { tenant: true } });
   if (!r) return null;
   if (r.tenantId !== tenantId) return null; // enforce scope
+  // AI intake: the captured service-request fields ride the DETAIL payload only
+  // (the Calls drawer shows the block when a request was captured). Extracted is
+  // already tenant-scoped by the guard above.
+  const ex: any = (r.extracted as any) || {};
   return {
     ...toCallDTO(r),
     tenantName: r.tenant?.name ?? null,
     transcript: (r.transcript ?? []) as unknown as TranscriptTurn[],
     emailSentAt: r.emailSentAt ? r.emailSentAt.toISOString() : null,
-  };
+    serviceRequest: ex.request_title
+      ? { title: ex.request_title, details: ex.request_details ?? null, address: ex.service_address ?? null, urgency: ex.urgency ?? null, equipment: ex.equipment_mention ?? null }
+      : null,
+  } as any;
 }
 
 export const RETENTION_DAYS = 30;

@@ -84,6 +84,17 @@ export async function sendCallSummaryEmail(input: CallSummaryEmailInput, meta?: 
     return;
   }
 
+  // AI intake: a captured service request rides the summary (title/details/
+  // address/urgency + any equipment words) — absent entirely on other calls.
+  const req = (input.extracted as any).request_title
+    ? {
+        title: String((input.extracted as any).request_title),
+        details: String((input.extracted as any).request_details || ""),
+        address: String((input.extracted as any).service_address || ""),
+        urgency: String((input.extracted as any).urgency || ""),
+        mention: String((input.extracted as any).equipment_mention || ""),
+      }
+    : null;
   const text = [
     `New phone call for ${input.businessName}`,
     `Status: ${status}`,
@@ -93,6 +104,15 @@ export async function sendCallSummaryEmail(input: CallSummaryEmailInput, meta?: 
     `Phone: ${phone}`,
     `Email: ${email}`,
     `Reason for calling: ${intent}`,
+    ...(req ? [
+      "",
+      "Service request captured:",
+      `  Problem: ${req.title}`,
+      req.details ? `  Details: ${req.details}` : "",
+      req.address ? `  Address: ${req.address}` : "",
+      req.urgency ? `  Urgency: ${req.urgency}` : "",
+      req.mention ? `  Equipment mentioned: ${req.mention}` : "",
+    ].filter(Boolean) : []),
     "",
     "Transcript:",
     transcriptText,
@@ -108,6 +128,15 @@ export async function sendCallSummaryEmail(input: CallSummaryEmailInput, meta?: 
     `<li><strong>Email:</strong> ${escapeHtml(email)}</li>` +
     `<li><strong>Reason for calling:</strong> ${escapeHtml(intent)}</li>` +
     `</ul>` +
+    (req
+      ? `<h3>Service request captured</h3><ul>` +
+        `<li><strong>Problem:</strong> ${escapeHtml(req.title)}</li>` +
+        (req.details ? `<li><strong>Details:</strong> ${escapeHtml(req.details)}</li>` : "") +
+        (req.address ? `<li><strong>Address:</strong> ${escapeHtml(req.address)}</li>` : "") +
+        (req.urgency ? `<li><strong>Urgency:</strong> ${escapeHtml(req.urgency)}</li>` : "") +
+        (req.mention ? `<li><strong>Equipment mentioned:</strong> ${escapeHtml(req.mention)}</li>` : "") +
+        `</ul>`
+      : "") +
     `<h3>Transcript</h3><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(transcriptText)}</pre>`;
 
   const { data, error } = await resend.emails.send({
