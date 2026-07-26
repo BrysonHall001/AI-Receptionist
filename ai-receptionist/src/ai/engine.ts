@@ -146,7 +146,17 @@ async function serviceWordsToKey(tenantId: string, serviceWords: string | null):
   }
 }
 
-async function runAvailabilityTool(tenantId: string, args: any): Promise<string> {
+/** AI SCHEDULING TARGET: the engine-level computation overrides for a
+ *  NON-booking target — the target module's default visit duration and its
+ *  own busy source forced on. Booking targets pass undefined = byte-identical. */
+function availabilityOptsForTarget(ctx: PromptContext): { durationMinutes?: number | null; forceSources?: string[] | null } | undefined {
+  const target = ctx.scheduleTarget || "booking";
+  if (target === "booking" || target === "none") return undefined;
+  const forceSources = target === "work_order" ? ["clarity-work-orders"] : [];
+  return { durationMinutes: (ctx as any).aiVisitMinutes ?? null, forceSources };
+}
+
+async function runAvailabilityTool(tenantId: string, args: any, ctx: PromptContext): Promise<string> {
   const date = String(args?.date ?? "").trim();
   const time = args?.time != null && String(args.time).trim() !== "" ? String(args.time).trim() : null;
   const resourceName = args?.resource != null ? String(args.resource) : null;
@@ -165,7 +175,7 @@ async function runAvailabilityTool(tenantId: string, args: any): Promise<string>
   // Service words → subtype key (reused mapping) so the duration is right.
   const serviceKey = await serviceWordsToKey(tenantId, serviceWords);
 
-  const result = await checkAvailability(tenantId, date, time, serviceKey, resourceId);
+  const result = await checkAvailability(tenantId, date, time, serviceKey, resourceId, availabilityOptsForTarget(ctx));
   return JSON.stringify({
     date: result.date,
     closed: result.closed,
@@ -185,11 +195,11 @@ async function runAvailabilityTool(tenantId: string, args: any): Promise<string>
 
 /** Run one tool call requested by the model; never throws (errors become a JSON
  *  error the model can read and recover from). */
-async function dispatchToolCall(tenantId: string, tc: any): Promise<string> {
+async function dispatchToolCall(tenantId: string, tc: any, ctx: PromptContext): Promise<string> {
   try {
     if (tc?.function?.name !== "check_availability") return JSON.stringify({ error: "unknown tool" });
     const args = JSON.parse(tc.function.arguments || "{}");
-    return await runAvailabilityTool(tenantId, args);
+    return await runAvailabilityTool(tenantId, args, ctx);
   } catch (e) {
     logger.warn(`[ai] availability tool failed: ${(e as Error).message}`);
     return JSON.stringify({ error: "availability lookup failed" });
@@ -214,6 +224,7 @@ async function dispatchToolCall(tenantId: string, tc: any): Promise<string> {
 async function runConfirmBookingTool(
   tenantId: string,
   args: any,
+  ctx: PromptContext,
 ): Promise<{ toModel: string; committed: CommittedBooking | null }> {
   try {
     const date = String(args?.date ?? "").trim();
@@ -228,7 +239,7 @@ async function runConfirmBookingTool(
     }
 
     const serviceKey = await serviceWordsToKey(tenantId, serviceWords);
-    const result = await checkAvailability(tenantId, date, time, serviceKey, null);
+    const result = await checkAvailability(tenantId, date, time, serviceKey, null, availabilityOptsForTarget(ctx));
 
     // Don't commit a time the slot brain doesn't report OPEN — tell the model why
     // so it offers something else instead of announcing a bad booking.
@@ -338,7 +349,11 @@ export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Prom
     const completion = await callModel({
       model: env.OPENAI_MODEL,
       temperature: 0.3,
-      tools: [AVAILABILITY_TOOL, CONFIRM_BOOKING_TOOL],
+      // AI SCHEDULING TARGET: target "none" exposes NO scheduling tools — the
+      // model cannot check or commit what nothing will persist (the per-tenant
+      // analog of the intake rule). Every other target: the SAME two tools,
+      // SAME names (model-facing contract unchanged).
+      tools: (input.context.scheduleTarget || "booking") === "none" ? undefined : [AVAILABILITY_TOOL, CONFIRM_BOOKING_TOOL],
       tool_choice: "auto",
       messages,
     });
@@ -359,11 +374,11 @@ export async function runAITurn(input: AITurnInput, deps: AITurnDeps = {}): Prom
           // COMMITMENT MOMENT: the backend decides + records the booking now.
           let cbArgs: any = {};
           try { cbArgs = JSON.parse((tc as any).function?.arguments || "{}"); } catch { cbArgs = {}; }
-          const { toModel, committed } = await runConfirmBookingTool(input.tenantId, cbArgs);
+          const { toModel, committed } = await runConfirmBookingTool(input.tenantId, cbArgs, input.context);
           if (committed) committedBooking = committed; // last commit this turn wins
           messages.push({ role: "tool", tool_call_id: (tc as any).id, content: toModel });
         } else {
-          const out = await dispatchToolCall(input.tenantId, tc);
+          const out = await dispatchToolCall(input.tenantId, tc, input.context);
           messages.push({ role: "tool", tool_call_id: (tc as any).id, content: out });
         }
       }

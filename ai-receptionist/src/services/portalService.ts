@@ -80,6 +80,7 @@ export async function getPortal(id: string) {
     aiInstructions: (t as any).aiInstructions ?? "",
     aiKnowledgeModules: Array.isArray((t as any).aiKnowledgeModules) ? (t as any).aiKnowledgeModules : [],
     aiCreateWorkOrders: (t as any).aiCreateWorkOrders !== false, // AI intake: default ON
+    aiScheduleTarget: String((t as any).aiScheduleTarget || "booking"), // AI scheduling target
     aiKnowledgePages: Array.isArray((t as any).aiKnowledgePages) ? (t as any).aiKnowledgePages : [],
     createdAt: t.createdAt.toISOString(),
   };
@@ -188,7 +189,7 @@ export async function createPortal(input: {
 
 export async function updatePortal(
   id: string,
-  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; voiceId: string; timezone: string; aiInstructions: string; aiKnowledgeModules: string[]; aiKnowledgePages: string[]; aiCreateWorkOrders: boolean; lockedPages: string[]; billingStatus: string }>,
+  data: Partial<{ name: string; businessType: string; phoneNumber: string | null; notifyEmail: string; greeting: string; status: "ACTIVE" | "SUSPENDED"; requireEmail: boolean; receptionistEnabled: boolean; voiceMode: string; voiceId: string; timezone: string; aiInstructions: string; aiKnowledgeModules: string[]; aiKnowledgePages: string[]; aiCreateWorkOrders: boolean; aiScheduleTarget: string; lockedPages: string[]; billingStatus: string }>,
 ) {
   const clean: any = { ...data };
   if (clean.lockedPages !== undefined) clean.lockedPages = sanitizeLockedPages(clean.lockedPages);

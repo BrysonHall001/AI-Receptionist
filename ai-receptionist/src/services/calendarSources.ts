@@ -33,7 +33,9 @@ export interface BusyInterval {
 /** The seam every calendar source implements. One method, nothing else. */
 export interface CalendarSource {
   name: string;
-  getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null): Promise<BusyInterval[]>;
+  /** `forced` (AI scheduling target): true when this source must count regardless
+   *  of its own per-tenant flag. Sources without a flag simply ignore it. */
+  getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null, forced?: boolean): Promise<BusyInterval[]>;
 }
 
 // ---- wall-clock helpers (zoneless; mirror the appointmentAt storage model) ----
@@ -108,9 +110,12 @@ export const clarityBookingsSource: CalendarSource = {
 // callers never need to know it exists (the seam's whole point).
 export const clarityWorkOrdersSource: CalendarSource = {
   name: "clarity-work-orders",
-  async getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null): Promise<BusyInterval[]> {
+  async getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null, forced?: boolean): Promise<BusyInterval[]> {
     const config = await loadBookingConfig(tenantId);
-    if (config.workOrdersBlockAvailability !== true) return []; // per-tenant opt-in, default OFF
+    // Per-tenant opt-in, default OFF — UNLESS forced (the AI scheduling into
+    // work orders: the module always blocks itself for the AI's own checks,
+    // while every human/booking path keeps the flag's exact semantics).
+    if (config.workOrdersBlockAvailability !== true && forced !== true) return [];
 
     const recordTypeId = await resolveRecordTypeId(tenantId, WORK_ORDER_RECORD_TYPE_KEY);
     const from = new Date(fromISO.length === 16 ? fromISO + ":00Z" : fromISO);
@@ -146,11 +151,15 @@ const SOURCES: CalendarSource[] = [clarityBookingsSource, clarityWorkOrdersSourc
  * list. Slot-finding calls this and never needs to know how many sources exist
  * or what they are. A failing source is logged and skipped, never fatal.
  */
-export async function getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null): Promise<BusyInterval[]> {
+export async function getBusyTimes(tenantId: string, fromISO: string, toISO: string, resourceId?: string | null, forceSources?: string[] | null): Promise<BusyInterval[]> {
   const merged: BusyInterval[] = [];
   for (const s of SOURCES) {
     try {
-      merged.push(...(await s.getBusyTimes(tenantId, fromISO, toISO, resourceId)));
+      // AI SCHEDULING TARGET: a forced source counts REGARDLESS of its own
+      // per-tenant flag (the target module always blocks itself for the AI).
+      // No caller passing nothing changes by a byte, and nothing registers
+      // twice — the same single SOURCES loop, one extra boolean.
+      merged.push(...(await s.getBusyTimes(tenantId, fromISO, toISO, resourceId, forceSources != null && forceSources.includes(s.name))));
     } catch (e) {
       logger.error(`[availability] source "${s.name}" failed: ${(e as Error).message}`);
     }

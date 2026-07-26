@@ -26,6 +26,11 @@ export interface PromptContext {
    *  When false the SERVICE REQUEST block is ABSENT — the model never gathers
    *  what finalization won't persist. */
   serviceRequestIntake?: boolean;
+  /** AI SCHEDULING TARGET: the module the receptionist schedules into ("booking"
+   *  default | "work_order" | ... | "none"). "none" removes the scheduling block
+   *  entirely — an intake-only receptionist never gathers times. Booking tenants
+   *  see BYTE-IDENTICAL prompt text (model-stability guarantee). */
+  scheduleTarget?: string;
   /** Concise summary of a KNOWN caller's PRIOR calls, injected when the portal
    *  enabled the "Calls" page-source under System knowledge. Awareness only. */
   callerCallHistory?: string | null;
@@ -64,6 +69,12 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       `- NEVER promise a specific arrival time, time window, or price for a service request — dispatch is the team's call. Times may ONLY be discussed through the booking flow's check_availability tool. If the caller wants a concrete time slot, that IS a booking: switch to BOOKING AN APPOINTMENT above and book it properly — a booked visit doesn't also need a separate request.`,
     ].join("\n") : "",
     "",
+    // AI SCHEDULING TARGET: the scheduling block is ABSENT for target "none"
+    // (an intake-only receptionist never gathers times); for every other target
+    // the elements below are BYTE-IDENTICAL to the pre-batch prompt (model-
+    // stability guarantee for booking tenants; work-order targets reuse the
+    // same words — the backend, not the prose, decides where records land).
+    ...((ctx.scheduleTarget || "booking") === "none" ? [] : [
     "BOOKING AN APPOINTMENT:",
     ctx.currentDate ? `- For resolving relative dates, today is ${ctx.currentDate}.` : "",
     `- If the caller wants to book, schedule, or set up an appointment, help them land on ONE specific date and time, and which service it's for. Resolve vague phrases ("next Tuesday afternoon") into a concrete calendar date and clock time by asking a short follow-up if needed (e.g. "Afternoon works — would 2 PM be good?").`,
@@ -79,6 +90,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     `- COMMIT THE BOOKING with the confirm_booking tool — this is what actually books the appointment. The MOMENT you announce a booking (after the caller's explicit "yes" to a specific date and time), call confirm_booking with: "date" (YYYY-MM-DD), "time" (24-hour HH:MM, e.g. 14:00 for 2 PM), "service" (their words), and "resource" (the staff name the caller asked for, or omit it for no-preference). The backend records the booking and returns the staff member to announce in "resource" — say EXACTLY that name and that "appointmentTime". If it returns "committed": false, do NOT announce a booking — read the reason and offer another time instead. Never announce a booking without calling confirm_booking on that same turn. (You should STILL also fill "appointment_datetime", "resource", and "service" in "extracted" as described below — they are a backup, but confirm_booking is the source of truth for what gets booked.)`,
     `- CRITICAL — say it, record it (ALL booking fields): anything you state to the caller as part of a booking, you MUST record in "extracted" on that SAME turn, exactly as you said it. If you tell the caller a date/time is booked, "appointment_datetime" MUST hold that exact value as YYYY-MM-DDTHH:MM. If you name a staff member — INCLUDING a no-preference auto-pick ("with Alice") — "resource" MUST be that exact name. If you state the service, "service" MUST hold the caller's words for it. NEVER announce a booking while leaving any of these null, and never announce one value while recording another — the booking is created from these fields, so a mismatch books the wrong thing, and a missing date/time loses the booking entirely. This is the single most important rule for bookings.`,
     `- If you do NOT have a specific confirmed date and time, leave "appointment_datetime" as null. NEVER guess, never invent a time, and never fill it from a vague phrase. No concrete confirmed time means null — the call is just handled like a normal message.`,
+    ]),
     "",
     `Guidance on wrapping up: aim to capture the caller's name and a callback number before you wrap up — and after booking an appointment, ALWAYS ask for their number and give them a full turn to answer before you close. Once you've helped them as far as you can and collected what they're willing to share, briefly confirm anything useful, let them know the right person will follow up, and say a friendly goodbye. It's fine to wrap up even if you didn't get every detail — for example if the caller only had a question, or chose not to share their number — but never end the call in the same breath as asking for something; let them answer first. Don't badger a caller who has already declined, and don't keep them on the line just to extract a field.`,
     "",

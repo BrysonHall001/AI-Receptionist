@@ -19,7 +19,7 @@ import {
 import { createOrUpdateContact, phoneFromExtracted } from "./contactService";
 import { sendCallSummaryEmail } from "./notificationService";
 import { createBookingFromCall, looksLikeBookingIntent } from "./bookingCaptureService";
-import { createWorkOrderFromCall } from "./workOrderCaptureService";
+import { createWorkOrderFromCall, createScheduledWorkOrderFromCall } from "./workOrderCaptureService";
 import { buildHoursContext } from "./availabilityService";
 import { buildCallerRecordKnowledge, buildCallerCallHistory } from "../ai/callerKnowledge";
 
@@ -163,6 +163,11 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
     // this same helper, so "OFF or module hidden" is zero-behavior-change at BOTH
     // ends by construction.
     const serviceRequestIntake = await serviceRequestIntakeEnabled(tenant);
+    // AI SCHEDULING TARGET: one resolution per turn, threaded into the prompt
+    // (block gating) AND the engine (tool gating + availability overrides).
+    const scheduleTarget = await resolveSchedulingTarget(tenant);
+    const { loadBookingConfig } = require("./bookingConfig");
+    const aiVisitMinutes = (await loadBookingConfig(tenant.id)).aiDefaultVisitMinutes;
     // System knowledge: for a KNOWN caller, summarize their linked records of the
     // modules the portal enabled. Best-effort; never blocks a turn. Empty when no
     // modules are enabled or the caller is unknown (so nothing changes by default).
@@ -199,6 +204,8 @@ export async function handleTurn(params: { callSid: string; speech: string; onLo
         callerRecordKnowledge,
         callerCallHistory,
         serviceRequestIntake,
+        scheduleTarget,
+        ...( { aiVisitMinutes } as any ),
       },
       history: toOpenAIMessages(transcript),
       latestCallerUtterance: speech,
@@ -345,8 +352,15 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
   const committedAppointmentAt: string | null = (session as any).committedAppointmentAt ?? null;
   const appointmentDatetime = committedAppointmentAt ?? extracted.appointment_datetime ?? null;
 
+  // AI SCHEDULING TARGET (finalize end): the SAME read-time resolution the
+  // prompt/tools used this call. "booking" = the pre-batch path byte-identical;
+  // a non-booking target routes a committed time into that module's timed
+  // sibling; "none" NEVER creates a scheduled record (tools were absent — a
+  // stray extracted time is logged loudly, not persisted).
+  const finalizeTarget = await resolveSchedulingTarget(tenant);
   let createdBookingId: string | null = null;
-  if (contactId) {
+  let createdScheduledId: string | null = null;
+  if (finalizeTarget === "booking" && contactId) {
     try {
       createdBookingId = await createBookingFromCall({
         tenantId: tenant.id,
@@ -361,6 +375,35 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
     } catch (err) {
       logger.error(`Booking capture failed for ${callSid}: ${(err as Error).message}`);
     }
+  } else if (finalizeTarget !== "booking" && finalizeTarget !== "none" && contactId && appointmentDatetime) {
+    // Timed visit into the target module (work_order today). Guarded exactly
+    // like booking capture: failure logs LOUDLY, finalization never breaks.
+    try {
+      const { loadBookingConfig } = require("./bookingConfig");
+      createdScheduledId = await createScheduledWorkOrderFromCall({
+        tenantId: tenant.id,
+        contactId,
+        appointmentAt: appointmentDatetime,
+        resourceId: committedResourceId,
+        resourceWords: extracted.resource ?? null,
+        serviceWords: extracted.service ?? null,
+        intent: extracted.intent ?? null,
+        visitMinutes: (await loadBookingConfig(tenant.id)).aiDefaultVisitMinutes,
+        requestTitle: extracted.request_title ?? null,
+        requestDetails: extracted.request_details ?? null,
+        serviceAddress: extracted.service_address ?? null,
+        urgency: extracted.urgency ?? null,
+        equipmentMention: extracted.equipment_mention ?? null,
+        callSid,
+      });
+    } catch (err) {
+      logger.error(`[finalize] scheduled-visit capture FAILED for ${callSid} (call still finalizes): ${(err as Error).message}`);
+    }
+  } else if (finalizeTarget === "none" && appointmentDatetime) {
+    logger.warn(`[finalize] target "none" but a time was extracted for ${callSid} — NOT persisted, by design (tools were absent; nothing should have gathered this).`);
+  } else if (finalizeTarget !== "booking") {
+    // non-booking target without a committed time: nothing to schedule here —
+    // the dateless request leg below still applies.
   } else {
     // #3 (audit): a booking can be LOST here without any booking-level log — if the
     // contact upsert above failed, contactId is null and we never even attempt the
@@ -379,7 +422,7 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
   // prompt block (serviceRequestIntakeEnabled), so OFF/hidden is a no-op at BOTH
   // ends. Guarded exactly like booking capture: a failure logs LOUDLY and never
   // breaks finalization or the summary email.
-  if ((extracted.request_title || "").toString().trim() && !createdBookingId) {
+  if ((extracted.request_title || "").toString().trim() && !createdBookingId && !createdScheduledId) {
     const intakeOn = await serviceRequestIntakeEnabled(tenant);
     if (!intakeOn) {
       logger.info(`[finalize] service request captured but intake is OFF (or module hidden) for ${callSid} — nothing persisted, by design.`);
@@ -437,6 +480,28 @@ export async function failCall(callSid: string, reason: string): Promise<void> {
 }
 
 /** Merge newly extracted fields over prior ones; backfill phone from caller ID. */
+/** AI SCHEDULING TARGET resolution — READ-TIME FAIL-SAFE, shared by prompt
+ *  assembly, the engine's tools, AND finalization (one truth, three consumers).
+ *  The stored target must be "none" or a VISIBLE resource-capable module
+ *  (exists + isResourceCapable + page not owner-locked); anything else — a
+ *  hidden/locked/deleted/non-capable module — resolves to "none": the
+ *  receptionist degrades to intake-only rather than scheduling into a module
+ *  the owner hid (never silently into a DIFFERENT module). */
+async function resolveSchedulingTarget(tenant: any): Promise<string> {
+  try {
+    const stored = String((tenant as any).aiScheduleTarget || "booking");
+    if (stored === "none") return "none";
+    const { isResourceCapable } = require("./recordTypeService");
+    if (!isResourceCapable(stored)) return "none";
+    const rt = await prisma.recordType.findFirst({ where: { tenantId: tenant.id, key: stored }, select: { id: true } });
+    if (!rt) return "none";
+    const locked = Array.isArray((tenant as any).lockedPages) ? ((tenant as any).lockedPages as string[]) : [];
+    const href = stored === "booking" ? "#/bookings" : "#/records/" + stored;
+    if (locked.includes(href)) return "none";
+    return stored;
+  } catch { return "none"; }
+}
+
 /** SERVICE-REQUEST INTAKE gate (shared by prompt assembly AND finalization):
  *  the tenant flag (default ON) AND the work_order module live for the tenant
  *  AND its page not owner-locked. Fail-closed on any lookup error. */

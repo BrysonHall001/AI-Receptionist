@@ -5024,7 +5024,7 @@
       const status = el("div"); host.appendChild(status);
       status.appendChild(el("p", "cell-muted", "Loading…"));
 
-      let editable = true, savedModules = [], savedPages = [], pageOptions = [], aiCreateWorkOrders = true;
+      let editable = true, savedModules = [], savedPages = [], pageOptions = [], aiCreateWorkOrders = true, aiScheduleTarget = "booking", aiScheduleTargetEffective = "booking";
       try {
         const data = await App.portalApi("/api/account/ai-instructions");
         editable = !!data.editable;
@@ -5032,6 +5032,8 @@
         savedPages = Array.isArray(data.aiKnowledgePages) ? data.aiKnowledgePages : [];
         pageOptions = Array.isArray(data.aiKnowledgePageOptions) ? data.aiKnowledgePageOptions : [];
         aiCreateWorkOrders = data.aiCreateWorkOrders !== false; // AI intake toggle state
+        aiScheduleTarget = String(data.aiScheduleTarget || "booking");
+        aiScheduleTargetEffective = String(data.aiScheduleTargetEffective || aiScheduleTarget);
       } catch (e) {}
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
@@ -5081,6 +5083,32 @@
       const bkCb = el("input"); bkCb.type = "checkbox"; bkCb.checked = true; bkCb.disabled = true;
       bkRow.appendChild(bkCb); bkRow.appendChild(document.createTextNode(" Bookings — always on with the receptionist"));
       createCard.appendChild(bkRow);
+      // ---- SCHEDULES INTO (AI scheduling target) — which module gets timed
+      // visits. Options: every VISIBLE resource-capable module + "Nothing".
+      // The degrade warning shows when the STORED target resolves to none.
+      const capable = (Array.isArray(types) ? types : []).filter((t) => t && (t.key === "booking" || t.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)));
+      const tgtRow = el("div", "ai-target-row");
+      tgtRow.appendChild(el("label", "field-label", "Schedules into"));
+      const tgtSel = el("select", "input"); tgtSel.id = "ai-schedule-target";
+      capable.forEach((t) => { const o = document.createElement("option"); o.value = t.key; o.textContent = t.labelPlural || t.label || t.key; tgtSel.appendChild(o); });
+      const noneOpt = document.createElement("option"); noneOpt.value = "none"; noneOpt.textContent = "Nothing — take messages and requests only"; tgtSel.appendChild(noneOpt);
+      tgtSel.value = Array.from(tgtSel.options).some((o) => o.value === aiScheduleTarget) ? aiScheduleTarget : "none";
+      tgtSel.disabled = !editable;
+      tgtSel.onchange = async () => {
+        tgtSel.disabled = true;
+        try {
+          await App.portalApi("/api/account/ai-create", { method: "PATCH", body: JSON.stringify({ aiScheduleTarget: tgtSel.value }) });
+          toast(tgtSel.value === "none" ? "The receptionist now takes messages only" : "Callers now get scheduled into " + tgtSel.options[tgtSel.selectedIndex].textContent);
+          mountSystemKnowledge(host); // re-render: the warning line reflects the new resolution
+        } catch (e) { toast(e.message, true); tgtSel.disabled = !editable; }
+      };
+      tgtRow.appendChild(tgtSel);
+      tgtRow.appendChild(el("p", "cell-muted pt-t12", "Callers who land on a real date and time get scheduled here. Availability always counts this module's own visits as busy."));
+      if (aiScheduleTarget !== "none" && aiScheduleTargetEffective === "none") {
+        tgtRow.appendChild(el("p", "ai-target-warn", "\u26a0 Your receptionist's scheduling target is hidden or unavailable \u2014 it is taking messages only until you pick another."));
+      }
+      createCard.appendChild(tgtRow);
+
       if (woLive) {
         const woRow = el("label", "adm-row-click" + (editable ? "" : " u-cursor-default"));
         const woCb = el("input"); woCb.type = "checkbox"; woCb.id = "ai-create-wo";
@@ -5760,6 +5788,21 @@
       // default OFF): when on, a technician's scheduled work orders count as busy
       // time for slot offering, so the AI receptionist stops offering booking
       // slots while they're out on a job. Same card, same save button.
+      // AI SCHEDULING TARGET: the receptionist's default visit length when it
+      // schedules into a non-booking module (no service-duration table there).
+      // Shown only when such a module exists + is visible; saved with this card.
+      const capableNonBooking = (App.state.recordTypes || []).some((t) => t.key === "work_order" && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order")));
+      if (capableNonBooking) {
+        const aiWrap = el("div"); aiWrap.classList.add("pt-dblwrap");
+        aiWrap.appendChild(el("div", "pt-nm2", "AI visit length (minutes)"));
+        const aiInp = el("input", "input"); aiInp.type = "number"; aiInp.min = "15"; aiInp.max = "480"; aiInp.id = "ai-visit-min";
+        aiInp.value = String(cfg.aiDefaultVisitMinutes || 60);
+        aiInp.classList.add("pt-definp");
+        aiWrap.appendChild(aiInp);
+        aiWrap.appendChild(el("p", "cell-muted pt-t12", "How long a receptionist-scheduled visit blocks the calendar when it books into Work Orders."));
+        durCard.appendChild(aiWrap);
+      }
+
       const woWrap = el("div"); woWrap.classList.add("pt-dblwrap");
       const woL = el("label"); woL.classList.add("pt-dbll");
       const woChk = el("input"); woChk.type = "checkbox"; woChk.checked = cfg.workOrdersBlockAvailability === true; woChk.classList.add("u-mt-2");
@@ -5784,6 +5827,7 @@
           serviceDurations,
           allowDoubleBooking: dblChk.checked,
           workOrdersBlockAvailability: woChk.checked,
+          aiDefaultVisitMinutes: (function () { const el2 = document.getElementById("ai-visit-min"); const v = el2 ? parseInt(el2.value, 10) : NaN; return Number.isFinite(v) ? v : (cfg.aiDefaultVisitMinutes || 60); })(),
         };
         saveBtn.disabled = true; saveBtn.textContent = "Saving…";
         try { await App.portalApi("/api/booking-config", { method: "PATCH", body: JSON.stringify(payload) }); toast("Scheduling saved"); }

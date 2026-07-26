@@ -943,6 +943,23 @@ apiRouter.get("/account/ai-instructions", async (req: Request, res: Response) =>
     aiInstructions: (portal as any)?.aiInstructions ?? "",
     aiKnowledgeModules: Array.isArray((portal as any)?.aiKnowledgeModules) ? (portal as any).aiKnowledgeModules : [],
     aiCreateWorkOrders: (portal as any)?.aiCreateWorkOrders !== false, // AI intake (default ON)
+    aiScheduleTarget: String((portal as any)?.aiScheduleTarget || "booking"),
+    // The READ-TIME resolution (the degrade rule): differs from the stored value
+    // exactly when the stored target is hidden/locked/invalid — the settings
+    // card shows the owner-visible warning off this.
+    aiScheduleTargetEffective: await (async () => {
+      try {
+        const stored = String((portal as any)?.aiScheduleTarget || "booking");
+        if (stored === "none") return "none";
+        const { isResourceCapable } = require("../services/recordTypeService");
+        if (!isResourceCapable(stored)) return "none";
+        const rt = await prisma.recordType.findFirst({ where: { tenantId, key: stored }, select: { id: true } });
+        if (!rt) return "none";
+        const locked = Array.isArray((portal as any)?.lockedPages) ? ((portal as any).lockedPages as string[]) : [];
+        if (locked.includes(stored === "booking" ? "#/bookings" : "#/records/" + stored)) return "none";
+        return stored;
+      } catch { return "none"; }
+    })(),
     aiKnowledgePages: Array.isArray((portal as any)?.aiKnowledgePages) ? (portal as any).aiKnowledgePages : [],
     // Curated non-module knowledge sources (the "Pages" checklist). Extensible;
     // Calls (prior call history) is the only source today.
@@ -1049,9 +1066,22 @@ apiRouter.patch("/account/ai-create", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const on = (req.body ?? {}).aiCreateWorkOrders !== false;
-    await prisma.tenant.update({ where: { id: tenantId }, data: { aiCreateWorkOrders: on } as any });
-    res.json({ aiCreateWorkOrders: on });
+    const body = req.body ?? {};
+    const data: any = {};
+    if ("aiCreateWorkOrders" in body) data.aiCreateWorkOrders = body.aiCreateWorkOrders !== false;
+    if ("aiScheduleTarget" in body) {
+      // Validate the target: "none", or a VISIBLE resource-capable module.
+      const want = String(body.aiScheduleTarget || "booking");
+      if (want !== "none") {
+        const { isResourceCapable } = require("../services/recordTypeService");
+        if (!isResourceCapable(want)) { res.status(400).json({ error: "That module can't hold scheduled visits." }); return; }
+        const rt = await prisma.recordType.findFirst({ where: { tenantId, key: want }, select: { id: true } });
+        if (!rt) { res.status(400).json({ error: "That module doesn't exist." }); return; }
+      }
+      data.aiScheduleTarget = want;
+    }
+    if (Object.keys(data).length) await prisma.tenant.update({ where: { id: tenantId }, data });
+    res.json({ aiCreateWorkOrders: data.aiCreateWorkOrders, aiScheduleTarget: data.aiScheduleTarget });
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 

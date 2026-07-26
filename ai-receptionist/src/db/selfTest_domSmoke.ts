@@ -295,6 +295,14 @@ async function main() {
   await go("#/calls");
   const simBtns = await until(() => !!$("#simulate-btn") && !!$("#simulate-wo-btn"));
   check(simBtns, "the Calls toolbar carries BOTH simulate buttons (service request visible: module live)");
+  // AI SCHEDULING TARGET: the settings select + the Scheduling-card duration input.
+  await go("#/settings/aireceptionist");
+  const kt2 = $$("button, .tab").find((b: any) => b.textContent.trim() === "System knowledge");
+  if (kt2) (kt2 as any).click();
+  const tgtOk = await until(() => { const sel: any = $("#ai-schedule-target"); return !!sel && sel.value === "booking" && Array.from(sel.options as any[]).some((o: any) => o.value === "none"); });
+  check(tgtOk, "AI TARGET: Schedules-into mounts, defaults to Bookings, offers Nothing");
+  await go("#/settings/scheduling");
+  check(await until(() => !!$("#ai-visit-min") && Number(($("#ai-visit-min") as any).value) === 60), "the Scheduling card carries the AI visit-length input (default 60)");
 
   // ---- Contacts regression: the page that silently swallowed misplaced code
   // in batch 14 must mount clean (the harness exists so this class never ships).

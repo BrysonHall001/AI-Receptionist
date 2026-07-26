@@ -170,8 +170,11 @@ async function computeResourceAvailability(
   serviceKey: string | null | undefined,
   resource: { id?: string; name?: string; hours?: any; durations?: any; bufferMin?: any } | null,
   config: Awaited<ReturnType<typeof loadBookingConfig>>,
+  opts?: AvailabilityOpts,
 ): Promise<{ durationMin: number; bufferMin: number; closed: boolean; slots: OpenSlot[]; windows: { start: string; end: string }[]; busyMinutes: { s: number; e: number }[] }> {
-  const durationMin = resolveResourceDuration(resource, config, serviceKey);
+  // AI-target override wins (the tenant's default visit length); every other
+  // caller keeps the service/resource duration rule byte-identically.
+  const durationMin = (opts && opts.durationMinutes && opts.durationMinutes > 0) ? opts.durationMinutes : resolveResourceDuration(resource, config, serviceKey);
   const bufferMin = resolveResourceBuffer(resource, config);
   const hoursSource = resolveResourceHours(resource, config.hours);
 
@@ -181,7 +184,7 @@ async function computeResourceAvailability(
 
   // Scope busy to THIS lane (its resource id, or the shared null lane for the
   // business-level fallback) — same per-lane scoping the write path uses.
-  const busyRaw = await getBusyTimes(tenantId, `${dateStr}T00:00`, `${nextDay(dateStr)}T00:00`, (resource && resource.id) ?? null);
+  const busyRaw = await getBusyTimes(tenantId, `${dateStr}T00:00`, `${nextDay(dateStr)}T00:00`, (resource && resource.id) ?? null, opts && opts.forceSources ? opts.forceSources : null);
   const busyMinutes = busyRaw
     .map((b) => busyToDayMinutes(b, dateStr))
     .filter((x): x is { s: number; e: number } => x != null);
@@ -200,11 +203,22 @@ async function computeResourceAvailability(
  *     it can no longer block bob/Alice. Matches the write path's per-lane scoping.
  *   - No bookable resources   -> business-level single lane (fallback, unchanged).
  */
+/** AI SCHEDULING TARGET: optional computation overrides, passed ONLY by the AI
+ *  engine when its target is a non-booking module. No caller passing nothing
+ *  gets byte-identical behavior (every human/booking path passes nothing).
+ *   - durationMinutes: the tenant's default visit length (non-booking targets
+ *     have no service-duration table);
+ *   - forceSources: busy sources that must count REGARDLESS of their per-tenant
+ *     flag — the target module's own records always block the AI (a module can
+ *     never double-book itself via the receptionist). */
+export interface AvailabilityOpts { durationMinutes?: number | null; forceSources?: string[] | null }
+
 export async function findOpenSlots(
   tenantId: string,
   dateStr: string,
   serviceKey?: string | null,
   resourceId?: string | null,
+  opts?: AvailabilityOpts,
 ): Promise<AvailabilityResult> {
   const config = await loadBookingConfig(tenantId);
 
@@ -212,7 +226,7 @@ export async function findOpenSlots(
   // availableResources is populated consistently with the union path).
   if (resourceId) {
     const resource = await db.resource.findFirst({ where: { id: resourceId, tenantId, deletedAt: null } });
-    const r = await computeResourceAvailability(tenantId, dateStr, serviceKey, resource, config);
+    const r = await computeResourceAvailability(tenantId, dateStr, serviceKey, resource, config, opts);
     const freeResourcesByStart: Record<string, { id: string; name: string }[]> = {};
     if (resource) for (const s of r.slots) freeResourcesByStart[s.start] = [{ id: resource.id, name: resource.name }];
     return { date: dateStr, serviceKey: serviceKey ?? null, durationMin: r.durationMin, bufferMin: r.bufferMin, closed: r.closed, slots: r.slots, windows: r.windows, busyMinutes: r.busyMinutes, freeResourcesByStart };
@@ -222,13 +236,13 @@ export async function findOpenSlots(
   const resources = await listResources(tenantId);
   if (!resources.length) {
     // FALLBACK (unchanged): no bookable resources -> business-level single lane.
-    const r = await computeResourceAvailability(tenantId, dateStr, serviceKey, null, config);
+    const r = await computeResourceAvailability(tenantId, dateStr, serviceKey, null, config, opts);
     return { date: dateStr, serviceKey: serviceKey ?? null, durationMin: r.durationMin, bufferMin: r.bufferMin, closed: r.closed, slots: r.slots, windows: r.windows, busyMinutes: r.busyMinutes };
   }
 
   const perResource: ResourceAvailability[] = [];
   for (const res of resources) {
-    const r = await computeResourceAvailability(tenantId, dateStr, serviceKey, res, config);
+    const r = await computeResourceAvailability(tenantId, dateStr, serviceKey, res, config, opts);
     perResource.push({ id: res.id, name: res.name, durationMin: r.durationMin, bufferMin: r.bufferMin, windows: r.windows, busyMinutes: r.busyMinutes, slots: r.slots });
   }
 
@@ -247,7 +261,9 @@ export async function findOpenSlots(
 
   // Header duration/buffer are business-level representatives; per-resource values
   // are what actually gated each slot (and drive requested-time reasoning).
-  const durationMin = resolveResourceDuration(null, config, serviceKey);
+  // The AI-target override wins here too, so the tool JSON's durationMin says
+  // what the slots were actually gated on.
+  const durationMin = (opts && opts.durationMinutes && opts.durationMinutes > 0) ? opts.durationMinutes : resolveResourceDuration(null, config, serviceKey);
   const bufferMin = resolveResourceBuffer(null, config);
   const closed = perResource.every((p) => p.windows.length === 0); // every lane closed that day
 
@@ -324,8 +340,9 @@ export async function checkAvailability(
   timeStr?: string | null,
   serviceKey?: string | null,
   resourceId?: string | null,
+  opts?: AvailabilityOpts,
 ): Promise<SlotAvailability> {
-  const result = await findOpenSlots(tenantId, dateStr, serviceKey, resourceId);
+  const result = await findOpenSlots(tenantId, dateStr, serviceKey, resourceId, opts);
   const requestedTime = normalizeRequestedStart(dateStr, timeStr);
   const isUnion = !!result.perResource; // business-wide union path (vs single lane)
   const freeByStart = result.freeResourcesByStart || {};

@@ -26,6 +26,9 @@ export interface BookingConfig {
   // while they're on a job). DEFAULT OFF — flag off means the work-orders busy
   // source returns nothing and availability is byte-for-byte unchanged.
   workOrdersBlockAvailability: boolean;
+  /** AI SCHEDULING TARGET: default visit length (minutes) when the receptionist
+   *  schedules into a NON-booking module (no service-duration table there). */
+  aiDefaultVisitMinutes: number;
 }
 
 // Weekday keys, indexed to match JavaScript's Date.getUTCDay() (0=Sunday).
@@ -47,6 +50,7 @@ export const DEFAULT_BOOKING_CONFIG: BookingConfig = {
   serviceDurations: {},
   allowDoubleBooking: false,
   workOrdersBlockAvailability: false,
+  aiDefaultVisitMinutes: 60,
 };
 
 function posInt(v: any, fallback: number): number {
@@ -76,6 +80,7 @@ export function mergeBookingConfig(raw: any): BookingConfig {
       c.serviceDurations && typeof c.serviceDurations === "object" ? c.serviceDurations : {},
     allowDoubleBooking: c.allowDoubleBooking === true,
     workOrdersBlockAvailability: c.workOrdersBlockAvailability === true,
+    aiDefaultVisitMinutes: Number.isFinite(Number(c.aiDefaultVisitMinutes)) && Number(c.aiDefaultVisitMinutes) >= 15 && Number(c.aiDefaultVisitMinutes) <= 480 ? Math.round(Number(c.aiDefaultVisitMinutes)) : 60,
   };
 }
 
@@ -160,6 +165,7 @@ export async function saveBookingConfig(tenantId: string, input: any): Promise<B
     serviceDurations,
     allowDoubleBooking: c.allowDoubleBooking === true,
     workOrdersBlockAvailability: c.workOrdersBlockAvailability === true,
+    aiDefaultVisitMinutes: Number.isFinite(Number(c.aiDefaultVisitMinutes)) && Number(c.aiDefaultVisitMinutes) >= 15 && Number(c.aiDefaultVisitMinutes) <= 480 ? Math.round(Number(c.aiDefaultVisitMinutes)) : 60,
   };
 
   await (prisma as any).tenant.update({ where: { id: tenantId }, data: { bookingConfig: stored } });

@@ -108,7 +108,8 @@
             { steps: [
               "Open the record from the tray: the problem is the title, the caller\u2019s words are the description, and urgency set the priority.",
               "The record\u2019s Activity notes who created it \u2014 \u201cCreated by the AI receptionist from a phone call\u201d \u2014 and the call\u2019s own page shows the captured request.",
-              "Turn this on or off under [[#/settings/aireceptionist|Settings \u2192 AI Receptionist]] \u2192 AI can create. A caller who books a real time slot gets a booking instead \u2014 one artifact per call, never both.",
+              "Turn this on or off under [[#/settings/aireceptionist|Settings \u2192 AI Receptionist]] \u2192 AI can create. A caller who lands on a real time slot gets a scheduled visit instead \u2014 one artifact per call, never both.",
+              "Under the same card, Schedules into decides WHERE timed visits land: Bookings (the default), straight into Work Orders \u2014 dated, with a technician, honestly blocking that tech's other openings \u2014 or Nothing, for a receptionist that only takes messages and requests. The visit length it blocks is set on [[#/settings/scheduling|Settings \u2192 Scheduling & Resources]]. One honest note: the Google Calendar sync pushes bookings only, so visits scheduled into Work Orders don\u2019t sync out.",
             ] },
           ],
         },

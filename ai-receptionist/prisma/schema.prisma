@@ -79,6 +79,11 @@ model Tenant {
   // problem calls? Default ON (show-off doctrine); the prompt block AND the
   // finalization sibling both gate on this + the module being live.
   aiCreateWorkOrders  Boolean @default(true)
+  // AI SCHEDULING TARGET: which module the receptionist schedules callers into —
+  // a visible resource-capable module key ("booking" | "work_order" | future), or
+  // "none" (intake-only: messages + requests, never times). Resolution is READ-
+  // TIME FAIL-SAFE: a hidden/invalid stored target behaves as "none".
+  aiScheduleTarget    String  @default("booking")
   // Per-portal VOICE MODE — the authoritative 3-way choice for the inbound phone
   // experience: "OFF" (decline calls), "WALKIE" (cheap Say/Gather), or "SMOOTH"
   // (premium ElevenLabs ConversationRelay). receptionistEnabled above is kept as

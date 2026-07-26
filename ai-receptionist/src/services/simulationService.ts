@@ -30,6 +30,17 @@ const SCENARIOS: Scenario[] = [
       "The address is 44 Oakwood Drive, Raleigh.",
     ],
   },
+  {
+    key: "service_request_scheduled", // AI target suite: problem + a concrete time (absorption)
+    label: "Service request + scheduled visit",
+    utterances: [
+      "Hi, this is Riley Park.",
+      "You can reach me at 919-555-6210.",
+      "My AC is not cooling at all \u2014 it's blowing warm air.",
+      "The address is 9 Fern Court, Raleigh. Could someone come June 24th at 2 PM?",
+      "Yes, that works \u2014 thank you!",
+    ],
+  },
   // --- A couple of easy baselines (clean info on the first ask) ---
   {
     label: "Easy — clear leak",
