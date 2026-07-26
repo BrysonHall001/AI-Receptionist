@@ -33,7 +33,7 @@
           id: "orientation", features: ["always"],
           title: "Finding your way around: Modules and Pages",
           blocks: [
-            { p: "Clarity's navigation has two parts, and the split is the key to the whole app. The LEFT navigation lists your MODULES — the kinds of data your business keeps, like [[#/contacts|Contacts]], [[#/jobs|Job Openings]], and [[#/bookings|Bookings]], plus any modules you create. Modules are highly configurable: their fields are grouped into sections, they offer custom views, and you can rename them to your own words." },
+            { p: "Clarity's navigation has two parts, and the split is the key to the whole app. The LEFT navigation lists your MODULES — the kinds of data your business keeps, like [[#/contacts|Contacts]], [[#/jobs|Job Openings]], and [[#/bookings|Bookings]], plus any modules you create. Each item carries a small icon so you can spot it at a glance \u2014 icons stay put even when you rename things. Modules are highly configurable: their fields are grouped into sections, they offer custom views, and you can rename them to your own words." },
             { p: "Across the TOP run your PAGES — fixed-purpose screens that work WITH that data: [[#/dashboard|Home Dashboard]], [[#/calls|Calls]], [[#/reports|Analytics]], [[#/automations|Automations]], [[#/communication|Communication]], the Learning Center, and [[#/feedback|Feedback]]." },
             { steps: [
               "Left navigation = modules: one entry per kind of record. Yours may differ from a teammate's screenshots — modules are renameable and you can add your own.",

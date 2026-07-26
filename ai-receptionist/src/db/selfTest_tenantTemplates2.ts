@@ -212,7 +212,7 @@ async function main() {
   w.Chart = function () { return { destroy() { /* */ }, update() { /* */ } }; }; (w.Chart as any).register = () => { /* */ };
   // The domSmoke harness's FULL portal script set (order matters — navModel
   // before app.js provides buildPortalNav).
-  for (const f of ["errorReporter.js", "util.js", "theme.js", "themeScene.js", "table.js", "reports.js", "fields.js", "compose.js", "flowPreview.js", "automations.js", "inbound.js", "learnScenes.js", "learn.js", "feedback.js", "drips.js", "communication.js", "auth.js", "portal.js", "admin.js", "presence.js", "navModel.js", "app.js"]) {
+  for (const f of ["errorReporter.js", "util.js", "icons.js", "theme.js", "themeScene.js", "table.js", "reports.js", "fields.js", "compose.js", "flowPreview.js", "automations.js", "inbound.js", "learnScenes.js", "learn.js", "feedback.js", "drips.js", "communication.js", "auth.js", "portal.js", "admin.js", "presence.js", "navModel.js", "app.js"]) {
     w.eval(readFileSync(join(__dirname, "..", "..", "public", "js", f), "utf8"));
   }
   const $ = (sel: string) => w.document.querySelector(sel);

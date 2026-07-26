@@ -62,7 +62,14 @@ adminRouter.get("/portals/record-type-options", async (_req: Request, res: Respo
 adminRouter.get("/tenant-templates", async (_req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { TENANT_TEMPLATES } = require("../services/tenantTemplates");
-  res.json({ templates: TENANT_TEMPLATES.map((t: any) => ({ key: t.key, label: t.label, description: t.description, pagesOffPrefill: t.pagesOffPrefill, modulesHiddenPrefill: t.modulesHiddenPrefill })) });
+  // CREATE-UI-2: fieldTweaks (labels per module) + pageLabelOverrides ride the
+  // payload so the wizard swaps chips + row titles LIVE on a card click.
+  res.json({ templates: TENANT_TEMPLATES.map((t: any) => ({
+    key: t.key, label: t.label, description: t.description,
+    pagesOffPrefill: t.pagesOffPrefill, modulesHiddenPrefill: t.modulesHiddenPrefill,
+    pageLabelOverrides: t.pageLabelOverrides || {},
+    fieldTweaks: (t.fieldTweaks || []).reduce((acc: any, tw: any) => { (acc[tw.moduleKey] = acc[tw.moduleKey] || []).push(String(tw.field.label)); return acc; }, {}),
+  })) });
 });
 
 adminRouter.get("/portals/:id", async (req: Request, res: Response) => {

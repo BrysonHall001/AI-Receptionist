@@ -23,9 +23,21 @@
   function focus(innerHtml) { return `<span class="scene-focus">${innerHtml}</span>`; }
   // LC-3 fidelity: the shell scaffold mirrors app.js#buildShell's REAL split — record-type
   // MODULES in the left sidebar; fixed-purpose PAGES across the top portal-pages-row.
+  // create-ui-2: the scene shell renders the SAME registry icons the real navs
+  // use (label -> key map is scene-local — the shells draw a FIXED cast of
+  // stock labels, so the mapping is exact, not a guess; anything unmapped just
+  // renders icon-free, exactly like an unknown page in the real nav).
+  const SCENE_ICON_KEYS = { Contacts: "contact", Bookings: "booking", Equipment: "equipment", "Work Orders": "work_order", Estimates: "estimate", Invoices: "invoice", Products: "product", Tasks: "task", Vehicles: "vehicle", Properties: "property", "Job Openings": "job" };
+  const SCENE_PAGE_HREFS = { Home: "#/dashboard", "Home Dashboard": "#/dashboard", Calls: "#/calls", Analytics: "#/reports", Automations: "#/automations", Communication: "#/communication", "Learning Center": "#/learn", Feedback: "#/feedback", Billing: "#/billing" };
+  function sceneNavIc(label, isModule) {
+    if (!App.icons) return "";
+    const svg = isModule ? (SCENE_ICON_KEYS[label] ? App.icons.forModuleKey(SCENE_ICON_KEYS[label]) : null)
+      : (SCENE_PAGE_HREFS[label] ? App.icons.forNavHref(SCENE_PAGE_HREFS[label]) : null);
+    return svg ? `<span class="nav-ic">${svg}</span>` : "";
+  }
   function shell(modules, activeModule, pages, activePage, mainHtml) {
-    const side = modules.map((n) => `<span class="nav-item${n === activeModule ? " active" : ""}">${n}</span>`).join("");
-    const row = pages.map((n) => `<span class="nav-item${n === activePage ? " active" : ""}">${n}</span>`).join("");
+    const side = modules.map((n) => `<span class="nav-item${n === activeModule ? " active" : ""}">${sceneNavIc(n, true)}${n}</span>`).join("");
+    const row = pages.map((n) => `<span class="nav-item${n === activePage ? " active" : ""}">${sceneNavIc(n, false)}${n}</span>`).join("");
     return `<div class="scene-app"><div class="scene-cols"><div class="scene-side"><span class="scene-dot"></span>${side}</div><div class="scene-maincol"><div class="scene-topbar"><span class="scene-topline"></span><span class="scene-presence"></span><span class="scene-presence scene-presence--b"></span></div><div class="scene-pagesrow">${row}</div><div class="scene-main">${mainHtml}</div></div></div></div>`;
   }
   function miniTable(headers, rows) {

@@ -74,7 +74,7 @@ async function main() {
   w.alert = () => {}; w.confirm = () => true; w.scrollTo = () => {};
 
   const SCRIPTS = [
-    "errorReporter.js", "util.js", "theme.js", "themeScene.js", "table.js", "reports.js",
+    "errorReporter.js", "util.js", "icons.js", "theme.js", "themeScene.js", "table.js", "reports.js",
     "fields.js", "compose.js", "flowPreview.js", "automations.js", "inbound.js",
     "learnScenes.js", "learn.js", "feedback.js", "drips.js", "communication.js",
     "auth.js", "portal.js", "admin.js", "presence.js", "navModel.js", "app.js",

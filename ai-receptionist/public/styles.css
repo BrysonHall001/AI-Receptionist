@@ -1654,7 +1654,6 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .adm-card3 { margin-bottom: 16px; padding: 20px; }
 .adm-head3 { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .adm-uform { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
-.adm-vcap { margin: 8px 0 0; font-size: var(--text-sm); }
 .adm-locklab { margin: 0 0 2px; }
 .adm-locknote { margin: 0 0 4px; font-size: var(--text-xs); }
 .adm-footer { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; min-width: 0; }
@@ -3463,20 +3462,51 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
    Segmented AI control = the list-page view-switcher precedent, restyled with
    the house tokens for the hub panel; template cards; row descriptions; field
    chips. Tokens only — ratchet + contrast clean. */
+/* ============ NAV ICONS (create-ui-2) ============
+   One registry, keys not labels. The svg inherits currentColor, so active/
+   hover/theme states come free from the existing .nav-item color rules. */
+.nav-ic { display: inline-flex; flex: 0 0 auto; width: 15px; height: 15px; margin-right: 8px; vertical-align: -2px; opacity: 0.85; }
+.nav-item.active .nav-ic { opacity: 1; }
+.nav-ic svg { width: 100%; height: 100%; display: block; }
+.nav-label { min-width: 0; }
+.portal-pages-row .nav-ic { margin-right: 6px; }
+.sidebar-nav .nav-item { display: flex; align-items: center; }
+.scene-side .nav-ic, .scene-pagesrow .nav-ic { width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; }
+
 .adm-featcol { max-width: 460px; }
-.adm-seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--gray-soft); margin-top: 4px; }
-.adm-seg-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--ink-soft); font: inherit; font-size: var(--text-sm); padding: 5px 12px; border-radius: calc(var(--radius-sm) - 2px); cursor: pointer; }
+/* CREATE-UI-2: the segmented control gets REAL margins (label gap, segment
+   padding) and registry icons; the per-state description + live summary sit to
+   its right; template cards go icon-atop with a proper selected state; rows go
+   three-column with width-aware chips. Tokens only. */
+.adm-seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--gray-soft); margin-top: 8px; }
+.adm-seg-btn { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--ink-soft); font: inherit; font-size: var(--text-sm); padding: 6px 14px; border-radius: calc(var(--radius-sm) - 2px); cursor: pointer; }
 .adm-seg-btn:hover { color: var(--ink); }
 .adm-seg-btn.active { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); font-weight: 600; }
-.adm-seg-ic { font-size: var(--text-sm); line-height: 1; }
-.adm-tpl-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: 4px; }
-.adm-tpl-card { display: flex; flex-direction: column; gap: 3px; text-align: left; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink); font: inherit; padding: 10px 12px; cursor: pointer; max-width: 300px; }
+.adm-seg-ic { display: inline-flex; width: 14px; height: 14px; }
+.adm-seg-ic svg { width: 100%; height: 100%; display: block; }
+.adm-ai-row { display: flex; align-items: flex-start; gap: var(--sp-4); flex-wrap: wrap; }
+.adm-ai-left { flex: 0 0 auto; }
+.adm-ai-right { flex: 1 1 260px; min-width: 240px; padding-top: 24px; }
+.adm-ai-desc { margin: 0 0 4px; font-size: var(--text-sm); line-height: 1.45; }
+.adm-start-sum { margin: 0; font-size: var(--text-xs); }
+.adm-tpl-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: 8px; }
+.adm-tpl-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink); font: inherit; padding: 12px 14px; cursor: pointer; flex: 0 1 190px; min-width: 150px; max-width: 210px; }
 .adm-tpl-card:hover { border-color: var(--line-strong); }
-.adm-tpl-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.adm-tpl-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: var(--gray-soft); }
+.adm-tpl-ic { display: inline-flex; width: 18px; height: 18px; margin-bottom: 2px; color: var(--ink-soft); }
+.adm-tpl-card.active .adm-tpl-ic { color: var(--accent); }
+.adm-tpl-ic svg { width: 100%; height: 100%; display: block; }
+.adm-tpl-reset { margin: 6px 0 0; font-size: var(--text-xs); min-height: 16px; }
+.adm-tpl-reset:empty { visibility: hidden; } /* reserved clean space (future per-template LC control lands here) */
 .adm-tpl-name { font-weight: 600; font-size: var(--text-sm); }
 .adm-tpl-desc { color: var(--ink-soft); font-size: var(--text-xs); line-height: 1.35; }
 .adm-row-mod { align-items: flex-start; }
-.adm-rowtxt { display: inline-flex; flex-direction: column; gap: 2px; margin-left: 6px; min-width: 0; }
+.adm-row3 { display: grid; grid-template-columns: 200px minmax(0, 1fr) 300px; gap: 4px var(--sp-3); align-items: start; }
+.adm-r3-head { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.adm-row-ic { display: inline-flex; flex: 0 0 auto; width: 15px; height: 15px; color: var(--ink-soft); }
+.adm-row-ic svg { width: 100%; height: 100%; display: block; }
+.adm-r3-desc { padding-top: 2px; }
+.adm-r3-chips { min-width: 0; }
 .adm-rowname { font-weight: 600; font-size: var(--text-sm); }
 .adm-rowdesc { color: var(--ink-soft); font-size: var(--text-xs); line-height: 1.35; }
 .adm-rowdesc:empty { display: none; }

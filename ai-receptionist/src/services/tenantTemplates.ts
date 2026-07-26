@@ -52,6 +52,11 @@ export interface TenantTemplate {
   /** null = leave the column default (true). */
   aiIntake: boolean | null;
   fieldTweaks: TemplateFieldTweak[];
+  /** CREATE-UI-2: per-template PAGE LABEL OVERRIDES (href -> label), applied at
+   *  creation through the EXISTING Settings->Labels mechanism (labels.nav.labels)
+   *  and served to the wizard for live row-title swaps. Both shipped templates
+   *  carry NONE — capability only, proven by a test fixture. */
+  pageLabelOverrides: Record<string, string>;
   hooks: TemplateHooks;
 }
 
@@ -71,6 +76,7 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
     aiSchedulingTarget: null,
     aiIntake: null,
     fieldTweaks: [],
+    pageLabelOverrides: {},
     hooks: { ...EMPTY_HOOKS },
   },
   {
@@ -87,6 +93,7 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
     // service_address/photos; etc). Zero tweaks warranted — the MECHANISM below
     // is live and suite-proven with a synthetic tweak.
     fieldTweaks: [],
+    pageLabelOverrides: {},
     // TENANT TEMPLATES 2 — the Field Services CONTENT PACK. Every widget below
     // is the reports.js JSON shape verbatim (type/source/measure/groupBy/
     // filters incl. the real "today" and "previous" rule ops); every source and
@@ -179,6 +186,7 @@ export function validateTemplates(registryKeys: string[]): void {
     seen.add(t.key);
     for (const k of t.modulesHiddenPrefill) if (!registryKeys.includes(k)) throw new Error(`template "${t.key}" hides unknown module "${k}"`);
     for (const tw of t.fieldTweaks) if (!registryKeys.includes(tw.moduleKey)) throw new Error(`template "${t.key}" tweaks unknown module "${tw.moduleKey}"`);
+    for (const href of Object.keys(t.pageLabelOverrides || {})) if (!/^#\//.test(href)) throw new Error(`template "${t.key}" label-override key "${href}" is not an href`);
     if (!t.hooks || !Array.isArray(t.hooks.dashboards)) throw new Error(`template "${t.key}" missing the hook shape`);
   }
   if (!seen.has("general")) throw new Error("the general template must exist");

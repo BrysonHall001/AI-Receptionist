@@ -13,6 +13,43 @@
   // Premium voice (ElevenLabs ConversationRelay). The server keeps the legacy
   // receptionistEnabled boolean in sync, so older data still reads correctly.
   const VOICE_LABELS = { OFF: "Off", WALKIE: "Standard voice", SMOOTH: "Premium voice" };
+
+  // CREATE-UI-2: deterministic chip fitting. JSDOM has no layout engine, so
+  // chips are fitted by a TYPE-SCALE MODEL (avg char width at --text-xs +
+  // fixed pill padding), not by scrollWidth — the same math runs in the suite
+  // at explicit widths and in the browser at the container's clientWidth.
+  // Fill until the next chip wouldn't fit; if any overflow, guarantee the
+  // "+N more" pill itself fits by popping. No hardcoded count cap anywhere.
+  function fitChips(labels, widthPx) {
+    const CHAR_W = 6.2, PAD = 18, GAP = 4; // 12px type ~0.52em avg; 8px x-pad + 1px borders
+    const w = (t) => Math.ceil(String(t).length * CHAR_W) + PAD;
+    const all = (labels || []).map(String);
+    const width = Math.max(0, Number(widthPx) || 0);
+    const visible = [];
+    let used = 0;
+    for (const lab of all) {
+      const add = (visible.length ? GAP : 0) + w(lab);
+      if (used + add > width) break;
+      visible.push(lab); used += add;
+    }
+    let hidden = all.length - visible.length;
+    if (hidden > 0) {
+      const fits = () => used + (visible.length ? GAP : 0) + w("+" + hidden + " more") <= width;
+      while (visible.length && !fits()) {
+        visible.pop(); hidden++;
+        used = visible.reduce((acc, lab, i) => acc + (i ? GAP : 0) + w(lab), 0);
+      }
+    }
+    return { visible, hidden };
+  }
+  function renderChips(host, labels) {
+    host.innerHTML = "";
+    const width = host.clientWidth || 300; // JSDOM/first-paint fallback
+    const fit = fitChips(labels, width);
+    fit.visible.forEach((f) => host.appendChild(el("span", "adm-chip", esc(f))));
+    if (fit.hidden > 0) host.appendChild(el("span", "adm-chip adm-chip-more", "+" + fit.hidden + " more"));
+  }
+  App._createUi = { fitChips }; // suite hook (behavioral contract, not layout)
   // TENANT TEMPLATES: per-row copy for the create wizard. neutral = General;
   // fs = the Field Services swap where the template meaningfully changes the row.
   const PAGE_DESCS = {
@@ -480,24 +517,44 @@
   // every toggle. Shared by the config view + the create-tenant wizard.
   function lockChecklist(host, lockedHrefs, onChange, withDescriptions) {
     const locked = new Set(lockedHrefs || []);
+    const pageRows = []; // create-ui-2: {hrefs, cb, nameEl, defaultLabel} handles for linkage + live label swaps (wizard only)
     LOCKABLE_PAGES.forEach((pg) => {
       const row = el("label"); row.classList.add("adm-row-click");
       const cb = el("input"); cb.type = "checkbox"; cb.checked = pg.hrefs.every((h) => !locked.has(h));
       cb.onchange = () => { pg.hrefs.forEach((h) => { if (cb.checked) locked.delete(h); else locked.add(h); }); if (onChange) onChange(Array.from(locked)); };
-      row.appendChild(cb);
       if (withDescriptions) {
-        // Tenant-templates wizard: name + a one-line description (the config
-        // view passes nothing and stays byte-identical).
-        const txt = el("span", "adm-rowtxt");
-        txt.appendChild(el("span", "adm-rowname", esc(pg.label)));
-        if (PAGE_DESCS[pg.label]) txt.appendChild(el("span", "adm-rowdesc", esc(PAGE_DESCS[pg.label])));
-        row.appendChild(txt);
+        // CREATE-UI-2: the THREE-COLUMN row (icon+checkbox+title | description
+        // | chips column, empty for pages — the grid keeps every row aligned
+        // and the description can never sprawl rightward). The config view
+        // passes nothing and stays byte-identical.
+        row.classList.add("adm-row3");
+        const head = el("span", "adm-r3-head");
+        const icSvg = App.icons ? App.icons.forNavHref(pg.hrefs[0]) : null;
+        if (icSvg) head.appendChild(el("span", "adm-row-ic", icSvg));
+        head.appendChild(cb);
+        const nameEl = el("span", "adm-rowname", esc(pg.label));
+        head.appendChild(nameEl);
+        row.appendChild(head);
+        pageRows.push({ hrefs: pg.hrefs, cb, nameEl, defaultLabel: pg.label });
+        row.appendChild(el("span", "adm-rowdesc adm-r3-desc", PAGE_DESCS[pg.label] ? esc(PAGE_DESCS[pg.label]) : ""));
+        row.appendChild(el("span", "adm-r3-chips"));
       } else {
+        row.appendChild(cb);
         row.appendChild(document.createTextNode(" " + pg.label));
       }
       host.appendChild(row);
     });
-    return () => Array.from(locked);
+    const getter = () => Array.from(locked);
+    // create-ui-2 handles (ADDITIVE — the config view keeps calling the bare getter):
+    getter.pageRows = pageRows;
+    getter.setPage = (href, on) => {
+      const pr = pageRows.find((r) => r.hrefs.indexOf(href) >= 0);
+      if (!pr || pr.cb.checked === !!on) return;
+      pr.cb.checked = !!on;
+      pr.cb.onchange();
+    };
+    getter.isPageOn = (href) => { const pr = pageRows.find((r) => r.hrefs.indexOf(href) >= 0); return pr ? pr.cb.checked : true; };
+    return getter;
   }
 
   // Page-access (owner page-lock) SECTION for the tenant detail panel. Returns a node with
@@ -701,55 +758,105 @@
     // on the checklists below.
     const s4 = sectionCard(4, "Features", "What this tenant starts with.");
 
-    // (1) The AI Receptionist SEGMENTED control — the view-switcher precedent
-    // (portal list pages) restyled with hub tokens. Compact, not panel-wide.
-    const vWrap = el("div"); vWrap.classList.add("adm-featcol");
+    // ---- CREATE-UI-2 layout (owner's mockup, normalized): TEMPLATE CARDS
+    // first (icon atop label + description; selected = darker fill + thin
+    // accent outline), a reset line + CLEAN SPACE beneath them (the per-
+    // template Learning Center checkbox ships NEXT batch — no dead control
+    // here), then the AI row: segmented control v2 with real margins, and to
+    // its RIGHT the per-state description + the live starting-state summary
+    // (replacing v1's static caption block entirely). ----
+    const tplWrap = el("div");
+    tplWrap.innerHTML = `<label class="field-label">Template</label>`;
+    const tplRow = el("div", "adm-tpl-row");
+    tplWrap.appendChild(tplRow);
+    const tplReset = el("p", "cell-muted adm-tpl-reset"); // filled on a switch; reserved space otherwise
+    tplWrap.appendChild(tplReset);
+    s4.appendChild(tplWrap);
+    draft.template = "general";
+    let templatesMeta = [];
+
+    const AI_DESCS = {
+      OFF: "AI Receptionist is off \u2014 inbound calls are declined.",
+      WALKIE: "Standard voice \u2014 the basic back-and-forth receptionist answers, captures, and books calls.",
+      SMOOTH: "Premium voice \u2014 the same receptionist with the smooth ElevenLabs voice.",
+    };
+    const aiRow = el("div", "adm-ai-row u-mt-16");
+    const vWrap = el("div"); vWrap.classList.add("adm-featcol", "adm-ai-left");
     vWrap.innerHTML = `<label class="field-label">AI Receptionist</label>`;
     const seg = el("div", "adm-seg");
     seg.setAttribute("role", "tablist");
     const SEG_STATES = [
-      ["OFF", "\u2298", "Off"],
-      ["WALKIE", "\u260e", "Standard"],
-      ["SMOOTH", "\u2728", "Premium"],
+      ["OFF", "Off"],
+      ["WALKIE", "Standard"],
+      ["SMOOTH", "Premium"],
     ];
     const segBtns = {};
-    SEG_STATES.forEach(([mode, icon, label]) => {
-      const b = el("button", "adm-seg-btn", `<span class="adm-seg-ic">${icon}</span>${label}`);
+    const aiDesc = el("p", "cell-muted adm-ai-desc");
+    const startSum = el("p", "cell-muted adm-start-sum");
+    function paintAiDesc() { aiDesc.textContent = AI_DESCS[draft.voiceMode || "OFF"]; }
+    function setAiMode(mode) {
+      draft.voiceMode = mode;
+      Object.keys(segBtns).forEach((m) => segBtns[m].classList.toggle("active", m === mode));
+      paintAiDesc(); updateStartSummary();
+    }
+    SEG_STATES.forEach(([mode, label]) => {
+      const icSvg = (App.icons && App.icons.AI_STATE_ICONS && App.icons.AI_STATE_ICONS[mode]) || "";
+      const b = el("button", "adm-seg-btn", `<span class="adm-seg-ic">${icSvg}</span>${label}`);
       b.type = "button";
       b.onclick = () => {
-        draft.voiceMode = mode;
-        Object.keys(segBtns).forEach((m) => segBtns[m].classList.toggle("active", m === mode));
+        setAiMode(mode);
+        // linkage: the AI side drives Calls (guarded — Calls' onchange then
+        // sees _syncGuard and does not bounce back).
+        if (!_syncGuard) {
+          _syncGuard = true;
+          try { getLockedWiz.setPage("#/calls", mode !== "OFF"); } catch (e) { /* pre-mount */ }
+          _syncGuard = false;
+        }
       };
       segBtns[mode] = b;
       seg.appendChild(b);
     });
     segBtns.OFF.classList.add("active"); // new tenants start off (unchanged default)
     vWrap.appendChild(seg);
-    s4.appendChild(vWrap);
+    aiRow.appendChild(vWrap);
+    const aiRight = el("div", "adm-ai-right");
+    aiRight.appendChild(aiDesc); aiRight.appendChild(startSum);
+    aiRow.appendChild(aiRight);
+    s4.appendChild(aiRow);
+    paintAiDesc();
 
-    // (3) TEMPLATE cards — General preselected, exactly one active. Selecting
-    // one PREFILLS the checklists below; later manual edits always win (they're
-    // what Finish submits). The key rides the create POST for the server phase.
-    const tplWrap = el("div"); tplWrap.classList.add("adm-featcol", "u-mt-16");
-    tplWrap.innerHTML = `<label class="field-label">Template</label>`;
-    const tplRow = el("div", "adm-tpl-row");
-    tplWrap.appendChild(tplRow);
-    s4.appendChild(tplWrap);
-    draft.template = "general";
-    let templatesMeta = [];
-
-    // (2) The ONE merged caption — beneath the template cards, matched to the
-    // control's column width (adm-featcol), never panel-wide.
-    const vCap = el("p", "cell-muted"); vCap.classList.add("adm-vcap", "adm-featcol");
-    vCap.textContent = "Turn on the AI Receptionist. New tenants start with it off. Off declines inbound calls. Standard voice is the basic back-and-forth receptionist. Premium voice uses the smooth ElevenLabs voice.";
-    s4.appendChild(vCap);
+    // LIVE STARTING-STATE SUMMARY (R1-approved): one muted line — pages on ·
+    // modules on · AI state — recomputed on every click that changes it.
+    function updateStartSummary() {
+      let pagesOn = 0; try { pagesOn = Array.from(lockHost.querySelectorAll("input[type=checkbox]")).filter((c) => c.checked).length; } catch (e) { /* pre-mount */ }
+      const modsOn = moduleRows.filter((mr) => mr.cb.checked).length;
+      startSum.textContent = `${pagesOn} page${pagesOn === 1 ? "" : "s"} \u00b7 ${modsOn} module${modsOn === 1 ? "" : "s"} \u00b7 AI: ${VOICE_LABELS[draft.voiceMode || "OFF"]}`;
+    }
     // Pages (owner hard-lock) — fixed app pages only; sets the INITIAL locked set.
     const lockHost = el("div", "u-mt-16");
     const lockLab = el("label", "field-label", "Pages"); lockLab.classList.add("adm-locklab");
     const lockNote = el("p", "cell-muted"); lockNote.classList.add("adm-locknote");
     lockNote.textContent = "Checked = the page is on and available (all pages start on). Uncheck a page to LOCK it — a locked page is blocked for everyone in the tenant, including its Portal Admin, and can't be reached by menu, direct link, or API unless an admin unlocks it later. (Record-type sections are managed under Modules below.)";
     lockHost.appendChild(lockLab); lockHost.appendChild(lockNote);
-    lockChecklist(lockHost, draft.lockedPages, (arr) => { draft.lockedPages = arr; }, true);
+    // AI <-> CALLS LINKAGE (create-ui-2): a coherent STARTING state, never a
+    // fight — all rules run only on USER clicks (the template-prefill path sets
+    // _syncGuard), and the reentrancy guard makes every hop single-step:
+    //   AI -> Off        => Calls unchecks     |  AI -> Standard/Premium => Calls checks
+    //   Calls checked while AI Off   => AI becomes Standard
+    //   Calls unchecked while AI on  => AI becomes Off
+    let _syncGuard = false;
+    const getLockedWiz = lockChecklist(lockHost, (draft.lockedPages || []), (arr) => {
+      const wasCallsOn = !(draft.lockedPages || []).includes("#/calls");
+      draft.lockedPages = arr;
+      const callsOn = !arr.includes("#/calls");
+      if (!_syncGuard && callsOn !== wasCallsOn) {
+        _syncGuard = true;
+        if (callsOn && (draft.voiceMode || "OFF") === "OFF") setAiMode("WALKIE");
+        if (!callsOn && (draft.voiceMode || "OFF") !== "OFF") setAiMode("OFF");
+        _syncGuard = false;
+      }
+      updateStartSummary();
+    }, true);
     s4.appendChild(lockHost);
 
     // ---- Modules (record-type VISIBILITY at creation) ------------------------
@@ -784,20 +891,50 @@
       const hide = new Set(t && t.modulesHiddenPrefill || []);
       moduleRows.forEach((mr) => { if (!mr.cb.disabled) mr.cb.checked = !hide.has(mr.key); });
       draft.hiddenRecordTypes = moduleRows.filter((mr) => !mr.cb.disabled && !mr.cb.checked).map((mr) => mr.key);
-      // pages: no shipped template turns any off; still honor the data.
+      // PAGES prefill (honors the data; no shipped template turns any off).
+      // Runs under the sync guard: a template click must never trip the
+      // AI<->Calls linkage — prefill is state transfer, not a user choice.
+      const pagesOff = new Set((t && t.pagesOffPrefill) || []);
+      _syncGuard = true;
+      try {
+        (getLockedWiz.pageRows || []).forEach((pr) => { getLockedWiz.setPage(pr.hrefs[0], !pr.hrefs.some((h) => pagesOff.has(h))); });
+      } catch (e) { /* pre-mount */ }
+      _syncGuard = false;
+      // LIVE TRANSPARENCY (create-ui-2): one click shows EXACTLY what you get —
+      // (a) row titles honor the template's page-label overrides;
+      // (b) module chips include the template's field tweaks, width-fitted.
+      const overrides = (t && t.pageLabelOverrides) || {};
+      (getLockedWiz.pageRows || []).forEach((pr) => {
+        const ov = pr.hrefs.map((h) => overrides[h]).find((x) => !!x);
+        pr.nameEl.textContent = ov || pr.defaultLabel;
+      });
+      const tweaks = (t && t.fieldTweaks) || {};
+      moduleRows.forEach((mr) => {
+        if (!mr.chipsHost) return;
+        // Template tweaks FIRST — they're the delta the click is showing you,
+        // so they must be visible, not folded into "+N more".
+        const tw = Array.isArray(tweaks[mr.key]) ? tweaks[mr.key] : [];
+        const labels = tw.concat(mr.fields || []);
+        if (labels.length) renderChips(mr.chipsHost, labels);
+      });
       repaintModuleDescs();
+      updateStartSummary();
     }
     function paintTemplateCards() {
       tplRow.innerHTML = "";
       templatesMeta.forEach((t) => {
         const card = el("button", "adm-tpl-card" + (draft.template === t.key ? " active" : ""));
         card.type = "button";
-        card.innerHTML = `<span class="adm-tpl-name">${esc(t.label)}</span><span class="adm-tpl-desc">${esc(t.description)}</span>`;
+        const icSvg = App.icons ? App.icons.forTemplateKey(t.key) : "";
+        card.innerHTML = `<span class="adm-tpl-ic">${icSvg}</span><span class="adm-tpl-name">${esc(t.label)}</span><span class="adm-tpl-desc">${esc(t.description)}</span>`;
         card.onclick = () => {
           if (draft.template === t.key) return;
           draft.template = t.key;
           paintTemplateCards();
           applyTemplatePrefill(t);
+          // The RESET MOMENT (approved rule): switching re-prefills CLEANLY —
+          // no silent merge — and says so; manual edits AFTER this still win.
+          tplReset.textContent = "Reset to the " + t.label + " starting point \u2014 adjust anything below.";
         };
         tplRow.appendChild(card);
       });
@@ -811,21 +948,19 @@
       const options = (r && r.options) || [];
       secList.innerHTML = "";
       options.forEach((opt) => {
-        const row = el("label"); row.classList.add("adm-row-click", "adm-row-mod");
+        const row = el("label"); row.classList.add("adm-row-click", "adm-row-mod", "adm-row3");
         const cb = el("input"); cb.type = "checkbox"; cb.checked = true;
         const name = opt.labelPlural || opt.label || opt.key;
-        const txt = el("span", "adm-rowtxt");
-        const nameEl = el("span", "adm-rowname", esc(name) + (!opt.togglable ? " (always on)" : ""));
-        const descEl = el("span", "adm-rowdesc");
-        txt.appendChild(nameEl); txt.appendChild(descEl);
-        // FIELD CHIPS: the module's seeded field names, cap 5 + "+N more".
+        // CREATE-UI-2 three columns: [icon + checkbox + title] [description]
+        // [WIDTH-AWARE field chips: fill the column, then "+N more"].
+        const head = el("span", "adm-r3-head");
+        head.appendChild(el("span", "adm-row-ic", App.icons ? App.icons.forModuleKey(opt.key) : ""));
+        head.appendChild(cb);
+        head.appendChild(el("span", "adm-rowname", esc(name) + (!opt.togglable ? " (always on)" : "")));
+        const descEl = el("span", "adm-rowdesc adm-r3-desc");
+        const chipsHost = el("span", "adm-chips adm-r3-chips");
         const fields = Array.isArray(opt.fields) ? opt.fields : [];
-        if (fields.length) {
-          const chips = el("span", "adm-chips");
-          fields.slice(0, 5).forEach((f) => chips.appendChild(el("span", "adm-chip", esc(f))));
-          if (fields.length > 5) chips.appendChild(el("span", "adm-chip adm-chip-more", "+" + (fields.length - 5) + " more"));
-          txt.appendChild(chips);
-        }
+        if (fields.length) renderChips(chipsHost, fields);
         if (!opt.togglable) {
           // Contact (core): always on, not editable.
           cb.disabled = true; row.classList.add("u-cursor-default");
@@ -840,13 +975,15 @@
             const set = new Set(draft.hiddenRecordTypes);
             if (cb.checked) set.delete(opt.key); else set.add(opt.key);
             draft.hiddenRecordTypes = Array.from(set);
+            updateStartSummary();
           };
         }
-        row.appendChild(cb); row.appendChild(txt);
+        row.appendChild(head); row.appendChild(descEl); row.appendChild(chipsHost);
         secList.appendChild(row);
-        moduleRows.push({ key: opt.key, cb, descEl });
+        moduleRows.push({ key: opt.key, cb, descEl, chipsHost, fields });
       });
       repaintModuleDescs();
+      updateStartSummary();
       // A template picked before the options loaded still prefills correctly.
       const t = templatesMeta.find((x) => x.key === draft.template);
       if (t && t.key !== "general") applyTemplatePrefill(t);

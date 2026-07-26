@@ -623,7 +623,14 @@
     function makeNavAnchor(tuple) {
       const href = tuple[0], label = tuple[1], kind = tuple[2];
       const text = isAdmin ? (kind ? App.label(kind, "many") : label) : App.navLabel(href, label, kind);
-      const a = el("a", "nav-item" + (href === activePath ? " active" : "") + (canEditNav ? " nav-item--editable" : ""), esc(text));
+      // ICONS (create-ui-2): keyed by HREF/KEY through the registry — labels,
+      // order, locks, relabeling, and active states are untouched. Admin (hub)
+      // sidebar stays icon-free (not in this batch's scope). Unknown pages get
+      // NO icon rather than a wrong one.
+      const ic = !isAdmin && App.icons ? App.icons.forNavHref(href) : null;
+      const icKey = !isAdmin && App.icons ? App.icons.keyForNavHref(href) : null;
+      const a = el("a", "nav-item" + (href === activePath ? " active" : "") + (canEditNav ? " nav-item--editable" : ""));
+      a.innerHTML = (ic ? `<span class="nav-ic" data-ic-key="${esc(icKey || "")}">${ic}</span>` : "") + `<span class="nav-label">${esc(text)}</span>`;
       a.href = href;
       a.dataset.href = href;
       if (canEditNav) {

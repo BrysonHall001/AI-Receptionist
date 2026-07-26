@@ -1,0 +1,215 @@
+// FORCE the mock AI engine (offline + deterministic) — the require-order
+// pattern shared by the tenantTemplates suites: tsx hoists `import`, so
+// everything below loads via require() AFTER this override.
+process.env.AI_PROVIDER = "mock";
+
+// CREATE-UI-2 (icons + create-page v2) — self-test. Five standing layers with
+// TWO JSDOM legs on one in-process server: a PORTAL leg (nav icons, keys not
+// labels) and a HUB leg (the rebuilt create page: cards, AI control v2,
+// three-column rows, width-aware chips, AI<->Calls linkage, live template
+// transparency proven with a TEST-ONLY fixture template injected by stubbing
+// the endpoint response — nothing fake ships).
+/* eslint-disable @typescript-eslint/no-var-requires */
+const { prisma, disconnectDb } = require("./client");
+const { createPortal } = require("../services/portalService");
+const { validateTemplates, getTemplate } = require("../services/tenantTemplates");
+const { SYSTEM_RECORD_TYPES, listRecordTypes, createRecordType } = require("../services/recordTypeService");
+const { createApp } = require("../app");
+const { createSession } = require("../auth/session");
+const { JSDOM } = require("jsdom");
+const { readFileSync } = require("fs");
+const { join } = require("path");
+
+const db = prisma as any;
+const failures: string[] = [];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function check(cond: boolean, label: string) { console.log(`  ${cond ? "\u2713" : "\u2717"} ${label}`); if (!cond) failures.push(label); }
+async function until(fn: () => any, ms = 9000) { const t0 = Date.now(); for (;;) { try { const v = fn(); if (v) return v; } catch { /* */ } if (Date.now() - t0 > ms) return null; await sleep(140); } }
+const SCRIPTS = ["errorReporter.js", "util.js", "icons.js", "theme.js", "themeScene.js", "table.js", "reports.js", "fields.js", "compose.js", "flowPreview.js", "automations.js", "inbound.js", "learnScenes.js", "learn.js", "feedback.js", "drips.js", "communication.js", "auth.js", "portal.js", "admin.js", "presence.js", "navModel.js", "app.js"];
+const pub = (f: string) => readFileSync(join(__dirname, "..", "..", "public", f), "utf8");
+const cleanup: string[] = [];
+
+function bootDom(base: string, token: string, fetchWrap?: (url: string, resp: any, w: any) => Promise<any>) {
+  const dom = new JSDOM(pub("index.html"), { url: base + "/", runScripts: "outside-only", pretendToBeVisual: true });
+  const w: any = dom.window;
+  w.fetch = async (input: any, init: any = {}) => {
+    const url = typeof input === "string" ? (input.startsWith("http") ? input : base + input) : input.url;
+    init.headers = { ...(init.headers || {}), Cookie: `air_session=${token}` };
+    const resp = await (globalThis as any).fetch(url, init);
+    return fetchWrap ? fetchWrap(String(url), resp, w) : resp;
+  };
+  w.alert = () => { /* */ }; w.confirm = () => true; w.scrollTo = () => { /* */ };
+  try { if (!w.crypto.randomUUID) Object.defineProperty(w.crypto, "randomUUID", { value: () => "u-" + Math.random().toString(36).slice(2) }); } catch { /* */ }
+  w.Chart = function () { return { destroy() { /* */ }, update() { /* */ } }; }; (w.Chart as any).register = () => { /* */ };
+  for (const f of SCRIPTS) w.eval(pub("js/" + f));
+  return w;
+}
+
+async function main() {
+  console.log("Create-UI-2 (icons + create-page v2) — self-test");
+  console.log("================================================");
+  const stamp = Date.now();
+  const server = createApp().listen(0);
+  await new Promise((r) => server.once("listening", r));
+  const base = `http://127.0.0.1:${(server.address() as any).port}`;
+
+  // ---------- (1) builds ----------
+  console.log("\n(1) builds & contracts:");
+  const cl = await db.changeLogEntry.findFirst({ where: { commitSha: "batch-create-ui-2-icons-20260725" } });
+  check(!!cl && cl.id === "cl_create_ui_2_icons_20260725", "the changelog row landed (idempotent migration)");
+  let threw = false;
+  try { validateTemplates(SYSTEM_RECORD_TYPES.map((d: any) => d.key)); } catch { threw = true; }
+  check(!threw, "boot validation passes with the label-override capability on the shipped constants");
+  check(Object.keys(getTemplate("general").pageLabelOverrides).length === 0 && Object.keys(getTemplate("field_services").pageLabelOverrides).length === 0,
+    "BOTH shipped templates carry ZERO page-label overrides (capability only)");
+  const badTpl = { key: "x", label: "x", description: "x", pagesOffPrefill: [], modulesHiddenPrefill: [], aiVoiceMode: null, aiSchedulingTarget: null, aiIntake: null, fieldTweaks: [], pageLabelOverrides: { calls: "nope" }, hooks: { dashboards: [], analytics: [], libraryFlavor: null, commDrafts: [], aiInstructionSections: [] } };
+  threw = false;
+  try {
+    const mod = require("../services/tenantTemplates");
+    const saved = mod.TENANT_TEMPLATES.slice();
+    mod.TENANT_TEMPLATES.push(badTpl);
+    try { validateTemplates(SYSTEM_RECORD_TYPES.map((d: any) => d.key)); } catch { threw = true; }
+    mod.TENANT_TEMPLATES.length = 0; saved.forEach((t: any) => mod.TENANT_TEMPLATES.push(t));
+  } catch { /* */ }
+  check(threw, "\u2026and FAILS FAST on an override key that isn't an href (developer error, never shipped silently)");
+
+  // ---------- (2) PORTAL leg: nav icons ----------
+  console.log("\n(2) portal navs (icons, keys not labels):");
+  const t: any = await createPortal({ name: `cu2-${stamp}`, billingStatus: "trial" } as any); cleanup.push(t.id);
+  await listRecordTypes(t.id);
+  await createRecordType(t.id, "Permit", "Permits"); // a CUSTOM module -> default cube
+  const eq = await db.recordType.findFirst({ where: { tenantId: t.id, key: "equipment" } });
+  await db.recordType.update({ where: { id: eq.id }, data: { label: "Unit", labelPlural: "Units" } }); // relabel: icons must not move
+  const pu = await db.user.create({ data: { email: `cu2p-${stamp}@example.invalid`, name: "CU2P", role: "PORTAL_ADMIN", tenantId: t.id, passwordHash: "x" } });
+  const ptok = await createSession(pu.id);
+  const wp = bootDom(base, ptok);
+  const P$ = (sel: string) => Array.from(wp.document.querySelectorAll(sel)) as any[];
+  await until(() => P$(".sidebar-nav .nav-item").length > 3);
+  check(P$(".sidebar-nav .nav-item").length === P$(".sidebar-nav .nav-item .nav-ic").length && P$(".sidebar-nav .nav-item").length >= 12,
+    "the LEFT nav renders an icon on EVERY module (all system modules + the custom one)");
+  check(P$(".portal-pages-row .nav-item").length === P$(".portal-pages-row .nav-item .nav-ic").length && P$(".portal-pages-row .nav-item").length >= 7,
+    "the TOP pages row renders an icon on EVERY page");
+  check(!!P$(".sidebar-nav .nav-ic").find((n: any) => n.dataset.icKey === "module:custom"), "a CUSTOM module gets the approved default glyph (module:custom)");
+  const relabeled = P$(".sidebar-nav .nav-item").find((a: any) => a.textContent.includes("Units"));
+  check(!!relabeled && !!relabeled.querySelector('[data-ic-key="module:equipment"]'), "a RELABELED module keeps its icon \u2014 keys, never labels");
+  check(P$(".sidebar-nav .nav-item .nav-label").length === P$(".sidebar-nav .nav-item").length, "every item still carries its label (icons are additive)");
+  check(P$(".nav-ic svg").every((svg: any) => svg.outerHTML.includes("currentColor")), "every nav glyph inherits currentColor (theme-safe by construction)");
+  try { wp.fetch = () => new Promise(() => { /* frozen */ }); } catch { /* */ }
+
+  // fitChips: the WIDTH-AWARE contract at two widths + edges (behavioral, not layout).
+  const fit = wp.App._createUi.fitChips;
+  const labels10 = ["Equipment type", "Brand", "Model", "Serial number", "Install date", "Last service date", "Next service due", "Warranty expires", "Status", "Notes"];
+  const wide = fit(labels10, 560); const narrow = fit(labels10, 260);
+  check(wide.visible.length > narrow.visible.length && wide.hidden + wide.visible.length === 10 && narrow.hidden + narrow.visible.length === 10,
+    `chips FILL the available width then overflow (560px \u2192 ${wide.visible.length}+${wide.hidden} more; 260px \u2192 ${narrow.visible.length}+${narrow.hidden} more)`);
+  check(fit(labels10, 2000).hidden === 0 && fit(labels10, 2000).visible.length === 10, "\u2026with NO hardcoded cap: everything shows when there's room");
+  check(fit(labels10, 0).visible.length === 0, "\u2026and degrades sanely at zero width");
+
+  // ---------- (3) HUB leg: create page v2 ----------
+  console.log("\n(3) the create page v2 (hub):");
+  const owner = await db.user.create({ data: { email: `cu2h-${stamp}@example.invalid`, name: "CU2H", role: "OWNER", passwordHash: "x" } });
+  const htok = await createSession(owner.id);
+  // TEST-ONLY FIXTURE template (endpoint response stubbed — never shipped):
+  // carries a page-label override + a field tweak + a page-off prefill, proving
+  // the live-transparency wiring end-to-end.
+  const w = bootDom(base, htok, async (url, resp, w2) => {
+    if (url.includes("/api/admin/tenant-templates")) {
+      const data = await resp.json();
+      data.templates.push({ key: "fixture_probe", label: "Fixture", description: "test-only", pagesOffPrefill: ["#/feedback"], modulesHiddenPrefill: ["vehicle"], pageLabelOverrides: { "#/calls": "Phone Log" }, fieldTweaks: { task: ["Crew size"] } });
+      return new (globalThis as any).Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return resp;
+  });
+  const $ = (sel: string) => w.document.querySelector(sel) as any;
+  const $$ = (sel: string) => Array.from(w.document.querySelectorAll(sel)) as any[];
+  const segTo = (label: string) => { $$(".adm-seg-btn").find((b: any) => b.textContent.trim() === label).click(); };
+  const aiActive = () => $(".adm-seg-btn.active").textContent.trim();
+  const createBtn = await until(() => $$("button").find((b: any) => b.textContent.trim() === "+ Create tenant"));
+  check(!!createBtn, "the hub tenants page mounts with the Create button");
+  (createBtn as any).click();
+  check(!!(await until(() => $$(".adm-seg-btn").length === 3 && $$(".adm-seg-ic svg").length === 3 && aiActive() === "Off")),
+    "the AI control mounts: three states with REGISTRY icons, Off active");
+  check(!!(await until(() => $$(".adm-tpl-card").length === 3 && $(".adm-tpl-card.active") && $(".adm-tpl-card.active").textContent.includes("General") && $$(".adm-tpl-ic svg").length === 3)),
+    "template CARDS mount with icons atop \u2014 General preselected, exactly one active (fixture visible: the row holds any count cleanly)");
+  check(!!$(".adm-ai-desc") && $(".adm-ai-desc").textContent.startsWith("AI Receptionist is off"), "the PER-STATE description renders (Off copy)");
+  segTo("Standard");
+  check($(".adm-ai-desc").textContent.startsWith("Standard voice"), "\u2026and SWAPS instantly per state");
+  check(!!(await until(() => /\d+ pages? \u00b7 \d+ modules? \u00b7 AI: Standard voice/.test(($(".adm-start-sum") || {}).textContent || ""))),
+    "the LIVE starting-state summary tracks (pages \u00b7 modules \u00b7 AI)");
+  check(!!(await until(() => $$(".adm-row3 .adm-r3-head .adm-row-ic svg").length > 10)), "THREE-COLUMN rows mount with a row icon per page + module");
+  check(!!(await until(() => $$(".adm-r3-chips .adm-chip").length > 8)) && $$(".adm-row3").some((r: any) => r.querySelector(".adm-r3-chips") && !r.querySelector(".adm-r3-chips .adm-chip")),
+    "modules carry chips in col-3 while pages keep col-3 empty (one aligned grid)");
+  check($$(".adm-chip-more").length > 0, "chips are width-fitted (the +N-more pill appears where labels overflow)");
+
+  // linkage: all four directions, loop-safe, summary tracking.
+  const callsCb = () => ($$(".adm-row3").find((x: any) => x.textContent.includes("Calls") && x.querySelector("input")) as any).querySelector("input");
+  check(callsCb().checked === true, "linkage precondition: Calls started checked (AI just went Standard)");
+  segTo("Off");
+  check(callsCb().checked === false && aiActive() === "Off", "AI \u2192 Off UNCHECKS Calls (one hop)");
+  segTo("Premium");
+  check(callsCb().checked === true, "AI \u2192 Premium re-checks Calls");
+  callsCb().checked = false; callsCb().dispatchEvent(new w.Event("change"));
+  check(aiActive() === "Off" && callsCb().checked === false, "unchecking Calls while on \u2192 AI Off, single hop, NO loop");
+  callsCb().checked = true; callsCb().dispatchEvent(new w.Event("change"));
+  check(aiActive() === "Standard", "checking Calls while Off \u2192 AI Standard");
+  check(/AI: Standard voice/.test($(".adm-start-sum").textContent), "\u2026with the summary tracking the linkage");
+
+  // template selection: FS prefill + copy swap; manual wins; fixture transparency.
+  const fsCard = $$(".adm-tpl-card").find((c: any) => c.textContent.includes("Field Services"));
+  fsCard.click();
+  const bookingCb = () => ($$(".adm-row3").find((r: any) => r.textContent.includes("Bookings")) as any).querySelector("input");
+  check(!!(await until(() => bookingCb().checked === false && $$(".adm-rowdesc").some((d: any) => d.textContent.includes("Your core module")))),
+    "Field Services PREFILLS (Bookings unchecked) and swaps to the FS row copy");
+  check($(".adm-tpl-reset").textContent.includes("Reset to the Field Services starting point"), "the RESET MOMENT line appears on a switch (approved rule \u2014 no silent merge)");
+  bookingCb().checked = true; bookingCb().dispatchEvent(new w.Event("change"));
+  check(bookingCb().checked === true, "a manual re-check STICKS afterward (batch-21 conflict rule intact)");
+  const fxCard = $$(".adm-tpl-card").find((c: any) => c.textContent.includes("Fixture"));
+  fxCard.click();
+  const callsTitle = () => { const r = $$(".adm-row3").find((x: any) => x.querySelector(".adm-rowname") && ["Calls", "Phone Log"].includes(x.querySelector(".adm-rowname").textContent)); return r ? r.querySelector(".adm-rowname").textContent : null; };
+  check(callsTitle() === "Phone Log", "FIXTURE: a page-label override swaps the row TITLE live (capability wired end-to-end)");
+  const taskRow = $$(".adm-row3").find((x: any) => x.textContent.includes("Tasks"));
+  check(taskRow.textContent.includes("Crew size"), "FIXTURE: a template field tweak appears IN the chips (tweaks render first \u2014 the delta stays visible)");
+  const fbRow = $$(".adm-row3").find((x: any) => x.textContent.includes("Feedback"));
+  check(fbRow.querySelector("input").checked === false, "FIXTURE: pagesOffPrefill unchecks its page row");
+  ($$(".adm-tpl-card").find((c: any) => c.textContent.includes("General")) as any).click();
+  check(callsTitle() === "Calls" && !taskRow.textContent.includes("Crew size") && fbRow.querySelector("input").checked === true,
+    "switching back RE-PREFILLS cleanly: title, chips, and page all restored (no silent merge)");
+  try { w.fetch = () => new Promise(() => { /* frozen */ }); } catch { /* */ }
+  await sleep(300);
+
+  // ---------- (4) prime-directive regressions ----------
+  console.log("\n(4) prime-directive regressions:");
+  const stripT = (x: any) => { const { id, name, notifyEmail, createdAt, updatedAt, ...rest } = x; return rest; };
+  const plain: any = await createPortal({ name: `cu2-plain-${stamp}`, billingStatus: "trial" } as any); cleanup.push(plain.id);
+  const gen: any = await createPortal({ name: `cu2-gen-${stamp}`, billingStatus: "trial", template: "general" } as any); cleanup.push(gen.id);
+  const fp = stripT(await db.tenant.findUnique({ where: { id: plain.id } }));
+  const fg = stripT(await db.tenant.findUnique({ where: { id: gen.id } }));
+  const d2 = Object.keys(fp).filter((k) => JSON.stringify((fp as any)[k]) !== JSON.stringify((fg as any)[k]));
+  check(d2.length === 1 && d2[0] === "templateKey", `V1 CREATION PARITY: same inputs \u2192 same tenant (diff = ["templateKey"] only, unchanged by this batch)`);
+  const fsTpl: any = getTemplate("field_services");
+  const fs: any = await createPortal({ name: `cu2-fs-${stamp}`, billingStatus: "trial", template: "field_services", hiddenRecordTypes: fsTpl.modulesHiddenPrefill } as any); cleanup.push(fs.id);
+  const ffs: any = await db.tenant.findUnique({ where: { id: fs.id } });
+  check(JSON.stringify(((ffs.labels || {}).nav || {}).hidden) === JSON.stringify(["#/jobs", "#/bookings", "#/records/vehicle", "#/records/property"])
+      && Object.keys((((ffs.labels || {}).nav || {}).labels) || {}).length === 0,
+    "FS creation state matches batch-21 exactly \u2014 and NO label overrides leak from shipped templates");
+
+  // ---------- (5) catastrophics ----------
+  console.log("\n(5) catastrophics:");
+  const anon = await fetch(base + "/api/admin/portals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "nope", billingStatus: "trial" }) });
+  check(anon.status === 401 || anon.status === 403, `tenant creation stays hub-admin-gated (anonymous \u2192 ${anon.status}, unchanged)`);
+
+  await db.user.delete({ where: { id: owner.id } }).catch(() => { /* */ });
+  await db.user.delete({ where: { id: pu.id } }).catch(() => { /* */ });
+  server.close();
+  for (const x of cleanup) { await db.tenant.delete({ where: { id: x } }).catch(() => { /* best-effort */ }); }
+
+  console.log("");
+  if (failures.length) { console.log(`${failures.length} FAILED \u274c: ${failures[0]}`); process.exitCode = 1; }
+  else console.log("ALL PASSED \u2705 (icons follow keys, the create page tells the truth live, and the linkage never fights the owner)");
+  await disconnectDb();
+  process.exit(failures.length ? 1 : 0);
+}
+
+main().catch(async (e: any) => { console.error("threw:", e); await disconnectDb().catch(() => { /* */ }); process.exit(1); });
+
+export {};

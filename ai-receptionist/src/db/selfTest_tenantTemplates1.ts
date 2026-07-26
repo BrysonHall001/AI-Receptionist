@@ -152,7 +152,7 @@ async function main() {
   w.alert = () => { /* */ }; w.confirm = () => true; w.scrollTo = () => { /* */ };
   try { if (!w.crypto.randomUUID) Object.defineProperty(w.crypto, "randomUUID", { value: () => "u-" + Math.random().toString(36).slice(2) }); } catch { /* */ }
   w.Chart = function () { return { destroy() { /* */ }, update() { /* */ } }; }; (w.Chart as any).register = () => { /* */ };
-  for (const f of ["util.js", "theme.js", "table.js", "admin.js", "fields.js", "reports.js", "communication.js", "automations.js", "learn.js", "portal.js", "app.js"]) {
+  for (const f of ["util.js", "icons.js", "theme.js", "table.js", "admin.js", "fields.js", "reports.js", "communication.js", "automations.js", "learn.js", "portal.js", "app.js"]) { // create-ui-2: icons.js joins every JSDOM script list (new registry file)
     w.eval(readFileSync(join(__dirname, "..", "..", "public", "js", f), "utf8"));
   }
   const $ = (sel: string) => w.document.querySelector(sel);
@@ -165,9 +165,12 @@ async function main() {
   check(!!$(".adm-featcol .adm-seg"), "\u2026inside the column-width wrapper (not panel-wide)");
   const cardsOk = await until(() => $$(".adm-tpl-card").length === 2 && $(".adm-tpl-card.active") && $(".adm-tpl-card.active").textContent.includes("General"));
   check(!!cardsOk, "TEMPLATE cards mount \u2014 General + Field Services, exactly one active, General preselected");
-  const cap: any = $(".adm-vcap");
-  check(!!cap && cap.textContent.startsWith("Turn on the AI Receptionist.") && cap.classList.contains("adm-featcol"),
-    "the MERGED caption sits beneath the cards, width-matched to the control's column");
+  // STALE-TEST UPDATE (create-ui-2): v1's static caption block is GONE — the
+  // AI control now carries a PER-STATE description to its right plus the live
+  // starting-state summary. Assert the v2 contract at the same spot.
+  const aiDesc: any = $(".adm-ai-desc");
+  check(!!aiDesc && aiDesc.textContent.startsWith("AI Receptionist is off"), "the per-state description renders beside the control (Off copy while Off is active)");
+  check(!!$(".adm-start-sum") && /\d+ pages? \u00b7 \d+ modules? \u00b7 AI: /.test(($(".adm-start-sum") as any).textContent), "the live starting-state summary line renders (pages \u00b7 modules \u00b7 AI)");
   const neutral = await until(() => $$(".adm-chip").length > 5 && $$(".adm-rowdesc").some((d: any) => d.textContent.includes("recruiting pipeline")));
   check(!!neutral, "module rows carry field CHIPS + template-NEUTRAL descriptions under General");
   check($$(".adm-chip-more").length > 0, "\u2026with the +N-more chip where a module seeds more than five fields");

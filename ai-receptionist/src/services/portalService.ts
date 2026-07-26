@@ -181,10 +181,13 @@ export async function createPortal(input: {
     ? Array.from(new Set(input.hiddenRecordTypes.filter((k) => typeof k === "string" && togglable.has(k))))
     : [];
   const hiddenHrefs = hideKeys.map(recordTypeHref).filter((h) => h !== NAV_HOME_HREF);
-  const labels = hiddenHrefs.length ? { nav: { order: [], hidden: hiddenHrefs, labels: {} } } : undefined;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { getTemplate, applyTemplateAtCreation } = require("./tenantTemplates");
   const template = getTemplate(input.template);
+  // CREATE-UI-2: a template's PAGE LABEL OVERRIDES ride the same labels JSON the
+  // owner's Settings->Labels writes — no second mechanism, fully editable after.
+  const navLabels: Record<string, string> = (template && template.pageLabelOverrides) ? { ...template.pageLabelOverrides } : {};
+  const labels = (hiddenHrefs.length || Object.keys(navLabels).length) ? { nav: { order: [], hidden: hiddenHrefs, labels: navLabels } } : undefined;
   const created = await prisma.tenant.create({
     data: {
       name: input.name,
