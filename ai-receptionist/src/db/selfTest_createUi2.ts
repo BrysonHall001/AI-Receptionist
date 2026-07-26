@@ -139,7 +139,7 @@ async function main() {
   segTo("Premium");
   check(/seg-fill-right/.test(fillClass()), "\u2026Premium (right) \u2192 the mirrored right shape");
   segTo("Off");
-  check(!!(await until(() => $$(".adm-tpl-card").length === 3 && $(".adm-tpl-card.active") && $(".adm-tpl-card.active").textContent.includes("General") && $$(".adm-tpl-card").filter((c: any) => c.classList.contains("active")).length === 1)),
+  check(!!(await until(() => $$(".adm-tpl-card").length === 4 && $(".adm-tpl-card.active") && $(".adm-tpl-card.active").textContent.includes("General") && $$(".adm-tpl-card").filter((c: any) => c.classList.contains("active")).length === 1)),
     "template CARDS mount \u2014 General preselected, EXACTLY ONE active (the row holds any count cleanly)");
   // ---- the LAYERED COMPOSITION (ui-fidelity v3) ----
   const card0: any = $$(".adm-tpl-card")[0];
@@ -159,24 +159,21 @@ async function main() {
   check(px(mainEl.style.marginTop) > 0 && Math.abs(px(mainEl.style.marginTop) - crestH0 / 2) < 0.6 && !mainEl.style.height && px(mainEl.style.minHeight) >= 87,
     "CONTENT-DRIVEN: the main rect is IN FLOW \u2014 no fixed height, an 87px MINIMUM, cleared under the crest by margin");
   check(Math.abs(px(tabEl.style.marginTop) + tabH / 2) < 0.6, "the tab rides in flow, pulled up by HALF its height (lower half still protrudes)");
-  const photo0: any = card0.querySelector(".tpl-photo");
-  check(!!photo0 && /template-general\.jpg/.test(photo0.src), "the backsplash photo mounts INSIDE the main rect (General \u2192 the computer photo)");
-  check(!!($$(".adm-tpl-card")[1] as any).querySelector('.tpl-photo[src*="fieldservices"]'), "\u2026and Field Services carries the worker photo");
+  // RM-1 (owner reversal): the backsplash layer is GONE — asserted absent
+  // everywhere, in DOM and in the stylesheet; the rest of the spec holds.
   const cssSrc = pub("styles.css");
-  check(cssSrc.includes("filter: grayscale(100%); opacity: 0.12;"), "the photo layer is grayscale at the owner's literal 0.12 (CSS contract)");
+  check($$(".tpl-photo").length === 0 && !$$(".adm-tpl-card").some((c: any) => c.querySelector("img")),
+    "the photo layer is ABSENT on every card (no img anywhere in the composition)");
+  check(!cssSrc.includes(".tpl-photo") && !pub("js/admin.js").includes("TPL_PHOTOS"),
+    "\u2026and its CSS + fallback machinery are fully deleted");
   check(cssSrc.includes(".tpl-main { position: relative; z-index: 4; flex: 1 0 auto; overflow: visible; }")
-      && cssSrc.includes("opacity: 0.12; z-index: 0; border-radius: var(--radius); }")
       && cssSrc.includes(".tpl-strip { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); z-index: 1; border-radius: 0 0 var(--radius) var(--radius); }")
       && cssSrc.includes(".tpl-text { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 28px 16px 14px; gap: 4px; overflow: visible; }"),
     "NOTHING can clip text: main + text stack overflow-VISIBLE; the photo and strip round THEMSELVES to the radius");
   check(cssSrc.includes(".adm-tpl-row { align-items: stretch; }"), "the row EQUALIZES the cards to the tallest (stretch + flexing main)");
-  // absent-file fallback: an error REMOVES the img; the card never shifts.
-  const photoFx: any = ($$(".adm-tpl-card")[2] as any).querySelector(".tpl-photo");
-  check(!photoFx, "a template with NO photo mapping renders WITHOUT a backsplash (fixture card, no broken glyph)");
-  photo0.dispatchEvent(new w.Event("error"));
-  check(!card0.querySelector(".tpl-photo") && !!card0.querySelector(".tpl-main") && !!card0.querySelector(".adm-tpl-name"),
-    "a failing image file self-removes \u2014 the composition stays intact (A3 fallback)");
-  check($$(".tpl-strip").length === 3, "the ACCENT STRIP hugs every main rect's bottom edge");
+  check(!!card0.querySelector(".tpl-main") && !!card0.querySelector(".adm-tpl-name"),
+    "the composition stands without the layer (text + surfaces intact)");
+  check($$(".tpl-strip").length === 4, "the ACCENT STRIP hugs every main rect's bottom edge"); // repinned: RM-1 ships a third template (+1 suite fixture)
   check($$(".adm-tpl-band").length === 1 && cssSrc.includes("linear-gradient(to right, var(--accent), var(--tpl-band-stop))") && cssSrc.includes("--tpl-band-stop: #0300A1;"),
     "the \u00a7BAND ribbon spans the panel behind the cards \u2014 accent \u2192 the literal dark stop, held verbatim in :root");
   check(cssSrc.includes(".adm-tpl-card.active .tpl-crest, .adm-tpl-card.active .tpl-main, .adm-tpl-card.active .tpl-tab { background: var(--gray-soft); }")
@@ -201,15 +198,10 @@ async function main() {
     const nameLines = Math.min(2, lines(nm.textContent, innerW, 22 * 0.52));
     const descLines = lines(ds.textContent, innerW, 12 * 0.52);
     const modelH = Math.max(87, Math.round(28 + nameLines * 22 * 1.15 + 4 + descLines * 12 * 1.3 + 14));
-    const photoEl: any = c.querySelector(".tpl-photo");
-    const op = photoEl ? (w.getComputedStyle(photoEl).opacity || "(jsdom n/a)") : "(no photo)";
     const nmSize = w.getComputedStyle(nm).fontSize || "22px (declared)";
-    console.log(`  ${nm.textContent}: model main-height ${modelH}px (min 87) | name ${nameLines} line(s) @ ${nmSize} | desc ${descLines} line(s) @ 12px token | tab @ 10px token-math | photo opacity ${op}`);
+    console.log(`  ${nm.textContent}: model main-height ${modelH}px (min 87) | name ${nameLines} line(s) @ ${nmSize} | desc ${descLines} line(s) @ 12px token | tab @ 10px token-math | photo layer ABSENT (parity: heights + band unchanged \u2014 the layer was absolutely positioned, out of flow)`);
   }
-  // (the General photo was intentionally removed above by the A3 error-fallback
-  // test, so the computed-opacity assert reads the FS card's photo)
-  const fsPhoto: any = $$(".adm-tpl-card")[1].querySelector(".tpl-photo");
-  check(!!fsPhoto && w.getComputedStyle(fsPhoto).opacity === "0.12", "the photo layer's COMPUTED opacity is exactly 0.12 (stylesheet applied in-harness)");
+  check(!w.document.querySelector(".tpl-photo"), "(report cross-check) zero photo layers exist under the injected real stylesheet");
   // ---- POLISH RE-EMIT assertions ----
   // FIX 1: top-anchored text with the reserved clearance; name one notch down;
   // a two-line-capable clamp for absurd fixture names.

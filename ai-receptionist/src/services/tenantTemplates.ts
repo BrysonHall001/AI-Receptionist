@@ -57,6 +57,15 @@ export interface TenantTemplate {
    *  and served to the wizard for live row-title swaps. Both shipped templates
    *  carry NONE — capability only, proven by a test fixture. */
   pageLabelOverrides: Record<string, string>;
+  /** RM-1: templates that OFFER the create-card "Custom-configure Learning
+   *  Center?" checkbox (persisted as Tenant.customLearningCenter; the variant
+   *  itself ships per-template in its own batch). */
+  customLcOffer: boolean;
+  /** RM-1: template-scoped module RELABELS applied at creation through the
+   *  stock-label-only pattern (batch-8 precedent: only rows still on the
+   *  stock label are touched — at creation that's all of them; keys, tests,
+   *  and every other tenant's labels are never touched). */
+  moduleRelabels: Record<string, { label: string; labelPlural: string }>;
   hooks: TemplateHooks;
 }
 
@@ -77,6 +86,8 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
     aiIntake: null,
     fieldTweaks: [],
     pageLabelOverrides: {},
+    customLcOffer: false,
+    moduleRelabels: {},
     hooks: { ...EMPTY_HOOKS },
   },
   {
@@ -98,6 +109,8 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
     // is the reports.js JSON shape verbatim (type/source/measure/groupBy/
     // filters incl. the real "today" and "previous" rule ops); every source and
     // field is a shipped seed. Names in plain owner language.
+    customLcOffer: true,
+    moduleRelabels: {},
     hooks: {
       dashboards: [
         {
@@ -170,6 +183,55 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
       ],
     },
   },
+  {
+    key: "recruitment_marketing",
+    label: "Recruitment Marketing",
+    description: "For recruiters: ad clicks become candidates, nurtured into booked interviews.",
+    // RM-1: pages ALL on; only the recruiting spine visible — Contacts
+    // (relabeled Candidates at creation, R4), Job Openings, and Bookings kept
+    // VISIBLE as "Interviews" (the approved Option 1: batch-20's fail-safe
+    // degrades a hidden scheduling target to "none" — callOrchestrator.ts
+    // resolveSchedulingTarget — so the AI's interview book needs the module in
+    // the nav; the relabel makes it read right).
+    pagesOffPrefill: [],
+    modulesHiddenPrefill: ["work_order", "equipment", "estimate", "invoice", "vehicle", "property", "product", "task"],
+    aiVoiceMode: null, // the hub segmented control decides, as always
+    aiSchedulingTarget: "booking", // = Interviews after the R3 relabel
+    aiIntake: false, // service-request intake is an FS concept
+    // The ATS-lite field sets (RM-1 Part D). Keys derive from labels via the
+    // field service's slugify (snake_case): "Candidate source" ->
+    // candidate_source, etc. Seeded in this order; every one an ordinary,
+    // owner-editable field afterward. Types verified against FIELD_TYPES.
+    fieldTweaks: [
+      { moduleKey: "contact", field: { label: "Candidate source", type: "single_select", options: ["Facebook", "Google", "Indeed", "LinkedIn", "Referral", "Organic", "Other"] } },
+      { moduleKey: "contact", field: { label: "Role interest", type: "text" } },
+      { moduleKey: "contact", field: { label: "Candidate stage", type: "single_select", options: ["New lead", "Contacted", "Prescreened", "Interview scheduled", "Interviewed", "Submitted to client", "Hired", "Not a fit"] } },
+      { moduleKey: "contact", field: { label: "Prescreen checks", type: "multi_select", options: ["Valid license", "Eligible to work", "Experience verified", "Availability confirmed", "Background check passed"] } },
+      { moduleKey: "contact", field: { label: "Resume link", type: "url" } },
+      { moduleKey: "contact", field: { label: "LinkedIn URL", type: "url" } },
+      { moduleKey: "contact", field: { label: "Desired pay", type: "text" } },
+      { moduleKey: "contact", field: { label: "Availability date", type: "date" } },
+      { moduleKey: "job", field: { label: "Department", type: "text" } },
+      { moduleKey: "job", field: { label: "Location", type: "text" } },
+      { moduleKey: "job", field: { label: "Work mode", type: "single_select", options: ["On-site", "Remote", "Hybrid"] } },
+      { moduleKey: "job", field: { label: "Employment type", type: "single_select", options: ["Full-time", "Part-time", "Contract", "Temp"] } },
+      { moduleKey: "job", field: { label: "Pay range", type: "text" } },
+      { moduleKey: "job", field: { label: "Openings count", type: "number" } },
+      { moduleKey: "job", field: { label: "Client or hiring manager", type: "text" } },
+      { moduleKey: "job", field: { label: "Ad campaign", type: "text" } },
+      { moduleKey: "job", field: { label: "Target start", type: "date" } },
+    ],
+    pageLabelOverrides: {},
+    customLcOffer: true,
+    // The approved Interviews resolution (Option 1): Bookings VISIBLE,
+    // relabeled at creation; the AI books interviews into it natively.
+    moduleRelabels: {
+      booking: { label: "Interview", labelPlural: "Interviews" },
+      contact: { label: "Candidate", labelPlural: "Candidates" },
+    },
+    // RM-2 fills these; the shape ships EMPTY exactly like FS did pre-pack.
+    hooks: { ...EMPTY_HOOKS },
+  },
 ];
 
 export function getTemplate(key?: string | null): TenantTemplate | null {
@@ -186,6 +248,7 @@ export function validateTemplates(registryKeys: string[]): void {
     seen.add(t.key);
     for (const k of t.modulesHiddenPrefill) if (!registryKeys.includes(k)) throw new Error(`template "${t.key}" hides unknown module "${k}"`);
     for (const tw of t.fieldTweaks) if (!registryKeys.includes(tw.moduleKey)) throw new Error(`template "${t.key}" tweaks unknown module "${tw.moduleKey}"`);
+    for (const k of Object.keys(t.moduleRelabels || {})) if (!registryKeys.includes(k)) throw new Error(`template "${t.key}" relabels unknown module "${k}"`);
     for (const href of Object.keys(t.pageLabelOverrides || {})) if (!/^#\//.test(href)) throw new Error(`template "${t.key}" label-override key "${href}" is not an href`);
     if (!t.hooks || !Array.isArray(t.hooks.dashboards)) throw new Error(`template "${t.key}" missing the hook shape`);
   }
@@ -208,9 +271,37 @@ export async function applyTemplateAtCreation(tenantId: string, template: Tenant
       await listRecordTypes(tenantId); // seed the modules the tweaks land on
       for (const tw of template.fieldTweaks) {
         try {
+          // RM-1: seed-only-if-ABSENT by derived key (createField suffixes
+          // duplicates rather than skipping — the guard keeps collisions with
+          // stock fields from double-creating; owners' fields are never touched).
+          const derivedKey = String(tw.field.label).toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "field";
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { resolveRecordTypeId } = require("./recordTypeService");
+          const rtId = await resolveRecordTypeId(tenantId, tw.moduleKey);
+          const already = await (prisma as any).fieldDef.findFirst({ where: { tenantId, recordTypeId: rtId, key: derivedKey }, select: { id: true } });
+          if (already) continue;
           await createField(tenantId, tw.field as any, tw.moduleKey);
         } catch (e) {
           logger.error(`[templates] tweak "${tw.field.label}" on ${tw.moduleKey} failed for ${tenantId}: ${(e as Error).message}`);
+        }
+      }
+    }
+    // ---- RM-1: template-scoped module RELABELS (stock-label-only) ----
+    const relabels = Object.entries(template.moduleRelabels || {});
+    if (relabels.length) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { listRecordTypes, SYSTEM_RECORD_TYPES } = require("./recordTypeService");
+      await listRecordTypes(tenantId); // ensure the rows exist
+      for (const [key, to] of relabels) {
+        try {
+          const stock = (SYSTEM_RECORD_TYPES.find((d: any) => d.key === key) || {}).defaults || {};
+          // The batch-8 guard: only a row STILL ON the stock label is touched.
+          await prisma.recordType.updateMany({
+            where: { tenantId, key, label: String(stock.label || "") },
+            data: { label: to.label, labelPlural: to.labelPlural },
+          });
+        } catch (e) {
+          logger.error(`[templates] relabel "${key}" failed for ${tenantId}: ${(e as Error).message}`);
         }
       }
     }

@@ -63,11 +63,14 @@
     "Billing": "The tenant's plan and billing status page.",
   };
   const MODULE_DESCS = {
-    contact:   { neutral: "Everyone the business talks to — callers land here automatically." },
+    contact:   { neutral: "Everyone the business talks to — callers land here automatically.",
+                 rm: "Your candidates — every ad click and interest-form lead lands here, tagged by source." },
     job:       { neutral: "A recruiting pipeline (Applied → Hired) for hiring workflows.",
-                 fs: "Hidden for field services — recruiting isn't part of the day-to-day. Turn it back on anytime." },
+                 fs: "Hidden for field services — recruiting isn't part of the day-to-day. Turn it back on anytime.",
+                 rm: "The roles you're marketing — each opening carries its campaign, client, and pay details." },
     booking:   { neutral: "Simple appointments the AI receptionist can book callers into.",
-                 fs: "Hidden — callers get scheduled straight into Work Orders instead." },
+                 fs: "Hidden — callers get scheduled straight into Work Orders instead.",
+                 rm: "Interviews — appointments the AI receptionist books with your candidates." },
     work_order:{ neutral: "Jobs to schedule and complete, with statuses, a board, and a dispatch calendar.",
                  fs: "Your core module — jobs land here from calls, get scheduled to techs, and flow to invoices." },
     equipment: { neutral: "Units and machines you service, each with its own history.",
@@ -774,7 +777,6 @@
     // styles so the suite asserts the exact ratios; colors/shadows/radius stay
     // tokenized in CSS.
     const TPL_DIMS = { mainW: 192, mainH: 87, crestW: 133, crestH: 38.5, tabW: 167, tabH: 38.5, stripH: 5, bandH: 24 };
-    const TPL_PHOTOS = { general: "/img/template-general.jpg", field_services: "/img/template-fieldservices.jpg" };
     const tplWrap = el("div"); tplWrap.classList.add("adm-tpl-zone");
     tplWrap.innerHTML = `<label class="field-label">Template</label>`;
     const tplBand = el("span", "adm-tpl-band");
@@ -933,7 +935,8 @@
     const moduleRows = [];
     function moduleDescFor(key) {
       const d = MODULE_DESCS[key] || {};
-      return (draft.template === "field_services" && d.fs) ? d.fs : (d.neutral || "");
+      const variant = draft.template === "field_services" ? "fs" : draft.template === "recruitment_marketing" ? "rm" : null;
+      return (variant && d[variant]) ? d[variant] : (d.neutral || "");
     }
     function repaintModuleDescs() {
       moduleRows.forEach((mr) => { if (mr.descEl) mr.descEl.textContent = moduleDescFor(mr.key); });
@@ -969,7 +972,11 @@
         // so they must be visible, not folded into "+N more".
         const tw = Array.isArray(tweaks[mr.key]) ? tweaks[mr.key] : [];
         const labels = tw.concat(mr.fields || []);
+        // RM-1 fix (latent since batch 23): ALWAYS repaint — the old
+        // labels.length guard left the PREVIOUS template's tweak chips behind
+        // on a module with no seeded fields (visible once RM tweaked Contacts).
         if (labels.length) renderChips(mr.chipsHost, labels);
+        else mr.chipsHost.innerHTML = "";
       });
       repaintModuleDescs();
       updateStartSummary();
@@ -993,17 +1000,8 @@
         // by margin, not absolute offset. Nothing inside it may be clipped.
         const main = el("span", "tpl-main");
         main.style.setProperty("width", D.mainW + "px"); main.style.setProperty("min-height", D.mainH + "px"); main.style.setProperty("margin-top", (D.crestH / 2) + "px");
-        // z5: backsplash photo — clipped to the main rect, grayscale, 0.12.
-        // A missing file removes itself (never a broken glyph, never a shift).
-        if (TPL_PHOTOS[t.key]) {
-          const photo = new Image();
-          photo.className = "tpl-photo";
-          photo.alt = "";
-          photo.onerror = function () { if (photo.parentNode) photo.parentNode.removeChild(photo); };
-          photo.src = TPL_PHOTOS[t.key];
-          main.appendChild(photo);
-        }
-        // z6: text + the accent strip, always above the photo.
+        // (RM-1: the backsplash photo layer is REMOVED by owner reversal — the
+        // composition is crest / glyph / main / text+strip / tab, nothing else.)
         const txt = el("span", "tpl-text");
         txt.innerHTML = `<span class="adm-tpl-name">${esc(t.label)}</span><span class="adm-tpl-desc">${esc(t.description)}</span>`;
         main.appendChild(txt);
@@ -1017,8 +1015,8 @@
         // by half its height so its lower half still protrudes below the main.
         const tab = el("span", "tpl-tab");
         tab.style.setProperty("width", D.mainW + "px"); tab.style.setProperty("height", D.tabH + "px"); tab.style.setProperty("margin-top", (-D.tabH / 2) + "px");
-        if (t.key === "field_services") {
-          const lcId = "tpl-lc-cb";
+        if (t.customLcOffer) {
+          const lcId = "tpl-lc-cb-" + t.key;
           tab.innerHTML = `<input type="checkbox" id="${lcId}" class="tpl-lc-cb"><span>Custom-configure Learning Center?</span>`;
           const cb = tab.querySelector("input");
           cb.checked = !!draft.customLearningCenter;
@@ -1035,9 +1033,10 @@
           if (e.target && e.target.classList && e.target.classList.contains("tpl-lc-cb")) return; // checkbox owns itself
           if (draft.template === t.key) return;
           draft.template = t.key;
-          // FS auto-checks its LC preference on selection; anything else resets
-          // it (clean re-prefill — the owner may uncheck afterwards).
-          draft.customLearningCenter = t.key === "field_services";
+          // A template OFFERING the custom-LC checkbox auto-checks it on
+          // selection; anything else resets it (clean re-prefill — the owner
+          // may uncheck afterwards). Data-driven since RM-1.
+          draft.customLearningCenter = !!t.customLcOffer;
           paintTemplateCards();
           applyTemplatePrefill(t);
           // The RESET MOMENT (approved rule): switching re-prefills CLEANLY —

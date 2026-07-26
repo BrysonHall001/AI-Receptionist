@@ -68,6 +68,7 @@ adminRouter.get("/tenant-templates", async (_req: Request, res: Response) => {
     key: t.key, label: t.label, description: t.description,
     pagesOffPrefill: t.pagesOffPrefill, modulesHiddenPrefill: t.modulesHiddenPrefill,
     pageLabelOverrides: t.pageLabelOverrides || {},
+    customLcOffer: t.customLcOffer === true,
     fieldTweaks: (t.fieldTweaks || []).reduce((acc: any, tw: any) => { (acc[tw.moduleKey] = acc[tw.moduleKey] || []).push(String(tw.field.label)); return acc; }, {}),
   })) });
 });
