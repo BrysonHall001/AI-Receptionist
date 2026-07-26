@@ -958,8 +958,7 @@
       templatesMeta.forEach((t) => {
         const card = el("button", "adm-tpl-card" + (draft.template === t.key ? " active" : ""));
         card.type = "button";
-        card.style.setProperty("width", D.mainW + "px");
-        card.style.setProperty("height", (D.crestH / 2 + D.mainH + D.tabH / 2) + "px");
+        card.style.setProperty("width", D.mainW + "px"); // height is CONTENT-DRIVEN (regression fix: never fixed)
         const icSvg = App.icons ? App.icons.forTemplateKey(t.key) : "";
         // z2: crest (69% of main) — upper half protrudes above the main rect.
         const crest = el("span", "tpl-crest");
@@ -967,9 +966,11 @@
         // z3: the icon — tucked: its lower edge dips below the main rect's top.
         const glyph = el("span", "tpl-glyph", icSvg);
         glyph.style.setProperty("top", (D.crestH / 2 - 26) + "px");
-        // z4: the main rect (frontmost surface).
+        // z4: the main rect (frontmost surface) — IN FLOW, height determined
+        // BY ITS CONTENT; the 87px reference is a MINIMUM. It clears the crest
+        // by margin, not absolute offset. Nothing inside it may be clipped.
         const main = el("span", "tpl-main");
-        main.style.setProperty("width", D.mainW + "px"); main.style.setProperty("height", D.mainH + "px"); main.style.setProperty("top", (D.crestH / 2) + "px");
+        main.style.setProperty("width", D.mainW + "px"); main.style.setProperty("min-height", D.mainH + "px"); main.style.setProperty("margin-top", (D.crestH / 2) + "px");
         // z5: backsplash photo — clipped to the main rect, grayscale, 0.12.
         // A missing file removes itself (never a broken glyph, never a shift).
         if (TPL_PHOTOS[t.key]) {
@@ -988,8 +989,12 @@
         main.appendChild(strip);
         // z2: bottom tab (87% of main, WIDER than the crest so its line fits);
         // lower half protrudes below the main rect.
+        // REGRESSION FIX: the tab WIDENS to 100% of the main-rect width — at
+        // the specced 87% the full strings measurably cannot fit on one line at
+        // any legible size (stated in the summary). It rides IN FLOW, pulled up
+        // by half its height so its lower half still protrudes below the main.
         const tab = el("span", "tpl-tab");
-        tab.style.setProperty("width", D.tabW + "px"); tab.style.setProperty("height", D.tabH + "px"); tab.style.setProperty("top", (D.crestH / 2 + D.mainH - D.tabH / 2) + "px");
+        tab.style.setProperty("width", D.mainW + "px"); tab.style.setProperty("height", D.tabH + "px"); tab.style.setProperty("margin-top", (-D.tabH / 2) + "px");
         if (t.key === "field_services") {
           const lcId = "tpl-lc-cb";
           tab.innerHTML = `<input type="checkbox" id="${lcId}" class="tpl-lc-cb"><span>Custom-configure Learning Center?</span>`;

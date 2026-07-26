@@ -150,21 +150,26 @@ async function main() {
   const mainW = px(card0.querySelector(".tpl-main").style.width);
   const crestW = px(card0.querySelector(".tpl-crest").style.width);
   const tabW = px(card0.querySelector(".tpl-tab").style.width);
-  check(Math.abs(crestW / mainW - 0.69) < 0.015 && Math.abs(tabW / mainW - 0.87) < 0.015 && mainW >= 190 && mainW <= 200,
-    `the three rects hold the reference ratios (crest ${Math.round((crestW / mainW) * 100)}% / main 100% / tab ${Math.round((tabW / mainW) * 100)}% at ${mainW}px)`);
-  const mainTop = px(card0.querySelector(".tpl-main").style.top);
-  const tabTop = px(card0.querySelector(".tpl-tab").style.top);
-  const mainH = px(card0.querySelector(".tpl-main").style.height);
-  const tabH = px(card0.querySelector(".tpl-tab").style.height);
-  check(mainTop > 0 && Math.abs(mainTop - px(card0.querySelector(".tpl-crest").style.height) / 2) < 0.6,
-    "the crest's upper half PROTRUDES above the main rect (main starts at half-crest height)");
-  check(Math.abs((tabTop + tabH) - (mainTop + mainH + tabH / 2)) < 0.6, "the tab's lower half PROTRUDES below the main rect");
+  check(Math.abs(crestW / mainW - 0.69) < 0.015 && Math.abs(tabW / mainW - 1.0) < 0.015 && mainW >= 190 && mainW <= 200,
+    `rect widths: crest ${Math.round((crestW / mainW) * 100)}% / main 100% / tab ${Math.round((tabW / mainW) * 100)}% (tab WIDENED to 100% so the full strings fit \u2014 stated) at ${mainW}px`);
+  const mainEl: any = card0.querySelector(".tpl-main");
+  const tabEl: any = card0.querySelector(".tpl-tab");
+  const crestH0 = px(card0.querySelector(".tpl-crest").style.height);
+  const tabH = px(tabEl.style.height);
+  check(px(mainEl.style.marginTop) > 0 && Math.abs(px(mainEl.style.marginTop) - crestH0 / 2) < 0.6 && !mainEl.style.height && px(mainEl.style.minHeight) >= 87,
+    "CONTENT-DRIVEN: the main rect is IN FLOW \u2014 no fixed height, an 87px MINIMUM, cleared under the crest by margin");
+  check(Math.abs(px(tabEl.style.marginTop) + tabH / 2) < 0.6, "the tab rides in flow, pulled up by HALF its height (lower half still protrudes)");
   const photo0: any = card0.querySelector(".tpl-photo");
   check(!!photo0 && /template-general\.jpg/.test(photo0.src), "the backsplash photo mounts INSIDE the main rect (General \u2192 the computer photo)");
   check(!!($$(".adm-tpl-card")[1] as any).querySelector('.tpl-photo[src*="fieldservices"]'), "\u2026and Field Services carries the worker photo");
   const cssSrc = pub("styles.css");
   check(cssSrc.includes("filter: grayscale(100%); opacity: 0.12;"), "the photo layer is grayscale at the owner's literal 0.12 (CSS contract)");
-  check(cssSrc.includes(".tpl-main { z-index: 4; overflow: hidden; }"), "the main rect CLIPS the photo + strip to its radius (overflow contract)");
+  check(cssSrc.includes(".tpl-main { position: relative; z-index: 4; flex: 1 0 auto; overflow: visible; }")
+      && cssSrc.includes("opacity: 0.12; z-index: 0; border-radius: var(--radius); }")
+      && cssSrc.includes(".tpl-strip { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); z-index: 1; border-radius: 0 0 var(--radius) var(--radius); }")
+      && cssSrc.includes(".tpl-text { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 28px 16px 14px; gap: 4px; overflow: visible; }"),
+    "NOTHING can clip text: main + text stack overflow-VISIBLE; the photo and strip round THEMSELVES to the radius");
+  check(cssSrc.includes(".adm-tpl-row { align-items: stretch; }"), "the row EQUALIZES the cards to the tallest (stretch + flexing main)");
   // absent-file fallback: an error REMOVES the img; the card never shifts.
   const photoFx: any = ($$(".adm-tpl-card")[2] as any).querySelector(".tpl-photo");
   check(!photoFx, "a template with NO photo mapping renders WITHOUT a backsplash (fixture card, no broken glyph)");
@@ -186,13 +191,38 @@ async function main() {
     "General's bottom tab is STATIC text \u2014 no control");
   const fsTabCb = () => (($$(".adm-tpl-card").find((c: any) => c.textContent.includes("Field Services")) as any).querySelector(".tpl-tab input"));
   check(!!fsTabCb() && fsTabCb().checked === false, "Field Services' tab carries the LC checkbox, unchecked before selection");
+  // ---- COMPUTED-LAYOUT REPORT (required in the summary) ----
+  { const st = w.document.createElement("style"); st.textContent = cssSrc; w.document.head.appendChild(st); }
+  const lines = (text: string, widthPx: number, charW: number) => { const words = String(text).split(/\s+/); let ln = 1, cur = 0; for (const wd of words) { const ww = wd.length * charW + (cur ? charW : 0); if (cur + ww > widthPx && cur > 0) { ln++; cur = wd.length * charW; } else cur += ww; } return ln; };
+  console.log("  \u2500\u2500 computed-layout report \u2500\u2500");
+  for (const c of $$(".adm-tpl-card").slice(0, 2)) {
+    const nm = c.querySelector(".adm-tpl-name"); const ds = c.querySelector(".adm-tpl-desc");
+    const innerW = 192 - 32; // main width minus the 16px side padding
+    const nameLines = Math.min(2, lines(nm.textContent, innerW, 22 * 0.52));
+    const descLines = lines(ds.textContent, innerW, 12 * 0.52);
+    const modelH = Math.max(87, Math.round(28 + nameLines * 22 * 1.15 + 4 + descLines * 12 * 1.3 + 14));
+    const photoEl: any = c.querySelector(".tpl-photo");
+    const op = photoEl ? (w.getComputedStyle(photoEl).opacity || "(jsdom n/a)") : "(no photo)";
+    const nmSize = w.getComputedStyle(nm).fontSize || "22px (declared)";
+    console.log(`  ${nm.textContent}: model main-height ${modelH}px (min 87) | name ${nameLines} line(s) @ ${nmSize} | desc ${descLines} line(s) @ 12px token | tab @ 10px token-math | photo opacity ${op}`);
+  }
+  // (the General photo was intentionally removed above by the A3 error-fallback
+  // test, so the computed-opacity assert reads the FS card's photo)
+  const fsPhoto: any = $$(".adm-tpl-card")[1].querySelector(".tpl-photo");
+  check(!!fsPhoto && w.getComputedStyle(fsPhoto).opacity === "0.12", "the photo layer's COMPUTED opacity is exactly 0.12 (stylesheet applied in-harness)");
   // ---- POLISH RE-EMIT assertions ----
   // FIX 1: top-anchored text with the reserved clearance; name one notch down;
   // a two-line-capable clamp for absurd fixture names.
-  check(cssSrc.includes("justify-content: flex-start; height: 100%; padding: 12px 16px 10px;")
+  check(cssSrc.includes("padding: 28px 16px 14px;")
       && cssSrc.includes(".adm-tpl-name { font-weight: 700; font-size: 22px;")
       && cssSrc.includes("-webkit-line-clamp: 2;"),
-    "FIX 1: the name TOP-ANCHORS below a reserved clearance (icon dip + spacing token), stepped one scale notch down on BOTH cards, with a 2-line clamp for fixture-length names");
+    "FIX 1: the name starts BELOW the full crest-protrusion + icon-dip clearance (28px), stepped one notch down on BOTH cards, 2-line max");
+  // hard non-overlap, from the deterministic geometry: the icon's box ends
+  // 4px into the main rect; the name's box starts at the 28px padding line.
+  const glyphTopPx = px((card0.querySelector(".tpl-glyph") as any).style.top);
+  const iconBottomInMain = (glyphTopPx + 30) - px(mainEl.style.marginTop);
+  check(iconBottomInMain < 28 && iconBottomInMain > 0,
+    `the NAME box cannot intersect the ICON box (icon ends ${iconBottomInMain}px into the rect; the name begins at 28px)`);
   const fxName: any = ($$(".adm-tpl-card").find((c: any) => c.textContent.includes("Fixture Deluxe")) as any).querySelector(".adm-tpl-name");
   check(!!fxName && fxName.textContent === "Fixture Deluxe Premium Field Operations Suite",
     "\u2026the fixture's 3-line-worthy name keeps its FULL text in the DOM (the clamp is visual-only ellipsis)");
@@ -201,10 +231,10 @@ async function main() {
   check(genTab.textContent.trim() === "Default Learning Center configuration"
       && (($$(".adm-tpl-card").find((c: any) => c.textContent.includes("Field Services")) as any).querySelector(".tpl-tab").textContent.trim() === "Custom-configure Learning Center?"),
     "FIX 2: BOTH tab strings render complete");
-  check(cssSrc.includes(".tpl-tab { z-index: 2; border: 1px solid var(--accent); display: inline-flex; align-items: flex-end; justify-content: center; padding: 0 5px 5px; font-size: calc(var(--text-xs) - 3px);")
-      && !/\.tpl-tab \{[^}]*text-overflow/.test(cssSrc)
+  check(cssSrc.includes("font-size: calc(var(--text-xs) - 2px); color: var(--ink-soft); gap: 4px; white-space: nowrap; overflow: visible; }")
+      && !/\.tpl-tab \{[^}]*text-overflow/.test(cssSrc) && !/\.tpl-tab \{[^}]*letter-spacing/.test(cssSrc)
       && cssSrc.includes(".tpl-tab input { margin: 0 0 1px; flex: 0 0 auto;"),
-    "\u2026tab text sits BELOW the description size (calc off the same token), no ellipsis to mask a regression, checkbox flex-locked");
+    "\u2026tab text one step below the description size (10 vs 12, token math), UNSQUASHED (no letter-spacing), overflow VISIBLE so nothing can hide, checkbox flex-locked");
   // FIX 3: the AI label is a SUBSECTION HEADING above the row (Template pattern).
   const aiZone: any = $(".adm-ai-zone");
   check(!!aiZone && aiZone.firstElementChild.tagName === "LABEL" && aiZone.firstElementChild.className === "field-label"
