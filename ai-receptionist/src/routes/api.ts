@@ -1821,6 +1821,51 @@ apiRouter.post("/records/:id/notes", async (req: Request, res: Response) => {
 // record's linked customer. Permission-gated to records/edit (permissionGate);
 // idempotent once per record per day; every can't-send case is a specific 400
 // the button shows verbatim. The send/logging live in notifyOnMyWay().
+// ---- MULTI-VISIT WORK ORDERS (multivisit-cardfix batch) --------------------
+// All writes ride the ONE transactional visit service (mirror maintained in
+// the same transaction). Records permission area; work-order records only
+// (the service enforces).
+apiRouter.get("/records/:id/visits", async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId as string;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { listVisits } = require("../services/workOrderVisitService");
+  try { res.json({ visits: await listVisits(tenantId, req.params.id) }); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+apiRouter.post("/records/:id/visits", async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId as string;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { createVisit } = require("../services/workOrderVisitService");
+  const b2 = (req.body ?? {}) as any;
+  try { res.json(await createVisit(tenantId, req.params.id, { startAt: b2.startAt, endAt: b2.endAt, resourceId: b2.resourceId ?? null })); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+apiRouter.patch("/records/visits/:vid", async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId as string;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const svc = require("../services/workOrderVisitService");
+  const b2 = (req.body ?? {}) as any;
+  try {
+    if (b2.startAt !== undefined) res.json(await svc.scheduleVisit(tenantId, req.params.vid, { startAt: b2.startAt, endAt: b2.endAt, resourceId: b2.resourceId }));
+    else if (b2.resourceId !== undefined) res.json(await svc.reassignVisit(tenantId, req.params.vid, b2.resourceId));
+    else res.status(400).json({ error: "Nothing to update." });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+apiRouter.post("/records/visits/:vid/complete", async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId as string;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { completeVisit } = require("../services/workOrderVisitService");
+  try { res.json(await completeVisit(tenantId, req.params.vid)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+apiRouter.post("/records/visits/:vid/cancel", async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId as string;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { cancelVisit } = require("../services/workOrderVisitService");
+  try { res.json(await cancelVisit(tenantId, req.params.vid)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 apiRouter.post("/records/:id/notify-on-my-way", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;

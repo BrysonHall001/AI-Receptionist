@@ -424,6 +424,31 @@ const SEED_FIELDS_BY_MODULE: Record<string, { label: string }[]> = {
   work_order: DEFAULT_WORK_ORDER_FIELDS as any,
 };
 
+/** FIX 4 (multivisit-cardfix batch): the create-wizard chips read the TRUE
+ *  default field set per module — the BUILTIN fields every record of that
+ *  module actually carries (derived from this registry's own structural
+ *  facts, plus the Contact table's real columns) followed by the FieldDef
+ *  seed labels. Never a hardcoded parallel list: pipeline/staging facts and
+ *  calendarDateField live on the defaults themselves; the contact custom set
+ *  is fieldService.DEFAULT_CONTACT_CUSTOM_FIELDS (one source). */
+function builtinFieldLabels(d: SystemRecordTypeDef): string[] {
+  if (d.key === CONTACT_RECORD_TYPE_KEY) {
+    let custom: string[] = [];
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      custom = (require("./fieldService").DEFAULT_CONTACT_CUSTOM_FIELDS || []).map((f: any) => String(f.label));
+    } catch { /* load-order safety */ }
+    // The Contact table's editor columns (portal contact drawer), then the
+    // tenant-default custom set (Address).
+    return ["Name", "Phone", "Email", "Stage", "Notes", ...custom];
+  }
+  const dd: any = d.defaults;
+  const out = ["Title"];
+  if (dd.pipelineEnabled === true || (Array.isArray(dd.stages) && dd.stages.length) || (Array.isArray(dd.recordStages) && dd.recordStages.length)) out.push("Status");
+  if (dd.calendarDateField === "appointmentAt") out.push("Scheduled window", "Assigned staff");
+  return out;
+}
+
 export function systemRecordTypeOptions() {
   return SYSTEM_RECORD_TYPES.map((d) => ({
     key: d.key,
@@ -434,7 +459,7 @@ export function systemRecordTypeOptions() {
     defaultHidden: !!d.defaultHidden, // pre-built industry modules start unchecked in the picker
     // Tenant-templates batch (ADDITIVE): the module's seeded field labels, for
     // the create-wizard's chips. [] where a module seeds none.
-    fields: (SEED_FIELDS_BY_MODULE[d.key] || []).map((f) => String(f.label)),
+    fields: [...builtinFieldLabels(d), ...(SEED_FIELDS_BY_MODULE[d.key] || []).map((f) => String(f.label))],
   }));
 }
 // The record-type keys that MAY be hidden at creation (everything except contact).

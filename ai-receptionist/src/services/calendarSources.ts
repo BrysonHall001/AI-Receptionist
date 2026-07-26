@@ -121,21 +121,26 @@ export const clarityWorkOrdersSource: CalendarSource = {
     const from = new Date(fromISO.length === 16 ? fromISO + ":00Z" : fromISO);
     const to = new Date(toISO.length === 16 ? toISO + ":00Z" : toISO);
 
-    const rows = await db.record.findMany({
-      // Only ASSIGNED work orders consume a lane. When the caller scopes to a
-      // resource we scope the same way; the shop-wide (null) preview never mixes
-      // lanes, matching the bookings source's per-lane rule — an unassigned
-      // slot-search unions per-resource lanes upstream, each scoped here.
-      where: { tenantId, recordTypeId, deletedAt: null, appointmentAt: { gte: from, lt: to }, ...(resourceId ? { resourceId } : { resourceId: { not: null } }) },
-      select: { appointmentAt: true, endAt: true, stageKey: true, resourceId: true },
+    // MULTI-VISIT (multivisit-cardfix): busy time = EVERY SCHEDULED VISIT, not
+    // just the mirrored column — visit 1 IS the mirror for a one-visit job, so
+    // pre-batch tenants get byte-identical intervals, and a second visit now
+    // honestly blocks its own window. Same lane scoping; a completed/cancelled
+    // JOB still frees the time (record-stage filter preserved).
+    const rows = await db.workOrderVisit.findMany({
+      where: {
+        tenantId, state: "scheduled", startAt: { gte: from, lt: to },
+        ...(resourceId ? { resourceId } : { resourceId: { not: null } }),
+        record: { recordTypeId, deletedAt: null },
+      },
+      select: { startAt: true, endAt: true, resourceId: true, record: { select: { stageKey: true } } },
     });
 
     const out: BusyInterval[] = [];
     for (const r of rows) {
-      if (!r.appointmentAt) continue;
-      if (r.stageKey === "completed" || r.stageKey === "cancelled") continue; // done/called-off frees the time
-      const start = dateToWall(r.appointmentAt);
-      const ms = r.endAt ? new Date(r.endAt).getTime() - new Date(r.appointmentAt).getTime() : 0;
+      if (!r.startAt) continue;
+      if (r.record.stageKey === "completed" || r.record.stageKey === "cancelled") continue; // done/called-off frees the time
+      const start = dateToWall(r.startAt);
+      const ms = r.endAt ? new Date(r.endAt).getTime() - new Date(r.startAt).getTime() : 0;
       const durationMin = ms > 0 ? Math.max(15, Math.round(ms / 60000)) : config.defaultDurationMin;
       out.push({ start, end: addMinutesWall(start, durationMin), sourceName: clarityWorkOrdersSource.name });
     }

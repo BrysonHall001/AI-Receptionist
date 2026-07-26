@@ -555,6 +555,29 @@ model RecordType {
 
 // An instance of a RecordType (a Job, a Policy, a Work-order). Contacts are NOT
 // stored here — they keep their own table. Soft-deletes mirror Contact.
+// MULTI-VISIT WORK ORDERS (multivisit-cardfix batch): a work order carries
+// 1..n visits; the Record's typed appointment columns become a maintained
+// MIRROR of the ACTIVE visit (earliest upcoming scheduled; else most recent
+// past scheduled; else nulls), recomputed in the SAME transaction as every
+// visit write — so every unupgraded consumer keeps reading truth, and a
+// one-visit job is byte-identical to today. Work-order records only.
+model WorkOrderVisit {
+  id         String    @id @default(cuid())
+  tenantId   String
+  recordId   String
+  record     Record    @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  ordinal    Int
+  startAt    DateTime?
+  endAt      DateTime?
+  resourceId String?   // loose Resource.id, app-level integrity (the booking precedent)
+  state      String    @default("pending") // pending | scheduled | done | cancelled
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([tenantId, recordId])
+  @@index([tenantId, state, startAt])
+}
+
 model Record {
   id           String       @id @default(cuid())
   tenantId     String
@@ -586,6 +609,7 @@ model Record {
   //                   updateMany, the reportScheduler claim pattern), so a
   //                   completed occurrence can never spawn twice.
   repeatRule    Json?
+  visits        WorkOrderVisit[] // multi-visit work orders (empty for every other record type)
   spawnedNextId String?
   customFields Json         @default("{}")
   // Two-way Google Calendar sync (provenance/ownership). All nullable + additive:

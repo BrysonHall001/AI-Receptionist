@@ -6650,7 +6650,22 @@
         if (advanced) { body.stageKey = "scheduled"; prior.stageKey = "new_request"; }
 
         const ov = { allowOverlap: false, allowClosed: false };
-        const doPatch = (extra) => App.portalApi("/api/records/" + payload.id, { method: "PATCH", body: JSON.stringify({ ...body, ...ov, ...(extra || {}) }) });
+        // MULTI-VISIT (C5): a block from a 2+-visit job carries its visitId —
+        // the drag reschedules THAT visit through the visit endpoint (the
+        // mirror recomputes server-side in the same transaction); the key-based
+        // stage nudge rides a separate record PATCH exactly as before. Blocks
+        // without visitId (single-visit jobs, bookings) keep the byte-identical
+        // legacy record PATCH.
+        const doPatch = payload.visitId
+          ? (extra) => {
+              const x = extra || {};
+              const vBody = { startAt: x.appointmentAt !== undefined ? x.appointmentAt : body.appointmentAt };
+              if ("resourceId" in body || "resourceId" in x) vBody.resourceId = x.resourceId !== undefined ? x.resourceId : body.resourceId;
+              const stagePatch = (x.stageKey !== undefined ? x.stageKey : body.stageKey);
+              return App.portalApi("/api/records/visits/" + payload.visitId, { method: "PATCH", body: JSON.stringify(vBody) })
+                .then((r) => stagePatch !== undefined ? App.portalApi("/api/records/" + payload.id, { method: "PATCH", body: JSON.stringify({ stageKey: stagePatch }) }).then(() => r) : r);
+            }
+          : (extra) => App.portalApi("/api/records/" + payload.id, { method: "PATCH", body: JSON.stringify({ ...body, ...ov, ...(extra || {}) }) });
         try {
           for (;;) {
             try { await doPatch(); break; }
@@ -6677,7 +6692,19 @@
         toast(`Scheduled — ${whenLbl}${laneRes ? " · " + laneRes.name : (lane.apply && laneChanged ? " · Unassigned" : "")}`, false, {
           label: "Undo",
           onClick: async () => {
-            try { await App.portalApi("/api/records/" + payload.id, { method: "PATCH", body: JSON.stringify({ ...prior, allowOverlap: true, allowClosed: true }) }); toast("Undone"); }
+            try {
+              if (payload.visitId) {
+                // per-visit undo: restore THAT visit's prior window/staff, then
+                // the prior stage (symmetric with the forward path).
+                const vPrior = { startAt: prior.appointmentAt };
+                if ("resourceId" in prior) vPrior.resourceId = prior.resourceId;
+                await App.portalApi("/api/records/visits/" + payload.visitId, { method: "PATCH", body: JSON.stringify(vPrior) });
+                if (prior.stageKey !== undefined) await App.portalApi("/api/records/" + payload.id, { method: "PATCH", body: JSON.stringify({ stageKey: prior.stageKey }) });
+              } else {
+                await App.portalApi("/api/records/" + payload.id, { method: "PATCH", body: JSON.stringify({ ...prior, allowOverlap: true, allowClosed: true }) });
+              }
+              toast("Undone");
+            }
             catch (e) { toast(e.message || "Could not undo", true); }
             load();
           },
@@ -6780,7 +6807,8 @@
             resForTip = calResById[it.b.resourceId] || null;
             if (resForTip) { const rd = el("span", "res-dot"); if (resForTip.color) rd.style.setProperty("--swatch", resForTip.color); tline.appendChild(rd); }
           }
-          tline.appendChild(document.createTextNode(it.b.contactName || it.b.title || "Booking"));
+          const visitTag = it.b.visitCount > 1 ? " \u2014 visit " + it.b.visitOrdinal + " of " + it.b.visitCount : "";
+          tline.appendChild(document.createTextNode((it.b.contactName || it.b.title || "Booking") + visitTag));
           blk.appendChild(tline);
           if (bh >= 30) {
             blk.appendChild(el("div", "cal-block-sub", `${label12(it.s)} · ${[it.b.serviceLabel, it.b.stageLabel].filter(Boolean).join(" · ")}`.replace(/ · $/, "")));
@@ -6796,7 +6824,7 @@
             blk.classList.add("cal-block-draggable");
             blk.addEventListener("dragstart", (e) => {
               e.dataTransfer.effectAllowed = "move";
-              e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "block", id: it.b.id, title: it.b.title || "", stageKey: it.b.stageKey || null, resourceId: it.b.resourceId || null, priorAt: it.b.start }));
+              e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "block", id: it.b.id, title: it.b.title || "", stageKey: it.b.stageKey || null, resourceId: it.b.resourceId || null, priorAt: it.b.start, visitId: it.b.visitId || null }));
               blk.classList.add("cal-block-dragging");
             });
             blk.addEventListener("dragend", () => blk.classList.remove("cal-block-dragging"));
@@ -6877,7 +6905,7 @@
         } else {
           items.forEach((u) => {
             const it = el("div", "cal-tray-item");
-            it.appendChild(el("div", "cal-tray-item-t", (u.repeatRule ? '<span class="rw-mark" title="Part of a repeat plan">\u21BB</span> ' : "") + esc(u.title)));
+            it.appendChild(el("div", "cal-tray-item-t", (u.repeatRule ? '<span class="rw-mark" title="Part of a repeat plan">\u21BB</span> ' : "") + esc(u.title) + (u.visitCount > 1 ? ' <span class="cell-muted">\u2014 visit ' + u.pendingVisitOrdinal + " of " + u.visitCount + "</span>" : "")));
             const sub = el("div", "cal-tray-item-sub cell-muted");
             if (u.stageLabel) { const pillEl = el("span", "pill", esc(u.stageLabel)); sub.appendChild(pillEl); }
             it.appendChild(sub);
@@ -6887,7 +6915,7 @@
               it.draggable = true;
               it.addEventListener("dragstart", (e) => {
                 e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "tray", id: u.id, title: u.title || "", stageKey: u.stageKey || null, resourceId: u.resourceId || null, priorAt: null }));
+                e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "tray", id: u.id, title: u.title || "", stageKey: u.stageKey || null, resourceId: u.resourceId || null, priorAt: null, visitId: u.pendingVisitId || null }));
                 it.classList.add("cal-tray-item-dragging");
               });
               it.addEventListener("dragend", () => it.classList.remove("cal-tray-item-dragging"));
@@ -8201,6 +8229,60 @@
         (list || []).forEach((r) => { const o = document.createElement("option"); o.value = r.id; o.textContent = r.name; resourceSel.appendChild(o); });
         resourceSel.value = keep;
       }).catch(() => { /* leave just None on failure */ });
+    }
+
+    // ---- MULTI-VISIT (C1 + C2): the top editors bind to the ACTIVE visit; a
+    // small caption says so once a job has 2+ visits, "+ Add visit" sits at the
+    // editors' end, and the VISITS section lists every visit with its own
+    // schedule / staff / complete / cancel controls. Single-visit jobs render
+    // this page BYTE-IDENTICALLY (nothing below mounts until visits > 1;
+    // the button itself is the one addition, per the approved C1 placement).
+    let visitsHost = null;
+    if (isWorkOrder) {
+      const visitCap = el("p", "cell-muted wo-visit-cap");
+      card.appendChild(visitCap);
+      const addVisit = el("button", "btn btn-ghost btn-sm wo-add-visit", "+ Add visit");
+      addVisit.onclick = async () => {
+        try { await App.portalApi("/api/records/" + id + "/visits", { method: "POST", body: JSON.stringify({}) }); toast("Visit added \u2014 schedule it below"); renderRecord(id, opts); }
+        catch (e) { toast(e.message || "Could not add a visit", true); }
+      };
+      card.appendChild(addVisit);
+      visitsHost = el("div", "wo-visits");
+      card.appendChild(visitsHost);
+      App.portalApi("/api/records/" + id + "/visits").then((rv) => {
+        const visits = (rv && rv.visits) || [];
+        if (visits.length <= 1) return; // single-visit: byte-identical page
+        visitCap.textContent = "The window above is this job's ACTIVE visit \u2014 all " + visits.length + " visits are listed below.";
+        const sec = el("div", "wo-visits-list");
+        sec.appendChild(el("label", "field-label", "Visits"));
+        visits.forEach((v) => {
+          const row = el("div", "wo-visit-row");
+          // The calendar's formatters live in their own closure — format
+          // locally (wall-clock digits, the house zoneless convention).
+          const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const when = v.startAt ? " \u00b7 " + MON[parseInt(v.startAt.slice(5, 7), 10) - 1] + " " + parseInt(v.startAt.slice(8, 10), 10) + " " + v.startAt.slice(11, 16) : "";
+          const lbl = "Visit " + v.ordinal + " \u00b7 " + v.state + when;
+          row.appendChild(el("span", "wo-visit-lbl" + (v.state === "cancelled" ? " cell-muted" : ""), esc(lbl)));
+          if (v.state === "pending" || v.state === "scheduled") {
+            const sch = el("button", "btn btn-ghost btn-sm", v.state === "pending" ? "Schedule" : "Reschedule");
+            sch.onclick = async () => {
+              const when = prompt("Start (YYYY-MM-DDTHH:MM)", v.startAt ? v.startAt.slice(0, 16) : "");
+              if (!when) return;
+              try { await App.portalApi("/api/records/visits/" + v.id, { method: "PATCH", body: JSON.stringify({ startAt: when }) }); toast("Visit scheduled"); renderRecord(id, opts); }
+              catch (e) { toast(e.message || "Could not schedule", true); }
+            };
+            row.appendChild(sch);
+            const done = el("button", "btn btn-ghost btn-sm", "Complete");
+            done.onclick = async () => { try { await App.portalApi("/api/records/visits/" + v.id + "/complete", { method: "POST" }); toast("Visit completed \u2014 the job's status is yours to set"); renderRecord(id, opts); } catch (e) { toast(e.message || "Could not complete", true); } };
+            row.appendChild(done);
+            const cxl = el("button", "btn btn-ghost btn-sm", "Cancel");
+            cxl.onclick = async () => { try { await App.portalApi("/api/records/visits/" + v.id + "/cancel", { method: "POST" }); toast("Visit cancelled"); renderRecord(id, opts); } catch (e) { toast(e.message || "Could not cancel", true); } };
+            row.appendChild(cxl);
+          }
+          sec.appendChild(row);
+        });
+        visitsHost.appendChild(sec);
+      }).catch(() => { /* visits list is additive; the page stands without it */ });
     }
 
     const values = { ...(rec.customFields || {}) };

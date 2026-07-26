@@ -79,11 +79,11 @@
   const TEMPLATE_ICONS = {
     general: S(`<path d="M8.6 3.2 9.7 6.9l3.7 1.1-3.7 1.1-1.1 3.7-1.1-3.7L3.8 8l3.7-1.1 1.1-3.7Z"${K}/><path d="M3.9 2.6v2M2.9 3.6h2"${K}/><path d="M12.9 12.2v1.8M12 13.1h1.8"${K}/>`),
     field_services: S(`<path d="M5.9 7.1 3 4.2a2.1 2.1 0 0 1 2.6-2.6l-.9 1.6.9 1.2 1.5.2 1-1.7A2.1 2.1 0 0 1 5.9 7.1Z"${K}/><path d="m6.2 6.9 6.4 6.4"${K}/><path d="M12.9 3.1 6.7 9.3M12.9 3.1l.9 1 -1.4 2.2-1.7.3"${K}/><path d="m4.6 10.9 2.7 2.7-1.2 1.2a1.9 1.9 0 0 1-2.7-2.7l1.2-1.2Z"${K}/>`),
-    // RM-1 (owner's pick): a HANDSHAKE — two forearms meeting in a single
-    // clasped intersection. Deliberately simplified (no finger detail): at the
-    // registry stroke weight the canonical two-arms-to-one-clasp form stays
-    // legible down past 20px where a detailed clasp turns to noise.
-    recruitment_marketing: S(`<path d="M1.6 5.2 5 3.4l3 1.5 3-1.5 3.4 1.8"${K}/><path d="M1.6 9.6 4.4 11 8 8l3.6 3 2.8-1.4"${K}/><path d="M8 8 5.6 10.4a1.3 1.3 0 0 0 1.8 1.8l.6-.6.6.6a1.3 1.3 0 0 0 1.8-1.8L8 8Z"${K}/><path d="M5 3.4v3.2M11 3.4v3.2"${K}/>`),
+    // FIX 2 (owner: the handshake read as a face): a MEGAPHONE — one cone
+    // silhouette (mouth forward), a short handle below, two sound arcs. One
+    // closed shape + three short strokes = unambiguous at the crest's ~30px
+    // and still clean at 20px.
+    recruitment_marketing: S(`<path d="M2.2 6.2v3.6l2.6.4 5.6 2.6V3.2L4.8 5.8l-2.6.4Z"${K}/><path d="M5.6 10.5v2.3a.9.9 0 0 0 .9.9h.7"${K}/><path d="M12.6 6.2c.7.9.7 2.7 0 3.6"${K}/><path d="M14.2 4.8c1.3 1.7 1.3 4.7 0 6.4"${K}/>`),
     __default: CUSTOM_DEFAULT,
   };
   // UI-fidelity v3 (owner's mockup): power / telephone / diamond.

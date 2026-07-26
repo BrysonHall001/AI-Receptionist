@@ -250,8 +250,47 @@ export async function getModuleCalendarData(
     orderBy: { createdAt: "asc" },
   });
 
+  // MULTI-VISIT (multivisit-cardfix): for the work-order module on its typed
+  // field, a job with 2+ visits renders ONE BLOCK PER SCHEDULED VISIT (each
+  // carrying visitId/visitOrdinal/visitCount — additive keys on multi-visit
+  // blocks ONLY), and a pending visit keeps the job in the tray even while
+  // another visit is scheduled. 0-1 visits (and every other module) emit the
+  // exact pre-batch shape, holding the pinned feed contracts.
+  const isWoTyped = rt && rt.key === WORK_ORDER_RECORD_TYPE_KEY && fieldKey === "appointmentAt";
+  const visitsByRecord: Record<string, any[]> = {};
+  if (isWoTyped && rows.length) {
+    const vs = await db.workOrderVisit.findMany({ where: { tenantId, recordId: { in: rows.map((r: any) => r.id) } }, orderBy: { ordinal: "asc" } });
+    for (const v of vs) (visitsByRecord[v.recordId] = visitsByRecord[v.recordId] || []).push(v);
+  }
+  const multiVisitItems = (r: any, vlist: any[]) => vlist
+    .filter((v: any) => v.state === "scheduled" && v.startAt != null)
+    .map((v: any) => {
+      const start = valueToWall(v.startAt);
+      if (!start) return null;
+      const ymd = start.slice(0, 10);
+      if (ymd < fromDate || ymd >= toDate) return null;
+      let durationMin = 60;
+      let end = start;
+      if (v.endAt) {
+        const ms = new Date(v.endAt).getTime() - new Date(v.startAt).getTime();
+        if (ms > 0) { durationMin = Math.max(15, Math.round(ms / 60000)); end = valueToWall(v.endAt) || start; }
+      }
+      return {
+        id: r.id, title: r.title || "Untitled", start, end, durationMin,
+        serviceKey: r.subtypeKey || null, serviceLabel: "",
+        stageKey: r.stageKey || null, stageLabel: stageLabel(r.stageKey || null),
+        contactName: null,
+        resourceId: lanesOn ? (v.resourceId || null) : null,
+        externalSource: null,
+        visitId: v.id, visitOrdinal: v.ordinal, visitCount: vlist.length,
+      };
+    })
+    .filter((x: any) => x != null);
+
   const bookings = rows
-    .map((r: any) => {
+    .flatMap((r: any) => {
+      const vlist = isWoTyped ? (visitsByRecord[r.id] || []) : [];
+      if (vlist.length > 1) return multiVisitItems(r, vlist);
       const raw = fieldKey === "appointmentAt" ? r.appointmentAt : (r.customFields || {})[fieldKey];
       const start = valueToWall(raw);
       if (!start) return null;
@@ -296,19 +335,35 @@ export async function getModuleCalendarData(
   if (trayOn) {
     unscheduled = rows
       .filter((r: any) => {
+        // MULTI-VISIT tray truth: a work order belongs in the tray when it has
+        // ANY pending visit — even while another visit is scheduled. 0-1 visit
+        // rows keep the exact dateless rule (a single pending visit IS a null
+        // appointmentAt, so membership is unchanged).
+        const vlist = isWoTyped ? (visitsByRecord[r.id] || []) : [];
+        if (vlist.length > 1) return vlist.some((v: any) => v.state === "pending");
         const raw = fieldKey === "appointmentAt" ? r.appointmentAt : (r.customFields || {})[fieldKey];
         return valueToWall(raw) == null;
       })
-      .map((r: any) => ({
-        id: r.id,
-        title: r.title || "Untitled",
-        stageKey: r.stageKey || null,
-        stageLabel: stageLabel(r.stageKey || null),
-        subtypeKey: r.subtypeKey || null,
-        resourceId: r.resourceId || null,
-        repeatRule: r.repeatRule ?? null, // Recurring Work batch: the tray's ↻ marker
-        createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
-      }));
+      .map((r: any) => {
+        const base: any = {
+          id: r.id,
+          title: r.title || "Untitled",
+          stageKey: r.stageKey || null,
+          stageLabel: stageLabel(r.stageKey || null),
+          subtypeKey: r.subtypeKey || null,
+          resourceId: r.resourceId || null,
+          repeatRule: r.repeatRule ?? null, // Recurring Work batch: the tray's ↻ marker
+          createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
+        };
+        // C4: dragging a multi-visit job's tray card schedules the OLDEST
+        // pending visit (deterministic; additive keys on multi-visit rows only).
+        const vlist = isWoTyped ? (visitsByRecord[r.id] || []) : [];
+        if (vlist.length > 1) {
+          const pending = vlist.filter((v: any) => v.state === "pending").sort((x: any, y: any) => new Date(x.createdAt).getTime() - new Date(y.createdAt).getTime());
+          if (pending.length) { base.pendingVisitId = pending[0].id; base.pendingVisitOrdinal = pending[0].ordinal; base.visitCount = vlist.length; }
+        }
+        return base;
+      });
   }
 
   // Lanes ON → cross-module honesty: the OTHER resource-capable module's blocks
@@ -620,7 +675,16 @@ export async function createRecord(
     return serializeRecord(created);
   }
 
-  const created = await db.record.create({ data: recData });
+  // MULTI-VISIT seam (work orders only): creating a work order creates VISIT 1
+  // implicitly, in the SAME transaction, mirroring the typed columns exactly —
+  // a one-visit job is byte-identical to the pre-batch world.
+  const created = rt && rt.key === WORK_ORDER_RECORD_TYPE_KEY
+    ? await db.$transaction(async (tx: any) => {
+        const rec = await tx.record.create({ data: recData });
+        await tx.workOrderVisit.create({ data: { tenantId, recordId: rec.id, ordinal: 1, startAt: rec.appointmentAt, endAt: rec.endAt, resourceId: rec.resourceId, state: rec.appointmentAt == null ? "pending" : "scheduled" } });
+        return rec;
+      })
+    : await db.record.create({ data: recData });
   // Lifecycle event so a newly-created NON-booking record (e.g. a Job) appears in
   // the event log. Bookings are intentionally excluded — they emit BookingCreated
   // from the contact-link step, so gating on the record type avoids a double-log.
@@ -730,9 +794,24 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
         if (conflict && input.allowOverlap !== true) throw overlapError();
       }
       return tx.record.update({ where: { id }, data });
+      // (bookings only reach this guarded branch — no visit sync here)
     });
   } else {
-    updated = await db.record.update({ where: { id }, data });
+    // MULTI-VISIT seam: a WORK ORDER whose typed scheduling columns are in this
+    // patch keeps its ACTIVE visit in step, in the SAME transaction (the top
+    // editors bind to the active visit; one-visit jobs behave byte-identically
+    // — the visit simply mirrors the columns recordService just wrote).
+    const touchesSchedule = rt && rt.key === WORK_ORDER_RECORD_TYPE_KEY
+      && (input.appointmentAt !== undefined || input.endAt !== undefined || input.resourceId !== undefined);
+    updated = touchesSchedule
+      ? await db.$transaction(async (tx: any) => {
+          const rec = await tx.record.update({ where: { id }, data });
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { syncActiveVisitTx } = require("./workOrderVisitService");
+          await syncActiveVisitTx(tx, tenantId, rec);
+          return rec;
+        })
+      : await db.record.update({ where: { id }, data });
   }
 
   // ===================== RECORD-UPDATED EVENT (Stage 2a) =====================
@@ -749,6 +828,13 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
     // Jobs. Reuses the engine's changes[] scoping → "BookingStatusChanged:status=<v>".
     const statusChange = changes.find((c) => c.field === "status");
     if (isBooking && statusChange) await emitBookingStatusChanged(tenantId, updated, statusChange, actor, chainDepth);
+    // C6 (multi-visit): cancelling the JOB cancels its still-pending visits —
+    // scheduled/done visits keep their history; the mirror recomputes inside
+    // the visit service's own transaction.
+    if (rt && rt.key === WORK_ORDER_RECORD_TYPE_KEY && input.stageKey === "cancelled" && existing.stageKey !== "cancelled") {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      try { await require("./workOrderVisitService").cancelPendingVisits(tenantId, id, actor); } catch { /* best-effort; the job cancel itself already landed */ }
+    }
     // Booking time change → its own trigger (so automations don't have to ride the
     // generic RecordUpdated). old/new are wall-clock, via fmtApptWall.
     if (isBooking && apptChanged) await emitBookingRescheduled(tenantId, updated, existing.appointmentAt, finalAppt, actor, chainDepth);

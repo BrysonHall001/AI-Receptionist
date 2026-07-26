@@ -175,7 +175,10 @@ export async function assignedBookingCount(tenantId: string, resourceId: string)
 export async function deleteResource(tenantId: string, id: string): Promise<{ ok: true }> {
   const existing = await db.resource.findFirst({ where: { id, tenantId, deletedAt: null } });
   if (!existing) throw new Error("Resource not found.");
-  const count = await assignedBookingCount(tenantId, id);
+  let count = await assignedBookingCount(tenantId, id);
+  // Multi-visit: a visit assignment holds the resource exactly like a record
+  // assignment does (same app-level integrity as the typed column).
+  count += await (db as any).workOrderVisit.count({ where: { tenantId, resourceId: id, state: { in: ["pending", "scheduled"] } } });
   if (count > 0) {
     const e: any = new Error(`This is assigned to ${count} record${count === 1 ? "" : "s"} (bookings or work orders). Reassign or unassign ${count === 1 ? "it" : "them"} first, then delete.`);
     e.code = "resource_in_use";

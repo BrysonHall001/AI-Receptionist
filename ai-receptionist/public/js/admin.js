@@ -42,14 +42,43 @@
     }
     return { visible, hidden };
   }
+  // FIX 5 (multivisit-cardfix): the "+N more" chip is INTERACTIVE — it opens
+  // the house column-filter popover (table.js .col-popover: body-appended at
+  // document coords so ancestors can never clip it and page scroll keeps it
+  // glued to its anchor; outside click closes via the same once-listener
+  // pattern) listing EVERY remaining field label. Esc closes and returns
+  // focus (additive to the house pattern, per spec). One popover page-wide.
+  function closeChipPop() {
+    App.util.$$(".adm-chip-pop, .col-popover").forEach(function (pp) { pp.remove(); });
+  }
+  function openChipPop(anchor, rest) {
+    closeChipPop();
+    const pop = el("div", "col-popover adm-chip-pop");
+    rest.forEach(function (label) { pop.appendChild(el("div", "pop-item adm-chip-pop-row", esc(label))); });
+    if (rest.length > 12) pop.classList.add("adm-chip-pop-scroll");
+    document.body.appendChild(pop);
+    const rect = anchor.getBoundingClientRect();
+    pop.style.setProperty("top", (rect.bottom + window.scrollY + 6) + "px");
+    pop.style.setProperty("left", Math.min(rect.left + window.scrollX, Math.max(0, window.innerWidth - 288)) + "px");
+    function onKey(e) { if (e.key === "Escape") { closeChipPop(); document.removeEventListener("keydown", onKey); try { anchor.focus(); } catch (e2) { /* */ } } }
+    document.addEventListener("keydown", onKey);
+    setTimeout(function () { document.addEventListener("click", function () { closeChipPop(); document.removeEventListener("keydown", onKey); }, { once: true }); }, 0);
+  }
   function renderChips(host, labels) {
     host.innerHTML = "";
     const width = host.clientWidth || 300; // JSDOM/first-paint fallback
     const fit = fitChips(labels, width);
     fit.visible.forEach((f) => host.appendChild(el("span", "adm-chip", esc(f))));
-    if (fit.hidden > 0) host.appendChild(el("span", "adm-chip adm-chip-more", "+" + fit.hidden + " more"));
+    if (fit.hidden > 0) {
+      const rest = labels.slice(fit.visible.length); // the FULL remainder: total - rendered
+      const more = el("button", "adm-chip adm-chip-more", "+" + fit.hidden + " more");
+      more.type = "button";
+      more.setAttribute("aria-haspopup", "true");
+      more.onclick = function (e) { e.stopPropagation(); openChipPop(more, rest); };
+      host.appendChild(more);
+    }
   }
-  App._createUi = { fitChips }; // suite hook (behavioral contract, not layout)
+  App._createUi = { fitChips, openChipPop, closeChipPop }; // suite hooks (behavioral contract, not layout)
   // TENANT TEMPLATES: per-row copy for the create wizard. neutral = General;
   // fs = the Field Services swap where the template meaningfully changes the row.
   const PAGE_DESCS = {
@@ -776,7 +805,7 @@
     // no tokens exist for these bespoke measures) and is applied as inline
     // styles so the suite asserts the exact ratios; colors/shadows/radius stay
     // tokenized in CSS.
-    const TPL_DIMS = { mainW: 192, mainH: 87, crestW: 133, crestH: 38.5, tabW: 167, tabH: 38.5, stripH: 5, bandH: 24 };
+    const TPL_DIMS = { mainW: 192, mainH: 87, crestW: 133, crestH: 38.5, tabW: 167, tabH: 38.5, bandH: 24 };
     const tplWrap = el("div"); tplWrap.classList.add("adm-tpl-zone");
     tplWrap.innerHTML = `<label class="field-label">Template</label>`;
     const tplBand = el("span", "adm-tpl-band");
@@ -1005,8 +1034,6 @@
         const txt = el("span", "tpl-text");
         txt.innerHTML = `<span class="adm-tpl-name">${esc(t.label)}</span><span class="adm-tpl-desc">${esc(t.description)}</span>`;
         main.appendChild(txt);
-        const strip = el("span", "tpl-strip"); strip.style.setProperty("height", D.stripH + "px");
-        main.appendChild(strip);
         // z2: bottom tab (87% of main, WIDER than the crest so its line fits);
         // lower half protrudes below the main rect.
         // REGRESSION FIX: the tab WIDENS to 100% of the main-rect width — at
@@ -1019,9 +1046,14 @@
           const lcId = "tpl-lc-cb-" + t.key;
           tab.innerHTML = `<input type="checkbox" id="${lcId}" class="tpl-lc-cb"><span>Custom-configure Learning Center?</span>`;
           const cb = tab.querySelector("input");
-          cb.checked = !!draft.customLearningCenter;
-          cb.onclick = (e) => { e.stopPropagation(); }; // the checkbox never selects the card
-          cb.onchange = () => { draft.customLearningCenter = cb.checked; };
+          // FIX 1 (multi-select screenshot): the checkbox is only MEANINGFUL on
+          // the SELECTED card — a deselected sibling always renders unchecked.
+          // (The bug: every offer-card painted from the one shared draft flag,
+          // so selecting RM re-rendered FS's box checked too.)
+          const isSel = draft.template === t.key;
+          cb.checked = isSel && !!draft.customLearningCenter;
+          cb.onclick = (e) => { if (draft.template === t.key) e.stopPropagation(); }; // on the selected card the box toggles in place; on a sibling the click SELECTS the card (auto-check runs)
+          cb.onchange = () => { if (draft.template === t.key) draft.customLearningCenter = cb.checked; };
         } else {
           tab.innerHTML = `<span>Default Learning Center configuration</span>`;
         }
@@ -1030,7 +1062,7 @@
         card.appendChild(main);
         card.appendChild(tab);
         card.onclick = (e) => {
-          if (e.target && e.target.classList && e.target.classList.contains("tpl-lc-cb")) return; // checkbox owns itself
+          if (e.target && e.target.classList && e.target.classList.contains("tpl-lc-cb") && draft.template === t.key) return; // the SELECTED card's checkbox owns itself; a sibling's click selects the card
           if (draft.template === t.key) return;
           draft.template = t.key;
           // A template OFFERING the custom-LC checkbox auto-checks it on

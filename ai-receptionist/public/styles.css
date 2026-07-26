@@ -3558,7 +3558,15 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .adm-tpl-card:hover .tpl-glyph { transform: translateX(-50%) translateY(-5px); } /* the icon RISES out of the tuck; rectangles never move */
 @media (prefers-reduced-motion: reduce) { .tpl-glyph { transition: none; } .adm-tpl-card:hover .tpl-glyph { transform: translateX(-50%); } }
 .adm-tpl-card.active .tpl-glyph { color: var(--accent); }
-.tpl-main { position: relative; z-index: 4; flex: 1 0 auto; overflow: visible; } /* NO clipping here — the strip rounds ITSELF to the radius */
+.tpl-main { position: relative; z-index: 4; flex: 1 0 auto; overflow: visible; }
+/* FIX 3: the static accent strip is REPLACED by the nav's hover sweep — the
+   EXACT .nav-item::after mechanism (styles.css nav block): 2px accent bar,
+   999px radius, scaleX(0)->scaleX(1) from the left on HOVER only, var
+   (--transition), pointer-events none, killed by the global reduced-motion
+   block. Inset 16px = the nav's 10px-of-~120px ratio scaled to the 192px card;
+   never persists on the selected card (selection = darker surface + outline). */
+.tpl-main::after { content: ""; position: absolute; left: 16px; right: 16px; bottom: 5px; height: 2px; background: var(--accent); border-radius: 999px; transform: scaleX(0); transform-origin: left; transition: transform var(--transition); pointer-events: none; }
+.adm-tpl-card:hover .tpl-main::after { transform: scaleX(1); }
 .adm-tpl-card:not(.active):hover .tpl-main { box-shadow: var(--shadow-lift, var(--shadow)); }
 /* FIX 1 (polish re-emit): the text is TOP-ANCHORED with a reserved clearance —
    vertical centering let overlong content bleed upward under the crest lip
@@ -3572,7 +3580,6 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
    strip. overflow stays visible end to end. */
 .tpl-text { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 28px 16px 14px; gap: 4px; overflow: visible; }
 .adm-tpl-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } /* the "2 lines max" rule; only absurd fixture-length names ever reach it */
-.tpl-strip { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); z-index: 1; border-radius: 0 0 var(--radius) var(--radius); }
 .adm-tpl-card.active .tpl-crest, .adm-tpl-card.active .tpl-main, .adm-tpl-card.active .tpl-tab { background: var(--gray-soft); } /* selected: one clear neutral step darker */
 .adm-tpl-card.active .tpl-main { box-shadow: var(--shadow), 0 0 0 1px var(--accent) inset; } /* the selection signal lives on the MAIN rect */
 .adm-tpl-reset { margin: 10px 0 0; font-size: var(--text-xs); min-height: 16px; position: relative; z-index: 1; }
@@ -3591,6 +3598,21 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .adm-rowdesc:empty { display: none; }
 .adm-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 .adm-chip { border: 1px solid var(--line); border-radius: 999px; background: var(--gray-soft); color: var(--ink-soft); font-size: var(--text-xs); padding: 1px 8px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
+/* FIX 5: the "+N more" chip goes INTERACTIVE (house interactive-chip
+   treatment: accent text, pointer, hover token, focusable button). Its
+   popover reuses .col-popover verbatim, widened per spec, rows wrap. */
+.adm-chip-more { color: var(--accent); border-color: var(--accent); background: var(--panel); cursor: pointer; font: inherit; font-size: var(--text-xs); }
+.adm-chip-more:hover { background: var(--row-hover); }
+.adm-chip-pop { min-width: 200px; max-width: 280px; }
+.adm-chip-pop .pop-item { white-space: normal; cursor: default; font-size: var(--text-xs); padding: 8px 8px; }
+.adm-chip-pop-scroll { max-height: 300px; overflow-y: auto; }
+/* multi-visit record page (C1/C2) */
+.wo-visit-cap { margin: 8px 0 0; font-size: var(--text-xs); }
+.wo-visit-cap:empty { display: none; }
+.wo-add-visit { margin-top: 8px; align-self: flex-start; }
+.wo-visits-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.wo-visit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--text-sm); }
+.wo-visit-lbl { min-width: 180px; }
 .adm-chip-more { border-style: dashed; }
 .mf-cal-subtxt { display: flex; flex-direction: column; min-width: 0; }
 .mf-cal-subname { font-size: var(--text-sm); font-weight: 600; color: var(--ink); }

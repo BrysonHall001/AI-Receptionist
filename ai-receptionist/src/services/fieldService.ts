@@ -36,7 +36,7 @@ export async function ensureSystemFields(tenantId: string): Promise<void> {
 // Contact.customFields (system:false), NOT a column-backed system field. Seeded lazily from
 // the same spot ensureSystemFields runs (listFields for the contact type), so both new and
 // existing portals gain it on the next fields load with no separate backfill script.
-const DEFAULT_CONTACT_CUSTOM_FIELDS = [
+export const DEFAULT_CONTACT_CUSTOM_FIELDS = [
   { key: "address", label: "Address", type: "address", order: 4 },
 ];
 

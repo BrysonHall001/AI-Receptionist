@@ -167,13 +167,18 @@ async function main() {
   check(!cssSrc.includes(".tpl-photo") && !pub("js/admin.js").includes("TPL_PHOTOS"),
     "\u2026and its CSS + fallback machinery are fully deleted");
   check(cssSrc.includes(".tpl-main { position: relative; z-index: 4; flex: 1 0 auto; overflow: visible; }")
-      && cssSrc.includes(".tpl-strip { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); z-index: 1; border-radius: 0 0 var(--radius) var(--radius); }")
+
       && cssSrc.includes(".tpl-text { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 28px 16px 14px; gap: 4px; overflow: visible; }"),
-    "NOTHING can clip text: main + text stack overflow-VISIBLE; the photo and strip round THEMSELVES to the radius");
+    "NOTHING can clip text: main + text stack overflow-VISIBLE (no hidden anywhere in the composition)");
   check(cssSrc.includes(".adm-tpl-row { align-items: stretch; }"), "the row EQUALIZES the cards to the tallest (stretch + flexing main)");
   check(!!card0.querySelector(".tpl-main") && !!card0.querySelector(".adm-tpl-name"),
     "the composition stands without the layer (text + surfaces intact)");
-  check($$(".tpl-strip").length === 4, "the ACCENT STRIP hugs every main rect's bottom edge"); // repinned: RM-1 ships a third template (+1 suite fixture)
+  // FIX 3 (multivisit-cardfix batch): the static strip is REPLACED by the
+  // nav's hover sweep — asserted absent + the sweep contract asserted below.
+  check($$(".tpl-strip").length === 0 && !cssSrc.includes(".tpl-strip"), "the static ACCENT STRIP is fully deleted (DOM + stylesheet)");
+  check(cssSrc.includes(".tpl-main::after { content: \"\"; position: absolute; left: 16px; right: 16px; bottom: 5px; height: 2px; background: var(--accent); border-radius: 999px; transform: scaleX(0); transform-origin: left; transition: transform var(--transition); pointer-events: none; }")
+      && cssSrc.includes(".adm-tpl-card:hover .tpl-main::after { transform: scaleX(1); }"),
+    "the HOVER SWEEP reuses the nav mechanism verbatim (scaleX(0) at rest, left-origin, var(--transition), 16px inset) and never persists on selected");
   check($$(".adm-tpl-band").length === 1 && cssSrc.includes("linear-gradient(to right, var(--accent), var(--tpl-band-stop))") && cssSrc.includes("--tpl-band-stop: #0300A1;"),
     "the \u00a7BAND ribbon spans the panel behind the cards \u2014 accent \u2192 the literal dark stop, held verbatim in :root");
   check(cssSrc.includes(".adm-tpl-card.active .tpl-crest, .adm-tpl-card.active .tpl-main, .adm-tpl-card.active .tpl-tab { background: var(--gray-soft); }")

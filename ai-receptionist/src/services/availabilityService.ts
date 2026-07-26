@@ -527,16 +527,20 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
   if (lanesOn) {
     const woTypeId = await resolveRecordTypeId(tenantId, WORK_ORDER_RECORD_TYPE_KEY);
     const woRt = await db.recordType.findFirst({ where: { tenantId, id: woTypeId }, select: { label: true } });
-    const others = await db.record.findMany({
-      where: { tenantId, recordTypeId: woTypeId, deletedAt: null, resourceId: { not: null }, appointmentAt: { gte: from, lt: to } },
+    // MULTI-VISIT: one shading block per SCHEDULED VISIT (visit 1 == the
+    // mirror, so one-visit jobs shade identically; a 2-visit job honestly
+    // shades both windows). Completed/cancelled JOBS still free the time.
+    const others = await db.workOrderVisit.findMany({
+      where: { tenantId, state: "scheduled", resourceId: { not: null }, startAt: { gte: from, lt: to }, record: { recordTypeId: woTypeId, deletedAt: null } },
+      select: { recordId: true, startAt: true, endAt: true, resourceId: true, record: { select: { stageKey: true } } },
     });
     out.busy = others
-      .filter((o: any) => o.appointmentAt && o.stageKey !== "completed" && o.stageKey !== "cancelled")
+      .filter((o: any) => o.startAt && o.record.stageKey !== "completed" && o.record.stageKey !== "cancelled")
       .map((o: any) => {
-        const start = dateToWall(o.appointmentAt);
-        const ms = o.endAt ? new Date(o.endAt).getTime() - new Date(o.appointmentAt).getTime() : 0;
+        const start = dateToWall(o.startAt);
+        const ms = o.endAt ? new Date(o.endAt).getTime() - new Date(o.startAt).getTime() : 0;
         const durationMin = ms > 0 ? Math.max(15, Math.round(ms / 60000)) : 60;
-        return { id: o.id, start, end: addMinutesWallStr(start, durationMin), durationMin, resourceId: o.resourceId, readOnly: true, sourceLabel: (woRt && woRt.label) || "Work Order" };
+        return { id: o.recordId, start, end: addMinutesWallStr(start, durationMin), durationMin, resourceId: o.resourceId, readOnly: true, sourceLabel: (woRt && woRt.label) || "Work Order" };
       });
   }
 

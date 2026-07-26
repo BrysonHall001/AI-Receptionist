@@ -467,6 +467,7 @@
           title: "Work orders: create, plan, and hand off",
           blocks: [
             { p: "A work order is a visit-ready job for your field team: what needs doing, where, and who's going. Open [[#/records/work_order|Work Orders]] to see them all — each one moves through its statuses from first request to done, and can be typed when you create it (both the types and the statuses are yours to rename in [[#/settings/fields|Settings → Modules & Fields]]). The page shows off out of the box: switch views with the tabs on the list page — List, a Board (one column per status; drag a card to update it, with an Undo on the confirmation), a Calendar, and a Map — and each optional view can be switched off on the module's Views tile. On a work order's page, open Related and use the Serviced equipment tab to link the unit you serviced — the unit's own Related section then carries its full Service history, newest visit first, with each visit's status and date at a glance. And with the receptionist on, callers who describe a problem needing service arrive here on their own — as dateless records in the dispatch tray." },
+            { p: "Real jobs sometimes take more than one trip — diagnose, wait on parts, come back and install. A work order can carry several VISITS for exactly that: press + Add visit on the job's page and a Visits list appears, each visit with its own window, its own technician, and its own Schedule, Complete, and Cancel. The date boxes at the top always edit the job's ACTIVE visit (the next one coming up), the calendar draws one block per scheduled visit (labeled \u201cvisit 2 of 3\u201d so nobody double-reads them), and finishing a visit never closes the job — the status stays yours. A one-visit job looks and works exactly as it always has." },
             { steps: [
               "Press Create on the [[#/records/work_order|Work Orders]] page, give it a clear title, pick its type, and fill in the details.",
               "To put it on the module's calendar, set a start — and optionally an end — in the date and time boxes.",
@@ -486,7 +487,7 @@
           id: "dispatch-calendar", features: ["calopt:scheduling"],
           title: "Dispatch on the calendar",
           blocks: [
-            { p: "Two options on a module's Views tile turn its calendar into a dispatch board. LANES splits the day into one column per staff member. The TRAY is a sidebar of the module's records that have no date yet, so brand-new work is visible instead of invisible. Both live in [[#/settings/fields|Settings → Modules & Fields]] under the Calendar tile — on from the start for Work Orders, off until you choose them everywhere else." },
+            { p: "Two options on a module's Views tile turn its calendar into a dispatch board. LANES splits the day into one column per staff member. The TRAY is a sidebar of the module's records that have no date yet, so brand-new work is visible instead of invisible. Both live in [[#/settings/fields|Settings → Modules & Fields]] under the Calendar tile — on from the start for Work Orders, off until you choose them everywhere else. For work orders with several visits, every scheduled visit gets its own block (labeled with its ordinal), each drags independently, and a job stays in the tray as long as ANY visit still needs a date — dragging its tray card schedules the oldest waiting visit." },
             { steps: [
               "Open the module's Calendar tab on its list page — lanes and the tray live inside the calendar's day and week layouts.",
               "Drag a tray record onto the grid to give it a time — drop it inside a staff column to hand it to that person in the same motion.",
@@ -679,6 +680,7 @@
     title: "Work Orders: the jobs themselves",
     blocks: [
       { p: "A [[#/records/work_order|Work Order]] is one job at one place: what's wrong, what kind of visit it is, when it's scheduled, and who's going. Its STATUS carries it from new request through scheduled, in progress, and completed — the same statuses your dashboard and board views read." },
+      { p: "Jobs that take more than one trip carry several VISITS: + Add visit on the job's page lists each trip with its own window, tech, and Schedule / Complete / Cancel. The top date boxes always edit the ACTIVE visit, the dispatch calendar draws one block per scheduled visit (\u201cvisit 2 of 3\u201d), and completing a visit never completes the job — the status stays in your hands." },
       { steps: [
         "Key fields: the title (what the customer asked for), the appointment, the assigned tech, and the job type.",
         "A work order with no appointment yet sits in NEW REQUEST — that's your to-be-scheduled tray.",
@@ -744,7 +746,7 @@
     id: "fs-dispatch-day", features: ["rt:work_order"],
     title: "A day of dispatch: tray to done",
     blocks: [
-      { p: "Dispatch is one motion, repeated: a request lands, you drag it onto a tech's day, the customer hears you're coming, and the job rolls to done. The calendar's per-tech lanes plus the Unscheduled tray make it a drag-and-drop." },
+      { p: "Dispatch is one motion, repeated: a request lands, you drag it onto a tech's day, the customer hears you're coming, and the job rolls to done. The calendar's per-tech lanes plus the Unscheduled tray make it a drag-and-drop. Multi-visit jobs play the same game: each scheduled visit is its own block (labeled \u201cvisit 2 of 3\u201d) you can drag on its own, and the job waits in the tray while any visit still needs a date." },
       { steps: [
         "New requests (calls the receptionist captured, or ones you add) sit in the UNSCHEDULED tray beside the calendar.",
         "Drag a request onto a tech's lane at a time — one move schedules it and assigns them.",

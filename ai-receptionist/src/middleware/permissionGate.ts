@@ -83,6 +83,11 @@ export const PERM_RULES: PermRule[] = [
   // On my way (Customer Comms batch): texting the customer about a record is an
   // edit-level act on that record — view-only roles get a clean 403.
   { m: "POST", re: /^\/records\/[^/]+\/notify-on-my-way$/, area: "records", right: "edit" },
+  // Multi-visit work orders (multivisit-cardfix batch)
+  { m: "GET", re: /^\/records\/[^/]+\/visits$/, area: "records", right: "view" },
+  { m: "POST", re: /^\/records\/[^/]+\/visits$/, area: "records", right: "edit" },
+  { m: "PATCH", re: /^\/records\/visits\/[^/]+$/, area: "records", right: "edit" },
+  { m: "POST", re: /^\/records\/visits\/[^/]+\/(complete|cancel)$/, area: "records", right: "edit" },
   // Estimates Lifecycle batch:
   { m: "POST", re: /^\/records\/[^/]+\/estimate-link$/, area: "records", right: "edit" },
   { m: "GET", re: /^\/records\/[^/]+\/estimate-status$/, area: "records", right: "view" },
