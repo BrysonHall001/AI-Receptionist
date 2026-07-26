@@ -11,6 +11,7 @@
 // Templates are constants (tenants never edit them) validated at module load,
 // the module-registry pattern.
 import { logger } from "../utils/logger";
+import { prisma } from "../db/client";
 
 export interface TemplateFieldTweak {
   /** Module key the tweak lands on (must be a registry key). */
@@ -22,9 +23,14 @@ export interface TemplateFieldTweak {
 /** Content-pack HOOKS (D2). The SHAPE ships now; every template ships them
  *  EMPTY. A later batch fills them; the engine already carries them so packs
  *  need no schema change. */
+/** One seeded dashboard: the reserved home row ("__home__") or a named
+ *  analytics dashboard. Widgets are the EXACT reports.js widget JSON — no new
+ *  widget types, no server-side execution; dashboards are just data. */
+export interface TemplateDashboardSeed { name: string; widgets: unknown[] }
+
 export interface TemplateHooks {
-  dashboards: unknown[];
-  analytics: unknown[];
+  dashboards: TemplateDashboardSeed[];   // the home row's widgets
+  analytics: TemplateDashboardSeed[];    // named analytics dashboards
   libraryFlavor: string | null;
   commDrafts: unknown[];
   aiInstructionSections: unknown[];
@@ -81,7 +87,81 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
     // service_address/photos; etc). Zero tweaks warranted — the MECHANISM below
     // is live and suite-proven with a synthetic tweak.
     fieldTweaks: [],
-    hooks: { ...EMPTY_HOOKS },
+    // TENANT TEMPLATES 2 — the Field Services CONTENT PACK. Every widget below
+    // is the reports.js JSON shape verbatim (type/source/measure/groupBy/
+    // filters incl. the real "today" and "previous" rule ops); every source and
+    // field is a shipped seed. Names in plain owner language.
+    hooks: {
+      dashboards: [
+        {
+          name: "__home__",
+          widgets: [
+            { id: "fs_home_new_requests", title: "New requests", type: "kpi", source: "work_order", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "stageKey", op: "is", value: "new_request", conj: "AND" }] },
+            { id: "fs_home_today", title: "Today's schedule", type: "list", source: "work_order", measure: { op: "count" }, groupBy: [], series: [], columns: ["title", "appointmentAt", "resource", "stageKey"], filters: [{ field: "appointmentAt", op: "today", value: "", conj: "AND" }] },
+            { id: "fs_home_by_status", title: "Jobs by status", type: "pie", source: "work_order", measure: { op: "count" }, groupBy: [{ key: "stageKey" }], series: [], filters: [] },
+            { id: "fs_home_invoiced", title: "Invoiced (last 30 days)", type: "kpi", source: "invoice", measure: { op: "sum", field: "total" }, groupBy: [], series: [], filters: [{ field: "invoice_date", op: "previous", value: 30, unit: "days", conj: "AND" }] },
+          ],
+        },
+      ],
+      analytics: [
+        {
+          name: "Operations",
+          widgets: [
+            { id: "fs_ops_requests_week", title: "Requests over time", type: "line", source: "work_order", measure: { op: "count" }, groupBy: [{ key: "createdAt", date: "week" }], series: [], filters: [] },
+            { id: "fs_ops_by_status", title: "Jobs by status", type: "pie", source: "work_order", measure: { op: "count" }, groupBy: [{ key: "stageKey" }], series: [], filters: [] },
+            { id: "fs_ops_by_type", title: "Jobs by type", type: "bar", source: "work_order", measure: { op: "count" }, groupBy: [{ key: "subtypeKey" }], series: [], filters: [] },
+            { id: "fs_ops_completed_week", title: "Completed jobs by week (created date)", type: "line", source: "work_order", measure: { op: "count" }, groupBy: [{ key: "createdAt", date: "week" }], series: [], filters: [{ field: "stageKey", op: "is", value: "completed", conj: "AND" }] },
+          ],
+        },
+        {
+          name: "Revenue",
+          widgets: [
+            { id: "fs_rev_invoiced_month", title: "Invoiced over time", type: "line", source: "invoice", measure: { op: "sum", field: "total" }, groupBy: [{ key: "invoice_date", date: "month" }], series: [], filters: [] },
+            { id: "fs_rev_paid_vs_out", title: "Paid vs outstanding", type: "pie", source: "invoice", measure: { op: "count" }, groupBy: [{ key: "status" }], series: [], filters: [] },
+            { id: "fs_rev_by_method", title: "Invoices by payment method", type: "pie", source: "invoice", measure: { op: "count" }, groupBy: [{ key: "payment_method" }], series: [], filters: [] },
+          ],
+        },
+        {
+          name: "Customers & Calls",
+          widgets: [
+            { id: "fs_cc_calls_week", title: "Calls over time", type: "line", source: "calls", measure: { op: "count" }, groupBy: [{ key: "createdAt", date: "week" }], series: [], filters: [] },
+            { id: "fs_cc_calls_outcome", title: "Calls by outcome", type: "pie", source: "calls", measure: { op: "count" }, groupBy: [{ key: "status" }], series: [], filters: [] },
+            { id: "fs_cc_new_contacts", title: "New contacts over time", type: "line", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "createdAt", date: "week" }], series: [], filters: [] },
+          ],
+        },
+      ],
+      libraryFlavor: "field_services", // curation key -> LIBRARY_FLAVORS (presets.ts)
+      // Comm drafts: templateService rows (inert by nature — nothing fires a
+      // template) + ONE survey in its real "draft" status. Merge tags limited
+      // to the batch-10 catalog's always-resolvable set ({{name}}/{{first_name}}/
+      // {{business}} + contact basics) — asserted by the suite.
+      commDrafts: [
+        { kind: "email", name: "Visit confirmation", subject: "You're on the schedule — see you soon", body: "<p>Hi {{first_name}},</p><p>Just confirming your upcoming visit from {{business}}. If the time no longer works, reply here or give us a call and we'll move it.</p><p>— {{business}}</p>" },
+        { kind: "email", name: "Estimate follow-up", subject: "Any questions about your estimate?", body: "<p>Hi {{first_name}},</p><p>Wanted to check in on the estimate we sent over. Happy to walk through it, adjust anything, or get you on the schedule — whatever's easiest.</p><p>— {{business}}</p>" },
+        { kind: "email", name: "Thanks after completion", subject: "Thanks from {{business}}", body: "<p>Hi {{first_name}},</p><p>Thanks for having us out — the job's wrapped up. If anything doesn't look right, reply here and we'll make it right.</p><p>— {{business}}</p>" },
+        { kind: "survey", name: "How did we do?", description: "A quick check-in after a visit.", questions: [
+          { type: "rating", label: "How would you rate the visit overall?", required: true },
+          { type: "yes_no", label: "Was everything left clean and working?" },
+          { type: "long_text", label: "Anything we could do better?" },
+        ] },
+      ],
+      // ONE seeded AI Instructions section (the "## <Name>" sectioned-editor
+      // format). A SCAFFOLD the owner edits — phrased to COMPOSE with the
+      // built-in prompt: it reinforces the never-promise rules (prices/exact
+      // arrival times) and never contradicts the booking/intake/target blocks.
+      aiInstructionSections: [
+        {
+          name: "Industry context",
+          body: [
+            "We are a field-service business. Edit this section so the receptionist knows the basics:",
+            "- What we do: (e.g. heating, cooling, and water heater service and installs)",
+            "- Service area: (e.g. the greater Raleigh area)",
+            "- Emergencies: (e.g. no-heat, no-cooling, or active leaks are urgent — gather the details and mark it an emergency; we triage those first)",
+            "- Never promise exact prices or exact arrival times — the office confirms both.",
+          ].join("\n"),
+        },
+      ],
+    },
   },
 ];
 
@@ -126,7 +206,73 @@ export async function applyTemplateAtCreation(tenantId: string, template: Tenant
         }
       }
     }
-    // Hooks ship EMPTY — nothing to apply until a content-pack batch fills them.
+    // ---- CONTENT PACK: dashboards (tenant-templates-2) ----
+    // Rides dashboardService only. Idempotent: the home row is filled ONLY when
+    // empty; a named dashboard is skipped when one with that name exists.
+    const dashSeeds = [...(template.hooks.dashboards || []), ...(template.hooks.analytics || [])];
+    if (dashSeeds.length) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const dashSvc = require("./dashboardService");
+      for (const seed of dashSeeds) {
+        try {
+          if (seed.name === "__home__") {
+            const home = await dashSvc.getOrCreateHomeDashboard(tenantId, null);
+            const cur = Array.isArray(home.widgets) ? home.widgets : [];
+            if (cur.length === 0) await dashSvc.updateDashboard(home.id, tenantId, { widgets: seed.widgets });
+          } else {
+            const existing = (await dashSvc.listDashboards(tenantId)).find((d: any) => d.name === seed.name);
+            if (!existing) {
+              const d = await dashSvc.createDashboard(tenantId, seed.name, null);
+              await dashSvc.updateDashboard(d.id, tenantId, { widgets: seed.widgets });
+            }
+          }
+        } catch (e) {
+          logger.error(`[templates] dashboard seed "${seed.name}" failed for ${tenantId}: ${(e as Error).message}`);
+        }
+      }
+    }
+    // ---- CONTENT PACK: communication drafts (email templates + one survey) ----
+    // templateService/surveyService only. Idempotent by NAME per kind.
+    for (const d of (template.hooks.commDrafts || []) as any[]) {
+      try {
+        if (d.kind === "survey") {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { listSurveys, upsertSurvey } = require("./surveyService");
+          const existing = (await listSurveys(tenantId)).find((sv: any) => sv.name === d.name);
+          if (!existing) await upsertSurvey({ tenantId, name: d.name, description: d.description ?? null, status: "draft", mapTargetType: "contact", questions: d.questions || [] });
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { listTemplates, createTemplate } = require("./templateService");
+          const existing = (await listTemplates(tenantId)).find((t: any) => t.name === d.name && (t.kind || "email") === d.kind);
+          if (!existing) await createTemplate({ tenantId, name: d.name, kind: d.kind, subject: d.subject ?? null, body: d.body ?? "" });
+        }
+      } catch (e) {
+        logger.error(`[templates] comm draft "${d.name}" failed for ${tenantId}: ${(e as Error).message}`);
+      }
+    }
+
+    // ---- CONTENT PACK: AI Instructions sections ----
+    // Appends "## <Name>" sections to the ONE stored aiInstructions field (the
+    // sectioned-editor format). Idempotent by heading; never rewrites what an
+    // owner typed.
+    const aiSections = (template.hooks.aiInstructionSections || []) as any[];
+    if (aiSections.length) {
+      try {
+        const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { aiInstructions: true } as any });
+        let text = String((row as any)?.aiInstructions || "");
+        let changed = false;
+        for (const sec of aiSections) {
+          const heading = "## " + String(sec.name || "").trim();
+          if (!heading.slice(3).trim()) continue;
+          if (new RegExp("^##\\s*" + heading.slice(3).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*$", "m").test(text)) continue;
+          text = (text.trim() ? text.replace(/\s+$/, "") + "\n\n" : "") + heading + "\n" + String(sec.body || "").trim() + "\n";
+          changed = true;
+        }
+        if (changed) await prisma.tenant.update({ where: { id: tenantId }, data: { aiInstructions: text } as any });
+      } catch (e) {
+        logger.error(`[templates] AI section seed failed for ${tenantId}: ${(e as Error).message}`);
+      }
+    }
   } catch (e) {
     logger.error(`[templates] applying "${template.key}" to ${tenantId} failed: ${(e as Error).message}`);
   }

@@ -372,7 +372,11 @@
       // WALL-CLOCK date (wallClock:true routes it to the slicing bucketer, never the
       // new Date() one). "resource" is resolved to the staff NAME (reusing the same
       // resource list the calendar uses); unknown/absent → "Unassigned".
-      if (rt.key === "booking") {
+      // Tenant-templates-2: RESOURCE-CAPABLE modules (bookings AND work orders —
+      // the isResourceCapable pair) carry the same two real columns. Additive for
+      // every tenant: work orders have a true appointmentAt/resourceId, and the
+      // FS home "Today's schedule" widget filters on it. Approved R1 extension.
+      if (rt.key === "booking" || rt.key === "work_order") {
         reportFields.push({ key: "appointmentAt", label: "Appointment Date", type: "date", wallClock: true });
         reportFields.push({ key: "resource", label: "Staff", type: "text" });
         topLevel.push("appointmentAt", "resource");

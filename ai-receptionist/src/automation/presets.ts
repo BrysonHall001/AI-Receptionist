@@ -37,6 +37,34 @@ export const PRESET_CATEGORIES: PresetCategory[] = [
   { key: "stay_in_touch", label: "Stay in touch" },
 ];
 
+// TENANT TEMPLATES 2 — library FLAVOR (batch-21 hooks.libraryFlavor). Pure
+// CURATION: a flavored tenant sees the most relevant categories first and the
+// flavor's vertical entries at the top of each section. Nothing is hidden,
+// nothing renamed — every generic entry stays exactly as reachable.
+export const LIBRARY_FLAVORS: Record<string, { categoryOrder: string[]; surfaceVerticals: Vertical[] }> = {
+  field_services: {
+    categoryOrder: ["stay_in_touch", "follow_ups", "lead_capture", "pipeline"],
+    surfaceVerticals: ["home_services"],
+  },
+};
+
+/** Order categories + presets for a flavor (null flavor = byte-identical input
+ *  order). Stable within groups, so the unflavored ordering is preserved. */
+export function applyLibraryFlavor(flavorKey: string | null | undefined, categories: PresetCategory[], presets: { category: string; vertical?: string }[]): { categories: PresetCategory[]; presets: any[] } {
+  const flavor = flavorKey ? LIBRARY_FLAVORS[flavorKey] : null;
+  if (!flavor) return { categories, presets };
+  const catPos = (k: string) => { const i = flavor.categoryOrder.indexOf(k); return i === -1 ? 1e9 : i; };
+  const cats = categories.slice().sort((a, b) => catPos(a.key) - catPos(b.key) || 0);
+  const idx = new Map(presets.map((p, i) => [p, i]));
+  const surfaced = new Set(flavor.surfaceVerticals as string[]);
+  const ps = presets.slice().sort((a, b) => {
+    const sa = surfaced.has(String((a as any).vertical || "")) ? 0 : 1;
+    const sb = surfaced.has(String((b as any).vertical || "")) ? 0 : 1;
+    return sa - sb || (idx.get(a)! - idx.get(b)!);
+  });
+  return { categories: cats, presets: ps };
+}
+
 // Internal-only. NOT shown anywhere in the UI; not sent to the browser.
 export type Vertical = "recruiting" | "home_services" | "insurance" | "general";
 
@@ -1131,6 +1159,76 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
       ],
     },
     note: "Also fires when someone starts a brand-new plan by hand — that first one is a recurring work order too.",
+  },
+  // ---- TENANT TEMPLATES 2 (Field Services content pack): two NEW entries.
+  // Both hand-buildable in the builder (real trigger strings, table-rule
+  // conditions, stock actions); both apply as DISABLED drafts like everything
+  // else in the library (the comms-batch doctrine).
+  {
+    key: "fs_invoice_unpaid_reminder",
+    name: "Invoice unpaid — remind the business",
+    description: "A few days past an invoice's due date with no payment recorded, nudge yourself to chase it.",
+    category: "follow_ups",
+    vertical: "home_services",
+    summary: {
+      trigger: "3 days after an invoice's 'Due date'",
+      conditions: ["Only if 'Paid date' is empty"],
+      actions: ["Email the business a reminder"],
+    },
+    shape: { trigger: "3 days past due", actions: ["Notify the business"] },
+    definition: {
+      name: "Invoice unpaid — remind the business",
+      triggerType: "RecordDateReached:invoice:due_date:3:days:after",
+      // ONE honest condition: 'Paid date' is empty. (Conditions see the RECORD-
+      // LEVEL Status, not the Invoices module's Status field — so the field is
+      // not referenced here; marking an invoice paid sets 'Paid date', which
+      // stops the reminder.)
+      conditions: [{ field: "paid_date", op: "empty" }],
+      actions: [
+        {
+          type: "notify_business",
+          config: {
+            channel: "email",
+            subject: "Invoice still unpaid: {{record_title}}",
+            body: "{{record_title}} is 3+ days past its due date with no payment recorded. Worth a chase?\nOpen it from the Invoices page.",
+          },
+        },
+      ],
+    },
+    note: "Uses the Invoices module's 'Due date' and 'Paid date' fields, and needs a customer linked to the invoice (the sweep runs per linked customer). Marking an invoice paid fills 'Paid date', which stops the reminder. Runs on the scheduled-jobs sweep, once per invoice per date.",
+  },
+  {
+    key: "fs_estimate_undecided_nudge",
+    name: "Estimate expiring — nudge the business",
+    description: "Shortly before an estimate's 'Valid until' date, remind yourself to close the loop before it lapses.",
+    category: "follow_ups",
+    vertical: "home_services",
+    summary: {
+      trigger: "3 days before an estimate's 'Valid until'",
+      conditions: ["Every estimate with a 'Valid until' date coming up"],
+      actions: ["Email the business a heads-up"],
+    },
+    shape: { trigger: "3 days before expiry", actions: ["Notify the business"] },
+    definition: {
+      name: "Estimate expiring — nudge the business",
+      // NO conditions — automation conditions evaluate the RECORD-LEVEL status,
+      // not the Estimates module's Status field, so "still Sent" can't be
+      // expressed honestly here. The nudge fires for every estimate nearing
+      // expiry; already-decided ones get a harmless heads-up.
+      triggerType: "RecordDateReached:estimate:valid_until:3:days:before",
+      conditions: [],
+      actions: [
+        {
+          type: "notify_business",
+          config: {
+            channel: "email",
+            subject: "Estimate expiring soon: {{record_title}}",
+            body: "{{record_title}}'s 'Valid until' date is 3 days out. If it's still undecided, a quick follow-up call usually settles it.",
+          },
+        },
+      ],
+    },
+    note: "The owner-side counterpart to 'Estimate expiring reminder' (which emails the customer). Uses the Estimates module's 'Valid until' date and needs a customer linked to the estimate. It nudges for EVERY estimate nearing expiry (it can't read the Status field) — delete or adjust the draft if that's too chatty. Runs on the scheduled-jobs sweep, once per estimate per date.",
   },
 ];
 

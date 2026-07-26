@@ -291,7 +291,7 @@
           id: "dashboards-overview", features: ["page:#/reports"],
           title: "Dashboards: Home vs Analytics",
           blocks: [
-            { p: "[[#/reports|Analytics]] holds as many dashboards as you like; your [[#/dashboard|Home Dashboard]] is the one that greets you on sign-in. Both are built from the same widgets." },
+            { p: "[[#/reports|Analytics]] holds as many dashboards as you like; your [[#/dashboard|Home Dashboard]] is the one that greets you on sign-in. Both are built from the same widgets. Some workspaces come with a few dashboards already set up — they're ordinary dashboards, yours to edit, rearrange, or delete like any you'd build yourself." },
             { steps: [
               "Open [[#/reports|Analytics]] and use the dashboard picker to switch or create dashboards.",
               "Every dashboard has its own date range control; individual widgets can override it.",
@@ -419,7 +419,7 @@
           title: "Starting from a preset",
           blocks: [
             { steps: [
-              "Open the preset library on [[#/automations|Automations]] — recipes are grouped by category.",
+              "Open the preset library on [[#/automations|Automations]] — recipes are grouped by category, with the ones most relevant to how your workspace runs sorted toward the top.",
               "Pick one to load it pre-built, adjust the details, and enable it.",
             ] },
             { tip: "Presets that include a text-message step are hidden while texting is turned off for your workspace." },

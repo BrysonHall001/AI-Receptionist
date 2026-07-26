@@ -45,8 +45,16 @@ async function main() {
   check(!threw, "boot validation passes on the real registry");
   threw = false; try { validateTemplates(["contact"]); } catch { threw = true; }
   check(threw, "\u2026and FAILS FAST when a template references a module the registry lacks");
-  check(TENANT_TEMPLATES.every((t: any) => t.hooks && Array.isArray(t.hooks.dashboards) && t.hooks.dashboards.length === 0 && t.hooks.libraryFlavor === null),
-    "the D2 content-pack hooks ship — typed, present, EMPTY");
+  // STALE-TEST UPDATE (tenant-templates-2): the hooks are no longer empty —
+  // that batch FILLED them for Field Services (dashboards/analytics/flavor/
+  // drafts/AI section; asserted in detail by selfTest_tenantTemplates2).
+  // This suite keeps the SHAPE contract: hooks typed + present on every
+  // template, and General's stay empty (its byte-identity guarantee).
+  check(TENANT_TEMPLATES.every((t: any) => t.hooks && Array.isArray(t.hooks.dashboards) && Array.isArray(t.hooks.analytics) && Array.isArray(t.hooks.commDrafts) && Array.isArray(t.hooks.aiInstructionSections) && "libraryFlavor" in t.hooks),
+    "the content-pack hooks ship — typed and present on every template");
+  const genHooks: any = (TENANT_TEMPLATES as any[]).find((t) => t.key === "general").hooks;
+  check(genHooks.dashboards.length === 0 && genHooks.analytics.length === 0 && genHooks.libraryFlavor === null && genHooks.commDrafts.length === 0 && genHooks.aiInstructionSections.length === 0,
+    "…and the GENERAL template's hooks stay empty (nothing rides its creation)");
 
   // ---------- (2) happy paths ----------
   console.log("\n(2) happy paths:");

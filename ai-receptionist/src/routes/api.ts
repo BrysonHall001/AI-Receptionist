@@ -55,7 +55,7 @@ import { validateWebhookUrl, sendWebhook, buildSamplePayload } from "../automati
 import { listEndpoints, createEndpoint, updateEndpoint, regenerateToken, deleteEndpoint, listCalls as listInboundCalls } from "../services/inboundService";
 import { ACTION_TYPES } from "../automation/actions";
 import { smsEnabled, geocodingEnabled } from "../config/env";
-import { AUTOMATION_PRESETS, getPreset, PRESET_CATEGORIES } from "../automation/presets";
+import { AUTOMATION_PRESETS, getPreset, PRESET_CATEGORIES, applyLibraryFlavor } from "../automation/presets";
 import { storage, storageMode, sha256Hex, storageKeyFor, makeFileRef, MAX_IMAGE_BYTES, MAX_FILE_FIELD_BYTES, IMAGE_CAP_COPY, FILE_CAP_COPY } from "../services/fileStorage";
 import { issueEstimateLink, convertEstimate, estimateLinkStatus } from "../services/estimateService";
 import { REPORT_PRESET_CATEGORIES, publicReportPresets, publicRecordTypePresets } from "../analytics/reportPresets";
@@ -2791,7 +2791,22 @@ apiRouter.get("/automations/presets", async (req: Request, res: Response) => {
       hasSms,
     });
   }
-  res.json({ categories: PRESET_CATEGORIES, presets, smsEnabled: smsEnabled() });
+  // TENANT TEMPLATES 2: FLAVOR (curation only). Resolved from the tenant's
+  // template's hook; null for General/pre-template tenants = byte-identical
+  // response. Ordering happens on the INTERNAL preset list (which still holds
+  // vertical) — the serialized payload continues to omit the tag.
+  let flavorKey: string | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getTemplate } = require("../services/tenantTemplates");
+    const trow = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { templateKey: true } as any });
+    flavorKey = (getTemplate((trow as any)?.templateKey)?.hooks?.libraryFlavor) ?? null;
+  } catch { flavorKey = null; }
+  const internal = AUTOMATION_PRESETS.filter((p) => !(p as any).hidden);
+  const flavored = applyLibraryFlavor(flavorKey, PRESET_CATEGORIES, internal as any);
+  const byKey: Record<string, any> = {}; for (const sp of presets) byKey[sp.key] = sp;
+  const orderedPresets = flavored.presets.map((p: any) => byKey[p.key]).filter(Boolean);
+  res.json({ categories: flavored.categories, presets: orderedPresets, smsEnabled: smsEnabled() });
 });
 
 // Apply one preset -> a NEW DRAFT (inactive) automation in the CURRENT portal,
