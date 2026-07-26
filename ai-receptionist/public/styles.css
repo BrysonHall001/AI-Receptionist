@@ -27,6 +27,7 @@
   --scrim: rgba(20, 20, 30, 0.3);
   --on-accent: #ffffff;
   --radius: 10px;
+  --tpl-band-stop: #0300A1; /* create-ui-2 fidelity: the owner's LITERAL Canva dark stop (verbatim; not a substitute token) */
   --radius-sm: 7px;
   --shadow: 0 1px 2px rgba(20, 20, 30, 0.05), 0 2px 8px rgba(20, 20, 30, 0.08); /* Phase 9a: crisper, less blurry — one level-1 shadow, all cards inherit */
   --shadow-lg: 0 10px 40px rgba(20, 20, 30, 0.16);
@@ -3478,27 +3479,54 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
    padding) and registry icons; the per-state description + live summary sit to
    its right; template cards go icon-atop with a proper selected state; rows go
    three-column with width-aware chips. Tokens only. */
-.adm-seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--gray-soft); margin-top: 8px; }
-.adm-seg-btn { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--ink-soft); font: inherit; font-size: var(--text-sm); padding: 6px 14px; border-radius: calc(var(--radius-sm) - 2px); cursor: pointer; }
-.adm-seg-btn:hover { color: var(--ink); }
-.adm-seg-btn.active { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); font-weight: 600; }
-.adm-seg-ic { display: inline-flex; width: 14px; height: 14px; }
+/* ============ UI-FIDELITY v3 — template-card COMPOSITION + AI control ======
+   The owner's mockup, normalized: geometry (Canva reference units) is applied
+   inline from admin.js TPL_DIMS; everything HERE is tokens — surfaces, ink,
+   shadows, the 10px radius token, motion. Literal values appear ONLY where the
+   spec mandates them (photo opacity 0.12; the band's literal dark stop lives
+   verbatim in the :root variable --tpl-band-stop). */
+.adm-seg { position: relative; display: inline-flex; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); margin-top: 8px; overflow: hidden; }
+.adm-seg-btn { position: relative; z-index: 1; display: inline-flex; flex-direction: column; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--text-sm); padding: 10px 18px 9px; min-width: 86px; cursor: pointer; }
+.adm-seg-lab { font-weight: 700; line-height: 1; }
+.adm-seg-rule { width: 76%; height: 1px; background: var(--line-strong); } /* hairline: inactive columns only */
+.adm-seg-btn.active .adm-seg-rule { visibility: hidden; }
+.adm-seg-ic { display: inline-flex; width: 17px; height: 17px; }
 .adm-seg-ic svg { width: 100%; height: 100%; display: block; }
-.adm-ai-row { display: flex; align-items: flex-start; gap: var(--sp-4); flex-wrap: wrap; }
+.adm-seg-btn.active { color: var(--on-accent); }
+.adm-seg-fill { position: absolute; top: 0; bottom: 0; width: 33.34%; background: var(--accent); z-index: 0; transition: left 150ms ease-out, clip-path 150ms ease-out, border-radius 150ms ease-out; }
+.seg-fill-left { left: 0; border-radius: var(--radius) 0 0 var(--radius); clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%); }
+.seg-fill-mid { left: 33.33%; top: 3px; bottom: 3px; border-radius: calc(var(--radius) - 3px); clip-path: none; }
+.seg-fill-right { left: 66.66%; border-radius: 0 var(--radius) var(--radius) 0; clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%); }
+@media (prefers-reduced-motion: reduce) { .adm-seg-fill { transition: none; } }
+.adm-ai-row { display: flex; align-items: stretch; gap: var(--sp-4); flex-wrap: wrap; }
 .adm-ai-left { flex: 0 0 auto; }
-.adm-ai-right { flex: 1 1 260px; min-width: 240px; padding-top: 24px; }
-.adm-ai-desc { margin: 0 0 4px; font-size: var(--text-sm); line-height: 1.45; }
-.adm-start-sum { margin: 0; font-size: var(--text-xs); }
-.adm-tpl-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: 8px; }
-.adm-tpl-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink); font: inherit; padding: 12px 14px; cursor: pointer; flex: 0 1 190px; min-width: 150px; max-width: 210px; }
-.adm-tpl-card:hover { border-color: var(--line-strong); }
-.adm-tpl-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: var(--gray-soft); }
-.adm-tpl-ic { display: inline-flex; width: 18px; height: 18px; margin-bottom: 2px; color: var(--ink-soft); }
-.adm-tpl-card.active .adm-tpl-ic { color: var(--accent); }
-.adm-tpl-ic svg { width: 100%; height: 100%; display: block; }
-.adm-tpl-reset { margin: 6px 0 0; font-size: var(--text-xs); min-height: 16px; }
-.adm-tpl-reset:empty { visibility: hidden; } /* reserved clean space (future per-template LC control lands here) */
-.adm-tpl-name { font-weight: 600; font-size: var(--text-sm); }
+.adm-ai-div { width: 1px; background: var(--line-strong); align-self: stretch; margin-top: 26px; } /* the REQUIRED vertical divider, control-height */
+.adm-ai-right { flex: 1 1 260px; min-width: 240px; display: flex; align-items: center; padding-top: 26px; }
+.adm-ai-desc { margin: 0; font-size: var(--text-sm); line-height: 1.45; }
+/* ---- the card composition ---- */
+.adm-tpl-zone { position: relative; }
+.adm-tpl-band { position: absolute; left: 0; right: 0; top: 64px; z-index: 0; background: linear-gradient(to right, var(--accent), var(--tpl-band-stop)); } /* crosses the cards at ~their vertical midline; square edges, no shadow */
+.adm-tpl-row { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 32px; margin-top: 8px; }
+.adm-tpl-card { position: relative; display: block; border: 0; padding: 0; background: transparent; color: var(--ink); font: inherit; cursor: pointer; text-align: center; }
+.tpl-crest, .tpl-main, .tpl-tab { position: absolute; left: 50%; transform: translateX(-50%); background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); }
+.tpl-crest { top: 0; z-index: 2; border: 1px solid var(--accent); }
+.tpl-tab { z-index: 2; border: 1px solid var(--accent); display: inline-flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; font-size: var(--text-xs); color: var(--ink-soft); gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tpl-tab input { margin: 0 0 1px; }
+.tpl-glyph { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; width: 30px; height: 30px; color: var(--ink-soft); transition: transform 150ms ease-out; }
+.tpl-glyph svg { width: 100%; height: 100%; display: block; }
+.adm-tpl-card:hover .tpl-glyph { transform: translateX(-50%) translateY(-5px); } /* the icon RISES out of the tuck; rectangles never move */
+@media (prefers-reduced-motion: reduce) { .tpl-glyph { transition: none; } .adm-tpl-card:hover .tpl-glyph { transform: translateX(-50%); } }
+.adm-tpl-card.active .tpl-glyph { color: var(--accent); }
+.tpl-main { z-index: 4; overflow: hidden; } /* clips the photo AND the accent strip to its radius */
+.adm-tpl-card:not(.active):hover .tpl-main { box-shadow: var(--shadow-lift, var(--shadow)); }
+.tpl-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%); opacity: 0.12; z-index: 0; } /* the owner's literal Canva value: a barely-there backsplash */
+.tpl-text { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 8px 18px 12px; gap: 2px; }
+.tpl-strip { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); z-index: 1; }
+.adm-tpl-card.active .tpl-crest, .adm-tpl-card.active .tpl-main, .adm-tpl-card.active .tpl-tab { background: var(--gray-soft); } /* selected: one clear neutral step darker */
+.adm-tpl-card.active .tpl-main { box-shadow: var(--shadow), 0 0 0 1px var(--accent) inset; } /* the selection signal lives on the MAIN rect */
+.adm-tpl-reset { margin: 10px 0 0; font-size: var(--text-xs); min-height: 16px; position: relative; z-index: 1; }
+.adm-tpl-reset:empty { visibility: hidden; }
+.adm-tpl-name { font-weight: 700; font-size: calc(var(--text-sm) * 1.85); line-height: 1.15; }
 .adm-tpl-desc { color: var(--ink-soft); font-size: var(--text-xs); line-height: 1.35; }
 .adm-row-mod { align-items: flex-start; }
 .adm-row3 { display: grid; grid-template-columns: 200px minmax(0, 1fr) 300px; gap: 4px var(--sp-3); align-items: start; }

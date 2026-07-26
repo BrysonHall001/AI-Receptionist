@@ -765,14 +765,31 @@
     // here), then the AI row: segmented control v2 with real margins, and to
     // its RIGHT the per-state description + the live starting-state summary
     // (replacing v1's static caption block entirely). ----
-    const tplWrap = el("div");
+    // ---- TEMPLATE CARDS (UI-fidelity v3, owner's mockup): each card is a
+    // LAYERED COMPOSITION — crest (z2) / icon (z3, tucked under the lip) /
+    // main rect (z4) / backsplash photo (z5, grayscale, 0.12) / text + accent
+    // strip (z6) / bottom tab (z2) — on a shared full-width GRADIENT band
+    // (z1). Geometry lives in TPL_DIMS (reference Canva units at 1px scale;
+    // no tokens exist for these bespoke measures) and is applied as inline
+    // styles so the suite asserts the exact ratios; colors/shadows/radius stay
+    // tokenized in CSS.
+    const TPL_DIMS = { mainW: 192, mainH: 87, crestW: 133, crestH: 38.5, tabW: 167, tabH: 38.5, stripH: 5, bandH: 24 };
+    const TPL_PHOTOS = { general: "/img/template-general.jpg", field_services: "/img/template-fieldservices.jpg" };
+    const tplWrap = el("div"); tplWrap.classList.add("adm-tpl-zone");
     tplWrap.innerHTML = `<label class="field-label">Template</label>`;
+    const tplBand = el("span", "adm-tpl-band");
+    // §BAND geometry via style.setProperty (the design-audit's sanctioned
+    // mechanism); the gradient (accent -> the owner's literal #0300A1 stop,
+    // held verbatim in the :root --tpl-band-stop variable) lives in CSS.
+    tplBand.style.setProperty("height", TPL_DIMS.bandH + "px");
     const tplRow = el("div", "adm-tpl-row");
+    tplWrap.appendChild(tplBand);
     tplWrap.appendChild(tplRow);
     const tplReset = el("p", "cell-muted adm-tpl-reset"); // filled on a switch; reserved space otherwise
     tplWrap.appendChild(tplReset);
     s4.appendChild(tplWrap);
     draft.template = "general";
+    draft.customLearningCenter = false;
     let templatesMeta = [];
 
     const AI_DESCS = {
@@ -780,6 +797,13 @@
       WALKIE: "Standard voice \u2014 the basic back-and-forth receptionist answers, captures, and books calls.",
       SMOOTH: "Premium voice \u2014 the same receptionist with the smooth ElevenLabs voice.",
     };
+    // ---- AI SEGMENTED CONTROL v3 (owner's mockup): three EQUAL columns, each
+    // a centered stack [bold label -> hairline rule (inactive only) -> icon];
+    // the ACTIVE FILL is a positional accent shape (rounded left edge +
+    // diagonal inner edge on the left column; exact mirror on the right; plain
+    // inset rounded rect in the middle), clip-path on the fill layer only —
+    // the container never changes. Vertical divider, then the per-state
+    // description VERTICALLY CENTERED to the control. Nothing beneath.
     const aiRow = el("div", "adm-ai-row u-mt-16");
     const vWrap = el("div"); vWrap.classList.add("adm-featcol", "adm-ai-left");
     vWrap.innerHTML = `<label class="field-label">AI Receptionist</label>`;
@@ -791,17 +815,20 @@
       ["SMOOTH", "Premium"],
     ];
     const segBtns = {};
+    const segFill = el("span", "adm-seg-fill seg-fill-left"); // positional geometry class swaps per active column
+    seg.appendChild(segFill);
     const aiDesc = el("p", "cell-muted adm-ai-desc");
-    const startSum = el("p", "cell-muted adm-start-sum");
     function paintAiDesc() { aiDesc.textContent = AI_DESCS[draft.voiceMode || "OFF"]; }
+    const FILL_CLASS = { OFF: "seg-fill-left", WALKIE: "seg-fill-mid", SMOOTH: "seg-fill-right" };
     function setAiMode(mode) {
       draft.voiceMode = mode;
       Object.keys(segBtns).forEach((m) => segBtns[m].classList.toggle("active", m === mode));
+      segFill.className = "adm-seg-fill " + FILL_CLASS[mode];
       paintAiDesc(); updateStartSummary();
     }
     SEG_STATES.forEach(([mode, label]) => {
       const icSvg = (App.icons && App.icons.AI_STATE_ICONS && App.icons.AI_STATE_ICONS[mode]) || "";
-      const b = el("button", "adm-seg-btn", `<span class="adm-seg-ic">${icSvg}</span>${label}`);
+      const b = el("button", "adm-seg-btn", `<span class="adm-seg-lab">${esc(label)}</span><span class="adm-seg-rule"></span><span class="adm-seg-ic">${icSvg}</span>`);
       b.type = "button";
       b.onclick = () => {
         setAiMode(mode);
@@ -819,19 +846,16 @@
     segBtns.OFF.classList.add("active"); // new tenants start off (unchanged default)
     vWrap.appendChild(seg);
     aiRow.appendChild(vWrap);
+    aiRow.appendChild(el("span", "adm-ai-div")); // the REQUIRED vertical divider
     const aiRight = el("div", "adm-ai-right");
-    aiRight.appendChild(aiDesc); aiRight.appendChild(startSum);
+    aiRight.appendChild(aiDesc);
     aiRow.appendChild(aiRight);
     s4.appendChild(aiRow);
     paintAiDesc();
 
-    // LIVE STARTING-STATE SUMMARY (R1-approved): one muted line — pages on ·
-    // modules on · AI state — recomputed on every click that changes it.
-    function updateStartSummary() {
-      let pagesOn = 0; try { pagesOn = Array.from(lockHost.querySelectorAll("input[type=checkbox]")).filter((c) => c.checked).length; } catch (e) { /* pre-mount */ }
-      const modsOn = moduleRows.filter((mr) => mr.cb.checked).length;
-      startSum.textContent = `${pagesOn} page${pagesOn === 1 ? "" : "s"} \u00b7 ${modsOn} module${modsOn === 1 ? "" : "s"} \u00b7 AI: ${VOICE_LABELS[draft.voiceMode || "OFF"]}`;
-    }
+    // (UI-fidelity v3: the live summary line + machinery are DELETED — the
+    // description column carries the per-state sentence and nothing beneath.)
+    function updateStartSummary() { /* v3: intentionally empty (deleted element) */ }
     // Pages (owner hard-lock) — fixed app pages only; sets the INITIAL locked set.
     const lockHost = el("div", "u-mt-16");
     const lockLab = el("label", "field-label", "Pages"); lockLab.classList.add("adm-locklab");
@@ -922,14 +946,63 @@
     }
     function paintTemplateCards() {
       tplRow.innerHTML = "";
+      const D = TPL_DIMS;
       templatesMeta.forEach((t) => {
         const card = el("button", "adm-tpl-card" + (draft.template === t.key ? " active" : ""));
         card.type = "button";
+        card.style.setProperty("width", D.mainW + "px");
+        card.style.setProperty("height", (D.crestH / 2 + D.mainH + D.tabH / 2) + "px");
         const icSvg = App.icons ? App.icons.forTemplateKey(t.key) : "";
-        card.innerHTML = `<span class="adm-tpl-ic">${icSvg}</span><span class="adm-tpl-name">${esc(t.label)}</span><span class="adm-tpl-desc">${esc(t.description)}</span>`;
-        card.onclick = () => {
+        // z2: crest (69% of main) — upper half protrudes above the main rect.
+        const crest = el("span", "tpl-crest");
+        crest.style.setProperty("width", D.crestW + "px"); crest.style.setProperty("height", D.crestH + "px");
+        // z3: the icon — tucked: its lower edge dips below the main rect's top.
+        const glyph = el("span", "tpl-glyph", icSvg);
+        glyph.style.setProperty("top", (D.crestH / 2 - 26) + "px");
+        // z4: the main rect (frontmost surface).
+        const main = el("span", "tpl-main");
+        main.style.setProperty("width", D.mainW + "px"); main.style.setProperty("height", D.mainH + "px"); main.style.setProperty("top", (D.crestH / 2) + "px");
+        // z5: backsplash photo — clipped to the main rect, grayscale, 0.12.
+        // A missing file removes itself (never a broken glyph, never a shift).
+        if (TPL_PHOTOS[t.key]) {
+          const photo = new Image();
+          photo.className = "tpl-photo";
+          photo.alt = "";
+          photo.onerror = function () { if (photo.parentNode) photo.parentNode.removeChild(photo); };
+          photo.src = TPL_PHOTOS[t.key];
+          main.appendChild(photo);
+        }
+        // z6: text + the accent strip, always above the photo.
+        const txt = el("span", "tpl-text");
+        txt.innerHTML = `<span class="adm-tpl-name">${esc(t.label)}</span><span class="adm-tpl-desc">${esc(t.description)}</span>`;
+        main.appendChild(txt);
+        const strip = el("span", "tpl-strip"); strip.style.setProperty("height", D.stripH + "px");
+        main.appendChild(strip);
+        // z2: bottom tab (87% of main, WIDER than the crest so its line fits);
+        // lower half protrudes below the main rect.
+        const tab = el("span", "tpl-tab");
+        tab.style.setProperty("width", D.tabW + "px"); tab.style.setProperty("height", D.tabH + "px"); tab.style.setProperty("top", (D.crestH / 2 + D.mainH - D.tabH / 2) + "px");
+        if (t.key === "field_services") {
+          const lcId = "tpl-lc-cb";
+          tab.innerHTML = `<input type="checkbox" id="${lcId}" class="tpl-lc-cb"><span>Custom-configure Learning Center?</span>`;
+          const cb = tab.querySelector("input");
+          cb.checked = !!draft.customLearningCenter;
+          cb.onclick = (e) => { e.stopPropagation(); }; // the checkbox never selects the card
+          cb.onchange = () => { draft.customLearningCenter = cb.checked; };
+        } else {
+          tab.innerHTML = `<span>Default Learning Center configuration</span>`;
+        }
+        card.appendChild(crest);
+        card.appendChild(glyph);
+        card.appendChild(main);
+        card.appendChild(tab);
+        card.onclick = (e) => {
+          if (e.target && e.target.classList && e.target.classList.contains("tpl-lc-cb")) return; // checkbox owns itself
           if (draft.template === t.key) return;
           draft.template = t.key;
+          // FS auto-checks its LC preference on selection; anything else resets
+          // it (clean re-prefill — the owner may uncheck afterwards).
+          draft.customLearningCenter = t.key === "field_services";
           paintTemplateCards();
           applyTemplatePrefill(t);
           // The RESET MOMENT (approved rule): switching re-prefills CLEANLY —
@@ -1008,7 +1081,7 @@
       // 1) Create the tenant. If THIS fails, nothing was persisted — stay on the screen.
       let portal;
       try {
-        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages, billingStatus, hiddenRecordTypes: draft.hiddenRecordTypes, template: draft.template || "general" }) });
+        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages, billingStatus, hiddenRecordTypes: draft.hiddenRecordTypes, template: draft.template || "general", customLearningCenter: !!draft.customLearningCenter }) });
       } catch (err) { toast(err.message || "Could not create the tenant", true); finish.disabled = false; return; }
 
       // 2) Apply the queued draft in sequence. Collect failures instead of throwing, so

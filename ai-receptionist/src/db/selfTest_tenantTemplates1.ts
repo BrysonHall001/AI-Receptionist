@@ -170,7 +170,9 @@ async function main() {
   // starting-state summary. Assert the v2 contract at the same spot.
   const aiDesc: any = $(".adm-ai-desc");
   check(!!aiDesc && aiDesc.textContent.startsWith("AI Receptionist is off"), "the per-state description renders beside the control (Off copy while Off is active)");
-  check(!!$(".adm-start-sum") && /\d+ pages? \u00b7 \d+ modules? \u00b7 AI: /.test(($(".adm-start-sum") as any).textContent), "the live starting-state summary line renders (pages \u00b7 modules \u00b7 AI)");
+  // STALE-TEST UPDATE (ui-fidelity v3): the summary line is DELETED by spec —
+  // the description column carries the sentence and NOTHING beneath.
+  check(!$(".adm-start-sum"), "the old summary line is gone (v3: nothing beneath the description)");
   const neutral = await until(() => $$(".adm-chip").length > 5 && $$(".adm-rowdesc").some((d: any) => d.textContent.includes("recruiting pipeline")));
   check(!!neutral, "module rows carry field CHIPS + template-NEUTRAL descriptions under General");
   check($$(".adm-chip-more").length > 0, "\u2026with the +N-more chip where a module seeds more than five fields");

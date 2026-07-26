@@ -129,13 +129,71 @@ async function main() {
   (createBtn as any).click();
   check(!!(await until(() => $$(".adm-seg-btn").length === 3 && $$(".adm-seg-ic svg").length === 3 && aiActive() === "Off")),
     "the AI control mounts: three states with REGISTRY icons, Off active");
-  check(!!(await until(() => $$(".adm-tpl-card").length === 3 && $(".adm-tpl-card.active") && $(".adm-tpl-card.active").textContent.includes("General") && $$(".adm-tpl-ic svg").length === 3)),
-    "template CARDS mount with icons atop \u2014 General preselected, exactly one active (fixture visible: the row holds any count cleanly)");
+  check($$(".adm-seg-btn .adm-seg-lab").length === 3 && $$(".adm-seg-btn .adm-seg-rule").length === 3,
+    "each column stacks LABEL \u2192 hairline rule \u2192 icon (v3 anatomy)");
+  const fillClass = () => ($(".adm-seg-fill") as any).className;
+  check(/seg-fill-left/.test(fillClass()), "ACTIVE-FILL geometry: Off (left column) \u2192 the left shape (rounded edge + diagonal)");
+  segTo("Standard");
+  check(/seg-fill-mid/.test(fillClass()), "\u2026Standard (middle) \u2192 the inset plain shape");
+  segTo("Premium");
+  check(/seg-fill-right/.test(fillClass()), "\u2026Premium (right) \u2192 the mirrored right shape");
+  segTo("Off");
+  check(!!(await until(() => $$(".adm-tpl-card").length === 3 && $(".adm-tpl-card.active") && $(".adm-tpl-card.active").textContent.includes("General") && $$(".adm-tpl-card").filter((c: any) => c.classList.contains("active")).length === 1)),
+    "template CARDS mount \u2014 General preselected, EXACTLY ONE active (the row holds any count cleanly)");
+  // ---- the LAYERED COMPOSITION (ui-fidelity v3) ----
+  const card0: any = $$(".adm-tpl-card")[0];
+  const kids = Array.from(card0.children).map((c: any) => c.className.split(" ")[0]);
+  check(JSON.stringify(kids) === JSON.stringify(["tpl-crest", "tpl-glyph", "tpl-main", "tpl-tab"]),
+    "each card layers crest \u2192 glyph \u2192 main \u2192 tab (the icon sits ABOVE the crest, BELOW the main \u2014 tucked under the lip)");
+  const px = (v: string) => parseFloat(v || "0");
+  const mainW = px(card0.querySelector(".tpl-main").style.width);
+  const crestW = px(card0.querySelector(".tpl-crest").style.width);
+  const tabW = px(card0.querySelector(".tpl-tab").style.width);
+  check(Math.abs(crestW / mainW - 0.69) < 0.015 && Math.abs(tabW / mainW - 0.87) < 0.015 && mainW >= 190 && mainW <= 200,
+    `the three rects hold the reference ratios (crest ${Math.round((crestW / mainW) * 100)}% / main 100% / tab ${Math.round((tabW / mainW) * 100)}% at ${mainW}px)`);
+  const mainTop = px(card0.querySelector(".tpl-main").style.top);
+  const tabTop = px(card0.querySelector(".tpl-tab").style.top);
+  const mainH = px(card0.querySelector(".tpl-main").style.height);
+  const tabH = px(card0.querySelector(".tpl-tab").style.height);
+  check(mainTop > 0 && Math.abs(mainTop - px(card0.querySelector(".tpl-crest").style.height) / 2) < 0.6,
+    "the crest's upper half PROTRUDES above the main rect (main starts at half-crest height)");
+  check(Math.abs((tabTop + tabH) - (mainTop + mainH + tabH / 2)) < 0.6, "the tab's lower half PROTRUDES below the main rect");
+  const photo0: any = card0.querySelector(".tpl-photo");
+  check(!!photo0 && /template-general\.jpg/.test(photo0.src), "the backsplash photo mounts INSIDE the main rect (General \u2192 the computer photo)");
+  check(!!($$(".adm-tpl-card")[1] as any).querySelector('.tpl-photo[src*="fieldservices"]'), "\u2026and Field Services carries the worker photo");
+  const cssSrc = pub("styles.css");
+  check(cssSrc.includes("filter: grayscale(100%); opacity: 0.12;"), "the photo layer is grayscale at the owner's literal 0.12 (CSS contract)");
+  check(cssSrc.includes(".tpl-main { z-index: 4; overflow: hidden; }"), "the main rect CLIPS the photo + strip to its radius (overflow contract)");
+  // absent-file fallback: an error REMOVES the img; the card never shifts.
+  const photoFx: any = ($$(".adm-tpl-card")[2] as any).querySelector(".tpl-photo");
+  check(!photoFx, "a template with NO photo mapping renders WITHOUT a backsplash (fixture card, no broken glyph)");
+  photo0.dispatchEvent(new w.Event("error"));
+  check(!card0.querySelector(".tpl-photo") && !!card0.querySelector(".tpl-main") && !!card0.querySelector(".adm-tpl-name"),
+    "a failing image file self-removes \u2014 the composition stays intact (A3 fallback)");
+  check($$(".tpl-strip").length === 3, "the ACCENT STRIP hugs every main rect's bottom edge");
+  check($$(".adm-tpl-band").length === 1 && cssSrc.includes("linear-gradient(to right, var(--accent), var(--tpl-band-stop))") && cssSrc.includes("--tpl-band-stop: #0300A1;"),
+    "the \u00a7BAND ribbon spans the panel behind the cards \u2014 accent \u2192 the literal dark stop, held verbatim in :root");
+  check(cssSrc.includes(".adm-tpl-card.active .tpl-crest, .adm-tpl-card.active .tpl-main, .adm-tpl-card.active .tpl-tab { background: var(--gray-soft); }")
+      && cssSrc.includes(".adm-tpl-card.active .tpl-main { box-shadow: var(--shadow), 0 0 0 1px var(--accent) inset; }"),
+    "SELECTED = one neutral step darker on all three surfaces + the accent outline on the MAIN rect (CSS contract)");
+  check(cssSrc.includes(".adm-tpl-card:hover .tpl-glyph { transform: translateX(-50%) translateY(-5px); }")
+      && /prefers-reduced-motion[^}]*\{[^}]*\.tpl-glyph \{ transition: none; \}/.test(cssSrc),
+    "HOVER raises only the icon out of the tuck; reduced motion makes it inert (CSS contract)");
+  // bottom tabs: General static text; FS carries the LC checkbox.
+  const genTab: any = ($$(".adm-tpl-card").find((c: any) => c.textContent.includes("General")) as any).querySelector(".tpl-tab");
+  check(genTab.textContent.trim() === "Default Learning Center configuration" && !genTab.querySelector("input"),
+    "General's bottom tab is STATIC text \u2014 no control");
+  const fsTabCb = () => (($$(".adm-tpl-card").find((c: any) => c.textContent.includes("Field Services")) as any).querySelector(".tpl-tab input"));
+  check(!!fsTabCb() && fsTabCb().checked === false, "Field Services' tab carries the LC checkbox, unchecked before selection");
   check(!!$(".adm-ai-desc") && $(".adm-ai-desc").textContent.startsWith("AI Receptionist is off"), "the PER-STATE description renders (Off copy)");
   segTo("Standard");
   check($(".adm-ai-desc").textContent.startsWith("Standard voice"), "\u2026and SWAPS instantly per state");
-  check(!!(await until(() => /\d+ pages? \u00b7 \d+ modules? \u00b7 AI: Standard voice/.test(($(".adm-start-sum") || {}).textContent || ""))),
-    "the LIVE starting-state summary tracks (pages \u00b7 modules \u00b7 AI)");
+  // UI-FIDELITY v3: the summary line is DELETED by spec — the description
+  // column carries the per-state sentence and NOTHING beneath (asserted).
+  check(!$(".adm-start-sum"), "the old summary line is ABSENT (v3: nothing beneath the description)");
+  check($(".adm-ai-right") && $(".adm-ai-right").children.length === 1 && $(".adm-ai-right").firstElementChild.classList.contains("adm-ai-desc"),
+    "the right column holds ONLY the vertically-centered description");
+  check(!!$(".adm-ai-div"), "the REQUIRED vertical divider sits between the control and the description");
   check(!!(await until(() => $$(".adm-row3 .adm-r3-head .adm-row-ic svg").length > 10)), "THREE-COLUMN rows mount with a row icon per page + module");
   check(!!(await until(() => $$(".adm-r3-chips .adm-chip").length > 8)) && $$(".adm-row3").some((r: any) => r.querySelector(".adm-r3-chips") && !r.querySelector(".adm-r3-chips .adm-chip")),
     "modules carry chips in col-3 while pages keep col-3 empty (one aligned grid)");
@@ -152,7 +210,7 @@ async function main() {
   check(aiActive() === "Off" && callsCb().checked === false, "unchecking Calls while on \u2192 AI Off, single hop, NO loop");
   callsCb().checked = true; callsCb().dispatchEvent(new w.Event("change"));
   check(aiActive() === "Standard", "checking Calls while Off \u2192 AI Standard");
-  check(/AI: Standard voice/.test($(".adm-start-sum").textContent), "\u2026with the summary tracking the linkage");
+  check($(".adm-ai-desc").textContent.startsWith("Standard voice"), "\u2026with the description tracking the linkage");
 
   // template selection: FS prefill + copy swap; manual wins; fixture transparency.
   const fsCard = $$(".adm-tpl-card").find((c: any) => c.textContent.includes("Field Services"));
@@ -161,6 +219,11 @@ async function main() {
   check(!!(await until(() => bookingCb().checked === false && $$(".adm-rowdesc").some((d: any) => d.textContent.includes("Your core module")))),
     "Field Services PREFILLS (Bookings unchecked) and swaps to the FS row copy");
   check($(".adm-tpl-reset").textContent.includes("Reset to the Field Services starting point"), "the RESET MOMENT line appears on a switch (approved rule \u2014 no silent merge)");
+  check(fsTabCb().checked === true, "selecting Field Services AUTO-CHECKS its Learning Center preference");
+  fsTabCb().checked = false; fsTabCb().dispatchEvent(new w.Event("change"));
+  check(fsTabCb().checked === false && $(".adm-tpl-card.active").textContent.includes("Field Services"),
+    "\u2026the owner may UNCHECK it without deselecting the card (the checkbox owns itself)");
+  fsTabCb().checked = true; fsTabCb().dispatchEvent(new w.Event("change"));
   bookingCb().checked = true; bookingCb().dispatchEvent(new w.Event("change"));
   check(bookingCb().checked === true, "a manual re-check STICKS afterward (batch-21 conflict rule intact)");
   const fxCard = $$(".adm-tpl-card").find((c: any) => c.textContent.includes("Fixture"));
@@ -174,6 +237,20 @@ async function main() {
   ($$(".adm-tpl-card").find((c: any) => c.textContent.includes("General")) as any).click();
   check(callsTitle() === "Calls" && !taskRow.textContent.includes("Crew size") && fbRow.querySelector("input").checked === true,
     "switching back RE-PREFILLS cleanly: title, chips, and page all restored (no silent merge)");
+  check(fsTabCb().checked === false, "\u2026and selecting another card RESETS the LC preference (clean re-prefill)");
+  // FINISH persistence end-to-end: FS + LC checked \u2192 the created tenant
+  // carries customLearningCenter=true (the real POST, the real column).
+  ($$(".adm-tpl-card").find((c: any) => c.textContent.includes("Field Services")) as any).click();
+  await sleep(120);
+  check(fsTabCb().checked === true, "(re-selecting FS re-checks the preference)");
+  const finName = `cu2-lc-${stamp}`;
+  ($("#sp-name") as any).value = finName;
+  ($("#sp-billing") as any).value = "trial";
+  ($$("button").find((b: any) => b.textContent.includes("Finish")) as any).click();
+  const made = await until(async () => null, 1) || await (async () => { for (let i = 0; i < 50; i++) { const r = await db.tenant.findFirst({ where: { name: finName } }); if (r) return r; await sleep(200); } return null; })();
+  check(!!made && (made as any).customLearningCenter === true && (made as any).templateKey === "field_services",
+    "FINISH persists the preference: the created tenant carries customLearningCenter=true");
+  if (made) cleanup.push((made as any).id);
   try { w.fetch = () => new Promise(() => { /* frozen */ }); } catch { /* */ }
   await sleep(300);
 

@@ -103,7 +103,7 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
     // phone, greeting, and the identity rule are no longer set here (dead/decoupled or
     // set later under Integrations); requireEmail is hard-set true and not accepted.
     // lockedPages (owner page-lock) may be set atomically at creation.
-    const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages, billingStatus, hiddenRecordTypes, template: template != null ? String(template) : null });
+    const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages, billingStatus, hiddenRecordTypes, template: template != null ? String(template) : null, customLearningCenter: (req.body || {}).customLearningCenter === true });
     { const u: any = (req as any).realUser || (req as any).user; audit({ tenantId: portal.id, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", actorRole: u?.role ?? null, action: AUDIT_ACTIONS.HUB_TENANT_CREATE, subjectType: "tenant", subjectId: portal.id, subjectLabel: portal.name }); }
     logger.info(`Portal created: ${portal.name} (${portal.id})`);
     res.json(portal);

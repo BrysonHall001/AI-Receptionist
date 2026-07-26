@@ -88,6 +88,10 @@ model Tenant {
   // every pre-template tenant and for creations that never chose one). Read by
   // future content packs; never behavioral on its own.
   templateKey         String?
+  // CREATE-UI-2 fidelity batch: the FS card's "Custom-configure Learning
+  // Center?" checkbox — a template-hook PREFERENCE persisted at creation (the
+  // LC variant it will drive ships in a later batch; the setting is real now).
+  customLearningCenter Boolean @default(false)
   // Per-portal VOICE MODE — the authoritative 3-way choice for the inbound phone
   // experience: "OFF" (decline calls), "WALKIE" (cheap Say/Gather), or "SMOOTH"
   // (premium ElevenLabs ConversationRelay). receptionistEnabled above is kept as

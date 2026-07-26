@@ -163,6 +163,8 @@ export async function createPortal(input: {
   // AI columns in this same create, then field tweaks/hooks via
   // applyTemplateAtCreation. Unknown keys are rejected by the route.
   template?: string | null;
+  /** CREATE-UI-2 fidelity: the FS card's Learning Center preference. */
+  customLearningCenter?: boolean;
 }) {
   // Create writes only name + (optional) notifyEmail now. greeting, businessType and
   // requireEmail fall back to their column defaults (they're no longer collected at
@@ -199,6 +201,7 @@ export async function createPortal(input: {
       // General (and no template) adds nothing beyond its stamp — the created
       // row is byte-identical to a pre-template creation otherwise.
       ...(template ? { templateKey: template.key } : {}),
+      ...(input.customLearningCenter === true ? { customLearningCenter: true } : {}),
       ...(template && template.aiSchedulingTarget != null ? { aiScheduleTarget: template.aiSchedulingTarget } : {}),
       ...(template && template.aiIntake != null ? { aiCreateWorkOrders: template.aiIntake } : {}),
     } as any,

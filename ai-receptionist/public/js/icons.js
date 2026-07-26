@@ -74,15 +74,18 @@
   }
 
   // Create-page v2: template-card + AI-segment glyphs, same weight system.
+  // UI-fidelity v3 (owner's mockup): General = sparkle constellation;
+  // Field Services = crossed tools (wrench + screwdriver).
   const TEMPLATE_ICONS = {
-    general: S(`<rect x="2.4" y="2.4" width="4.8" height="4.8" rx="1"${K}/><rect x="8.8" y="2.4" width="4.8" height="4.8" rx="1"${K}/><rect x="2.4" y="8.8" width="4.8" height="4.8" rx="1"${K}/><rect x="8.8" y="8.8" width="4.8" height="4.8" rx="1"${K}/>`),
-    field_services: MODULE_ICONS.work_order,
+    general: S(`<path d="M8.6 3.2 9.7 6.9l3.7 1.1-3.7 1.1-1.1 3.7-1.1-3.7L3.8 8l3.7-1.1 1.1-3.7Z"${K}/><path d="M3.9 2.6v2M2.9 3.6h2"${K}/><path d="M12.9 12.2v1.8M12 13.1h1.8"${K}/>`),
+    field_services: S(`<path d="M5.9 7.1 3 4.2a2.1 2.1 0 0 1 2.6-2.6l-.9 1.6.9 1.2 1.5.2 1-1.7A2.1 2.1 0 0 1 5.9 7.1Z"${K}/><path d="m6.2 6.9 6.4 6.4"${K}/><path d="M12.9 3.1 6.7 9.3M12.9 3.1l.9 1 -1.4 2.2-1.7.3"${K}/><path d="m4.6 10.9 2.7 2.7-1.2 1.2a1.9 1.9 0 0 1-2.7-2.7l1.2-1.2Z"${K}/>`),
     __default: CUSTOM_DEFAULT,
   };
+  // UI-fidelity v3 (owner's mockup): power / telephone / diamond.
   const AI_STATE_ICONS = {
-    OFF: S(`<circle cx="8" cy="8" r="5.6"${K}/><path d="M4.2 11.8 11.8 4.2"${K}/>`),
-    WALKIE: PAGE_ICONS["#/calls"],
-    SMOOTH: S(`<path d="M8 2.6 9.3 6.7 13.4 8 9.3 9.3 8 13.4 6.7 9.3 2.6 8l4.1-1.3L8 2.6Z"${K}/><path d="M12.6 2.4v2.4M11.4 3.6h2.4"${K}/>`),
+    OFF: S(`<path d="M8 1.9v5.4"${K}/><path d="M5 3.9a5.3 5.3 0 1 0 6 0"${K}/>`),
+    WALKIE: S(`<path d="M2.2 6.4c0-1 .5-1.8 1.4-2.1a13.6 13.6 0 0 1 8.8 0c.9.3 1.4 1.1 1.4 2.1v1.2a.9.9 0 0 1-1 .9l-2-.2a.9.9 0 0 1-.8-.9v-.9a7.9 7.9 0 0 0-3.9 0v.9a.9.9 0 0 1-.8.9l-2 .2a.9.9 0 0 1-1-.9V6.4Z"${K}/><path d="M8 9.2v2.6M5.4 13.4h5.2M6.1 11.8h3.8"${K}/>`),
+    SMOOTH: S(`<path d="M4.6 2.8h6.8l2.6 3.4L8 13.6 2 6.2l2.6-3.4Z"${K}/><path d="M2 6.2h12M5.9 6.2 8 13.6 10.1 6.2M4.6 2.8l1.3 3.4M11.4 2.8l-1.3 3.4"${K}/>`),
   };
   function forTemplateKey(key) { return TEMPLATE_ICONS[key] || TEMPLATE_ICONS.__default; }
 
