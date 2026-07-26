@@ -88,7 +88,18 @@ authRouter.get("/me", async (req: Request, res: Response) => {
   // Billing tab (server still enforces the endpoint independently).
   permView["billing"] = await can(req.user as any, "billing", "view");
   const lockedPages = (req.user as any)?.tenantId ? await getLockedPages((req.user as any).tenantId) : [];
+  // PER-TEMPLATE LEARNING CENTER — THE FLAG CONTRACT, computed here and ONLY
+  // here (the client never re-derives it): the variant applies exactly when the
+  // tenant was created from the Field Services template AND its card checkbox
+  // was checked. Everything else — FS+unchecked, General, every pre-existing
+  // tenant — gets the stock LC, byte-identical.
+  let lcVariant: string | null = null;
+  if ((req.user as any)?.tenantId) {
+    const trow = await prisma.tenant.findUnique({ where: { id: (req.user as any).tenantId }, select: { templateKey: true, customLearningCenter: true } as any }) as any;
+    if (trow && trow.templateKey === "field_services" && trow.customLearningCenter === true) lcVariant = "field_services";
+  }
   res.json({ user: { ...req.user, permView, permEdit, lockedPages }, features: {
+    lcVariant,
     smsEnabled: smsEnabled(),
     // File Storage batch: when true the SPA's image/file editors upload to
     // POST /api/files and store references (with the raised caps); when false

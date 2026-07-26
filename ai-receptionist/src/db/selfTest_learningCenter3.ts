@@ -109,16 +109,19 @@ async function main() {
   const fnCache: Record<string, string> = {};
   for (const id of sceneIds) {
     const sc = App.learnScenes.get(id);
-    const okShape = typeof sc.sourceFn === "string" && /^[\w./-]+\.js#\w+$/.test(sc.sourceFn) && Array.isArray(sc.regions) && sc.regions.length > 0;
+    // lc-field-services repin: sourceFn may point into a PUBLIC PAGE (.html)
+    // whose inline script owns the real render function (estimate.html#render)
+    // — same resolve rigor, wider file set.
+    const okShape = typeof sc.sourceFn === "string" && /^[\w./-]+\.(js|html)#\w+$/.test(sc.sourceFn) && Array.isArray(sc.regions) && sc.regions.length > 0;
     if (!okShape) { metaOk = false; check(false, `${id}: sourceFn + regions present and well-formed`); continue; }
     const [file, fn] = sc.sourceFn.split("#");
-    if (!(file in fnCache)) { try { fnCache[file] = readFileSync(resolve(PUB, "js", file), "utf8"); } catch { fnCache[file] = ""; } }
+    if (!(file in fnCache)) { try { fnCache[file] = readFileSync(file.endsWith(".html") ? resolve(PUB, file) : resolve(PUB, "js", file), "utf8"); } catch { fnCache[file] = ""; } }
     const src = fnCache[file];
     const found = new RegExp("(function\\s+" + fn + "\\s*\\(|" + fn + "\\s*[:=]\\s*(async\\s+)?function|async\\s+function\\s+" + fn + "\\s*\\()").test(src);
     check(found, `${id}: sourceFn ${sc.sourceFn} resolves to a real function (${sc.regions.length} regions)`);
     if (!found) metaOk = false;
   }
-  check(metaOk && sceneIds.length === 13, `all ${sceneIds.length} scenes carry machine-checkable fidelity metadata`);
+  check(metaOk && sceneIds.length === 17, `all ${sceneIds.length} scenes carry machine-checkable fidelity metadata`); // repinned: lc-field-services adds related-tabs, dispatch-lanes, estimate-public, preset-library
 
   // ---------- (3) framing + voice ----------
   console.log("\n(3) framing + voice rule:");

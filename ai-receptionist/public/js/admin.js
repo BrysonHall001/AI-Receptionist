@@ -782,6 +782,28 @@
     // mechanism); the gradient (accent -> the owner's literal #0300A1 stop,
     // held verbatim in the :root --tpl-band-stop variable) lives in CSS.
     tplBand.style.setProperty("height", TPL_DIMS.bandH + "px");
+    // BAND FIX (lc-field-services batch): the band's vertical center aligns to
+    // the vertical MIDLINE of the cards' MAIN rectangles — derived from the
+    // RENDERED row (content-driven heights settle first), never a magic
+    // number. hOverride lets the suite drive two deterministic heights; the
+    // browser path measures the tallest main rect (JSDOM's 0 falls back to
+    // the reference minimum).
+    function positionTplBand(hOverride) {
+      const label = tplWrap.querySelector(".field-label");
+      const labelBlock = label ? 26 : 0; // the field-label line + its margin above the row
+      const rowTop = labelBlock + 8;     // .adm-tpl-row margin-top
+      let mainH = Number(hOverride);
+      if (!isFinite(mainH) || mainH <= 0) {
+        mainH = 0;
+        tplRow.querySelectorAll(".tpl-main").forEach((m) => { mainH = Math.max(mainH, m.offsetHeight || 0); });
+        if (!mainH) mainH = TPL_DIMS.mainH; // JSDOM / pre-paint fallback: the reference minimum
+      }
+      const center = rowTop + TPL_DIMS.crestH / 2 + mainH / 2;
+      tplBand.style.setProperty("top", (center - TPL_DIMS.bandH / 2) + "px");
+      return center;
+    }
+    App._createUi.positionTplBand = positionTplBand;
+    try { window.addEventListener("resize", () => positionTplBand()); } catch (e) { /* non-browser */ }
     const tplRow = el("div", "adm-tpl-row");
     tplWrap.appendChild(tplBand);
     tplWrap.appendChild(tplRow);
@@ -1024,6 +1046,8 @@
         };
         tplRow.appendChild(card);
       });
+      positionTplBand();
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => positionTplBand()); // after layout settles
     }
     App.api("/api/admin/tenant-templates").then((r) => {
       templatesMeta = (r && r.templates) || [];

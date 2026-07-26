@@ -3227,6 +3227,31 @@ body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-t
 .scene-ctl { display: inline-block; color: var(--control-placeholder); min-height: 0; }
 .scene-sel { color: var(--control-ink); }
 .scene-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+/* related-tabs scene (lc-field-services) */
+.scene-record { padding: 10px 12px; }
+.scene-rec-title { font-weight: 700; font-size: var(--text-sm); margin-bottom: 6px; }
+.scene-tabs { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.scene-relpane { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.scene-relrow { display: flex; gap: 8px; align-items: center; font-size: var(--text-xs); flex-wrap: wrap; }
+/* dispatch / estimate / library scenes (lc-field-services) */
+.scene-dispatch { display: flex; gap: 8px; align-items: flex-start; min-width: 0; flex-wrap: wrap; }
+.scene-callanes { flex: 1 1 160px; padding: 8px; min-width: 150px; }
+.scene-lanehead { display: flex; gap: 4px; margin-bottom: 4px; }
+.scene-lanehead .cal-reshead { flex: 1; }
+.scene-lanegrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
+.scene-tray { flex: 0 1 120px; padding: 8px; min-width: 110px; }
+.scene-trayitem { font-size: var(--text-xs); padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); margin-top: 5px; background: var(--panel); }
+.scene-msg { padding: 10px 12px; max-width: 260px; }
+.scene-msg-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.scene-msg-body { font-size: var(--text-xs); color: var(--ink-soft); }
+.scene-board { display: flex; gap: 8px; padding: 8px; }
+.scene-minicol { flex: 1; min-width: 0; }
+.scene-estpub { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.scene-esttotal { display: flex; justify-content: space-between; font-weight: 700; font-size: var(--text-sm); border-top: 1px solid var(--line-strong); padding-top: 6px; }
+.scene-librail { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.scene-presetcard { flex: 1 1 150px; min-width: 140px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; }
+.scene-preset-name { font-weight: 700; font-size: var(--text-sm); }
+.scene-preset-desc { color: var(--ink-soft); font-size: var(--text-xs); }
 .scene-board { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
 .scene-col { flex: 1 1 0; min-width: 0; background: var(--gray-soft); border-radius: var(--radius-sm); padding: 8px; display: flex; flex-direction: column; gap: 8px; }
 .scene-col .card { padding: 8px 10px; font-size: var(--text-xs); }
@@ -3505,7 +3530,7 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .adm-ai-desc { margin: 0; font-size: var(--text-sm); line-height: 1.45; }
 /* ---- the card composition ---- */
 .adm-tpl-zone { position: relative; }
-.adm-tpl-band { position: absolute; left: 0; right: 0; top: 64px; z-index: 0; background: linear-gradient(to right, var(--accent), var(--tpl-band-stop)); } /* crosses the cards at ~their vertical midline; square edges, no shadow */
+.adm-tpl-band { position: absolute; left: 0; right: 0; z-index: 0; background: linear-gradient(to right, var(--accent), var(--tpl-band-stop)); } /* vertical position is DERIVED from the rendered card row (admin.js positionTplBand) — the old fixed 64px offset predated content-driven heights and is gone */ /* crosses the cards at ~their vertical midline; square edges, no shadow */
 .adm-tpl-row { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 32px; margin-top: 8px; }
 /* REGRESSION FIX (content-driven rebuild): the fixed-height main rect with
    clipped overflow is BANNED on these cards — the main rect is now IN FLOW,

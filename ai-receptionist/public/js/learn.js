@@ -631,6 +631,247 @@
     },
   ];
 
+  // ======================= PER-TEMPLATE LC VARIANTS =======================
+  // (lc-field-services batch) A VARIANT re-organizes the tree for a template.
+  // Variants are code-shipped data like GUIDES. ONE SOURCE OF TRUTH per guide
+  // body: a variant item is either { ref: "<stock-id>" } — resolved to the
+  // SAME stock guide object (placement/order owned by the variant, body owned
+  // by stock) — or a full variant-only guide (fs-* ids, registered below in
+  // FS_GUIDES). Which variant applies is decided by THE SERVER (the flag
+  // contract in /api/auth/me -> features.lcVariant); the client only reads it.
+  // No variant -> activeGuides() returns the GUIDES array ITSELF (reference
+  // equality = byte-identical stock, provable).
+  const FS_GUIDES = {}; // id -> variant-only guide (assigned below)
+  // -------- FS variant guides, part 1: getting started + your modules --------
+  // Voice rule everywhere: tenant-facing, field-service vocabulary; never the
+  // hub, templates, or platform administration. Bodies live HERE only (stock
+  // guides are referenced, never copied).
+  FS_GUIDES["fs-home-dashboard"] = {
+    id: "fs-home-dashboard", features: ["page:#/dashboard"],
+    title: "Your Home Dashboard: the four tiles",
+    blocks: [
+      { p: "Your [[#/dashboard|Home Dashboard]] starts with four widgets built for a service business. They're ordinary widgets — edit, rearrange, or remove any of them, and add your own." },
+      { steps: [
+        "NEW REQUESTS counts work orders still waiting to be scheduled — your dispatch inbox at a glance.",
+        "TODAY'S SCHEDULE lists every visit booked for today: the job, its time, and who's assigned.",
+        "JOBS BY STATUS shows where all your work sits — new, scheduled, in progress, completed.",
+        "INVOICED (LAST 30 DAYS) totals what you've billed this month, straight from your invoices' totals.",
+      ] },
+      { tip: "Press Add widget to build more — the Analytics section's \"Building a widget\" guide covers every option." },
+      { visual: "home-dashboard", note: "faithful mini Home Dashboard: reports bar + widget grid" },
+    ],
+  };
+  FS_GUIDES["fs-contacts"] = {
+    id: "fs-contacts", features: ["always"],
+    title: "Contacts: the customers you serve",
+    blocks: [
+      { p: "[[#/contacts|Contacts]] holds every customer — name, phone, email, and address. Everything else in your workspace hangs off a customer: their work orders, equipment, estimates, and invoices all LINK back to the contact, so one open record shows the whole relationship." },
+      { steps: [
+        "Open [[#/contacts|Contacts]] and press Create to add a customer; the phone number matters most — it's how calls match to the right person.",
+        "Open any customer and scroll to Related: their equipment, jobs, and paperwork, each under its own tab.",
+        "Use the view switcher for a table, board, or map of your customers.",
+      ] },
+      { visual: "related-tabs", note: "a customer record's Related tabs" },
+    ],
+  };
+  FS_GUIDES["fs-work-orders"] = {
+    id: "fs-work-orders", features: ["rt:work_order"],
+    title: "Work Orders: the jobs themselves",
+    blocks: [
+      { p: "A [[#/records/work_order|Work Order]] is one job at one place: what's wrong, what kind of visit it is, when it's scheduled, and who's going. Its STATUS carries it from new request through scheduled, in progress, and completed — the same statuses your dashboard and board views read." },
+      { steps: [
+        "Key fields: the title (what the customer asked for), the appointment, the assigned tech, and the job type.",
+        "A work order with no appointment yet sits in NEW REQUEST — that's your to-be-scheduled tray.",
+        "Switch views: List for the full table, Kanban to drag jobs between statuses, Calendar to see the week.",
+        "Open a work order's Related tabs for the customer, their equipment, and any tasks on the job.",
+      ] },
+      { visual: "views-switcher", note: "the same record list, five ways" },
+    ],
+  };
+  FS_GUIDES["fs-equipment"] = {
+    id: "fs-equipment", features: ["rt:equipment"],
+    title: "Equipment: what you service at each address",
+    blocks: [
+      { p: "[[#/records/equipment|Equipment]] tracks the machines you look after — a furnace, a water heater, a rooftop unit. Link each piece to its customer, and its service history builds itself: every job on that unit shows in its Related tabs." },
+      { steps: [
+        "Key fields: type, brand and model, serial number, install date, and the service dates.",
+        "NEXT SERVICE DUE is the useful one — an automation can watch it and remind you (or the customer) before it comes up.",
+        "From a customer's record, the equipment at their address lives under its own Related tab.",
+      ] },
+      { visual: "related-tabs", note: "equipment under a customer's Related tabs" },
+    ],
+  };
+  FS_GUIDES["fs-estimates"] = {
+    id: "fs-estimates", features: ["rt:estimate"],
+    title: "Estimates: quoting the job",
+    blocks: [
+      { p: "An [[#/records/estimate|Estimate]] is your quote: line items priced from your [[#/records/product|Products]] catalog, a total that computes itself, a Status (Draft, Sent, Accepted, Declined, Expired), and a 'Valid until' date so old quotes don't linger." },
+      { steps: [
+        "Build the line items — pick from your catalog or type one-offs; the Total updates as you go.",
+        "Send it: the customer gets a clean page where they can accept with one click.",
+        "Acceptance flips the Status for you. The \"From estimate to invoice\" workflow guide picks it up from there.",
+      ] },
+      { visual: "record-drawer", note: "a record's grouped field panel" },
+    ],
+  };
+  FS_GUIDES["fs-invoices"] = {
+    id: "fs-invoices", features: ["rt:invoice"],
+    title: "Invoices: getting paid",
+    blocks: [
+      { p: "An [[#/records/invoice|Invoice]] mirrors the estimate's shape — line items, an auto-computed Total — plus the dates that matter for money: Invoice date, Due date, and Paid date. Your dashboard's Invoiced tile and the Revenue analytics read straight from these." },
+      { steps: [
+        "Key fields: line items, Total, Status, Due date, Paid date, and how they paid.",
+        "Marking an invoice paid fills the Paid date — that's the field your reports and reminders trust.",
+        "The automation library has a ready-made \"Invoice unpaid\" reminder that nudges you a few days past due.",
+      ] },
+      { visual: "record-drawer", note: "a record's grouped field panel" },
+    ],
+  };
+  FS_GUIDES["fs-products"] = {
+    id: "fs-products", features: ["rt:product"],
+    title: "Products: your price book",
+    blocks: [
+      { p: "[[#/records/product|Products]] is your catalog — the services and parts you sell, each with a price and description. Estimates and invoices pull their line items from here, so a price change in one place flows into every new quote." },
+      { steps: [
+        "Add each service you offer as a product with its standard price.",
+        "When building an estimate or invoice, pick from the catalog — the description and price fill in; adjust freely per job (your catalog copy never changes).",
+      ] },
+      { visual: "record-drawer", note: "a record's grouped field panel" },
+    ],
+  };
+  // -------- FS variant guides, part 2: workflows --------
+  FS_GUIDES["fs-dispatch-day"] = {
+    id: "fs-dispatch-day", features: ["rt:work_order"],
+    title: "A day of dispatch: tray to done",
+    blocks: [
+      { p: "Dispatch is one motion, repeated: a request lands, you drag it onto a tech's day, the customer hears you're coming, and the job rolls to done. The calendar's per-tech lanes plus the Unscheduled tray make it a drag-and-drop." },
+      { steps: [
+        "New requests (calls the receptionist captured, or ones you add) sit in the UNSCHEDULED tray beside the calendar.",
+        "Drag a request onto a tech's lane at a time — one move schedules it and assigns them.",
+        "An automation can text the customer an on-my-way note when the visit starts (see the library's customer-update recipes).",
+        "When the work's done, drag the job to Completed on the board — your dashboard and reports update themselves.",
+      ] },
+      { tip: "Don't see lanes on your calendar? Turn on scheduling display in the calendar's options (an owner/admin setting)." },
+      { visual: "dispatch-lanes", note: "stepper: tray \u2192 drag to a lane \u2192 on-my-way \u2192 completed" },
+    ],
+  };
+  FS_GUIDES["fs-estimate-to-invoice"] = {
+    id: "fs-estimate-to-invoice", features: ["rt:estimate", "rt:invoice"],
+    title: "From estimate to invoice",
+    blocks: [
+      { p: "Money follows one path: quote it, they accept, you do the work, you bill it. Each step is a record that links to the next, so the paper trail builds itself." },
+      { steps: [
+        "Build the [[#/records/estimate|estimate]] from your price book and send it — the customer gets a page with the line items, the total, and an Accept button.",
+        "Acceptance flips the estimate's Status to Accepted (declines and expiries are honest too — 'Valid until' keeps quotes from living forever).",
+        "Convert the accepted estimate to an [[#/records/invoice|invoice]] — the line items carry over.",
+        "When they pay, mark it paid: the Paid date fills, and that's the field your Revenue analytics and the unpaid-reminder automation both trust.",
+      ] },
+      { visual: "estimate-public", note: "the customer's accept page" },
+    ],
+  };
+  FS_GUIDES["fs-maintenance-plans"] = {
+    id: "fs-maintenance-plans", features: ["rt:work_order"],
+    title: "Maintenance plans: work that repeats",
+    blocks: [
+      { p: "Seasonal tune-ups and service contracts are the same job on a rhythm. Put a REPEAT PLAN on the work order and Clarity spawns the next visit on schedule — each one an ordinary work order that lands in your tray to be dispatched." },
+      { steps: [
+        "Open a work order and set its repeat rule — every month, every spring, whatever the contract says.",
+        "Spawned visits arrive as new requests (marked with the repeat sign), ready to drag onto a lane.",
+        "End the plan any time; what's already spawned stays put.",
+      ] },
+      { tip: "The stock \"Repeat plans\" guide under Scheduling & team goes deeper on the rules." },
+      { visual: "kanban-drag", note: "spawned visits ride the same board as everything else" },
+    ],
+  };
+  FS_GUIDES["fs-phone-rings"] = {
+    id: "fs-phone-rings", features: ["receptionist", "rt:work_order"],
+    title: "When the phone rings",
+    blocks: [
+      { p: "Your receptionist answers, finds out what's wrong, and writes it down as work: the caller becomes (or matches) a [[#/contacts|contact]], and their problem becomes a [[#/records/work_order|work order]] in your Unscheduled tray — with the call transcript a click away." },
+      { steps: [
+        "Every call lands in [[#/calls|Calls]] with its transcript and outcome.",
+        "A problem call creates a work order titled with what the caller described, linked to their contact record.",
+        "If you've pointed scheduling at your calendar, the receptionist can book the visit too — otherwise it stays a new request for you to dispatch.",
+        "Tune what it says and captures under Settings \u2192 AI Receptionist (the \"Configuring your receptionist\" guide walks through it).",
+      ] },
+      { visual: "automation-flow", note: "a call flowing into records" },
+    ],
+  };
+  FS_GUIDES["fs-tasks"] = {
+    id: "fs-tasks", features: ["rt:task"],
+    title: "Tasks: the punch list",
+    blocks: [
+      { p: "[[#/records/task|Tasks]] are the small to-dos that orbit a job — pick up the part, call the customer back, pull the permit. Give each a due date and link it to its work order so nothing rides in anyone's head." },
+      { steps: [
+        "Create a task with a title and due date; link it to the job it belongs to.",
+        "Work the board view like a punch list — drag tasks across statuses as they get done.",
+        "A task's due date can drive reminders, the same as any date field.",
+      ] },
+      { visual: "kanban-drag", note: "dragging a card across a board" },
+    ],
+  };
+  const LC_VARIANTS = {
+    field_services: {
+      sections: [
+        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "fs-home-dashboard" }, { ref: "account-basics" }] },
+        { cat: "Your modules", items: [{ id: "fs-contacts" }, { id: "fs-work-orders" }, { id: "fs-equipment" }, { id: "fs-estimates" }, { id: "fs-invoices" }, { id: "fs-products" }, { id: "fs-tasks" }] },
+        { cat: "Workflows", items: [{ id: "fs-dispatch-day" }, { id: "fs-estimate-to-invoice" }, { id: "fs-maintenance-plans" }, { id: "fs-phone-rings" }] },
+        { cat: "Your receptionist", page: "#/calls", items: [{ ref: "receptionist-setup" }, { ref: "service-request-intake" }, { ref: "call-log" }, { ref: "lead-capture" }] },
+        { cat: "Admin", items: [{ ref: "staff-resources" }, { ref: "business-hours" }, { ref: "invite-team" }, { ref: "modules-fields" }, { ref: "appearance" }, { ref: "rename-pages" }, { ref: "integrations" }, { ref: "billing" }, { ref: "data-admin" }] },
+        // R1-approved: the remaining stock sections ride along BY REFERENCE so
+        // no capability loses its help in the variant.
+        { stockCat: "Working with records" },
+        { stockCat: "Finding & organizing" },
+        { stockCat: "Analytics & dashboards" },
+        { stockCat: "Communication" },
+        { stockCat: "Automations" },
+        { stockCat: "Scheduling & team" },
+        { stockCat: "Housekeeping" },
+      ],
+    },
+  };
+  let _stockById = null;
+  function stockById(id) {
+    if (!_stockById) { _stockById = {}; GUIDES.forEach((g) => (g.items || []).forEach((it) => { _stockById[it.id] = it; })); }
+    return _stockById[id];
+  }
+  const _assembled = {};
+  function activeVariantKey() {
+    return (App.state && App.state.features && App.state.features.lcVariant) || null;
+  }
+  function activeGuides() {
+    const key = activeVariantKey();
+    if (!key || !LC_VARIANTS[key]) return GUIDES; // stock: the ARRAY ITSELF (byte-identical)
+    if (_assembled[key]) return _assembled[key];
+    const out = [];
+    LC_VARIANTS[key].sections.forEach((sec) => {
+      if (sec.stockCat) {
+        const stockSec = GUIDES.find((g) => g.cat === sec.stockCat);
+        if (stockSec) out.push(stockSec); // the SAME section object — zero forking
+        return;
+      }
+      const items = [];
+      (sec.items || []).forEach((it) => {
+        if (it.ref) { const g = stockById(it.ref); if (g) items.push(g); return; } // same object
+        const vg = FS_GUIDES[it.id];
+        if (vg) items.push(vg);
+      });
+      if (items.length) out.push({ cat: sec.cat, ...(sec.page ? { page: sec.page } : {}), ...(sec.pagesAll ? { pagesAll: sec.pagesAll } : {}), items });
+    });
+    _assembled[key] = out;
+    return out;
+  }
+  // Deep links: an id that exists in stock OR any variant gets the graceful
+  // "not available" note when the ACTIVE tree lacks it — never a 404, never a
+  // leak of the other tree's content.
+  function idKnownAnywhere(id) {
+    if (stockById(id)) return true;
+    if (FS_GUIDES[id]) return true;
+    return false;
+  }
+  App._lc = { activeGuides, activeVariantKey, LC_VARIANTS, FS_GUIDES, idKnownAnywhere }; // suite hooks
+
+
   // ---- deep links: [[#/route|Label]] inside p/steps/tip. Rendered as normal accent
   // links; text around them stays fully escaped. Invalid-looking tokens render as text.
   const LINK_RE = /\[\[(#\/[a-z0-9/_-]+)\|([^\]]+)\]\]/g;
@@ -781,7 +1022,7 @@
       const tags = x.features || [];
       return !tags.every((t) => featureOn(t));
     };
-    const guides = GUIDES
+    const guides = activeGuides() // the variant seam: stock tenants get the GUIDES array itself
       .filter((g) => !blocked(g))
       .map((g) => Object.assign({}, g, { items: (g.items || []).filter((it) => !blocked(it)) }))
       .filter((g) => g.items.length);
@@ -794,7 +1035,9 @@
       // feature-lc: a deep link into a guide this portal has HIDDEN degrades to a
       // graceful note — never a 404, never a leak of the hidden content.
       const visible = guides.some((g) => g.items.some((it) => it.id === id));
-      const existsAtAll = GUIDES.some((g) => (g.items || []).some((it) => it.id === id));
+      // variant-aware: an id known to stock OR a variant but absent from the
+      // ACTIVE tree degrades to the same graceful note (never a 404, no leaks).
+      const existsAtAll = activeGuides().some((g) => (g.items || []).some((it) => it.id === id)) || idKnownAnywhere(id);
       if (!visible && existsAtAll) {
         currentId = null;
         paintNav();
@@ -841,5 +1084,5 @@
     showGuide(currentId);
   }
 
-  App.learn = { render, GUIDES, validateGuideFeatureTags, isKnownFeatureTag };
+  App.learn = { render, GUIDES, validateGuideFeatureTags, isKnownFeatureTag, activeGuides, LC_VARIANTS, FS_GUIDES };
 })(typeof window !== "undefined" ? window : globalThis);

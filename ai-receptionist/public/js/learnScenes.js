@@ -166,6 +166,83 @@
     ],
   });
 
+  // (lc-field-services) The convention-aware Related tabs on a record page —
+  // grounded on portal.js#mountRelatedTabs: an ordered tab bar (conventioned
+  // tabs first, with their learned labels), and the active pane's linked rows
+  // with their link-facts pill + date, and the Link button.
+  register("related-tabs", {
+    sourceFn: "portal.js#mountRelatedTabs",
+    regions: ["record header", "related tab bar (conventioned tabs first, learned labels)", "active pane: linked rows with link-facts + dates", "Link existing button"],
+    frames: [
+      {
+        caption: "A record's Related area — tabs for each linked module, the meaningful ones first with their learned names.",
+        html: `<div class="card scene-record"><div class="scene-rec-title">Avery Lane</div>` +
+          `<div class="scene-tabs"><span class="tab active tab-conv">Equipment at this address</span><span class="tab tab-conv">Their invoices</span><span class="tab">Tasks</span></div>` +
+          `<div class="related-pane scene-relpane">` +
+          `<div class="scene-relrow">Water heater <span class="link-facts">${pill("serviced by us")}<span class="cell-muted link-facts-date">Jul 2</span></span></div>` +
+          `<div class="scene-relrow">Furnace <span class="link-facts">${pill("installed")}<span class="cell-muted link-facts-date">Mar 9</span></span></div>` +
+          `${btn("Link existing", false, true)}</div></div>`,
+      },
+    ],
+  });
+
+
+  // (lc-field-services) The dispatch calendar — grounded on
+  // portal.js#renderBookingCalendar: toolbar with the resource filter, per-tech
+  // lane heads over the day grid, and the Unscheduled tray beside it. Four
+  // frames = the "day of dispatch" stepper.
+  register("dispatch-lanes", {
+    sourceFn: "portal.js#renderBookingCalendar",
+    regions: ["calendar toolbar (range + resource filter)", "per-tech lane heads", "day grid with visit chips", "Unscheduled tray (new requests)"],
+    frames: [
+      {
+        caption: "New requests wait in the Unscheduled tray beside the calendar.",
+        html: `<div class="scene-dispatch"><div class="card scene-callanes"><div class="scene-lanehead"><span class="cal-dayhead cal-reshead"><span class="cal-resname">Sam</span></span><span class="cal-dayhead cal-reshead"><span class="cal-resname">Riley</span></span></div><div class="scene-lanegrid">${calCells(8, { 1: "Tune-up" })}</div></div><aside class="cal-tray card scene-tray"><div class="cal-tray-head"><span class="cal-tray-title">Unscheduled</span><span class="cal-tray-count">2</span></div><div class="scene-trayitem">${focus("Dripping tap")}</div><div class="scene-trayitem">No heat upstairs</div></aside></div>`,
+      },
+      {
+        caption: "Drag a request onto a tech's lane at a time — that schedules it and assigns them in one move.",
+        html: `<div class="scene-dispatch"><div class="card scene-callanes"><div class="scene-lanehead"><span class="cal-dayhead cal-reshead"><span class="cal-resname">Sam</span></span><span class="cal-dayhead cal-reshead"><span class="cal-resname">Riley</span></span></div><div class="scene-lanegrid">${calCells(8, { 1: "Tune-up", 4: "Dripping tap" })}</div></div><aside class="cal-tray card scene-tray"><div class="cal-tray-head"><span class="cal-tray-title">Unscheduled</span><span class="cal-tray-count">1</span></div><div class="scene-trayitem">No heat upstairs</div></aside></div>`,
+      },
+      {
+        caption: "On the day, an automation can text the customer an on-my-way message as the visit starts.",
+        html: `<div class="card scene-msg"><div class="scene-msg-row"><span class="pill">Text</span><span class="cell-muted">to Avery Lane</span></div><div class="scene-msg-body">Sam is on the way for your 10:00 visit.</div></div>`,
+      },
+      {
+        caption: "Done on site: drag the job to Completed (or update its status on the record) — dashboards and reports follow along.",
+        html: `<div class="card scene-board">${"" /* board strip */}<div class="kanban-col scene-minicol"><div class="kanban-col-head">In progress</div><div class="kanban-cards"></div></div><div class="kanban-col scene-minicol"><div class="kanban-col-head">Completed</div><div class="kanban-cards"><div class="kanban-card">${focus("Dripping tap")}</div></div></div></div>`,
+      },
+    ],
+  });
+
+  // (lc-field-services) The customer's public estimate page — grounded on
+  // estimate.html#render: brand header, estimate meta, line-items table,
+  // grand total, and the accept/decline decision row.
+  register("estimate-public", {
+    sourceFn: "estimate.html#render",
+    regions: ["business brand header", "estimate title + meta", "line-items table", "grand total", "decision buttons (accept / decline)"],
+    frames: [
+      {
+        caption: "What your customer sees: the line items, the total, and one-click accept.",
+        html: `<div class="card scene-estpub"><div class="scene-rec-title">Harbor Plumbing</div>${miniTable(["Item", "Qty", "Amount"], [["Water heater install", "1", "$1,450"], ["Haul-away", "1", "$90"]])}<div class="scene-esttotal"><span>Total</span><span>$1,540</span></div><div class="scene-row">${btn("Accept estimate", true, true)}${btn("Decline", false, true)}</div></div>`,
+      },
+    ],
+  });
+
+  // (lc-field-services) The automation preset library — grounded on
+  // automations.js#showGallery: category rail with counts, preset cards with
+  // name/description and Preview/Apply.
+  register("preset-library", {
+    sourceFn: "automations.js#showGallery",
+    regions: ["category rail (tabs with counts)", "preset card grid", "per-card Preview / Apply"],
+    frames: [
+      {
+        caption: "Ready-made automations, grouped by what they do — applying one lands a draft you review before turning on.",
+        html: `<div class="scene-dispatch"><div class="scene-librail"><span class="tpl-cat active">Stay in touch<span class="tpl-cat-count">4</span></span><span class="tpl-cat">Follow-ups<span class="tpl-cat-count">5</span></span></div><div class="card scene-presetcard"><div class="scene-preset-name">Visit confirmation</div><div class="scene-preset-desc">Confirm tomorrow's visits by text.</div><div class="scene-row">${btn("Preview", false, true)}${btn("Apply", true, true)}</div></div></div>`,
+      },
+    ],
+  });
+
+
   register("fields-editor", {
     sourceFn: "portal.js#secFields",
     regions: ["mf-modules-row (module picker)", "mf-views-strip (view toggles)", "two columns: Field library | Fields"],
