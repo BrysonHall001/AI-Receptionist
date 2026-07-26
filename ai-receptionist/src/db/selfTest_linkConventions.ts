@@ -84,9 +84,18 @@ async function main() {
   check(!!rawL && rawL.role == null, "an owner-built role-less link stays raw (never auto-adopted by seeding \u2014 the collision rule)");
   // Client-side contracts (contactsAllViews source-assertion precedent):
   const portal = read("public/js/portal.js");
-  check(portal.includes("!(l.role && surfacedRoles[l.role])"), "the generic Related pane excludes ONLY surfaced-convention roles \u2014 raw links render byte-identically");
-  check(portal.includes('c.cardinality === "one" && mine.length >= 1'), "the panel hides Add at cardinality one-filled");
-  check(portal.includes("permEditRecords") && portal.includes('"/api/records/" + recordId + "/links", { method: "POST"'), "panel add/remove is edit-gated client-side and writes through the EXISTING link routes (permissionGate + parity by construction)");
+  // RELATED REVISION (tenant-templates batch, stale-test rule): the batch-18
+  // PANELS are gone \u2014 the convention now lives on the Related tabs. The
+  // client contracts below assert the relocated design: the tab OWNS all of
+  // its module's links (no exclusion split), a conventioned add CARRIES the
+  // role, and cardinality-one hides Add when filled. Route-side, add/remove
+  // still rides the same POST/DELETE link routes behind the permissionGate.
+  check(!portal.includes("mountConventionPanels") && portal.includes("conventionForTab"),
+    "the panels are GONE and the Related tabs are convention-aware (one linking UI on the page)");
+  check(!portal.includes("surfacedRoles[l.role]") && portal.includes("l.other.recordTypeId === type.id; }).map"),
+    "the tab owns ALL of its module's links \u2014 role-carrying and raw alike, nothing shows twice");
+  check(portal.includes('conv.cardinality === "one" && links.length >= 1'), "cardinality one-filled hides Add on the conventioned tab (batch-18 rule relocated)");
+  check(portal.includes("...(conv ? { role: conv.role } : {})"), "a conventioned tab's add CARRIES THE ROLE through the existing link route (permissionGate + parity by construction)");
 
   // ---------- (4) catastrophics ----------
   console.log("\n(4) catastrophics:");

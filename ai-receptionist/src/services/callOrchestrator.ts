@@ -498,6 +498,12 @@ async function resolveSchedulingTarget(tenant: any): Promise<string> {
     const locked = Array.isArray((tenant as any).lockedPages) ? ((tenant as any).lockedPages as string[]) : [];
     const href = stored === "booking" ? "#/bookings" : "#/records/" + stored;
     if (locked.includes(href)) return "none";
+    // Tenant-templates batch: NAV-HIDDEN counts as hidden too — the create
+    // wizard's Modules checkboxes (and Settings → Modules) hide via
+    // labels.nav.hidden, and a target the owner can't see must not be
+    // scheduled into. Same fail-safe: degrade to "none", never elsewhere.
+    const navHidden = Array.isArray(((tenant as any).labels || {}).nav?.hidden) ? (((tenant as any).labels as any).nav.hidden as string[]) : [];
+    if (navHidden.includes(href)) return "none";
     return stored;
   } catch { return "none"; }
 }

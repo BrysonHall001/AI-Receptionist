@@ -956,7 +956,11 @@ apiRouter.get("/account/ai-instructions", async (req: Request, res: Response) =>
         const rt = await prisma.recordType.findFirst({ where: { tenantId, key: stored }, select: { id: true } });
         if (!rt) return "none";
         const locked = Array.isArray((portal as any)?.lockedPages) ? ((portal as any).lockedPages as string[]) : [];
-        if (locked.includes(stored === "booking" ? "#/bookings" : "#/records/" + stored)) return "none";
+        const href2 = stored === "booking" ? "#/bookings" : "#/records/" + stored;
+        if (locked.includes(href2)) return "none";
+        // Tenant-templates batch: nav-hidden counts as hidden (the wizard's rule).
+        const navHidden2 = Array.isArray(((portal as any)?.labels || {}).nav?.hidden) ? (((portal as any).labels as any).nav.hidden as string[]) : [];
+        if (navHidden2.includes(href2)) return "none";
         return stored;
       } catch { return "none"; }
     })(),

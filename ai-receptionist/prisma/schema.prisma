@@ -84,6 +84,10 @@ model Tenant {
   // "none" (intake-only: messages + requests, never times). Resolution is READ-
   // TIME FAIL-SAFE: a hidden/invalid stored target behaves as "none".
   aiScheduleTarget    String  @default("booking")
+  // TENANT TEMPLATES: which template this tenant was created from (null for
+  // every pre-template tenant and for creations that never chose one). Read by
+  // future content packs; never behavioral on its own.
+  templateKey         String?
   // Per-portal VOICE MODE — the authoritative 3-way choice for the inbound phone
   // experience: "OFF" (decline calls), "WALKIE" (cheap Say/Gather), or "SMOOTH"
   // (premium ElevenLabs ConversationRelay). receptionistEnabled above is kept as

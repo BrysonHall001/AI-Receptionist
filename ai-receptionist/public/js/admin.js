@@ -13,6 +13,40 @@
   // Premium voice (ElevenLabs ConversationRelay). The server keeps the legacy
   // receptionistEnabled boolean in sync, so older data still reads correctly.
   const VOICE_LABELS = { OFF: "Off", WALKIE: "Standard voice", SMOOTH: "Premium voice" };
+  // TENANT TEMPLATES: per-row copy for the create wizard. neutral = General;
+  // fs = the Field Services swap where the template meaningfully changes the row.
+  const PAGE_DESCS = {
+    "Home Dashboard": "The landing page — widgets, quick numbers, and shortcuts.",
+    "Calls": "Every AI-answered call: transcript, caller, what was captured.",
+    "Analytics": "Reports and charts over the tenant's own records.",
+    "Automations": "If-this-then-that flows the tenant builds (plus a library).",
+    "Communication": "Email and text campaigns to customer lists.",
+    "Learning Center": "The built-in manual, written in the tenant's own labels.",
+    "Feedback": "A simple channel for the tenant's users to send feedback.",
+    "Billing": "The tenant's plan and billing status page.",
+  };
+  const MODULE_DESCS = {
+    contact:   { neutral: "Everyone the business talks to — callers land here automatically." },
+    job:       { neutral: "A recruiting pipeline (Applied → Hired) for hiring workflows.",
+                 fs: "Hidden for field services — recruiting isn't part of the day-to-day. Turn it back on anytime." },
+    booking:   { neutral: "Simple appointments the AI receptionist can book callers into.",
+                 fs: "Hidden — callers get scheduled straight into Work Orders instead." },
+    work_order:{ neutral: "Jobs to schedule and complete, with statuses, a board, and a dispatch calendar.",
+                 fs: "Your core module — jobs land here from calls, get scheduled to techs, and flow to invoices." },
+    equipment: { neutral: "Units and machines you service, each with its own history.",
+                 fs: "The units your customers own — each keeps a service history of every visit." },
+    estimate:  { neutral: "Quotes with line items customers accept online, then convert.",
+                 fs: "Quotes techs send from the field — accepted ones convert to a work order + invoice." },
+    invoice:   { neutral: "Bills with line items, totals, and paid tracking.",
+                 fs: "Bills that inherit their line items straight from the estimate or job." },
+    product:   { neutral: "A price book of parts and services for line-item picking.",
+                 fs: "Your parts + labor catalog — estimate rows autocomplete from it." },
+    task:      { neutral: "Lightweight to-dos for the team, with priorities." },
+    vehicle:   { neutral: "A fleet list — vehicles with make, year, and color.",
+                 fs: "Hidden to keep the nav focused; turn it on if you track a fleet." },
+    property:  { neutral: "Locations and sites you work at, one record each.",
+                 fs: "Hidden to keep the nav focused; Equipment + service addresses usually cover it." },
+  };
   function voiceModeOf(p) {
     return (p && p.voiceMode) || (p && p.receptionistEnabled === true ? "WALKIE" : "OFF");
   }
@@ -444,13 +478,23 @@
   // everything checked = nothing locked. Returns a getter for the LOCKED hrefs (unchanged
   // contract — callers still PATCH/POST lockedPages) and calls onChange(lockedHrefs) on
   // every toggle. Shared by the config view + the create-tenant wizard.
-  function lockChecklist(host, lockedHrefs, onChange) {
+  function lockChecklist(host, lockedHrefs, onChange, withDescriptions) {
     const locked = new Set(lockedHrefs || []);
     LOCKABLE_PAGES.forEach((pg) => {
       const row = el("label"); row.classList.add("adm-row-click");
       const cb = el("input"); cb.type = "checkbox"; cb.checked = pg.hrefs.every((h) => !locked.has(h));
       cb.onchange = () => { pg.hrefs.forEach((h) => { if (cb.checked) locked.delete(h); else locked.add(h); }); if (onChange) onChange(Array.from(locked)); };
-      row.appendChild(cb); row.appendChild(document.createTextNode(" " + pg.label));
+      row.appendChild(cb);
+      if (withDescriptions) {
+        // Tenant-templates wizard: name + a one-line description (the config
+        // view passes nothing and stays byte-identical).
+        const txt = el("span", "adm-rowtxt");
+        txt.appendChild(el("span", "adm-rowname", esc(pg.label)));
+        if (PAGE_DESCS[pg.label]) txt.appendChild(el("span", "adm-rowdesc", esc(PAGE_DESCS[pg.label])));
+        row.appendChild(txt);
+      } else {
+        row.appendChild(document.createTextNode(" " + pg.label));
+      }
       host.appendChild(row);
     });
     return () => Array.from(locked);
@@ -651,23 +695,61 @@
     wrap.appendChild(s3);
 
     // ---- Step 4: features (receptionist mode into the draft; applied on Finish) ----
-    const s4 = sectionCard(4, "Features", "Turn on the AI Receptionist. New tenants start with it off.");
-    const vWrap = el("div");
+    // TENANT TEMPLATES redesign (owner spec, settled): segmented AI control
+    // beneath the heading; TEMPLATE cards; ONE merged caption beneath the cards,
+    // width-matched to the control's column; per-row descriptions + field chips
+    // on the checklists below.
+    const s4 = sectionCard(4, "Features", "What this tenant starts with.");
+
+    // (1) The AI Receptionist SEGMENTED control — the view-switcher precedent
+    // (portal list pages) restyled with hub tokens. Compact, not panel-wide.
+    const vWrap = el("div"); vWrap.classList.add("adm-featcol");
     vWrap.innerHTML = `<label class="field-label">AI Receptionist</label>`;
-    const vSel = el("select", "input");
-    vSel.innerHTML = voiceOptionsHtml("OFF"); vSel.value = "OFF";
-    vSel.onchange = () => { draft.voiceMode = vSel.value; };
-    vWrap.appendChild(vSel);
-    const vCap = el("p", "cell-muted"); vCap.classList.add("adm-vcap");
-    vCap.textContent = "Off declines inbound calls. Standard voice is the basic back-and-forth receptionist. Premium voice uses the smooth ElevenLabs voice.";
-    s4.appendChild(vWrap); s4.appendChild(vCap);
+    const seg = el("div", "adm-seg");
+    seg.setAttribute("role", "tablist");
+    const SEG_STATES = [
+      ["OFF", "\u2298", "Off"],
+      ["WALKIE", "\u260e", "Standard"],
+      ["SMOOTH", "\u2728", "Premium"],
+    ];
+    const segBtns = {};
+    SEG_STATES.forEach(([mode, icon, label]) => {
+      const b = el("button", "adm-seg-btn", `<span class="adm-seg-ic">${icon}</span>${label}`);
+      b.type = "button";
+      b.onclick = () => {
+        draft.voiceMode = mode;
+        Object.keys(segBtns).forEach((m) => segBtns[m].classList.toggle("active", m === mode));
+      };
+      segBtns[mode] = b;
+      seg.appendChild(b);
+    });
+    segBtns.OFF.classList.add("active"); // new tenants start off (unchanged default)
+    vWrap.appendChild(seg);
+    s4.appendChild(vWrap);
+
+    // (3) TEMPLATE cards — General preselected, exactly one active. Selecting
+    // one PREFILLS the checklists below; later manual edits always win (they're
+    // what Finish submits). The key rides the create POST for the server phase.
+    const tplWrap = el("div"); tplWrap.classList.add("adm-featcol", "u-mt-16");
+    tplWrap.innerHTML = `<label class="field-label">Template</label>`;
+    const tplRow = el("div", "adm-tpl-row");
+    tplWrap.appendChild(tplRow);
+    s4.appendChild(tplWrap);
+    draft.template = "general";
+    let templatesMeta = [];
+
+    // (2) The ONE merged caption — beneath the template cards, matched to the
+    // control's column width (adm-featcol), never panel-wide.
+    const vCap = el("p", "cell-muted"); vCap.classList.add("adm-vcap", "adm-featcol");
+    vCap.textContent = "Turn on the AI Receptionist. New tenants start with it off. Off declines inbound calls. Standard voice is the basic back-and-forth receptionist. Premium voice uses the smooth ElevenLabs voice.";
+    s4.appendChild(vCap);
     // Pages (owner hard-lock) — fixed app pages only; sets the INITIAL locked set.
     const lockHost = el("div", "u-mt-16");
     const lockLab = el("label", "field-label", "Pages"); lockLab.classList.add("adm-locklab");
     const lockNote = el("p", "cell-muted"); lockNote.classList.add("adm-locknote");
     lockNote.textContent = "Checked = the page is on and available (all pages start on). Uncheck a page to LOCK it — a locked page is blocked for everyone in the tenant, including its Portal Admin, and can't be reached by menu, direct link, or API unless an admin unlocks it later. (Record-type sections are managed under Modules below.)";
     lockHost.appendChild(lockLab); lockHost.appendChild(lockNote);
-    lockChecklist(lockHost, draft.lockedPages, (arr) => { draft.lockedPages = arr; });
+    lockChecklist(lockHost, draft.lockedPages, (arr) => { draft.lockedPages = arr; }, true);
     s4.appendChild(lockHost);
 
     // ---- Modules (record-type VISIBILITY at creation) ------------------------
@@ -685,17 +767,68 @@
     const secList = el("div"); secList.appendChild(el("p", "cell-muted", "Loading…"));
     secHost.appendChild(secList);
     s4.appendChild(secHost);
+    // Module checkboxes + per-row descriptions + field chips. moduleRows keeps
+    // {key, cb, descEl} so template selection can PREFILL boxes and SWAP copy.
+    const moduleRows = [];
+    function moduleDescFor(key) {
+      const d = MODULE_DESCS[key] || {};
+      return (draft.template === "field_services" && d.fs) ? d.fs : (d.neutral || "");
+    }
+    function repaintModuleDescs() {
+      moduleRows.forEach((mr) => { if (mr.descEl) mr.descEl.textContent = moduleDescFor(mr.key); });
+    }
+    // TEMPLATE PREFILL: set every togglable box to the template's starting state
+    // and rebuild the draft from the boxes. Manual edits AFTER this always win —
+    // Finish submits the boxes, not the template.
+    function applyTemplatePrefill(t) {
+      const hide = new Set(t && t.modulesHiddenPrefill || []);
+      moduleRows.forEach((mr) => { if (!mr.cb.disabled) mr.cb.checked = !hide.has(mr.key); });
+      draft.hiddenRecordTypes = moduleRows.filter((mr) => !mr.cb.disabled && !mr.cb.checked).map((mr) => mr.key);
+      // pages: no shipped template turns any off; still honor the data.
+      repaintModuleDescs();
+    }
+    function paintTemplateCards() {
+      tplRow.innerHTML = "";
+      templatesMeta.forEach((t) => {
+        const card = el("button", "adm-tpl-card" + (draft.template === t.key ? " active" : ""));
+        card.type = "button";
+        card.innerHTML = `<span class="adm-tpl-name">${esc(t.label)}</span><span class="adm-tpl-desc">${esc(t.description)}</span>`;
+        card.onclick = () => {
+          if (draft.template === t.key) return;
+          draft.template = t.key;
+          paintTemplateCards();
+          applyTemplatePrefill(t);
+        };
+        tplRow.appendChild(card);
+      });
+    }
+    App.api("/api/admin/tenant-templates").then((r) => {
+      templatesMeta = (r && r.templates) || [];
+      paintTemplateCards();
+    }).catch(() => { templatesMeta = [{ key: "general", label: "General", description: "A blank, everything-on workspace.", modulesHiddenPrefill: [] }]; paintTemplateCards(); });
+
     App.api("/api/admin/portals/record-type-options").then((r) => {
       const options = (r && r.options) || [];
       secList.innerHTML = "";
       options.forEach((opt) => {
-        const row = el("label"); row.classList.add("adm-row-click");
+        const row = el("label"); row.classList.add("adm-row-click", "adm-row-mod");
         const cb = el("input"); cb.type = "checkbox"; cb.checked = true;
         const name = opt.labelPlural || opt.label || opt.key;
+        const txt = el("span", "adm-rowtxt");
+        const nameEl = el("span", "adm-rowname", esc(name) + (!opt.togglable ? " (always on)" : ""));
+        const descEl = el("span", "adm-rowdesc");
+        txt.appendChild(nameEl); txt.appendChild(descEl);
+        // FIELD CHIPS: the module's seeded field names, cap 5 + "+N more".
+        const fields = Array.isArray(opt.fields) ? opt.fields : [];
+        if (fields.length) {
+          const chips = el("span", "adm-chips");
+          fields.slice(0, 5).forEach((f) => chips.appendChild(el("span", "adm-chip", esc(f))));
+          if (fields.length > 5) chips.appendChild(el("span", "adm-chip adm-chip-more", "+" + (fields.length - 5) + " more"));
+          txt.appendChild(chips);
+        }
         if (!opt.togglable) {
           // Contact (core): always on, not editable.
           cb.disabled = true; row.classList.add("u-cursor-default");
-          row.appendChild(cb); row.appendChild(document.createTextNode(" " + name + " (always on)"));
         } else {
           // Every togglable module starts ON (checked) so a new portal has everything
           // available by default, matching the pages list. Unchecking hides it (adds its
@@ -708,10 +841,15 @@
             if (cb.checked) set.delete(opt.key); else set.add(opt.key);
             draft.hiddenRecordTypes = Array.from(set);
           };
-          row.appendChild(cb); row.appendChild(document.createTextNode(" " + name));
         }
+        row.appendChild(cb); row.appendChild(txt);
         secList.appendChild(row);
+        moduleRows.push({ key: opt.key, cb, descEl });
       });
+      repaintModuleDescs();
+      // A template picked before the options loaded still prefills correctly.
+      const t = templatesMeta.find((x) => x.key === draft.template);
+      if (t && t.key !== "general") applyTemplatePrefill(t);
     }).catch(() => { secList.innerHTML = ""; secList.appendChild(el("p", "cell-muted", "Couldn't load modules — the tenant will start with all modules visible.")); });
     wrap.appendChild(s4);
 
@@ -733,7 +871,7 @@
       // 1) Create the tenant. If THIS fails, nothing was persisted — stay on the screen.
       let portal;
       try {
-        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages, billingStatus, hiddenRecordTypes: draft.hiddenRecordTypes }) });
+        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages, billingStatus, hiddenRecordTypes: draft.hiddenRecordTypes, template: draft.template || "general" }) });
       } catch (err) { toast(err.message || "Could not create the tenant", true); finish.disabled = false; return; }
 
       // 2) Apply the queued draft in sequence. Collect failures instead of throwing, so

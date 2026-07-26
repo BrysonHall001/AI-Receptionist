@@ -410,6 +410,20 @@ export function recordTypeHref(key: string): string { return SYSTEM_RT_HREF[key]
 // Registry options for the "which sections show" picker at portal creation. Derived
 // from SYSTEM_RECORD_TYPES so a FUTURE system type appears automatically. Contact is
 // core (togglable:false) — every other type can be shown/hidden.
+/** Seed-field LABELS per module key — mechanically derived from the same
+ *  constants the seeder uses (tenant-templates batch: feeds the create-wizard's
+ *  field chips; a future seed change flows through automatically). */
+const SEED_FIELDS_BY_MODULE: Record<string, { label: string }[]> = {
+  equipment: DEFAULT_EQUIPMENT_FIELDS as any,
+  invoice: DEFAULT_INVOICE_FIELDS as any,
+  vehicle: DEFAULT_VEHICLE_FIELDS as any,
+  property: DEFAULT_PROPERTY_FIELDS as any,
+  product: DEFAULT_PRODUCT_FIELDS as any,
+  estimate: DEFAULT_ESTIMATE_FIELDS as any,
+  task: DEFAULT_TASK_FIELDS as any,
+  work_order: DEFAULT_WORK_ORDER_FIELDS as any,
+};
+
 export function systemRecordTypeOptions() {
   return SYSTEM_RECORD_TYPES.map((d) => ({
     key: d.key,
@@ -418,6 +432,9 @@ export function systemRecordTypeOptions() {
     href: recordTypeHref(d.key),
     togglable: d.key !== CONTACT_RECORD_TYPE_KEY,
     defaultHidden: !!d.defaultHidden, // pre-built industry modules start unchecked in the picker
+    // Tenant-templates batch (ADDITIVE): the module's seeded field labels, for
+    // the create-wizard's chips. [] where a module seeds none.
+    fields: (SEED_FIELDS_BY_MODULE[d.key] || []).map((f) => String(f.label)),
   }));
 }
 // The record-type keys that MAY be hidden at creation (everything except contact).

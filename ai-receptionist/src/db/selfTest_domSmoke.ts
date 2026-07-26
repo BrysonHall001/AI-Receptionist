@@ -266,24 +266,30 @@ async function main() {
   check(plainUp && !$(".li-cat-results") && !!plainInp && plainInp.placeholder === "Description",
     "an UNCONFIGURED line-items field mounts the original editor — no catalog machinery, byte-identical placeholder");
 
-  // ---- LINK CONVENTIONS: the record-page panels ----
+  // ---- RELATED REVISION (supersedes the batch-18 panel assertions): the
+  // convention lives on the Related TABS now — role labels, rich rows,
+  // cardinality — and the panels are GONE. Stale-test rule: selectors updated.
   const eqType = await db.recordType.findFirst({ where: { tenantId: T, key: "equipment" } });
   const unit = await db.record.create({ data: { tenantId: T, recordTypeId: eqType.id, title: "Rooftop AC \u2014 Smoke Unit", customFields: { status: "Active" } } });
   await db.recordLink.create({ data: { tenantId: T, recordId: r2.id, parentType: "record", parentId: unit.id, role: "serviced_equipment" } });
   await go("#/record/" + r2.id);
-  const woPanel = await until(() => $$(".conv-panel .drawer-section-title").some((t: any) => t.textContent === "Serviced equipment") && bodyText().includes("Rooftop AC \u2014 Smoke Unit"));
-  check(woPanel, "LINK CONVENTIONS: the work order mounts a populated Serviced equipment panel");
-  check(!!$(".conv-add .link-search"), "\u2026with the add-link typeahead (cardinality many, editor rights)");
+  const relTab = await until(() => $$(".related-tabs .tab").length > 0 && $$(".related-tabs .tab")[0].textContent === "Serviced equipment");
+  check(relTab, "RELATED REVISION: the work order's FIRST Related tab is the role label (conventioned tabs order first)");
+  check(!$(".conv-panel"), "\u2026and the batch-18 convention panels are GONE from the page");
+  const richRow = await until(() => $$(".related-pane .link-row").some((r: any) => r.textContent.includes("Rooftop AC \u2014 Smoke Unit")) && $$(".related-pane .link-facts .pill").some((p2: any) => p2.textContent === "Active"));
+  check(richRow, "\u2026its rows are RICH: the linked unit with its status pill (key facts)");
+  check(await until(() => !!$(".related-pane .link-search")), "\u2026with the tab's add box live (cardinality many)");
   await go("#/record/" + unit.id);
-  const eqPanel = await until(() => $$(".conv-panel .drawer-section-title").some((t: any) => t.textContent === "Service history") && bodyText().includes("Water heater swap"));
-  check(eqPanel, "the equipment record mounts Service history with the linked work order");
-  check(await until(() => $$(".conv-panel .pill").length > 0), "\u2026key facts render (status pill present)");
+  const histTab = await until(() => $$(".related-tabs .tab")[0] && $$(".related-tabs .tab")[0].textContent === "Service history" && bodyText().includes("Water heater swap"));
+  check(histTab, "the equipment record's first tab is Service history with the linked work order");
+  check(await until(() => $$(".related-pane .link-facts").length > 0), "\u2026rows carry the key facts (status/date)");
   await go("#/record/" + estRec.id);
-  const emptyPanel = await until(() => $$(".conv-panel .drawer-section-title").some((t: any) => t.textContent === "Created work order") && !!$(".conv-empty"));
-  check(emptyPanel, "an estimate shows the reverse convention panel EMPTY state (nothing linked yet)");
+  const estTab = await until(() => $$(".related-tabs .tab")[0] && $$(".related-tabs .tab")[0].textContent === "Created work order");
+  check(estTab, "an estimate's reverse convention tab renders its role label (empty is fine)");
   await go("#/record/" + plainRec.id);
   await until(() => bodyText().includes("Plain One"));
-  check(!$(".conv-panel"), "a module pair with NO convention mounts zero panels \u2014 raw Related UI unchanged");
+  const plainTabs = await until(() => $$(".related-tabs .tab").length > 0);
+  check(!!plainTabs && !$(".tab-conv") && !$(".link-facts"), "a convention-less module's Related tabs are byte-identical (module names, plain rows)");
 
   // ---- AI INTAKE: the settings card + simulator buttons + calls drawer ----
   await go("#/settings/aireceptionist");

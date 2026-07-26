@@ -157,6 +157,12 @@ export async function createPortal(input: {
   // togglable (non-contact) keys are honored; anything else is ignored. Omitted =
   // nothing hidden = all sections visible (today's behavior).
   hiddenRecordTypes?: string[];
+  // TENANT TEMPLATES: the chosen template's key. The wizard's CHECKBOXES always
+  // win for pages/modules (they arrive as lockedPages/hiddenRecordTypes exactly
+  // as checked); the template applies only its NON-checkbox config here: the
+  // AI columns in this same create, then field tweaks/hooks via
+  // applyTemplateAtCreation. Unknown keys are rejected by the route.
+  template?: string | null;
 }) {
   // Create writes only name + (optional) notifyEmail now. greeting, businessType and
   // requireEmail fall back to their column defaults (they're no longer collected at
@@ -176,15 +182,26 @@ export async function createPortal(input: {
     : [];
   const hiddenHrefs = hideKeys.map(recordTypeHref).filter((h) => h !== NAV_HOME_HREF);
   const labels = hiddenHrefs.length ? { nav: { order: [], hidden: hiddenHrefs, labels: {} } } : undefined;
-  return prisma.tenant.create({
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getTemplate, applyTemplateAtCreation } = require("./tenantTemplates");
+  const template = getTemplate(input.template);
+  const created = await prisma.tenant.create({
     data: {
       name: input.name,
       notifyEmail: input.notifyEmail || "",
       lockedPages: sanitizeLockedPages(input.lockedPages),
       billingStatus: input.billingStatus,
       ...(labels ? { labels } : {}),
+      // TENANT TEMPLATES: stamp + non-checkbox AI config in the SAME create.
+      // General (and no template) adds nothing beyond its stamp — the created
+      // row is byte-identical to a pre-template creation otherwise.
+      ...(template ? { templateKey: template.key } : {}),
+      ...(template && template.aiSchedulingTarget != null ? { aiScheduleTarget: template.aiSchedulingTarget } : {}),
+      ...(template && template.aiIntake != null ? { aiCreateWorkOrders: template.aiIntake } : {}),
     } as any,
   });
+  if (template) await applyTemplateAtCreation(created.id, template);
+  return created;
 }
 
 export async function updatePortal(
