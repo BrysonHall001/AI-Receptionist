@@ -115,7 +115,8 @@ async function main() {
   const w = bootDom(base, htok, async (url, resp, w2) => {
     if (url.includes("/api/admin/tenant-templates")) {
       const data = await resp.json();
-      data.templates.push({ key: "fixture_probe", label: "Fixture", description: "test-only", pagesOffPrefill: ["#/feedback"], modulesHiddenPrefill: ["vehicle"], pageLabelOverrides: { "#/calls": "Phone Log" }, fieldTweaks: { task: ["Crew size"] } });
+      // The fixture's deliberately ABSURD long name exercises the 2-line clamp.
+      data.templates.push({ key: "fixture_probe", label: "Fixture Deluxe Premium Field Operations Suite", description: "test-only", pagesOffPrefill: ["#/feedback"], modulesHiddenPrefill: ["vehicle"], pageLabelOverrides: { "#/calls": "Phone Log" }, fieldTweaks: { task: ["Crew size"] } });
       return new (globalThis as any).Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     return resp;
@@ -185,6 +186,31 @@ async function main() {
     "General's bottom tab is STATIC text \u2014 no control");
   const fsTabCb = () => (($$(".adm-tpl-card").find((c: any) => c.textContent.includes("Field Services")) as any).querySelector(".tpl-tab input"));
   check(!!fsTabCb() && fsTabCb().checked === false, "Field Services' tab carries the LC checkbox, unchecked before selection");
+  // ---- POLISH RE-EMIT assertions ----
+  // FIX 1: top-anchored text with the reserved clearance; name one notch down;
+  // a two-line-capable clamp for absurd fixture names.
+  check(cssSrc.includes("justify-content: flex-start; height: 100%; padding: 12px 16px 10px;")
+      && cssSrc.includes(".adm-tpl-name { font-weight: 700; font-size: 22px;")
+      && cssSrc.includes("-webkit-line-clamp: 2;"),
+    "FIX 1: the name TOP-ANCHORS below a reserved clearance (icon dip + spacing token), stepped one scale notch down on BOTH cards, with a 2-line clamp for fixture-length names");
+  const fxName: any = ($$(".adm-tpl-card").find((c: any) => c.textContent.includes("Fixture Deluxe")) as any).querySelector(".adm-tpl-name");
+  check(!!fxName && fxName.textContent === "Fixture Deluxe Premium Field Operations Suite",
+    "\u2026the fixture's 3-line-worthy name keeps its FULL text in the DOM (the clamp is visual-only ellipsis)");
+  // FIX 2: full tab strings, unclipped-by-construction — smaller-than-description
+  // text (token math), no ellipsis masking, and the checkbox can never shrink out.
+  check(genTab.textContent.trim() === "Default Learning Center configuration"
+      && (($$(".adm-tpl-card").find((c: any) => c.textContent.includes("Field Services")) as any).querySelector(".tpl-tab").textContent.trim() === "Custom-configure Learning Center?"),
+    "FIX 2: BOTH tab strings render complete");
+  check(cssSrc.includes(".tpl-tab { z-index: 2; border: 1px solid var(--accent); display: inline-flex; align-items: flex-end; justify-content: center; padding: 0 5px 5px; font-size: calc(var(--text-xs) - 3px);")
+      && !/\.tpl-tab \{[^}]*text-overflow/.test(cssSrc)
+      && cssSrc.includes(".tpl-tab input { margin: 0 0 1px; flex: 0 0 auto;"),
+    "\u2026tab text sits BELOW the description size (calc off the same token), no ellipsis to mask a regression, checkbox flex-locked");
+  // FIX 3: the AI label is a SUBSECTION HEADING above the row (Template pattern).
+  const aiZone: any = $(".adm-ai-zone");
+  check(!!aiZone && aiZone.firstElementChild.tagName === "LABEL" && aiZone.firstElementChild.className === "field-label"
+      && aiZone.children[1] && aiZone.children[1].classList.contains("adm-ai-row")
+      && !$(".adm-ai-left .field-label"),
+    "FIX 3: 'AI Receptionist' renders as a subsection HEADING (the Template section's exact label class) with the control row directly beneath \u2014 not beside the control");
   check(!!$(".adm-ai-desc") && $(".adm-ai-desc").textContent.startsWith("AI Receptionist is off"), "the PER-STATE description renders (Off copy)");
   segTo("Standard");
   check($(".adm-ai-desc").textContent.startsWith("Standard voice"), "\u2026and SWAPS instantly per state");
@@ -226,7 +252,7 @@ async function main() {
   fsTabCb().checked = true; fsTabCb().dispatchEvent(new w.Event("change"));
   bookingCb().checked = true; bookingCb().dispatchEvent(new w.Event("change"));
   check(bookingCb().checked === true, "a manual re-check STICKS afterward (batch-21 conflict rule intact)");
-  const fxCard = $$(".adm-tpl-card").find((c: any) => c.textContent.includes("Fixture"));
+  const fxCard = $$(".adm-tpl-card").find((c: any) => c.textContent.includes("Fixture Deluxe"));
   fxCard.click();
   const callsTitle = () => { const r = $$(".adm-row3").find((x: any) => x.querySelector(".adm-rowname") && ["Calls", "Phone Log"].includes(x.querySelector(".adm-rowname").textContent)); return r ? r.querySelector(".adm-rowname").textContent : null; };
   check(callsTitle() === "Phone Log", "FIXTURE: a page-label override swaps the row TITLE live (capability wired end-to-end)");

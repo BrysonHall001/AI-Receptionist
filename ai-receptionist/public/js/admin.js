@@ -804,9 +804,16 @@
     // inset rounded rect in the middle), clip-path on the fill layer only —
     // the container never changes. Vertical divider, then the per-state
     // description VERTICALLY CENTERED to the control. Nothing beneath.
-    const aiRow = el("div", "adm-ai-row u-mt-16");
+    // FIX 3 (polish re-emit): the label rendered LEFT of the control — an
+    // inline <label> beside the inline-flex control shared its line. It is now
+    // the panel's SUBSECTION HEADING pattern: the same field-label class and
+    // heading-to-content gap the TEMPLATE section uses, with the control +
+    // divider + description row directly beneath, left-aligned to the panel
+    // content edge.
+    const aiZone = el("div", "u-mt-16 adm-ai-zone");
+    aiZone.innerHTML = `<label class="field-label">AI Receptionist</label>`;
+    const aiRow = el("div", "adm-ai-row");
     const vWrap = el("div"); vWrap.classList.add("adm-featcol", "adm-ai-left");
-    vWrap.innerHTML = `<label class="field-label">AI Receptionist</label>`;
     const seg = el("div", "adm-seg");
     seg.setAttribute("role", "tablist");
     const SEG_STATES = [
@@ -850,7 +857,8 @@
     const aiRight = el("div", "adm-ai-right");
     aiRight.appendChild(aiDesc);
     aiRow.appendChild(aiRight);
-    s4.appendChild(aiRow);
+    aiZone.appendChild(aiRow);
+    s4.appendChild(aiZone);
     paintAiDesc();
 
     // (UI-fidelity v3: the live summary line + machinery are DELETED — the
