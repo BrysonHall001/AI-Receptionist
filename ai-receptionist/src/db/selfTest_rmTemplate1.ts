@@ -74,9 +74,12 @@ async function main() {
   check(rm.aiIntake === false && rm.aiSchedulingTarget === "booking" && rm.pagesOffPrefill.length === 0
       && JSON.stringify([...rm.modulesHiddenPrefill].sort()) === JSON.stringify([...RM_HIDDEN].sort()),
     "engine shape: intake OFF, target booking, all pages on, exactly the eight hidden modules");
+  // REPINNED (RM-2): the content pack now FILLS the hooks — this cell asserts
+  // the relabels + LC offer, and that the hooks carry the RM-2 pack (its own
+  // suite, selfTest_rmContentPack, owns the pack's depth).
   check(rm.customLcOffer === true && rm.moduleRelabels.booking.labelPlural === "Interviews" && rm.moduleRelabels.contact.labelPlural === "Candidates"
-      && rm.hooks.dashboards.length === 0 && rm.hooks.analytics.length === 0 && rm.hooks.libraryFlavor === null && rm.hooks.commDrafts.length === 0 && rm.hooks.aiInstructionSections.length === 0,
-    "LC offer on, both relabels declared, EVERY content-pack hook EMPTY (RM-2/RM-3 land later)");
+      && rm.hooks.dashboards.length > 0,
+    "LC offer on, both relabels declared, the RM-2 content pack rides the hooks");
   let threw = false; try { validateTemplates(["contact", "job"]); } catch { threw = true; }
   check(threw, "validateTemplates REJECTS a registry missing a relabeled module (unknown-key guard live)");
   validateTemplates(SYSTEM_RECORD_TYPES.map((d: any) => d.key)); // and passes on the real registry

@@ -111,7 +111,9 @@ async function main() {
     "GENERAL: Bookings chips exist (Title/Status/Scheduled window/Assigned staff)");
   const woChipsG = chipsOf("Work Orders");
   cardOf("Field Services").click(); await sleep(280);
-  check(chipsOf("Contacts")[0] === "Name" && chipsOf("Bookings").length > 0, "FIELD SERVICES: Contacts + Bookings rows still carry their true chips");
+  // REPINNED (RM-2 Part A, owner's rule): chips render IFF the row's checkbox
+  // is checked — FS unchecks Bookings, so its row is now CHIPLESS by design.
+  check(chipsOf("Contacts")[0] === "Name" && chipsOf("Bookings").length === 0, "FIELD SERVICES: checked rows (Contacts) chipped; unchecked rows (Bookings) chipless (RM-2 rule)");
   cardOf("Recruitment Marketing").click(); await sleep(280);
   check(chipsOf("Contacts")[0] === "Candidate source", "RECRUITMENT MARKETING: tweaks render FIRST on Contacts (Candidate source leads), then the true defaults");
   check(chipsOf("Bookings").length > 0 && chipsOf("Job Openings")[0] === "Department", "RM: Interviews (bookings) + Job Openings rows chipped");

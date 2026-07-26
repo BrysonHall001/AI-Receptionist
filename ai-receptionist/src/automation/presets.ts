@@ -46,6 +46,13 @@ export const LIBRARY_FLAVORS: Record<string, { categoryOrder: string[]; surfaceV
     categoryOrder: ["stay_in_touch", "follow_ups", "lead_capture", "pipeline"],
     surfaceVerticals: ["home_services"],
   },
+  // RM-2: the recruitment-marketing curation — candidates ARRIVE (lead
+  // capture) before anything else, then nurture. Same rules as FS: curation
+  // only, every generic entry stays reachable.
+  recruitment_marketing: {
+    categoryOrder: ["lead_capture", "follow_ups", "pipeline", "stay_in_touch"],
+    surfaceVerticals: ["recruiting"],
+  },
 };
 
 /** Order categories + presets for a flavor (null flavor = byte-identical input
@@ -1229,6 +1236,177 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
       ],
     },
     note: "The owner-side counterpart to 'Estimate expiring reminder' (which emails the customer). Uses the Estimates module's 'Valid until' date and needs a customer linked to the estimate. It nudges for EVERY estimate nearing expiry (it can't read the Status field) — delete or adjust the draft if that's too chatty. Runs on the scheduled-jobs sweep, once per estimate per date.",
+  },
+  // ===== RM-2: the RECRUITMENT MARKETING entries (vertical "recruiting"; ====
+  // surfaced first for RM tenants by LIBRARY_FLAVORS, ordinary reachable
+  // entries for everyone else). Every trigger/condition/action is the REAL
+  // machinery, cited per entry; all apply as DISABLED DRAFTS like every
+  // preset. Copy speaks recruiter (candidates / sources / interviews).
+  {
+    key: "rm_candidate_welcome",
+    name: "New candidate welcome",
+    description: "The moment an ad click becomes a captured candidate, send a warm intro.",
+    category: "lead_capture",
+    vertical: "recruiting",
+    summary: {
+      trigger: "A new candidate (contact) is created",
+      conditions: ["Only if they left an email address"],
+      actions: ["Send them a welcome email"],
+    },
+    shape: { trigger: "New candidate", actions: ["Send email"] },
+    definition: {
+      // ContactCreated + email guard: the "welcome_new_contact" pattern verbatim.
+      name: "New candidate welcome",
+      triggerType: "ContactCreated",
+      conditions: [{ field: "email", op: "not_empty" }],
+      actions: [
+        {
+          type: "send_email",
+          config: {
+            subject: "Thanks for your interest, {{name}}!",
+            html:
+              "<p>Hi {{name}},</p>" +
+              "<p>Thanks for raising your hand — we got your details and a recruiter from {{business}} will be in touch shortly. " +
+              "If you'd like to add anything (the role you're after, when you can start), just reply to this email.</p>" +
+              "<p>— {{business}}</p>",
+          },
+        },
+      ],
+    },
+    note: "Uses only standard fields ({{name}}, {{business}}), so it applies cleanly. The role itself isn't a merge field on contacts — mention it in your edit if you want it named.",
+  },
+  {
+    key: "rm_interview_reminder_daybefore",
+    name: "Interview reminder (day before)",
+    description: "The day before an interview, text the candidate a reminder.",
+    category: "follow_ups",
+    vertical: "recruiting",
+    summary: {
+      trigger: "24 hours before an interview's time",
+      conditions: [],
+      actions: ["Text the candidate a reminder"],
+    },
+    shape: { trigger: "24h before interview", actions: ["Text reminder"] },
+    definition: {
+      // The batch-10 AppointmentReminder machinery verbatim (booking default —
+      // the module RM relabels to Interviews), RM copy.
+      name: "Interview reminder (day before)",
+      triggerType: "AppointmentReminder:24:hours:before",
+      conditions: [],
+      actions: [
+        { type: "send_sms", config: { body: "Hi {{name}} — a reminder about your interview tomorrow ({{appointment}}). Reply here if the time no longer works and we'll move it." } },
+      ],
+    },
+    note: "Rides the same reminder sweep as every booking reminder. Texts need your Twilio number connected; until then it sits as a harmless draft.",
+  },
+  {
+    key: "rm_interview_reminder_hourbefore",
+    name: "Interview reminder (2 hours before)",
+    description: "A couple of hours out, one last nudge so the interview actually happens.",
+    category: "follow_ups",
+    vertical: "recruiting",
+    summary: {
+      trigger: "2 hours before an interview's time",
+      conditions: [],
+      actions: ["Text the candidate a reminder"],
+    },
+    shape: { trigger: "2h before interview", actions: ["Text reminder"] },
+    definition: {
+      name: "Interview reminder (2 hours before)",
+      triggerType: "AppointmentReminder:2:hours:before",
+      conditions: [],
+      actions: [
+        { type: "send_sms", config: { body: "Hi {{name}} — your interview is coming up ({{appointment}}). See you soon!" } },
+      ],
+    },
+    note: "The same mechanism as the day-before reminder — two flows so you can keep one and drop the other.",
+  },
+  {
+    key: "rm_stale_candidate_nudge",
+    name: "Stale candidate nudge",
+    description: "A week after a candidate lands, ping your team if they're still sitting in the early stages.",
+    category: "follow_ups",
+    vertical: "recruiting",
+    summary: {
+      trigger: "7 days after a candidate's created date",
+      conditions: ["Only if their stage is still New lead or Contacted"],
+      actions: ["Notify the business"],
+    },
+    shape: { trigger: "7 days after created", actions: ["Notify business"] },
+    definition: {
+      // The "stale_contact_followup" Scheduled: mechanism verbatim, with a
+      // candidate_stage condition (contact custom field — RM-1 seeds it; the
+      // conditions engine reads contact custom fields by key).
+      name: "Stale candidate nudge",
+      triggerType: "Scheduled:createdAt:7:days:after",
+      conditions: [
+        { field: "candidate_stage", op: "is", value: "New lead" },
+        { field: "candidate_stage", op: "is", value: "Contacted", conj: "OR" },
+      ],
+      actions: [
+        { type: "notify_business", config: { message: "{{name}} came in a week ago and is still early-stage — worth a call today." } },
+      ],
+    },
+    note: "References the Candidate stage field the Recruitment Marketing template seeds; on a workspace without that field the condition simply never matches.",
+  },
+  {
+    key: "rm_submitted_to_client",
+    name: "Submitted-to-client update",
+    description: "The moment a candidate's stage flips to Submitted to client, tell your team.",
+    category: "pipeline",
+    vertical: "recruiting",
+    summary: {
+      trigger: "Candidate stage changes to Submitted to client",
+      conditions: [],
+      actions: ["Notify the business"],
+    },
+    shape: { trigger: "Stage \u2192 Submitted", actions: ["Notify business"] },
+    definition: {
+      // FieldChanged:<key> — contactService emits FieldChanged with the field
+      // key on every contact field edit (incl. custom fields); the engine
+      // matches the scoped trigger string.
+      name: "Submitted-to-client update",
+      triggerType: "FieldChanged:candidate_stage",
+      conditions: [{ field: "candidate_stage", op: "is", value: "Submitted to client" }],
+      actions: [
+        { type: "notify_business", config: { message: "{{name}} was just submitted to the client \u2014 keep the momentum: confirm the client interview window." } },
+      ],
+    },
+    note: "Fires on any Candidate-stage edit and the condition narrows it to Submitted to client \u2014 hand-buildable in the builder exactly as applied.",
+  },
+  {
+    key: "rm_post_interview_followup",
+    name: "Post-interview follow-up",
+    description: "When an interview is marked completed, thank the candidate and set up next steps.",
+    category: "stay_in_touch",
+    vertical: "recruiting",
+    summary: {
+      trigger: "An interview's status changes to Completed",
+      conditions: ["Only if the candidate has an email address"],
+      actions: ["Send a thank-you + next-steps email"],
+    },
+    shape: { trigger: "Interview completed", actions: ["Send email"] },
+    definition: {
+      // BookingStatusChanged:<status=...> — the scoped-status convention the
+      // no-show preset uses, pointed at the seeded "completed" stage key.
+      name: "Post-interview follow-up",
+      triggerType: "BookingStatusChanged:status=completed",
+      conditions: [{ field: "email", op: "not_empty" }],
+      actions: [
+        {
+          type: "send_email",
+          config: {
+            subject: "Thanks for interviewing with us, {{name}}",
+            html:
+              "<p>Hi {{name}},</p>" +
+              "<p>Thanks for taking the time today \u2014 it was great to talk. We'll review with the team and get back to you with next steps shortly. " +
+              "If anything comes up in the meantime, just reply here.</p>" +
+              "<p>\u2014 {{business}}</p>",
+          },
+        },
+      ],
+    },
+    note: "Fires when you (or the AI) mark the interview Completed. Applies as a disabled draft like everything in the library.",
   },
 ];
 

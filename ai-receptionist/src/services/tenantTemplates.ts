@@ -230,7 +230,99 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
       contact: { label: "Candidate", labelPlural: "Candidates" },
     },
     // RM-2 fills these; the shape ships EMPTY exactly like FS did pre-pack.
-    hooks: { ...EMPTY_HOOKS },
+    // RM-2 — the RECRUITMENT MARKETING CONTENT PACK (the batch-22 hook engine,
+    // byte-identical mechanism). Every widget uses a REAL type (kpi/list/pie/
+    // line/bar), a REAL source (contacts/booking/calls), and KEYED fields
+    // (candidate_source etc — RM-1's seeded FieldDefs; relabels never break
+    // them). Date rules limited to the REAL ops (is/today/previous — no
+    // "upcoming" op exists, so the interviews widget is a last-7-days window,
+    // titled honestly).
+    hooks: {
+      ...EMPTY_HOOKS,
+      libraryFlavor: "recruitment_marketing", // curation key -> LIBRARY_FLAVORS (presets.ts)
+      dashboards: [
+        {
+          name: "__home__",
+          widgets: [
+            { id: "rm_home_new_candidates", title: "New candidates this week", type: "kpi", source: "contacts", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "createdAt", op: "previous", value: 7, unit: "days", conj: "AND" }] },
+            { id: "rm_home_by_source", title: "Candidates by source", type: "pie", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "candidate_source" }], series: [], filters: [] },
+            { id: "rm_home_interviews", title: "Interviews (last 7 days)", type: "kpi", source: "booking", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "appointmentAt", op: "previous", value: 7, unit: "days", conj: "AND" }] },
+            { id: "rm_home_pipeline", title: "Pipeline snapshot", type: "pie", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "candidate_stage" }], series: [], filters: [] },
+            { id: "rm_home_hired", title: "Hired candidates", type: "kpi", source: "contacts", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "candidate_stage", op: "is", value: "Hired", conj: "AND" }] },
+          ],
+        },
+      ],
+      // Part C — three seeded ANALYTICS dashboards (names exactly as the
+      // owner quoted them). No funnel type exists, so the conversions are
+      // separate counted KPIs (flagged at R1) — but the client engine DOES
+      // ship a real HEATMAP (reports.js kind "heatmap": groupBy × series
+      // matrix), so "source × stage" is a first-class widget after all.
+      // "Cancelled interviews" is real: booking record stages seed a
+      // "cancelled" key (recordTypeService DEFAULT_BOOKING_RECORD_STAGES).
+      analytics: [
+        {
+          name: "Candidate pipeline",
+          widgets: [
+            { id: "rm_pipe_stage_dist", title: "Candidates by stage", type: "pie", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "candidate_stage" }], series: [], filters: [] },
+            { id: "rm_pipe_new_week", title: "New candidates per week", type: "line", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "createdAt", date: "week" }], series: [], filters: [] },
+            { id: "rm_pipe_flow_time", title: "Pipeline over time (by week added)", type: "stacked", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "createdAt", date: "week" }], series: [{ key: "candidate_stage" }], filters: [] },
+            { id: "rm_pipe_conv_new", title: "New leads (count)", type: "kpi", source: "contacts", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "candidate_stage", op: "is", value: "New lead", conj: "AND" }] },
+            { id: "rm_pipe_conv_interviewed", title: "Interviewed (count)", type: "kpi", source: "contacts", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "candidate_stage", op: "is", value: "Interviewed", conj: "AND" }] },
+          ],
+        },
+        {
+          name: "Where candidates come from",
+          widgets: [
+            { id: "rm_src_over_time", title: "Candidates by source over time", type: "stacked", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "createdAt", date: "week" }], series: [{ key: "candidate_source" }], filters: [] },
+            { id: "rm_src_share", title: "Source share", type: "pie", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "candidate_source" }], series: [], filters: [] },
+            { id: "rm_src_stage_matrix", title: "Source × stage", type: "heatmap", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "candidate_source" }], series: [{ key: "candidate_stage" }], filters: [] },
+            { id: "rm_src_hires", title: "Hires by source (the ad-ROI view)", type: "bar", source: "contacts", measure: { op: "count" }, groupBy: [{ key: "candidate_source" }], series: [], filters: [{ field: "candidate_stage", op: "is", value: "Hired", conj: "AND" }] },
+          ],
+        },
+        {
+          name: "Interviews & calls",
+          widgets: [
+            { id: "rm_int_per_week", title: "Interviews per week", type: "line", source: "booking", measure: { op: "count" }, groupBy: [{ key: "appointmentAt", date: "week" }], series: [], filters: [] },
+            { id: "rm_int_calls_week", title: "AI calls per week", type: "line", source: "calls", measure: { op: "count" }, groupBy: [{ key: "createdAt", date: "week" }], series: [], filters: [] },
+            { id: "rm_int_cancelled", title: "Cancelled interviews", type: "kpi", source: "booking", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "stageKey", op: "is", value: "cancelled", conj: "AND" }] },
+            { id: "rm_int_no_show", title: "No-shows", type: "kpi", source: "booking", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "stageKey", op: "is", value: "no_show", conj: "AND" }] },
+          ],
+        },
+      ],
+      // Part E1 — three email templates + ONE survey, created INACTIVE/draft
+      // through templateService/surveyService. Merge tags limited to the ones
+      // that actually resolve for contacts ({{name}}, {{business}},
+      // {{appointment}} on appointment sends) — no invented tags.
+      commDrafts: [
+        { kind: "email", name: "Candidate welcome", subject: "Thanks for your interest, {{first_name}}", body: "<p>Hi {{first_name}},</p><p>Thanks for reaching out to {{business}} \u2014 we've got your details and a recruiter will follow up shortly. If there's a particular role or shift you're after, just reply here and tell us.</p><p>\u2014 {{business}}</p>" },
+        { kind: "email", name: "Interview confirmation", subject: "Your interview is booked", body: "<p>Hi {{first_name}},</p><p>You're confirmed \u2014 we'll send the time, the address, and anything to bring. If the slot stops working, reply here and we'll move it.</p><p>\u2014 {{business}}</p>" },
+        { kind: "email", name: "Post-interview thank you", subject: "Thanks for your time, {{first_name}}", body: "<p>Hi {{first_name}},</p><p>Thanks for interviewing with us. We're reviewing with the team and will come back to you with next steps shortly. Questions in the meantime? Just reply.</p><p>\u2014 {{business}}</p>" },
+        { kind: "survey", name: "How was the process?", description: "A quick check-in with candidates about how hiring felt.", questions: [
+          { type: "rating", label: "How would you rate the process overall?", required: true },
+          { type: "yes_no", label: "Did you hear back as quickly as you expected?" },
+          { type: "yes_no", label: "Was the role described accurately?" },
+          { type: "long_text", label: "Anything we could do better?" },
+        ] },
+      ],
+      // Part E2 — ONE seeded AI Instructions section (the "## <Name>"
+      // sectioned-editor format). A SCAFFOLD the owner edits, phrased to
+      // COMPOSE with the built-in prompt: it never contradicts the booking /
+      // scheduling-target blocks (RM books interviews natively) and adds the
+      // recruiting never-promise rules.
+      aiInstructionSections: [
+        {
+          name: "Recruiting context",
+          body: [
+            "We are a recruitment marketing agency. Edit this section so the receptionist knows the basics:",
+            "- What we recruit for: (e.g. warehouse, driving, and light-industrial roles across the region)",
+            "- How candidates reach us: (usually an ad or an interest form, so most callers are asking about a role they saw)",
+            "- Interviews: book callers into an interview slot and confirm the time back to them.",
+            "- Never promise a job offer, a pay rate, a start date, or name a client company unless we've told you to.",
+            "- Tone: warm and plain \u2014 candidates are job hunting, so be encouraging and never pushy.",
+          ].join("\n"),
+        },
+      ],
+    },
   },
 ];
 

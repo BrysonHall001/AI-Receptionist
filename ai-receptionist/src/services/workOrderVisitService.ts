@@ -52,6 +52,16 @@ export function activeVisitOf(visits: any[], now: Date = new Date()): any | null
   return sched.sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())[0];
 }
 
+/** SERIALIZE visit writes per job: two landing at once would each compute the
+ *  mirror from their own snapshot and the later-committing one could store a
+ *  staler value. Taken FIRST in every mutating transaction (before the visit
+ *  write, so lock order is uniform) and as FOR NO KEY UPDATE — compatible with
+ *  the FK's KEY SHARE lock, so writers queue instead of deadlocking. Different
+ *  jobs never contend. */
+export async function lockRecordTx(tx: any, recordId: string): Promise<void> {
+  await tx.$executeRaw`SELECT "id" FROM "Record" WHERE "id" = ${recordId} FOR NO KEY UPDATE`;
+}
+
 async function assertWorkOrder(tenantId: string, recordId: string): Promise<any> {
   if (!recordId || typeof recordId !== "string") throw new Error("Record not found."); // undefined must NEVER wildcard-match
   const rec = await db.record.findFirst({ where: { id: recordId, tenantId }, include: { recordType: { select: { key: true } } } });
@@ -109,6 +119,7 @@ export async function createVisit(tenantId: string, recordId: string, input: { s
   if (input.startAt && isNaN(startAt as any)) throw new Error("Invalid visit start.");
   const endAt = input.endAt ? new Date(input.endAt) : null;
   const created = await db.$transaction(async (tx: any) => {
+    await lockRecordTx(tx, recordId);
     const max = await tx.workOrderVisit.aggregate({ where: { tenantId, recordId }, _max: { ordinal: true } });
     const v = await tx.workOrderVisit.create({ data: { tenantId, recordId, ordinal: (max._max.ordinal || 0) + 1, startAt, endAt, resourceId: input.resourceId ?? null, state: startAt ? "scheduled" : "pending" } });
     await recomputeMirrorTx(tx, tenantId, recordId);
@@ -131,6 +142,7 @@ export async function scheduleVisit(tenantId: string, visitId: string, input: { 
   const startAt = new Date(input.startAt);
   if (isNaN(startAt as any)) throw new Error("Invalid visit start.");
   const updated = await db.$transaction(async (tx: any) => {
+    await lockRecordTx(tx, v.recordId);
     const u = await tx.workOrderVisit.update({ where: { id: v.id }, data: { startAt, endAt: input.endAt ? new Date(input.endAt) : null, ...(input.resourceId !== undefined ? { resourceId: input.resourceId } : {}), state: "scheduled" } });
     await recomputeMirrorTx(tx, tenantId, v.recordId);
     return u;
@@ -142,6 +154,7 @@ export async function scheduleVisit(tenantId: string, visitId: string, input: { 
 export async function reassignVisit(tenantId: string, visitId: string, resourceId: string | null, actor: EventActor = { type: "user" }): Promise<VisitDTO> {
   const v = await loadVisit(tenantId, visitId);
   const updated = await db.$transaction(async (tx: any) => {
+    await lockRecordTx(tx, v.recordId);
     const u = await tx.workOrderVisit.update({ where: { id: v.id }, data: { resourceId } });
     await recomputeMirrorTx(tx, tenantId, v.recordId);
     return u;
@@ -153,6 +166,7 @@ export async function reassignVisit(tenantId: string, visitId: string, resourceI
 export async function completeVisit(tenantId: string, visitId: string, actor: EventActor = { type: "user" }): Promise<VisitDTO> {
   const v = await loadVisit(tenantId, visitId);
   const updated = await db.$transaction(async (tx: any) => {
+    await lockRecordTx(tx, v.recordId);
     const u = await tx.workOrderVisit.update({ where: { id: v.id }, data: { state: "done" } });
     await recomputeMirrorTx(tx, tenantId, v.recordId);
     return u;
@@ -164,6 +178,7 @@ export async function completeVisit(tenantId: string, visitId: string, actor: Ev
 export async function cancelVisit(tenantId: string, visitId: string, actor: EventActor = { type: "user" }): Promise<VisitDTO> {
   const v = await loadVisit(tenantId, visitId);
   const updated = await db.$transaction(async (tx: any) => {
+    await lockRecordTx(tx, v.recordId);
     const u = await tx.workOrderVisit.update({ where: { id: v.id }, data: { state: "cancelled" } });
     await recomputeMirrorTx(tx, tenantId, v.recordId);
     return u;
@@ -178,6 +193,7 @@ export async function cancelVisit(tenantId: string, visitId: string, actor: Even
 export async function cancelPendingVisits(tenantId: string, recordId: string, actor: EventActor = { type: "user" }): Promise<number> {
   const rec = await assertWorkOrder(tenantId, recordId);
   const n = await db.$transaction(async (tx: any) => {
+    await lockRecordTx(tx, rec.id);
     const res = await tx.workOrderVisit.updateMany({ where: { tenantId, recordId: rec.id, state: "pending" }, data: { state: "cancelled" } });
     await recomputeMirrorTx(tx, tenantId, rec.id);
     return res.count;

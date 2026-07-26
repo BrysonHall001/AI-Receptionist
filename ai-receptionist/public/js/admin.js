@@ -973,6 +973,26 @@
     // TEMPLATE PREFILL: set every togglable box to the template's starting state
     // and rebuild the draft from the boxes. Manual edits AFTER this always win —
     // Finish submits the boxes, not the template.
+    // RM-2 PART A (the owner's definitive rule, superseding batch-26's
+    // chips-everywhere): a module row shows chips IF AND ONLY IF its checkbox is
+    // CURRENTLY CHECKED. Content = the SELECTED template's tweaks FIRST (the
+    // delta the click is showing you), then the module's true stock defaults —
+    // exactly what the created tenant will have. Live-reactive: called at row
+    // build, on every checkbox change, and in the template-prefill pass (the
+    // same pass that swaps checkboxes + descriptions), so manual re-checks show
+    // chips immediately and unchecks clear them — including the "+N more" pill
+    // (it only exists where chips render). The batch-25 stale-chip clear is now
+    // subsumed: every call fully repaints or fully clears.
+    function repaintRowChips(mr) {
+      if (!mr || !mr.chipsHost) return;
+      if (!mr.cb || !mr.cb.checked) { mr.chipsHost.innerHTML = ""; return; }
+      const t = templatesMeta.find((x) => x.key === draft.template);
+      const tweaks = (t && t.fieldTweaks) || {};
+      const tw = Array.isArray(tweaks[mr.key]) ? tweaks[mr.key] : [];
+      const labels = tw.concat(mr.fields || []);
+      if (labels.length) renderChips(mr.chipsHost, labels);
+      else mr.chipsHost.innerHTML = "";
+    }
     function applyTemplatePrefill(t) {
       const hide = new Set(t && t.modulesHiddenPrefill || []);
       moduleRows.forEach((mr) => { if (!mr.cb.disabled) mr.cb.checked = !hide.has(mr.key); });
@@ -994,19 +1014,7 @@
         const ov = pr.hrefs.map((h) => overrides[h]).find((x) => !!x);
         pr.nameEl.textContent = ov || pr.defaultLabel;
       });
-      const tweaks = (t && t.fieldTweaks) || {};
-      moduleRows.forEach((mr) => {
-        if (!mr.chipsHost) return;
-        // Template tweaks FIRST — they're the delta the click is showing you,
-        // so they must be visible, not folded into "+N more".
-        const tw = Array.isArray(tweaks[mr.key]) ? tweaks[mr.key] : [];
-        const labels = tw.concat(mr.fields || []);
-        // RM-1 fix (latent since batch 23): ALWAYS repaint — the old
-        // labels.length guard left the PREVIOUS template's tweak chips behind
-        // on a module with no seeded fields (visible once RM tweaked Contacts).
-        if (labels.length) renderChips(mr.chipsHost, labels);
-        else mr.chipsHost.innerHTML = "";
-      });
+      moduleRows.forEach((mr) => repaintRowChips(mr));
       repaintModuleDescs();
       updateStartSummary();
     }
@@ -1101,7 +1109,9 @@
         const descEl = el("span", "adm-rowdesc adm-r3-desc");
         const chipsHost = el("span", "adm-chips adm-r3-chips");
         const fields = Array.isArray(opt.fields) ? opt.fields : [];
-        if (fields.length) renderChips(chipsHost, fields);
+        // RM-2 Part A: the initial paint rides the same checked-iff gate (the
+        // row object isn't built yet, so paint inline under the same rule).
+        if (cb.checked && fields.length) renderChips(chipsHost, fields);
         if (!opt.togglable) {
           // Contact (core): always on, not editable.
           cb.disabled = true; row.classList.add("u-cursor-default");
@@ -1116,6 +1126,8 @@
             const set = new Set(draft.hiddenRecordTypes);
             if (cb.checked) set.delete(opt.key); else set.add(opt.key);
             draft.hiddenRecordTypes = Array.from(set);
+            // RM-2 Part A: chips follow the checkbox, live, both directions.
+            repaintRowChips(moduleRows.find((m) => m.key === opt.key));
             updateStartSummary();
           };
         }
