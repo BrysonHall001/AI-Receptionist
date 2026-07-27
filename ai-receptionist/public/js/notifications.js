@@ -15,6 +15,14 @@
   const App = (window.App = window.App || {});
 
   const PANEL_ID = "notif-panel";
+  // VIEWPORT FIT LAW: the panel never extends past the bottom of the actual
+  // window. 480px is a comfort cap, not a promise — the real limit is whatever
+  // room is left below the bell, and it is recomputed on open, on resize and
+  // on tab switch (a taller tab must not push the footer off-screen).
+  const PANEL_COMFORT_MAX = 480;   // the shipped feel on a big screen
+  const PANEL_MIN = 240;           // below this the panel is useless, so it climbs instead
+  const PANEL_MARGIN = 16;         // --sp-4: breathing room above the window edge
+  const PANEL_GAP = 8;             // --sp-2: gap between the bell and the panel
   let bellEl = null;
   let badgeEl = null;
   let lastSeenIds = null;   // ids already known — anything new may toast
@@ -53,6 +61,29 @@
     if (returnFocus && bellEl) { try { bellEl.focus(); } catch (e) { /* */ } }
   }
 
+  /** Place and SIZE the panel against the live viewport. Returns the metrics so
+   *  a test (or a curious human) can check the arithmetic. */
+  function fitPanel(pop) {
+    if (!pop || !bellEl) return null;
+    const rect = bellEl.getBoundingClientRect();
+    const width = 400;
+    const viewportH = window.innerHeight || 800;
+    let topInViewport = rect.bottom + PANEL_GAP;
+    let available = viewportH - topInViewport - PANEL_MARGIN;
+    if (available < PANEL_MIN) {
+      // Not enough room below the bell: climb toward the top of the window
+      // (rather than flipping above it, which would cover the very page the
+      // panel is describing) and take what's left.
+      topInViewport = Math.max(PANEL_MARGIN, viewportH - PANEL_MARGIN - PANEL_MIN);
+      available = viewportH - topInViewport - PANEL_MARGIN;
+    }
+    const maxHeight = Math.max(PANEL_MIN, Math.min(PANEL_COMFORT_MAX, available));
+    pop.style.setProperty("top", (topInViewport + window.scrollY) + "px");
+    pop.style.setProperty("left", Math.max(8, Math.min(rect.right + window.scrollX - width, window.innerWidth - width - 8)) + "px");
+    pop.style.setProperty("max-height", maxHeight + "px");
+    return { topInViewport, maxHeight, viewportH, bottomInViewport: topInViewport + maxHeight, margin: PANEL_MARGIN };
+  }
+
   function rowEl(n) {
     const row = el("button", "notif-row" + (n.readAt ? "" : " notif-unread"));
     row.type = "button";
@@ -88,8 +119,9 @@
   }
 
   /** A suggestion CARD: type label -> finding -> transparency line -> actions. */
-  function suggestionCard(sg, onGone) {
-    const card = el("div", "card notif-sug");
+  function suggestionCard(sg, onGone, opts) {
+    const compact = !!(opts && opts.compact);   // panel density; the page uses the roomy default
+    const card = el("div", "card notif-sug" + (compact ? " notif-sug--compact" : ""));
     const head = el("div", "notif-sug-head cell-muted");
     head.appendChild(el("span", "notif-sug-ic", App.icons ? App.icons.forNotificationCategory("suggestion") : ""));
     head.appendChild(el("span", null, esc(TYPE_LABELS[sg.type] || "Suggestion")));
@@ -158,7 +190,15 @@
     const body = el("div", "notif-body");
     let tab = "activity";
     const head = el("div", "notif-head");
-    const paintTabs = () => { head.innerHTML = ""; head.appendChild(tabsEl(tab, (k) => { tab = k; paintTabs(); paint(); })); };
+    const paintTabs = () => {
+      head.innerHTML = "";
+      head.appendChild(tabsEl(tab, (k) => { tab = k; paintTabs(); paint(); fitPanel(pop); }));
+      // "See all" lives in the pinned HEADER now: it used to sit in the footer,
+      // which is the first thing to fall off the bottom of a laptop screen.
+      const headActions = el("div", "notif-head-actions");
+      headActions.appendChild(seeAll);
+      head.appendChild(headActions);
+    };
     const paint = async () => {
       body.innerHTML = "";
       if (tab === "suggestions") {
@@ -170,7 +210,7 @@
           suggestionCount = (r && r.openCount) || 0;
           paintTabs();
           if (!items.length) { body.appendChild(el("div", "notif-empty cell-muted", "Nothing right now — Clarity will post suggestions here as it spots patterns.")); return; }
-          items.forEach((sg) => body.appendChild(suggestionCard(sg, () => { if (!body.querySelector(".notif-sug")) paint(); })));
+          items.forEach((sg) => body.appendChild(suggestionCard(sg, () => { if (!body.querySelector(".notif-sug")) paint(); }, { compact: true })));
         } catch (e) {
           body.innerHTML = "";
           body.appendChild(el("div", "notif-empty cell-muted", "Couldn't load suggestions."));
@@ -201,21 +241,18 @@
       try { await App.portalApi("/api/notifications/read-all", { method: "POST" }); } catch (e) { /* */ }
       refreshCount(); paint();
     };
-    const seeAll = el("button", "btn btn-ghost btn-sm notif-foot-r", "See all");
+    const seeAll = el("button", "btn btn-ghost btn-sm notif-head-see", "See all");
     seeAll.type = "button";
     seeAll.onclick = () => { closePanel(false); App.go("#/notifications"); };
-    foot.appendChild(allRead); foot.appendChild(seeAll);
+    foot.appendChild(allRead);
     paintTabs();
     pop.appendChild(head);
     pop.appendChild(body);
     pop.appendChild(foot);
     document.body.appendChild(pop);
-    // anchored below-RIGHT of the bell, in document coords (body-appended, so no
-    // ancestor can clip it); clamped to the viewport.
-    const rect = bellEl.getBoundingClientRect();
-    const width = 400;
-    pop.style.setProperty("top", (rect.bottom + window.scrollY + 8) + "px");
-    pop.style.setProperty("left", Math.max(8, Math.min(rect.right + window.scrollX - width, window.innerWidth - width - 8)) + "px");
+    // Anchored below-RIGHT of the bell in document coords (body-appended, so no
+    // ancestor can clip it), then FITTED to the live viewport.
+    fitPanel(pop);
     paint();
     // PERSISTENT listeners (not {once:true}): clicks INSIDE the panel are
     // normal — tabs, Mark all read — and must not consume the outside-click
@@ -225,14 +262,17 @@
       if (ev.target && (ev.target === bellEl || (bellEl && bellEl.contains(ev.target)) || pop.contains(ev.target))) return;
       closePanel(false);
     };
+    const onResize = () => fitPanel(pop);
     const onHash = () => closePanel(false); // route change closes it
     document.addEventListener("keydown", onKey);
     setTimeout(() => document.addEventListener("click", onDocClick), 0);
     window.addEventListener("hashchange", onHash);
+    window.addEventListener("resize", onResize);
     panelCleanup = () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("click", onDocClick);
       window.removeEventListener("hashchange", onHash);
+      window.removeEventListener("resize", onResize);
     };
   }
 
@@ -286,6 +326,18 @@
    *  house filter-chips pattern), a read/unread filter, text search over
    *  title+body, and the house "Load more" pagination (the audit log's
    *  precedent). Not a nav item, not lockable. */
+  /** #/notifications — the full page.
+   *
+   *  ACTIVITY is homogeneous, so it is a real house TABLE (App.table.mount),
+   *  which brings the house toolbar, Filters rail, search box, sorting and
+   *  empty state with it — the same machinery every module list page uses, and
+   *  the reason the toolbar now aligns to the content container by
+   *  construction rather than by hand.
+   *
+   *  SUGGESTIONS is heterogeneous (each item has its own verb), so columns
+   *  would be dishonest: it uses the SAME list machinery with a single content
+   *  column plus an actions column, which reads as compact rows.
+   */
   async function renderPage(host) {
     if (!host) return;
     host.innerHTML = "";
@@ -294,126 +346,140 @@
     h.appendChild(el("h1", null, "Notifications"));
     wrap.appendChild(h);
 
-    const state = { cats: [], unreadOnly: false, q: "", before: null, items: [] };
-    const toolbar = el("div", "toolbar notif-toolbar");
-    const left = el("div", "toolbar-left");
-    const chips = el("div", "filter-chips");
-    left.appendChild(chips);
-    const right = el("div", "toolbar-right");
-    const search = el("input", "search-input");
-    search.type = "search"; search.placeholder = "Search notifications…";
-    right.appendChild(App.util.searchBox ? App.util.searchBox(search) : search);
-    toolbar.appendChild(left); toolbar.appendChild(right);
-    wrap.appendChild(toolbar);
-
-    const listCard = el("div", "card notif-page-card");
-    const listHost = el("div", "notif-page-list");
-    listCard.appendChild(listHost);
-    const moreWrap = el("div", "notif-page-more");
-    const moreBtn = el("button", "btn btn-ghost btn-sm", "Load more");
-    moreWrap.appendChild(moreBtn);
-    listCard.appendChild(moreWrap);
-    wrap.appendChild(listCard);
+    // House underline tabs — the same component as Settings → AI Receptionist
+    // (portal.js #mountAiSettings), classes byte-for-byte.
+    const bar = el("div", "settings-tabs");
+    const content = el("div", "notif-page-content");
+    wrap.appendChild(bar);
+    wrap.appendChild(content);
     host.appendChild(wrap);
 
-    // Emergent layer 2: the page gains a SUGGESTIONS view alongside Activity,
-    // using the same chip row (the house filter pattern) as its switch.
-    let view = "activity";
-    const viewRow = el("div", "filter-chips notif-viewrow");
-    const paintViews = () => {
-      viewRow.innerHTML = "";
+    let tab = "activity";
+    const paintBar = () => {
+      bar.innerHTML = "";
       [["activity", "Activity"], ["suggestions", "Suggestions"]].forEach(([k, label]) => {
-        const b = el("button", "chip notif-chip" + (view === k ? " notif-chip-on" : ""), esc(label));
-        b.type = "button";
-        b.onclick = () => { view = k; paintViews(); if (view === "suggestions") paintSuggestions(); else reload(); };
-        viewRow.appendChild(b);
+        const b = el("button", null, esc(label));
+        b.className = "settings-tab" + (tab === k ? " active" : "");
+        b.onclick = () => { if (tab !== k) { tab = k; paintBar(); void paintTab(); } };
+        bar.appendChild(b);
       });
     };
+
+    async function paintActivity() {
+      content.innerHTML = "";
+      const host2 = el("div");
+      content.appendChild(host2);
+      let data;
+      try { data = await App.portalApi("/api/notifications?limit=200"); }
+      catch (e) { content.appendChild(el("div", "empty", "<h3>Couldn't load notifications</h3><p>Try again in a moment.</p>")); return; }
+      categories = (data && data.categories) || categories;
+      visitorMode = !!(data && data.visitor);
+      const labelFor = {};
+      categories.forEach((c) => { labelFor[c.key] = c.label; });
+      const rows = ((data && data.items) || []).map((n) => ({
+        id: n.id, category: n.category, categoryLabel: labelFor[n.category] || n.category,
+        title: n.title, body: n.body || "", link: n.link || null,
+        when: n.createdAt, whenLabel: relTime(n.createdAt), readAt: n.readAt,
+      }));
+      App.table.mount({
+        container: host2,
+        rows,
+        rowId: (r) => r.id,
+        tableId: "notif-activity",
+        defaultSort: "when",
+        defaultSortDir: "desc",
+        rowClass: (r) => (r.readAt ? "" : "notif-row-unread"),
+        emptyHtml: `<div class="empty"><h3>Nothing new</h3><p>Activity will show up here as things happen in this workspace.</p></div>`,
+        columns: [
+          { key: "categoryLabel", label: "Kind", cellClass: "notif-col-kind", get: (r) => r.categoryLabel,
+            render: (r) => `<span class="notif-col-kindwrap"><span class="notif-row-ic">${App.icons ? App.icons.forNotificationCategory(r.category) : ""}</span>${esc(r.categoryLabel)}</span>` },
+          { key: "title", label: "Notification", get: (r) => `${r.title} ${r.body || ""}`.trim(),
+            render: (r) => `<span class="notif-col-title">${esc(r.title)}</span>${r.body ? `<span class="notif-col-body cell-muted">${esc(r.body)}</span>` : ""}` },
+          { key: "when", label: "When", cellClass: "notif-col-when", type: "date", get: (r) => r.when,
+            render: (r) => `<span title="${esc(new Date(r.when).toLocaleString())}">${esc(r.whenLabel)}</span>` },
+        ],
+        onRowClick: async (r) => {
+          if (!visitorMode) { try { await App.portalApi("/api/notifications/" + encodeURIComponent(r.id) + "/read", { method: "POST" }); } catch (e) { /* best effort */ } }
+          refreshCount();
+          if (r.link) App.go(r.link);
+        },
+      });
+    }
+
     async function paintSuggestions() {
-      chips.innerHTML = "";
-      moreWrap.style.setProperty("display", "none");
-      listHost.innerHTML = "";
-      listHost.appendChild(el("div", "notif-empty cell-muted", "Loading\u2026"));
+      content.innerHTML = "";
+      const host2 = el("div");
+      content.appendChild(host2);
+      let open, acc, dis;
       try {
-        const [openR, accR, disR] = await Promise.all([
-          App.portalApi("/api/suggestions?status=pending&limit=50"),
+        [open, acc, dis] = await Promise.all([
+          App.portalApi("/api/suggestions?status=pending&limit=100"),
           App.portalApi("/api/suggestions?status=accepted&limit=50"),
           App.portalApi("/api/suggestions?status=dismissed&limit=50"),
         ]);
-        if (view !== "suggestions") return; // ditto, the other way
-        listHost.innerHTML = "";
-        const open = (openR && openR.items) || [];
-        if (!open.length) listHost.appendChild(el("div", "notif-empty cell-muted", "Nothing right now — Clarity will post suggestions here as it spots patterns."));
-        open.forEach((sg) => listHost.appendChild(suggestionCard(sg, () => paintSuggestions())));
-        const history = ((accR && accR.items) || []).concat((disR && disR.items) || []);
-        if (history.length) {
-          listHost.appendChild(el("div", "field-label notif-hist-h", "Earlier"));
-          history.sort((a2, b2) => new Date(b2.actedAt || b2.createdAt) - new Date(a2.actedAt || a2.createdAt)).forEach((sg) => {
-            const row = el("div", "notif-sug-hist");
-            row.appendChild(el("span", null, esc(sg.title)));
-            row.appendChild(el("span", "cell-muted", esc(sg.status === "accepted" ? (sg.outcome || "Accepted") : "Dismissed")));
-            row.appendChild(el("span", "cell-muted", esc(sg.actedAt ? new Date(sg.actedAt).toLocaleDateString() : "")));
-            listHost.appendChild(row);
-          });
-        }
-      } catch (e) {
-        listHost.innerHTML = "";
-        listHost.appendChild(el("div", "notif-empty cell-muted", "Couldn't load suggestions."));
-      }
-    }
-    const paintChips = () => {
-      chips.innerHTML = "";
-      const unreadChip = el("button", "chip notif-chip" + (state.unreadOnly ? " notif-chip-on" : ""), "Unread only");
-      unreadChip.type = "button";
-      unreadChip.onclick = () => { state.unreadOnly = !state.unreadOnly; reload(); };
-      chips.appendChild(unreadChip);
-      categories.forEach((c) => {
-        const on = state.cats.indexOf(c.key) !== -1;
-        const b = el("button", "chip notif-chip" + (on ? " notif-chip-on" : ""), esc(c.label));
-        b.type = "button";
-        b.onclick = () => {
-          state.cats = on ? state.cats.filter((k) => k !== c.key) : state.cats.concat([c.key]);
-          reload();
-        };
-        chips.appendChild(b);
+      } catch (e) { content.appendChild(el("div", "empty", "<h3>Couldn't load suggestions</h3><p>Try again in a moment.</p>")); return; }
+      suggestionCount = (open && open.openCount) || 0;
+      const rows = ((open && open.items) || []).map((s) => ({
+        id: s.id, type: s.type, typeLabel: TYPE_LABELS[s.type] || "Suggestion",
+        title: s.title, why: s.transparency || "", verb: s.verb || "Do it", actionType: s.actionType,
+      }));
+      App.table.mount({
+        container: host2,
+        rows,
+        rowId: (r) => r.id,
+        tableId: "notif-suggestions",
+        rowClass: () => "notif-sug-row",
+        emptyHtml: `<div class="empty"><h3>Nothing right now</h3><p>Clarity will post suggestions here as it spots patterns in your own data.</p></div>`,
+        columns: [
+          { key: "typeLabel", label: "Kind", cellClass: "notif-col-kind", get: (r) => r.typeLabel,
+            render: (r) => `<span class="notif-col-kindwrap"><span class="notif-row-ic">${App.icons ? App.icons.forNotificationCategory("suggestion") : ""}</span>${esc(r.typeLabel)}</span>` },
+          { key: "title", label: "What Clarity noticed", get: (r) => `${r.title} ${r.why || ""}`.trim(),
+            render: (r) => `<span class="notif-sugrow-title" title="${esc(r.title)}">${esc(r.title)}</span>${r.why ? `<span class="notif-sugrow-why cell-muted">${esc(r.why)}</span>` : ""}` },
+          { key: "actions", label: "", sortable: false, cellClass: "notif-col-actions", get: () => "", render: (r) => `<span class="notif-sugrow-actions"><button type="button" class="btn btn-primary btn-sm" data-sug-accept="${esc(r.id)}">${esc(r.verb)}</button><button type="button" class="btn btn-ghost btn-sm" data-sug-dismiss="${esc(r.id)}">Dismiss</button></span>` },
+        ],
       });
-    };
-
-    const paintRows = () => {
-      listHost.innerHTML = "";
-      if (!state.items.length) { listHost.appendChild(el("div", "notif-empty cell-muted", "Nothing here yet.")); return; }
-      state.items.forEach((n) => listHost.appendChild(rowEl(n)));
-    };
-
-    async function fetchPage(append) {
-      const params = ["limit=25"];
-      if (state.cats.length) params.push("categories=" + encodeURIComponent(state.cats.join(",")));
-      if (state.unreadOnly) params.push("unread=1");
-      if (state.q) params.push("q=" + encodeURIComponent(state.q));
-      if (append && state.before) params.push("before=" + encodeURIComponent(state.before));
-      try {
-        const r = await App.portalApi("/api/notifications?" + params.join("&"));
-        if (view !== "activity") return; // the user switched while this was in flight
-        categories = (r && r.categories) || categories;
-        const items = (r && r.items) || [];
-        state.items = append ? state.items.concat(items) : items;
-        state.before = items.length ? items[items.length - 1].createdAt : state.before;
-        moreWrap.style.setProperty("display", r && r.hasMore ? "" : "none");
-        paintChips(); paintRows();
-        setBadge(r && r.unread);
-      } catch (e) {
-        listHost.innerHTML = "";
-        listHost.appendChild(el("div", "notif-empty cell-muted", "Couldn't load notifications."));
+      // Inline actions: the table renders cells as HTML, so the buttons are
+      // wired by delegation on the container (row clicks already ignore
+      // clicks that land on a button).
+      host2.onclick = async (ev) => {
+        const acceptBtn = ev.target && ev.target.closest ? ev.target.closest("[data-sug-accept]") : null;
+        const dismissBtn = ev.target && ev.target.closest ? ev.target.closest("[data-sug-dismiss]") : null;
+        if (!acceptBtn && !dismissBtn) return;
+        const id = (acceptBtn || dismissBtn).getAttribute(acceptBtn ? "data-sug-accept" : "data-sug-dismiss");
+        const btn = acceptBtn || dismissBtn;
+        btn.disabled = true;
+        try {
+          if (acceptBtn) {
+            const r2 = await App.portalApi("/api/suggestions/" + encodeURIComponent(id) + "/accept", { method: "POST" });
+            App.util.toast(r2.outcome || "Done");
+          } else {
+            await App.portalApi("/api/suggestions/" + encodeURIComponent(id) + "/dismiss", { method: "POST" });
+            App.util.toast("Suggestion dismissed", false, { label: "Undo", onClick: async () => { try { await App.portalApi("/api/suggestions/" + encodeURIComponent(id) + "/undismiss", { method: "POST" }); void paintSuggestions(); } catch (e) { /* */ } } });
+          }
+        } catch (e) { App.util.toast(e.message || "That didn't work", true); btn.disabled = false; return; }
+        void paintSuggestions();
+      };
+      // History of what's already been decided, beneath the open list.
+      const history = (((acc && acc.items) || []).concat(((dis && dis.items) || [])))
+        .sort((a2, b2) => new Date(b2.actedAt || b2.createdAt) - new Date(a2.actedAt || a2.createdAt));
+      if (history.length) {
+        content.appendChild(el("div", "field-label notif-hist-h", "Earlier"));
+        const card = el("div", "card notif-hist-card");
+        history.forEach((s) => {
+          const row = el("div", "notif-sug-hist");
+          row.appendChild(el("span", null, esc(s.title)));
+          row.appendChild(el("span", "cell-muted", esc(s.status === "accepted" ? (s.outcome || "Accepted") : "Dismissed")));
+          row.appendChild(el("span", "cell-muted", esc(s.actedAt ? new Date(s.actedAt).toLocaleDateString() : "")));
+          card.appendChild(row);
+        });
+        content.appendChild(card);
       }
     }
-    function reload() { state.before = null; return fetchPage(false); }
-    wrap.insertBefore(viewRow, toolbar); // the view switch sits above the filters
-    paintViews();
-    moreBtn.onclick = () => fetchPage(true);
-    let searchTimer = null;
-    search.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.q = search.value.trim(); reload(); }, 250); };
-    await reload();
+
+    const paintTab = () => (tab === "activity" ? paintActivity() : paintSuggestions());
+    paintBar();
+    await paintTab();
   }
 
-  App.notifications = { mount, stop, refreshCount, openPanel, closePanel, relTime, setBadge, renderPage };
+  App.notifications = { mount, stop, refreshCount, openPanel, closePanel, relTime, setBadge, renderPage, fitPanel };
 })(typeof window !== "undefined" ? window : globalThis);

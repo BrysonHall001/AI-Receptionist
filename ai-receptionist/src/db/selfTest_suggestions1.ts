@@ -267,12 +267,16 @@ async function main() {
   check(/Nothing right now — Clarity will post suggestions here as it spots patterns/.test($(".notif-panel").textContent), "EMPTY STATE: the real copy, not the old placeholder");
   // full page + preferences
   w.location.hash = "#/notifications"; w.dispatchEvent(new w.Event("hashchange"));
-  await until(() => $(".notif-viewrow .chip"));
+  // REPINNED (notif-ui-fit): the page's bespoke chip switcher became the HOUSE
+  // underline tabs (.settings-tab), and the Suggestions view became compact
+  // rows on the house table. Same data, same history section.
+  await until(() => $(".settings-tabs .settings-tab"), 8000);
   await sleep(700);
-  const viewChip = $$(".notif-viewrow .chip").find((c: any) => c.textContent === "Suggestions");
-  viewChip.click();
-  await until(() => $(".notif-sug-hist") || /Nothing right now/.test(($(".notif-page-list") || { textContent: "" }).textContent), 8000);
-  check($$(".notif-sug-hist").length > 0 && /Earlier/.test(w.document.body.textContent), `FULL PAGE: the Suggestions view lists history (${$$(".notif-sug-hist").length} earlier item(s)) under an “Earlier” heading`);
+  const viewTab = $$(".settings-tabs .settings-tab").find((b: any) => /Suggestions/.test(b.textContent));
+  viewTab.click();
+  await until(() => $(".notif-sug-hist") || $(".notif-sug-row"), 8000);
+  check($$(".notif-sug-hist").length > 0 && /Earlier/.test(w.document.body.textContent),
+    `FULL PAGE: the Suggestions tab lists history (${$$(".notif-sug-hist").length} earlier item(s)) under an “Earlier” heading`);
   w.location.hash = "#/settings/account"; w.dispatchEvent(new w.Event("hashchange"));
   await until(() => /Show suggestions/.test(w.document.body.textContent || ""));
   await sleep(500);

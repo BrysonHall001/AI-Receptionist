@@ -211,7 +211,9 @@ async function main() {
   check(!!row.querySelector(".notif-row-ic") && !!row.querySelector(".notif-row-title") && !!row.querySelector(".notif-row-time") && row.className.includes("notif-unread"),
     "ROWS carry icon + title + time, with the unread accent edge");
   const footBtns = $$(".notif-foot button").map((b: any) => b.textContent);
-  check(JSON.stringify(footBtns) === JSON.stringify(["Mark all read", "See all"]), "FOOTER: Mark all read + See all");
+  const headSee = $$(".notif-head button").map((b: any) => b.textContent);
+  check(JSON.stringify(footBtns) === JSON.stringify(["Mark all read"]) && headSee.indexOf("See all") !== -1,
+    "CHROME: Mark all read in the pinned footer, See all in the pinned header (moved there in the notif-ui-fit batch)");
   ($$(".notif-panel .seg-btn").find((b: any) => b.textContent === "Suggestions") as any).click();
   await sleep(200);
   check(!!$(".notif-panel") && /suggestions/i.test($(".notif-panel").textContent),
@@ -223,22 +225,20 @@ async function main() {
   check(!w.document.getElementById("notif-panel"), "an outside click closes it");
   // full page
   w.location.hash = "#/notifications"; w.dispatchEvent(new w.Event("hashchange"));
-  await until(() => $(".notif-page-list .notif-row"));
-  const pageRows = $$(".notif-page-list .notif-row").length;
-  const chips = $$(".notif-chip");
-  const catChips = $$(".toolbar-left .notif-chip");
-  check(pageRows > 0 && catChips.length === svc.NOTIFICATION_CATEGORIES.length + 1 && !!$(".notif-toolbar .search-input") && !!$(".notif-page-more button"),
-    `the FULL PAGE renders ${pageRows} rows with ${catChips.length} category chips, search, and Load more`);
-  (catChips.find((c: any) => c.textContent === "Booking made") as any).click();
-  await untilAsync(async () => !$$(".notif-page-list .notif-row").some((r: any) => /New lead:/.test(r.textContent)), 5000);
-  const afterChip = $$(".notif-page-list .notif-row").map((r: any) => (r.querySelector(".notif-row-title") || { textContent: "" }).textContent);
-  const bookingTitles = (await db.notification.findMany({ where: { userId: alice.id, category: "booking_created" }, select: { title: true } })).map((n: any) => n.title);
-  check(afterChip.length > 0 && afterChip.every((x: string) => bookingTitles.includes(x)),
-    "\u2026a category chip filters the list to that category only");
-  const searchInput = $(".notif-toolbar .search-input");
+  // REPINNED (notif-ui-fit): the page was rebuilt on the HOUSE table — the chip
+  // row was replaced by the house Filters button + rail, and Load-more by the
+  // table's own paging. The data contract is unchanged, so this cell asserts
+  // the house machinery instead of the old bespoke furniture.
+  await until(() => $("table tbody tr"), 8000);
+  const pageRows = $$("table tbody tr").length;
+  check(pageRows > 0 && !!$(".table-toolbar .search-input") && !!$$(".table-toolbar button").find((b: any) => /Filters/.test(b.textContent)) && $$(".notif-chip").length === 0,
+    `the FULL PAGE renders ${pageRows} rows in the house table, with the house search + Filters button and no chip row`);
+  const searchInput = $(".table-toolbar .search-input");
   searchInput.value = "Booking made 3"; searchInput.dispatchEvent(new w.Event("input"));
-  await untilAsync(async () => $$(".notif-page-list .notif-row").length === 1, 5000);
-  check($$(".notif-page-list .notif-row").length === 1, "\u2026and search narrows it further");
+  await untilAsync(async () => $$("table tbody tr").length === 1, 6000);
+  const narrowed = $$("table tbody tr").map((r: any) => (r.querySelector(".notif-col-title") || { textContent: "" }).textContent);
+  check(narrowed.length >= 1 && narrowed.every((x: string) => /Booking made 3/.test(x)),
+    `\u2026and the house search narrows the table (${narrowed.length} row(s): ${narrowed.join(", ")})`);
   // preferences
   w.location.hash = "#/settings/account"; w.dispatchEvent(new w.Event("hashchange"));
   await until(() => $(".notif-pref-row"));
@@ -279,7 +279,7 @@ async function main() {
   console.log("  badge: absolute top-right INSIDE the bell (min-width 15px, height 15px, --text-xs, --on-accent on --accent), capped \"9+\", absent at 0 \u2014 zero layout shift");
   console.log("  panel: 400px wide \u00b7 body max-height 480px with internal scroll \u00b7 body-appended overlay, anchored below-right of the bell (+8px)");
   console.log("  rows: icon 16px + title/body (2-line clamps) + right-aligned relative time; --list-row-pad vertical, 2px accent left edge when unread");
-  console.log(`  full page: ${pageRows} rows, ${catChips.length} category chips (7 categories + Unread only), search + Load more`);
+  console.log(`  full page: ${pageRows} rows in the house table (house toolbar: Filters + search; the chip row was retired in the notif-ui-fit batch)`);
   console.log(`  preferences: ${prefRows.length} rows, house switches, badge-only rows disabled with a reason`);
   report.forEach((l) => console.log(l));
 

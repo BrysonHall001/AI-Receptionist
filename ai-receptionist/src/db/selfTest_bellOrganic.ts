@@ -167,8 +167,10 @@ async function main() {
   $(".notif-bell").click();
   await until(() => $(".notif-panel .notif-row"));
   const footBtns = $$(".notif-foot button");
-  check(footBtns.length === 2 && footBtns.every((b: any) => b.className.includes("btn") && b.className.includes("btn-ghost") && b.className.includes("btn-sm")),
-    `FOOTER: both actions are house buttons \u2014 ${footBtns.map((b: any) => `"${b.textContent}" .${b.className.trim().split(/\s+/).join(".")}`).join(" \u00b7 ")}`);
+  const headBtns = $$(".notif-head button.btn");
+  check(footBtns.length === 1 && footBtns[0].className.includes("btn-ghost") && footBtns[0].className.includes("btn-sm")
+      && headBtns.length === 1 && /See all/.test(headBtns[0].textContent),
+    `CHROME: house buttons in both pinned regions \u2014 footer "${footBtns[0].textContent}", header "${headBtns[0].textContent}" (See all moved out of the footer in the notif-ui-fit batch)`);
   const tabs = $$(".notif-panel .seg-btn");
   check(tabs.length === 2 && tabs[0].className.includes("seg-on"),
     "TABS: the house segmented switcher (.seg-btn / .seg-on) \u2014 the same component the module list-page view switcher uses");
@@ -214,19 +216,22 @@ async function main() {
   const wp = bootDom(base, memberTok);
   await until(() => wp.App.state && wp.App.state.me);
   wp.location.hash = "#/notifications"; wp.dispatchEvent(new wp.Event("hashchange"));
-  await until(() => wp.document.querySelector(".notif-page-more button"));
   const P = (s: string) => wp.document.querySelector(s) as any;
-  const PP = (s: string) => Array.from(wp.document.querySelectorAll(s)) as any[];
-  check(P(".notif-page-more button").className.includes("btn-ghost") && P(".notif-page-more button").className.includes("btn-sm"),
-    "FULL PAGE: Load-more is the house ghost button (same as the audit log's)");
-  check(PP(".notif-chip").every((c: any) => c.className.includes("chip")), `\u2026filters use the house .chip component (${PP(".notif-chip").length} chips)`);
-  check(!!P(".notif-toolbar .search-input"), "\u2026search uses the shared house search box");
-  report.push(`  full page: .btn.btn-ghost.btn-sm load-more \u00b7 .chip filters \u00b7 the shared .search-input (all pre-existing house components; no bespoke variants)`);
+  const PP2 = (s: string) => Array.from(wp.document.querySelectorAll(s)) as any[];
+  await until(() => P(".table-toolbar"), 8000);
+  // REPINNED (notif-ui-fit): the page now uses the HOUSE table, so its toolbar,
+  // search and paging come from that component rather than bespoke controls.
+  await until(() => P("table tbody tr") || P(".empty"), 8000);
+  check(!!P(".table-toolbar") && !!PP2(".table-toolbar button").find((b: any) => /Filters/.test(b.textContent)),
+    "FULL PAGE: the house table toolbar (Filters button) replaced the bespoke chip row");
+  check(!!P(".table-toolbar .search-input"), "\u2026search uses the shared house search box inside that toolbar");
+  check(!!P(".settings-tabs .settings-tab"), "\u2026and the page's tabs are the house underline tabs");
+  report.push(`  full page: house table (.table-toolbar Filters + .search-input) \u00b7 .settings-tab underline tabs \u2014 all pre-existing house components`);
   wp.location.hash = "#/settings/account"; wp.dispatchEvent(new wp.Event("hashchange"));
   await until(() => /Show suggestions/.test(wp.document.body.textContent || ""));
   await sleep(400);
-  const switches = PP(".notif-pref-row .switch input");
-  check(switches.length > 0 && PP(".notif-pref-row .switch-track").length === switches.length,
+  const switches = PP2(".notif-pref-row .switch input");
+  check(switches.length > 0 && PP2(".notif-pref-row .switch-track").length === switches.length,
     `PREFERENCES: ${switches.length} house switches (.switch + .switch-track)`);
   const restore = P(".sug-dismissed .btn");
   check(!restore || (restore.className.includes("btn-ghost") && restore.className.includes("btn-sm")), "\u2026and the dismissed list's restore control is a house button");
