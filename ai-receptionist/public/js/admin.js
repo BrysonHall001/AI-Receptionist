@@ -592,16 +592,73 @@
   // Page-access (owner page-lock) SECTION for the tenant detail panel. Returns a node with
   // the lockable-pages checklist + a Save button. PATCHes {lockedPages}; never enters the
   // portal. Owner-only by the admin router guard; no in-portal equivalent exists.
-  function pageAccessSection(portal) {
+  // HUB-UI Part C: "Modules and pages" — TWO separate panels side by side, each
+  // its own card with its own header, so a row on the left never reads as
+  // related to a row on the right. LEFT = Pages, editable exactly as before
+  // (same checklist, same Save button, same PATCH). RIGHT = Modules, READ-ONLY
+  // BY CONSTRUCTION: it renders the tenant's LIVE record types + their real
+  // fields from a GET-only endpoint, the indicator is a disabled checkbox with
+  // no handler, and no writer exists anywhere in the hub.
+  function modulesAndPagesSection(portal) {
     const sec = el("div");
-    const h = el("h2", "settings-h", "Pages");
+    sec.appendChild(el("h2", "settings-h", "Modules and pages"));
+    const grid = el("div", "adm-mp-grid");
+    grid.appendChild(pageAccessSection(portal));
+    grid.appendChild(modulesPanel(portal));
+    sec.appendChild(grid);
+    return sec;
+  }
+
+  function modulesPanel(portal) {
+    const panel = el("div", "adm-mp-panel");
+    panel.appendChild(el("h3", "settings-h adm-mp-h", "Modules"));
+    const card = el("div", "card adm-card2 adm-mp-card");
+    const listHost = el("div", "adm-mp-list");
+    listHost.innerHTML = `<div class="cell-muted">Loading modules…</div>`;
+    card.appendChild(listHost);
+    const foot = el("p", "cell-muted adm-mp-foot", "Modules are managed inside the portal — Settings → Modules & Fields.");
+    card.appendChild(foot);
+    panel.appendChild(card);
+    App.api("/api/admin/portals/" + encodeURIComponent(portal.id) + "/modules").then((r) => {
+      const mods = (r && r.modules) || [];
+      listHost.innerHTML = "";
+      mods.forEach((m) => {
+        const row = el("div", "adm-row3 adm-mp-row");
+        const head = el("span", "adm-r3-head");
+        const icSvg = App.icons ? App.icons.forModuleKey(m.key) : null;
+        if (icSvg) head.appendChild(el("span", "adm-row-ic", icSvg));
+        // READ-ONLY indicator: the same checkbox VOCABULARY the create page
+        // uses, rendered disabled — no handler, no hover affordance.
+        const ind = el("input");
+        ind.type = "checkbox"; ind.checked = m.visible !== false; ind.disabled = true;
+        ind.setAttribute("aria-disabled", "true");
+        ind.setAttribute("aria-label", (m.labelPlural || m.label) + (m.visible === false ? " (hidden)" : " (visible)"));
+        ind.classList.add("adm-mp-ind");
+        head.appendChild(ind);
+        head.appendChild(el("span", "adm-rowname", esc(m.labelPlural || m.label)));
+        row.appendChild(head);
+        row.appendChild(el("span", "adm-rowdesc adm-r3-desc", esc(MODULE_DESCS[m.key] ? (MODULE_DESCS[m.key].neutral || "") : (m.system ? "" : "A module this workspace added."))));
+        const chipsHost = el("span", "adm-chips adm-r3-chips");
+        row.appendChild(chipsHost);
+        listHost.appendChild(row);
+        if ((m.fields || []).length) renderChips(chipsHost, m.fields); // batch-26 chips + "+N more" popover
+      });
+      if (!mods.length) listHost.appendChild(el("div", "cell-muted", "No modules yet."));
+    }).catch((e) => { listHost.innerHTML = ""; listHost.appendChild(el("div", "cell-muted", esc(e.message || "Modules couldn't be loaded."))); });
+    return panel;
+  }
+
+  function pageAccessSection(portal) {
+    const sec = el("div", "adm-mp-panel");
+    const h = el("h3", "settings-h adm-mp-h", "Pages");
     sec.appendChild(h);
     const hint = el("p", "cell-muted"); hint.classList.add("adm-hint");
     hint.textContent = "Checked = the page is on and available for this tenant. Uncheck a page to LOCK it — a locked page is hidden from everyone in the tenant, including its Portal Admin, and can't be reached by direct link or API until an admin unlocks it here. (Record-type sections are managed as Modules, chosen when the tenant is created and toggled under Settings → Modules & Fields.)";
     sec.appendChild(hint);
     const card = el("div", "card"); card.classList.add("adm-card2");
     const listHost = el("div");
-    const getLocked = lockChecklist(listHost, portal.lockedPages || []);
+    listHost.classList.add("adm-mp-list");
+    const getLocked = lockChecklist(listHost, portal.lockedPages || [], null, true); // withDescriptions = the create page's row anatomy
     card.appendChild(listHost);
     const save = el("button", "btn btn-primary btn-sm u-mt-12", "Save page access");
     save.onclick = async () => {
@@ -652,7 +709,7 @@
       caption.textContent = "Configure this tenant’s page access, users, and status. This does not enter the portal.";
       wrap.appendChild(caption);
 
-      wrap.appendChild(pageAccessSection(portal));
+      wrap.appendChild(modulesAndPagesSection(portal));
 
       const usersHost = el("div", "u-mt-24");
       usersHost.innerHTML = `<h2 class="settings-h">Users</h2><div class="cell-muted adm-t3">Loading users…</div>`;
@@ -691,10 +748,9 @@
     const draft = { users: [], themePreset: "", voiceMode: "OFF", lockedPages: [], hiddenRecordTypes: [] };
 
     // Built-in theme preset ids (match src/theme/themes.ts). "" = leave the default.
-    const THEME_PRESETS = [
-      ["", "Default (Classic Clarity)"], ["warm", "Warm Light"], ["slate", "Slate"],
-      ["steel", "Steel Blue"], ["contrast", "High Contrast"], ["dark", "Dark"], ["midnight", "Midnight"],
-    ];
+    // (HUB-UI: the hardcoded 7-preset dropdown list is gone — the carousel reads
+    // the REAL roster from /api/theme, so the hub can never drift from the app's
+    // actual themes.)
 
     function elNote(text) { const d = el("div", "cell-muted"); d.classList.add("adm-d"); d.textContent = text; return d; }
     function leave(toList) {
@@ -723,19 +779,36 @@
     // ---- Step 1: basic details ----
     const s1 = sectionCard(1, "Basic details", "The tenant's name, and optionally where call summaries go.");
     const f1 = el("div");
+    // HUB-UI Part A: ONE horizontal row of THREE EQUAL columns (name | email |
+    // billing). No 3-col form-row precedent existed in the hub, so this is CSS
+    // grid with equal fractions (repeat(3, minmax(0,1fr))) at the house form
+    // gap; each column holds label -> control (100% width) -> its OWN helper,
+    // so helper text wraps within its column and never spans the row. Controls
+    // share a top edge because each column is its own grid item. Below the
+    // hub's 860px breakpoint the grid collapses to one column = today's stack.
     f1.innerHTML = `
-      <label class="field-label">Business name *</label><input id="sp-name" class="input" placeholder="Acme Plumbing" />
-      <label class="field-label">Notify email</label><input id="sp-email" class="input" placeholder="owner@acme.com" />
-      <p class="cell-muted adm-t5">Notify email is optional — it's where call summaries and notifications go.</p>
-      <label class="field-label adm-t6">Billing status *</label>
-      <select id="sp-billing" class="input">
-        <option value="">Select a billing status…</option>
-        <option value="free">Free</option>
-        <option value="trial">Trial</option>
-        <option value="paid">Paid</option>
-        <option value="exception">Exception</option>
-      </select>
-      <p class="cell-muted adm-t5">Required — pick how this tenant is billed. You can change it later from the tenant's detail panel.</p>`;
+      <div class="adm-formrow3">
+        <div class="adm-fcol">
+          <label class="field-label" for="sp-name">Business name *</label>
+          <input id="sp-name" class="input" placeholder="Acme Plumbing" />
+        </div>
+        <div class="adm-fcol">
+          <label class="field-label" for="sp-email">Notify email</label>
+          <input id="sp-email" class="input" placeholder="owner@acme.com" />
+          <p class="cell-muted adm-fhelp">Notify email is optional — it's where call summaries and notifications go.</p>
+        </div>
+        <div class="adm-fcol">
+          <label class="field-label" for="sp-billing">Billing status *</label>
+          <select id="sp-billing" class="input">
+            <option value="">Select a billing status…</option>
+            <option value="free">Free</option>
+            <option value="trial">Trial</option>
+            <option value="paid">Paid</option>
+            <option value="exception">Exception</option>
+          </select>
+          <p class="cell-muted adm-fhelp">Required — pick how this tenant is billed. You can change it later from the tenant's detail panel.</p>
+        </div>
+      </div>`;
     s1.appendChild(f1);
     wrap.appendChild(s1);
 
@@ -773,15 +846,41 @@
     wrap.appendChild(s2);
 
     // ---- Step 3: appearance (theme preset into the draft; applied on Finish) ----
-    const s3 = sectionCard(3, "Appearance", "Pick a starting theme for the tenant.");
+    // HUB-UI Part B: the portal's Appearance CAROUSEL, reused verbatim through
+    // the shared App.theme.mountThemePicker (one implementation, two hosts).
+    // Cards are live previews via scoped token sets, so they render in THEIR
+    // theme while the hub chrome stays Classic Clarity. Hub instance gates OFF
+    // "Design your own" and Logo/white-label by construction (the shared picker
+    // builds only family selector + carousel + Fun slider; those sections live
+    // in the portal's own settings renderer, not in the picker).
+    const s3 = sectionCard(3, "Appearance", "Pick a starting theme for the tenant. The cards are live previews \u2014 the centered one is what the tenant gets.");
     const tWrap = el("div");
-    tWrap.innerHTML = `<label class="field-label">Theme</label>`;
-    const tSel = el("select", "input");
-    tSel.innerHTML = THEME_PRESETS.map((p) => `<option value="${p[0]}">${esc(p[1])}</option>`).join("");
-    tSel.onchange = () => { draft.themePreset = tSel.value; };
-    tWrap.appendChild(tSel);
+    tWrap.appendChild(el("div", "cell-muted adm-fhelp", "Centering a card selects it. Nothing is applied until you press Finish."));
     s3.appendChild(tWrap);
     wrap.appendChild(s3);
+    // presets + token vars come from the EXISTING /api/theme endpoint, which
+    // already answers on the master hub (no tenant in context -> the default
+    // look plus the full preset roster). No new endpoint.
+    (async () => {
+      try {
+        const data = await App.api("/api/theme");
+        const presets = (data && data.presets) || [];
+        App._presetIds = presets.map((p) => p.id); // loadThemeVars reads this roster
+        const vars = await App.theme.loadThemeVars();
+        draft.themePreset = draft.themePreset || (presets[0] && presets[0].id) || "";
+        draft.funLevel = draft.funLevel == null ? 40 : draft.funLevel;
+        const picker = App.theme.mountThemePicker({
+          presets, vars, selectedId: draft.themePreset, group: "basic", funLevel: draft.funLevel,
+          onSelect: (id) => { draft.themePreset = id; },      // hub: record the choice ONLY
+          onFun: (v) => { draft.funLevel = v; },              // …intensity travels on Finish
+        });
+        tWrap.appendChild(picker.el);
+      } catch (e) {
+        if (App.errorReporter && App.errorReporter.capture) App.errorReporter.capture(e);
+        console.error("[create] theme picker:", e && e.message);
+        tWrap.appendChild(el("p", "cell-muted", "Themes couldn't be loaded \u2014 the tenant will start on the default theme."));
+      }
+    })();
 
     // ---- Step 4: features (receptionist mode into the draft; applied on Finish) ----
     // TENANT TEMPLATES redesign (owner spec, settled): segmented AI control
@@ -1170,7 +1269,11 @@
       App.state.currentPortalName = portal.name;
       const problems = [];
       if (draft.themePreset) {
-        try { await App.portalApi("/api/theme", { method: "PATCH", body: JSON.stringify({ theme: { active: { mode: "preset", preset: draft.themePreset }, customs: [] } }) }); }
+        // HUB-UI Part B4: the SAME writer as before, now carrying funLevel so a
+        // Fun theme's intensity travels with the choice (UserTheme already has
+        // the field — themes.ts — the wizard simply never sent it).
+        const themeBody = { active: { mode: "preset", preset: draft.themePreset }, customs: [], funLevel: draft.funLevel == null ? 40 : draft.funLevel };
+        try { await App.portalApi("/api/theme", { method: "PATCH", body: JSON.stringify({ theme: themeBody }) }); }
         catch (e) { problems.push("theme"); }
       }
       if (draft.voiceMode && draft.voiceMode !== "OFF") {

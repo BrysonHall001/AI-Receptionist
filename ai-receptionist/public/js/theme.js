@@ -259,6 +259,253 @@
   }
 
   // ---- Settings UI ----
+  // ===== HUB-UI: THE SHARED THEME PICKER =====================================
+  // These three builders (segmented slider, live preview card, coverflow
+  // carousel) were lifted OUT of mountSettings' closure so a second host — the
+  // hub's create-tenant wizard — can mount the SAME component instead of a
+  // fork. They are pure given their arguments: selection is reported through
+  // onPick, so each host decides what selecting MEANS (the portal saves
+  // immediately; the hub only records the choice into its draft).
+    function segSlider(opts) {
+      const { el } = App.util;
+      const seg = el("div", "fun-seg");
+      seg.tabIndex = 0;
+      seg.setAttribute("role", "slider");
+      seg.setAttribute("aria-valuemin", "0");
+      seg.setAttribute("aria-valuemax", "100");
+      seg.setAttribute("aria-label", opts.ariaLabel || "");
+      let html = "";
+      for (let i = 0; i < FUN_SEGS; i++) html += `<span class="fun-seg-i" data-i="${i}"></span>`;
+      seg.innerHTML = html;
+      const cells = Array.from(seg.querySelectorAll(".fun-seg-i"));
+      let value = clampFun(opts.value);
+      function paint() {
+        const filled = Math.round((value / 100) * FUN_SEGS);
+        cells.forEach((c, i) => c.classList.toggle("fun-seg-i--on", i < filled));
+        seg.setAttribute("aria-valuenow", String(value));
+      }
+      function setValue(v, commit) {
+        value = clampFun(v);
+        paint();
+        if (opts.onInput) opts.onInput(value);
+        if (commit && opts.onCommit) opts.onCommit(value);
+      }
+      const idxToLevel = (i) => Math.round(((i + 1) / FUN_SEGS) * 100);
+      const fromEvent = (e) => {
+        const cell = e.target.closest ? e.target.closest(".fun-seg-i") : null;
+        if (cell) return idxToLevel(Number(cell.dataset.i));
+        const r = seg.getBoundingClientRect();
+        return clampFun(Math.round(((e.clientX - r.left) / Math.max(1, r.width)) * 100));
+      };
+      let dragging = false;
+      seg.onpointerdown = (e) => { dragging = true; seg.setPointerCapture(e.pointerId); setValue(fromEvent(e)); };
+      seg.onpointermove = (e) => { if (dragging) setValue(fromEvent(e)); };
+      seg.onpointerup = (e) => { dragging = false; setValue(fromEvent(e), true); };
+      seg.onkeydown = (e) => {
+        const step = Math.round(100 / FUN_SEGS);
+        if (e.key === "ArrowLeft") { e.preventDefault(); setValue(value - step, true); }
+        else if (e.key === "ArrowRight") { e.preventDefault(); setValue(value + step, true); }
+      };
+      paint();
+      return { el: seg, set: (v) => { value = clampFun(v); paint(); }, get value() { return value; } };
+    }
+
+    function themePreviewCard(p, vars) {
+      const { el, esc } = App.util;
+      const eff = Object.assign({}, vars.root, vars.perTheme[p.id] || {});
+      const wrap = el("div", "thc-card");
+      wrap.setAttribute("role", "option");
+      wrap.setAttribute("aria-label", p.label);
+      const scope = el("div", "thc-scope");
+      // scope the palette…
+      PALETTE_KEYS.forEach((k) => { if (eff[k]) scope.style.setProperty(k, eff[k]); });
+      // …and the preset's personality tokens (the 9b.2 map, evaluated for THIS theme)
+      const persona = personalityTokens(Object.assign({}, PERSONALITY_DEFAULTS, PRESET_PERSONALITIES[p.id] || {}), hexLum(eff["--panel"]) <= 0.5);
+      Object.keys(persona).forEach((k) => scope.style.setProperty(k, persona[k]));
+      scope.style.background = GRADIENT_STANDINS[p.id] || "var(--bg)";
+      scope.innerHTML =
+        '<div class="thc-app">' +
+        '<div class="thc-topbar"><span class="thc-dot-sm"></span><span class="thc-topline"></span></div>' +
+        '<div class="thc-cols">' +
+        '<div class="thc-side"><span class="nav-item active">Home</span><span class="nav-item">Contacts</span><span class="nav-item">Analytics</span></div>' + // visual fixes 2: HOME is the active page (it IS a Home-Dashboard mock)
+        '<div class="thc-main">' +
+        '<div class="widget-card thc-kpi"><div class="kpi"><div class="kpi-value">128</div><div class="kpi-label">Clients</div></div></div>' + // visual fixes 2: the corrected KPI (widget card + universal accent bar, no inner pill)
+        '<div class="card thc-table"><table><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>' +
+        '<tr><td>Avery Lane</td><td><span class="pill success">Done</span></td></tr>' +
+        '<tr><td>Sam Reyes</td><td><span class="pill">Open</span></td></tr>' +
+        '<tr><td>Kai Moss</td><td><span class="pill skipped">Hold</span></td></tr>' +
+        "</tbody></table></div>" +
+        '<span class="btn btn-primary btn-sm thc-btn">New contact</span>' +
+        "</div></div></div>";
+      wrap.appendChild(scope);
+      const name = el("div", "eyebrow thc-name", p.label);
+      wrap.appendChild(name);
+      return wrap;
+    }
+
+    function coverflowCarousel(group, items, selectedId, vars, onPick) {
+      const { el } = App.util;
+      const root = el("div", "thc-carousel");
+      root.tabIndex = 0;
+      root.setAttribute("role", "listbox");
+      root.setAttribute("aria-label", (group === "basic" ? "Basic" : "Fun") + " themes");
+      const stage = el("div", "thc-stage");
+      let cur = Math.max(0, items.findIndex((p) => p.id === selectedId));
+      const cards = items.map((p, i) => {
+        const c = themePreviewCard(p, vars);
+        c.onclick = () => { if (i !== cur) pick(i); };
+        stage.appendChild(c);
+        return c;
+      });
+      const leftBtn = el("button", "icon-btn thc-arrow thc-arrow-left", "\u2039");
+      leftBtn.type = "button"; leftBtn.setAttribute("aria-label", "Previous theme");
+      const rightBtn = el("button", "icon-btn thc-arrow thc-arrow-right", "\u203a");
+      rightBtn.type = "button"; rightBtn.setAttribute("aria-label", "Next theme");
+      const dots = el("div", "thc-dots");
+      const dotEls = items.map((p, i) => {
+        const d = el("button", "thc-dot");
+        d.type = "button"; d.title = p.label; d.setAttribute("aria-label", p.label);
+        d.onclick = () => pick(i);
+        dots.appendChild(d);
+        return d;
+      });
+      function layout() {
+        cards.forEach((c, i) => {
+          const d = i - cur;
+          c.className = "thc-card " + (d === 0 ? "thc-d0" : d === -1 ? "thc-dm1" : d === 1 ? "thc-dp1" : d === -2 ? "thc-dm2" : d === 2 ? "thc-dp2" : "thc-dhide");
+          c.setAttribute("aria-selected", d === 0 ? "true" : "false");
+        });
+        dotEls.forEach((d, i) => d.classList.toggle("thc-dot--on", i === cur));
+        leftBtn.disabled = cur === 0; rightBtn.disabled = cur === items.length - 1;
+      }
+      function pick(i) {
+        i = Math.max(0, Math.min(items.length - 1, i));
+        if (i === cur) return;
+        cur = i;
+        layout(); // the card rotates to center…
+        onPick(items[i].id); // …and centering IS selecting (the ONE shared path)
+      }
+      leftBtn.onclick = () => pick(cur - 1);
+      rightBtn.onclick = () => pick(cur + 1);
+      root.onkeydown = (e) => {
+        if (e.key === "ArrowLeft") { e.preventDefault(); pick(cur - 1); }
+        else if (e.key === "ArrowRight") { e.preventDefault(); pick(cur + 1); }
+      };
+      // <700px: flatten to a snap-scroll row (same click-to-select, same labels)
+      const fit = () => root.classList.toggle("thc-flat", root.clientWidth > 0 && root.clientWidth < 700);
+      if (typeof ResizeObserver !== "undefined") new ResizeObserver(fit).observe(root);
+      setTimeout(fit, 0);
+      root.appendChild(leftBtn); root.appendChild(stage); root.appendChild(rightBtn); root.appendChild(dots);
+      layout();
+      return root;
+    }
+
+  /** Mount the picker: family selector + carousel (+ Fun-intensity slider under
+   *  Fun). opts = { presets, vars, selectedId, group, funLevel, onSelect,
+   *  onFun, showFunSlider }. Returns { el, group }. The portal's Appearance
+   *  page and the hub's wizard both call THIS. */
+  // HUB-UI: these preview-card constants moved out of mountSettings with the
+  // card builder itself, so BOTH hosts (portal Appearance + hub wizard) share
+  // one definition.
+    // The preview card scopes a theme's COMPLETE token set (palette from the THEMES block
+    // in styles.css + that preset's 9b.2 personality tokens) onto the card root, so the
+    // mock renders in ITS theme no matter which theme the app is running.
+    const PALETTE_KEYS = ["--bg", "--panel", "--panel-2", "--ink", "--ink-soft", "--ink-faint", "--line", "--line-strong", "--accent", "--accent-soft", "--accent-strong", "--green", "--green-soft", "--amber", "--amber-soft", "--red", "--red-soft", "--gray-soft", "--row-hover", "--on-accent", "--sidebar-bg", "--topbar-bg", "--font-ui", "--font-display", "--pill-bg"];
+
+    // Fun scenic STAND-INS: scenic/WebGL renderers never run in cards — each fun theme's
+    // card background is a static CSS gradient echoing its scenery palette, composed from
+    // that theme's own tokens (scoped on the card, so no raw values here).
+    const GRADIENT_STANDINS = {
+      aero: "linear-gradient(165deg, var(--accent-soft) 0%, var(--bg) 60%, var(--panel-2) 100%)",
+      dusk: "linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--accent) 30%, var(--bg)) 100%)",
+      cottage: "linear-gradient(170deg, var(--panel-2) 0%, var(--bg) 100%)",
+      vaporwave: "linear-gradient(160deg, color-mix(in srgb, var(--accent) 22%, var(--bg)) 0%, var(--bg) 55%, color-mix(in srgb, var(--green) 18%, var(--bg)) 100%)",
+      forest: "linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--accent) 14%, var(--bg)) 100%)",
+      sunset: "linear-gradient(160deg, var(--amber-soft) 0%, var(--accent-soft) 55%, var(--bg) 100%)",
+      dreamcore: "linear-gradient(180deg, var(--green-soft) 0%, var(--accent-soft) 45%, var(--amber-soft) 100%)",
+      academia: "radial-gradient(120% 90% at 50% 40%, var(--panel-2) 0%, var(--bg) 70%)",
+    };
+
+    function hexLum(v) { return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test((v || "").trim()) ? luminance(v.trim()) : 1; }
+
+  // HUB-UI: shared by both picker hosts.
+  const clampFun = (v) => { let n = Number(v); if (!isFinite(n)) n = 0; return Math.max(0, Math.min(100, Math.round(n))); };
+  const FUN_SEGS = 12;
+
+  var _themeVarsCache; // HOTFIX KEPT (was `let` = TDZ crash: used above, declared here; `var` hoists; no initializer so the warm cache is never reset)  // module scope since HUB-UI (two hosts share the picker)
+    async function loadThemeVars() {
+      if (_themeVarsCache) return _themeVarsCache;
+      let cssText = "";
+      try { cssText = await fetch("/styles.css").then((r) => r.text()); } catch (e) { cssText = ""; }
+      function blockVars(sel) {
+        const i = cssText.indexOf(sel); const out = {}; if (i < 0) return out;
+        const st = cssText.indexOf("{", i); let d = 1, j = st + 1;
+        while (j < cssText.length && d > 0) { if (cssText[j] === "{") d++; else if (cssText[j] === "}") d--; j++; }
+        const body = cssText.slice(st + 1, j - 1);
+        const re = /(--[\w-]+):\s*([^;]+);/g; let m;
+        while ((m = re.exec(body))) out[m[1]] = m[2].trim();
+        return out;
+      }
+      const root = blockVars(":root {");
+      const perTheme = {};
+      (App._presetIds || []).forEach((id) => { perTheme[id] = id === "light" ? {} : blockVars('body[data-theme="' + id + '"] {'); });
+      _themeVarsCache = { root, perTheme };
+      return _themeVarsCache;
+    }
+
+  function mountThemePicker(opts) {
+    const { el } = App.util;
+    const wrap = el("div", "theme-picker");
+    const presets = opts.presets || [];
+    let group = opts.group || "basic";
+    const paint = () => {
+      wrap.innerHTML = "";
+      const groupRow = el("div", "thc-group-row");
+      const groupSel = document.createElement("select");
+      groupSel.className = "input theme-dd thc-group-sel";
+      [["basic", "Basic"], ["fun", "Fun"]].forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; groupSel.appendChild(o); });
+      groupSel.value = group;
+      groupSel.onchange = () => {
+        group = groupSel.value;
+        const inGroup = presets.filter((x) => x.group === group);
+        if (inGroup.length && !inGroup.some((x) => x.id === opts.selectedId)) { opts.selectedId = inGroup[0].id; if (opts.onSelect) opts.onSelect(opts.selectedId, group); }
+        paint();
+      };
+      groupRow.appendChild(el("span", "eyebrow", "Themes"));
+      groupRow.appendChild(groupSel);
+      wrap.appendChild(groupRow);
+      wrap.appendChild(coverflowCarousel(group, presets.filter((x) => x.group === group), opts.selectedId, opts.vars, (id) => {
+        opts.selectedId = id;
+        if (opts.onSelect) opts.onSelect(id, group);
+        paint();
+      }));
+      if (group === "fun" && opts.showFunSlider !== false) {
+        const lvl = Math.max(0, Math.min(100, Math.round(Number(opts.funLevel) || 0)));
+        const row = el("div", "fun-slider-row");
+        row.innerHTML =
+          `<label class="fun-slider-label">Fun intensity ` +
+          `<span class="cell-muted" style="font-weight:400">\u2014 only affects Fun themes</span></label>` +
+          `<div class="fun-slider-controls">` +
+          `<span class="fun-range-end">Calm</span>` +
+          `<span class="fun-seg-host"></span>` +
+          `<span class="fun-range-end">Extra</span>` +
+          `<span class="fun-range-val">${lvl}</span>` +
+          `</div>`;
+        const valEl = row.querySelector(".fun-range-val");
+        const slider = segSlider({
+          ariaLabel: "Fun intensity",
+          value: lvl,
+          onInput: (v) => { opts.funLevel = v; valEl.textContent = String(v); if (opts.onFun) opts.onFun(v, false); },
+          onCommit: () => { if (opts.onFun) opts.onFun(opts.funLevel, true); },
+        });
+        row.querySelector(".fun-seg-host").replaceWith(slider.el);
+        wrap.appendChild(row);
+      }
+    };
+    paint();
+    return { el: wrap, getGroup: () => group, getSelected: () => opts.selectedId, getFun: () => opts.funLevel };
+  }
+
   async function mountSettings(host) {
     const { el, esc, toast } = App.util;
     host.innerHTML = `<div class="cell-muted" style="padding:8px 0">Loading themes…</div>`;
@@ -312,7 +559,6 @@
       render();
     }
 
-    const clampFun = (v) => { let n = Number(v); if (!isFinite(n)) n = 0; return Math.max(0, Math.min(100, Math.round(n))); };
     let funSaveTimer = null;
     // Debounce the server PATCH: we update --fun live on every drag, but only save
     // after the user pauses/releases (~300ms idle), not on every pixel.
@@ -332,212 +578,16 @@
     // Style controls): a row of 12 small rectangles filled left-to-right in accent
     // (unfilled = --gray-soft), click OR drag across, keyboard arrows when focused,
     // fill animation on the motion token (the global reduced-motion block = instant).
-    const FUN_SEGS = 12;
-    function segSlider(opts) {
-      const seg = el("div", "fun-seg");
-      seg.tabIndex = 0;
-      seg.setAttribute("role", "slider");
-      seg.setAttribute("aria-valuemin", "0");
-      seg.setAttribute("aria-valuemax", "100");
-      seg.setAttribute("aria-label", opts.ariaLabel || "");
-      let html = "";
-      for (let i = 0; i < FUN_SEGS; i++) html += `<span class="fun-seg-i" data-i="${i}"></span>`;
-      seg.innerHTML = html;
-      const cells = Array.from(seg.querySelectorAll(".fun-seg-i"));
-      let value = clampFun(opts.value);
-      function paint() {
-        const filled = Math.round((value / 100) * FUN_SEGS);
-        cells.forEach((c, i) => c.classList.toggle("fun-seg-i--on", i < filled));
-        seg.setAttribute("aria-valuenow", String(value));
-      }
-      function setValue(v, commit) {
-        value = clampFun(v);
-        paint();
-        if (opts.onInput) opts.onInput(value);
-        if (commit && opts.onCommit) opts.onCommit(value);
-      }
-      const idxToLevel = (i) => Math.round(((i + 1) / FUN_SEGS) * 100);
-      const fromEvent = (e) => {
-        const cell = e.target.closest ? e.target.closest(".fun-seg-i") : null;
-        if (cell) return idxToLevel(Number(cell.dataset.i));
-        const r = seg.getBoundingClientRect();
-        return clampFun(Math.round(((e.clientX - r.left) / Math.max(1, r.width)) * 100));
-      };
-      let dragging = false;
-      seg.onpointerdown = (e) => { dragging = true; seg.setPointerCapture(e.pointerId); setValue(fromEvent(e)); };
-      seg.onpointermove = (e) => { if (dragging) setValue(fromEvent(e)); };
-      seg.onpointerup = (e) => { dragging = false; setValue(fromEvent(e), true); };
-      seg.onkeydown = (e) => {
-        const step = Math.round(100 / FUN_SEGS);
-        if (e.key === "ArrowLeft") { e.preventDefault(); setValue(value - step, true); }
-        else if (e.key === "ArrowRight") { e.preventDefault(); setValue(value + step, true); }
-      };
-      paint();
-      return { el: seg, set: (v) => { value = clampFun(v); paint(); }, get value() { return value; } };
-    }
-    function funSlider() {
-      const lvl = clampFun(prefs.funLevel);
-      const row = el("div", "fun-slider-row");
-      row.innerHTML =
-        `<label class="fun-slider-label">Fun intensity ` +
-        `<span class="cell-muted" style="font-weight:400">— only affects Fun themes</span></label>` +
-        `<div class="fun-slider-controls">` +
-        `<span class="fun-range-end">Calm</span>` +
-        `<span class="fun-seg-host"></span>` +
-        `<span class="fun-range-end">Extra</span>` +
-        `<span class="fun-range-val" id="fun-val">${lvl}</span>` +
-        `</div>`;
-      const valEl = row.querySelector("#fun-val");
-      // CONVERGED onto the shared segSlider — same prefs.funLevel field, same
-      // App.theme.applyFun live path, same debounced persistence.
-      const slider = segSlider({
-        ariaLabel: "Fun intensity",
-        value: lvl,
-        onInput: (v) => { prefs.funLevel = v; valEl.textContent = String(v); App.theme.applyFun(v); scheduleFunSave(); },
-        onCommit: () => scheduleFunSave(0),
-      });
-      row.querySelector(".fun-seg-host").replaceWith(slider.el);
-      return row;
-    }
-
     // ================= Phase 9c: coverflow carousels + live preview cards =================
-    // The preview card scopes a theme's COMPLETE token set (palette from the THEMES block
-    // in styles.css + that preset's 9b.2 personality tokens) onto the card root, so the
-    // mock renders in ITS theme no matter which theme the app is running.
-    const PALETTE_KEYS = ["--bg", "--panel", "--panel-2", "--ink", "--ink-soft", "--ink-faint", "--line", "--line-strong", "--accent", "--accent-soft", "--accent-strong", "--green", "--green-soft", "--amber", "--amber-soft", "--red", "--red-soft", "--gray-soft", "--row-hover", "--on-accent", "--sidebar-bg", "--topbar-bg", "--font-ui", "--font-display", "--pill-bg"];
-    var _themeVarsCache; // HOTFIX KEPT (was `let` = TDZ crash: used above, declared here; `var` hoists; no initializer so the warm cache is never reset)
-    async function loadThemeVars() {
-      if (_themeVarsCache) return _themeVarsCache;
-      let cssText = "";
-      try { cssText = await fetch("/styles.css").then((r) => r.text()); } catch (e) { cssText = ""; }
-      function blockVars(sel) {
-        const i = cssText.indexOf(sel); const out = {}; if (i < 0) return out;
-        const st = cssText.indexOf("{", i); let d = 1, j = st + 1;
-        while (j < cssText.length && d > 0) { if (cssText[j] === "{") d++; else if (cssText[j] === "}") d--; j++; }
-        const body = cssText.slice(st + 1, j - 1);
-        const re = /(--[\w-]+):\s*([^;]+);/g; let m;
-        while ((m = re.exec(body))) out[m[1]] = m[2].trim();
-        return out;
-      }
-      const root = blockVars(":root {");
-      const perTheme = {};
-      (App._presetIds || []).forEach((id) => { perTheme[id] = id === "light" ? {} : blockVars('body[data-theme="' + id + '"] {'); });
-      _themeVarsCache = { root, perTheme };
-      return _themeVarsCache;
-    }
-
-    // Fun scenic STAND-INS: scenic/WebGL renderers never run in cards — each fun theme's
-    // card background is a static CSS gradient echoing its scenery palette, composed from
-    // that theme's own tokens (scoped on the card, so no raw values here).
-    const GRADIENT_STANDINS = {
-      aero: "linear-gradient(165deg, var(--accent-soft) 0%, var(--bg) 60%, var(--panel-2) 100%)",
-      dusk: "linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--accent) 30%, var(--bg)) 100%)",
-      cottage: "linear-gradient(170deg, var(--panel-2) 0%, var(--bg) 100%)",
-      vaporwave: "linear-gradient(160deg, color-mix(in srgb, var(--accent) 22%, var(--bg)) 0%, var(--bg) 55%, color-mix(in srgb, var(--green) 18%, var(--bg)) 100%)",
-      forest: "linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--accent) 14%, var(--bg)) 100%)",
-      sunset: "linear-gradient(160deg, var(--amber-soft) 0%, var(--accent-soft) 55%, var(--bg) 100%)",
-      dreamcore: "linear-gradient(180deg, var(--green-soft) 0%, var(--accent-soft) 45%, var(--amber-soft) 100%)",
-      academia: "radial-gradient(120% 90% at 50% 40%, var(--panel-2) 0%, var(--bg) 70%)",
-    };
-
-    function hexLum(v) { return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test((v || "").trim()) ? luminance(v.trim()) : 1; }
 
     // ONE shared preview template: a compact Home-Dashboard mock, pure static markup,
     // built from the REAL component classes (nav-item/active, stat-pill, thead th, pill,
     // btn-primary) so it inherits palette AND personality from the scoped tokens.
-    function themePreviewCard(p, vars) {
-      const eff = Object.assign({}, vars.root, vars.perTheme[p.id] || {});
-      const wrap = el("div", "thc-card");
-      wrap.setAttribute("role", "option");
-      wrap.setAttribute("aria-label", p.label);
-      const scope = el("div", "thc-scope");
-      // scope the palette…
-      PALETTE_KEYS.forEach((k) => { if (eff[k]) scope.style.setProperty(k, eff[k]); });
-      // …and the preset's personality tokens (the 9b.2 map, evaluated for THIS theme)
-      const persona = personalityTokens(Object.assign({}, PERSONALITY_DEFAULTS, PRESET_PERSONALITIES[p.id] || {}), hexLum(eff["--panel"]) <= 0.5);
-      Object.keys(persona).forEach((k) => scope.style.setProperty(k, persona[k]));
-      scope.style.background = GRADIENT_STANDINS[p.id] || "var(--bg)";
-      scope.innerHTML =
-        '<div class="thc-app">' +
-        '<div class="thc-topbar"><span class="thc-dot-sm"></span><span class="thc-topline"></span></div>' +
-        '<div class="thc-cols">' +
-        '<div class="thc-side"><span class="nav-item active">Home</span><span class="nav-item">Contacts</span><span class="nav-item">Analytics</span></div>' + // visual fixes 2: HOME is the active page (it IS a Home-Dashboard mock)
-        '<div class="thc-main">' +
-        '<div class="widget-card thc-kpi"><div class="kpi"><div class="kpi-value">128</div><div class="kpi-label">Clients</div></div></div>' + // visual fixes 2: the corrected KPI (widget card + universal accent bar, no inner pill)
-        '<div class="card thc-table"><table><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>' +
-        '<tr><td>Avery Lane</td><td><span class="pill success">Done</span></td></tr>' +
-        '<tr><td>Sam Reyes</td><td><span class="pill">Open</span></td></tr>' +
-        '<tr><td>Kai Moss</td><td><span class="pill skipped">Hold</span></td></tr>' +
-        "</tbody></table></div>" +
-        '<span class="btn btn-primary btn-sm thc-btn">New contact</span>' +
-        "</div></div></div>";
-      wrap.appendChild(scope);
-      const name = el("div", "eyebrow thc-name", p.label);
-      wrap.appendChild(name);
-      return wrap;
-    }
-
     // The coverflow carousel (built once, used for Basic and Fun). Geometry: center flat
     // scale 1; ±1 rotateY(∓38deg) scale .8; ±2 rotateY(∓55deg) scale .65 (a sliver at the
     // page edge); |d|>=3 hidden. Five visible max. Transitions ride the motion token;
     // the global prefers-reduced-motion block makes moves instant snaps. Under 700px the
     // coverflow flattens to a horizontal snap-scroll row (CSS class thc-flat).
-    function coverflowCarousel(group, items, selectedId, vars) {
-      const root = el("div", "thc-carousel");
-      root.tabIndex = 0;
-      root.setAttribute("role", "listbox");
-      root.setAttribute("aria-label", (group === "basic" ? "Basic" : "Fun") + " themes");
-      const stage = el("div", "thc-stage");
-      let cur = Math.max(0, items.findIndex((p) => p.id === selectedId));
-      const cards = items.map((p, i) => {
-        const c = themePreviewCard(p, vars);
-        c.onclick = () => { if (i !== cur) pick(i); };
-        stage.appendChild(c);
-        return c;
-      });
-      const leftBtn = el("button", "icon-btn thc-arrow thc-arrow-left", "\u2039");
-      leftBtn.type = "button"; leftBtn.setAttribute("aria-label", "Previous theme");
-      const rightBtn = el("button", "icon-btn thc-arrow thc-arrow-right", "\u203a");
-      rightBtn.type = "button"; rightBtn.setAttribute("aria-label", "Next theme");
-      const dots = el("div", "thc-dots");
-      const dotEls = items.map((p, i) => {
-        const d = el("button", "thc-dot");
-        d.type = "button"; d.title = p.label; d.setAttribute("aria-label", p.label);
-        d.onclick = () => pick(i);
-        dots.appendChild(d);
-        return d;
-      });
-      function layout() {
-        cards.forEach((c, i) => {
-          const d = i - cur;
-          c.className = "thc-card " + (d === 0 ? "thc-d0" : d === -1 ? "thc-dm1" : d === 1 ? "thc-dp1" : d === -2 ? "thc-dm2" : d === 2 ? "thc-dp2" : "thc-dhide");
-          c.setAttribute("aria-selected", d === 0 ? "true" : "false");
-        });
-        dotEls.forEach((d, i) => d.classList.toggle("thc-dot--on", i === cur));
-        leftBtn.disabled = cur === 0; rightBtn.disabled = cur === items.length - 1;
-      }
-      function pick(i) {
-        i = Math.max(0, Math.min(items.length - 1, i));
-        if (i === cur) return;
-        cur = i;
-        layout(); // the card rotates to center…
-        selectPreset(items[i].id); // …and centering IS selecting (the ONE shared path)
-      }
-      leftBtn.onclick = () => pick(cur - 1);
-      rightBtn.onclick = () => pick(cur + 1);
-      root.onkeydown = (e) => {
-        if (e.key === "ArrowLeft") { e.preventDefault(); pick(cur - 1); }
-        else if (e.key === "ArrowRight") { e.preventDefault(); pick(cur + 1); }
-      };
-      // <700px: flatten to a snap-scroll row (same click-to-select, same labels)
-      const fit = () => root.classList.toggle("thc-flat", root.clientWidth > 0 && root.clientWidth < 700);
-      if (typeof ResizeObserver !== "undefined") new ResizeObserver(fit).observe(root);
-      setTimeout(fit, 0);
-      root.appendChild(leftBtn); root.appendChild(stage); root.appendChild(rightBtn); root.appendChild(dots);
-      layout();
-      return root;
-    }
-
     function swatchHTML(sw) { return (sw || []).map((s) => `<span class="theme-swatch" style="background:${isHex(s) ? s : "transparent"}"></span>`).join(""); }
 
     // Phase 9c: presetSelect (the two dropdowns) is GONE — the carousels are the only
@@ -602,23 +652,17 @@
       // that group's FIRST card AND apply it — deliberately literal: flipping the
       // dropdown flips the theme; the carousel is the source of truth.
       if (activePreset) { const ap = presets.find((p) => p.id === activePreset); if (ap) carouselGroup = ap.group; }
-      const groupRow = el("div", "thc-group-row");
-      const groupSel = document.createElement("select");
-      groupSel.className = "input theme-dd thc-group-sel";
-      [["basic", "Basic"], ["fun", "Fun"]].forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; groupSel.appendChild(o); });
-      groupSel.value = carouselGroup;
-      groupSel.onchange = () => {
-        carouselGroup = groupSel.value;
-        const groupPresets = presets.filter((p) => p.group === carouselGroup);
-        const belongs = activePreset && groupPresets.some((p) => p.id === activePreset);
-        if (belongs) render(); // center the saved theme; NO theme change
-        else selectPreset(groupPresets[0].id); // apply the group's first card (re-renders)
-      };
-      groupRow.appendChild(el("span", "eyebrow", "Themes"));
-      groupRow.appendChild(groupSel);
-      wrap.appendChild(groupRow);
-      wrap.appendChild(coverflowCarousel(carouselGroup, presets.filter((p) => p.group === carouselGroup), activePreset, themeVars));
-      if (carouselGroup === "fun") wrap.appendChild(funSlider()); // intensity ONLY under Fun
+      // HUB-UI: THE SHARED picker (same builder the hub's wizard mounts). The
+      // portal's meaning of "selected" is unchanged: centering a card applies
+      // AND saves; switching group applies that group's first card when the
+      // saved theme doesn't belong to it; the Fun slider drives --fun live and
+      // persists on the same debounce.
+      const picker = mountThemePicker({
+        presets, vars: themeVars, selectedId: activePreset, group: carouselGroup, funLevel: clampFun(prefs.funLevel),
+        onSelect: (id, group) => { carouselGroup = group; selectPreset(id); },
+        onFun: (v, commit) => { prefs.funLevel = v; App.theme.applyFun(v); scheduleFunSave(commit ? 0 : undefined); },
+      });
+      wrap.appendChild(picker.el);
 
       // Two-column lower zone (stacks under ~900px): Design-your-own | Logo/white-label.
       const lower = el("div", "thc-lower");
@@ -800,5 +844,5 @@
     render();
   }
 
-  App.theme = { applyResolved, applyUserTheme, applyFun, resetToDefault, loadAndApply, mountSettings, getLogo: function () { return App.portalLogo || null; } };
+  App.theme = { applyResolved, applyUserTheme, applyFun, resetToDefault, loadAndApply, mountSettings, mountThemePicker, loadThemeVars, getLogo: function () { return App.portalLogo || null; } };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -82,6 +82,42 @@ adminRouter.get("/portals/:id", async (req: Request, res: Response) => {
   res.json(p);
 });
 
+// HUB-UI Part C4: the tenant's LIVE module picture for the detail page —
+// READ ONLY. Rides the SAME serializers the portal's Modules & Fields uses
+// (listRecordTypes + listFields), so custom modules, custom fields, renamed
+// labels, and deletions all appear by construction. Tenant-scoped by the :id
+// param and gated by the router's existing OWNER/SUPER_ADMIN/AUDITOR guard.
+// There is NO companion writer: module visibility is a portal-side decision.
+adminRouter.get("/portals/:id/modules", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const p = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Portal not found" }); return; }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { listRecordTypes, recordTypeHref } = require("../services/recordTypeService");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { listFields } = require("../services/fieldService");
+    const types = await listRecordTypes(tenantId);
+    const navHidden: string[] = Array.isArray((((p as any).labels || {}).nav || {}).hidden) ? ((p as any).labels.nav.hidden as string[]) : [];
+    const locked: string[] = Array.isArray((p as any).lockedPages) ? ((p as any).lockedPages as string[]) : [];
+    const modules = [];
+    for (const t of types as any[]) {
+      const fields = await listFields(tenantId, t.key);
+      const href = recordTypeHref(t.key); // the SAME nav-href convention the portal uses
+      modules.push({
+        key: t.key,
+        label: t.label,
+        labelPlural: t.labelPlural,
+        href,
+        system: t.system === true,
+        visible: !navHidden.includes(href) && !locked.includes(href),
+        fields: (fields as any[]).map((f: any) => String(f.label)),
+      });
+    }
+    res.json({ modules });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 adminRouter.post("/portals", async (req: Request, res: Response) => {
   const { name, notifyEmail, lockedPages, billingStatus, hiddenRecordTypes, template } = (req.body ?? {}) as Record<string, any>;
   // TENANT TEMPLATES: an unknown key is a client bug — reject loudly.

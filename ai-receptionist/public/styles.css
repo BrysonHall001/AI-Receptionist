@@ -1697,6 +1697,29 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .adm-curr { margin: 0; width: 80px; }
 .adm-row1 { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 12px; }
 .adm-flatcell { display: flex; flex-direction: column; gap: 6px; }
+/* HUB-UI Part A: the create page's basic-details row — three equal columns,
+   house form gap, each column self-contained (label + control + its own helper
+   text). Stacks at the hub breakpoint (860px), reproducing today's layout. */
+/* HUB-UI Part C: the tenant detail's "Modules and pages" — TWO distinct panels
+   side by side (each its own card + header), asymmetric 40/60 favouring Modules
+   because only that side carries chips. Each list scrolls internally rather
+   than stretching the page; below the hub breakpoint the panels stack, Pages
+   first. Module rows reuse the create page's three-column row and wrap (never
+   squeeze) when the panel is too narrow for three columns. */
+.adm-mp-grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 6fr); gap: var(--sp-4); align-items: start; }
+.adm-mp-panel { min-width: 0; }
+.adm-mp-h { margin: 0 0 var(--sp-2); }
+.adm-mp-card { display: flex; flex-direction: column; }
+.adm-mp-list { max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-2); }
+.adm-mp-row { align-items: flex-start; }
+.adm-mp-ind { cursor: default; opacity: var(--disabled-opacity); }
+.adm-mp-foot { margin: var(--sp-3) 0 0; font-size: var(--text-xs); }
+@media (max-width: 860px) { .adm-mp-grid { grid-template-columns: 1fr; } }
+.adm-formrow3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4); align-items: start; }
+.adm-fcol { display: flex; flex-direction: column; min-width: 0; }
+.adm-fcol > .input { width: 100%; }
+.adm-fhelp { margin: var(--sp-2) 0 0; font-size: var(--text-xs); }
+@media (max-width: 860px) { .adm-formrow3 { grid-template-columns: 1fr; } }
 .adm-row3 { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
 .adm-sep { border-top: 1px solid var(--line); margin: 16px 0 12px; }
 .adm-sh { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
