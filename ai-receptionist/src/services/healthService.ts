@@ -46,6 +46,11 @@ let lastSchedulerTickAt: number | null = null;
 export function markSchedulerTick(): void { lastSchedulerTickAt = Date.now(); } // called by index.ts's automation heartbeat
 let lastAuditSweepAt: number | null = null;
 export function markAuditSweep(): void { lastAuditSweepAt = Date.now(); } // called by runAuditRetentionSweep
+// Emergent layer 2: the nightly detector sweep reports its counters here.
+let lastDetectorSweepAt = 0;
+let lastDetectorCounters: any = null;
+export function markDetectorSweep(counters?: any): void { lastDetectorSweepAt = Date.now(); if (counters) lastDetectorCounters = counters; }
+export function detectorSweepStatus(): { at: number; counters: any } { return { at: lastDetectorSweepAt, counters: lastDetectorCounters }; }
 export function _setMarksForTests(m: { scheduler?: number | null; audit?: number | null }): void {
   if ("scheduler" in m) lastSchedulerTickAt = m.scheduler ?? null;
   if ("audit" in m) lastAuditSweepAt = m.audit ?? null;

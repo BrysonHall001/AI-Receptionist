@@ -59,6 +59,23 @@
           ],
         },
         {
+          id: "suggestions", features: ["always"],
+          title: "Suggestions: what Clarity notices",
+          blocks: [
+            { p: "Every night, Clarity looks over your own data — nothing else — for patterns worth mentioning: the same wording typed into records again and again, a step you keep doing by hand, a module nobody has touched in months, a status where work sits far longer than anywhere else. What it finds appears under SUGGESTIONS in the bell." },
+            { p: "It never changes anything on its own. A suggestion is a proposal with a button; until you press that button, nothing in your workspace moves." },
+            { steps: [
+              "Open the bell and switch to the Suggestions tab.",
+              "Each card says what it noticed, and — in plain numbers — what it looked at, so you can judge it: \u201cBased on 14 work orders in the last 30 days.\u201d",
+              "Press the button to accept it and the change happens exactly as if you'd made it yourself: a new field appears in Modules & Fields, an automation arrives as a switched-OFF draft for you to read, a module tucks itself out of the nav (and can be brought straight back).",
+              "Press Dismiss if it's not for you. You get an Undo for a moment, and every dismissed suggestion stays listed in your settings — nothing is ever hidden from you quietly.",
+            ] },
+            { p: "Suggestions wait until you deal with them, then step aside. A dismissed one stays away for a couple of months before it can come back, and only if the pattern is still true." },
+            { p: "You control all of it in [[#/settings/account|Settings \u2192 Your account]]: one switch turns suggestions off entirely, and each kind can be turned off on its own. Each one also tells you how much evidence it needs before it will speak at all." },
+            { tip: "Clarity only proposes things it can do through the ordinary screens \u2014 which is why accepting one is exactly the same as doing it by hand, permissions and all. If you couldn't make a change yourself, you won't be shown a suggestion to make it." },
+          ],
+        },
+        {
           id: "notifications", features: ["always"],
           title: "The bell: what Clarity tells you",
           blocks: [
@@ -994,7 +1011,7 @@
   const LC_VARIANTS = {
     field_services: {
       sections: [
-        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "fs-home-dashboard" }, { ref: "notifications" }, { ref: "account-basics" }] },
+        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "fs-home-dashboard" }, { ref: "notifications" }, { ref: "suggestions" }, { ref: "account-basics" }] },
         { cat: "Your modules", items: [{ id: "fs-contacts" }, { id: "fs-work-orders" }, { id: "fs-equipment" }, { id: "fs-estimates" }, { id: "fs-invoices" }, { id: "fs-products" }, { id: "fs-tasks" }] },
         { cat: "Workflows", items: [{ id: "fs-dispatch-day" }, { id: "fs-estimate-to-invoice" }, { id: "fs-maintenance-plans" }, { id: "fs-phone-rings" }] },
         { cat: "Your receptionist", page: "#/calls", items: [{ ref: "receptionist-setup" }, { ref: "service-request-intake" }, { ref: "call-log" }, { ref: "lead-capture" }] },
@@ -1015,7 +1032,7 @@
     // different surfaces get their own guide.
     recruitment_marketing: {
       sections: [
-        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "rm-home-dashboard" }, { ref: "notifications" }, { ref: "account-basics" }] },
+        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "rm-home-dashboard" }, { ref: "notifications" }, { ref: "suggestions" }, { ref: "account-basics" }] },
         { cat: "Your modules", items: [{ id: "rm-candidates" }, { id: "rm-job-openings" }, { id: "rm-interviews" }] },
         { cat: "Workflows", items: [{ id: "rm-ad-to-candidate" }, { id: "rm-nurturing" }, { id: "rm-booking-interviews" }, { id: "rm-client-reporting" }] },
         { cat: "Your receptionist", page: "#/calls", items: [{ ref: "receptionist-setup" }, { id: "rm-receptionist-knowledge" }, { ref: "call-log" }, { ref: "lead-capture" }] },

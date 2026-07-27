@@ -51,7 +51,7 @@ function main() {
   console.log("\n(1) tag integrity:");
   const r0 = makeResolver(baseApp());
   const total = GUIDES.reduce((n, g) => n + (g.items || []).length, 0);
-  check(total === 45 && GUIDES.length === 10, `the inventory holds: ${GUIDES.length} sections / ${total} guides`); // 45 since the notifications guide (emergent layer 1; 44 at AI Intake, 43 at Recurring Work)
+  check(total === 46 && GUIDES.length === 10, `the inventory holds: ${GUIDES.length} sections / ${total} guides`); // 46 since the suggestions guide (emergent layer 2; 45 at notifications, 44 at AI Intake)
   check(GUIDES.every((g) => (g.items || []).every((it: any) => Array.isArray(it.features) && it.features.length > 0)), "EVERY guide carries a features tag (explicit)");
   check(r0.validateGuideFeatureTags(GUIDES).length === 0, "every tag in the real data maps to a known resolvable toggle (validator clean)");
   check(r0.validateGuideFeatureTags([{ items: [{ id: "x", features: ["renamed:toggle"] }] }]).length === 1, "a planted UNKNOWN tag fails validation (a renamed toggle can't silently always-show)");

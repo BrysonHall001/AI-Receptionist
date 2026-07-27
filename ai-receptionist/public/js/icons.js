@@ -102,6 +102,8 @@
     import_complete: S(`<path d="M8 2.6v6.8"${K}/><path d="m5.2 6.8 2.8 2.8 2.8-2.8"${K}/><path d="M2.8 11.4v1.4a.8.8 0 0 0 .8.8h8.8a.8.8 0 0 0 .8-.8v-1.4"${K}/>`),
     feedback_reply: S(`<path d="M13.4 10.2a1.2 1.2 0 0 1-1.2 1.2H5l-2.4 2.2V4a1.2 1.2 0 0 1 1.2-1.2h8.4A1.2 1.2 0 0 1 13.4 4Z"${K}/>`),
     call_missed_or_failed: S(`<path d="M3 2.6h2.6l1.2 3-1.6 1.2a9.4 9.4 0 0 0 3.9 3.9l1.2-1.6 3 1.2v2.6a1 1 0 0 1-1.1 1A11.9 11.9 0 0 1 2 3.7a1 1 0 0 1 1-1.1Z"${K}/><path d="M10.4 2.6h3.2v3.2"${K}/><path d="m13.6 2.6-3.4 3.4"${K}/>`),
+    // Emergent layer 2: the suggestions card head — a lightbulb.
+    suggestion: S(`<path d="M6.1 11.2a4 4 0 1 1 3.8 0v1.1a.9.9 0 0 1-.9.9H7a.9.9 0 0 1-.9-.9v-1.1Z"${K}/><path d="M6.6 11.2h2.8"${K}/>`),
     __default: S(`<circle cx="8" cy="8" r="5.4"${K}/><path d="M8 5.2v3.4M8 10.6v.2"${K}/>`),
   };
   function forNotificationCategory(key) { return NOTIF_ICONS[key] || NOTIF_ICONS.__default; }

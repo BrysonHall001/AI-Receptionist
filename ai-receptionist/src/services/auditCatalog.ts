@@ -51,6 +51,10 @@ export const AUDIT_ACTIONS = {
   // AI receptionist mutations (actorType "ai")
   AI_CONTACT_CREATED: "ai.contact.create",
   AI_BOOKING_CREATED: "ai.booking.create",
+  // Emergent layer 2 — suggestions. The ACCEPT path also writes the underlying
+  // service's own audit event (field.create etc); these two record the DECISION.
+  SUGGESTION_ACCEPTED: "suggestion.accepted",
+  SUGGESTION_DISMISSED: "suggestion.dismissed",
   // master hub (tenantId null or the target tenant, as appropriate)
   HUB_TENANT_CREATE: "hub.tenant.create",
   HUB_TENANT_SUSPEND: "hub.tenant.suspend",

@@ -638,6 +638,55 @@ adminRouter.get("/health/rollup/:check", async (req: Request, res: Response) => 
   } catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
+// EMERGENT LAYER 2 — devtools control for suggestions. Matches the sibling
+// dummy-data pattern (api.ts POST /records/dummy): a dev-only seeder plus, here,
+// an on-demand sweep so the detectors can be exercised without waiting 24h.
+// Hub-admin gated by this router's requireRole + impersonation lockout.
+adminRouter.post("/portals/:id/suggestions/seed", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const p = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Portal not found" }); return; }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { listRecordTypes } = require("../services/recordTypeService");
+    const types = await listRecordTypes(tenantId);
+    const wo = (types as any[]).find((t: any) => t.key === "work_order") || (types as any[])[0];
+    const db2 = prisma as any;
+    const made: string[] = [];
+    // (1) repeated phrase: six records over six days carrying the same wording
+    for (let i = 0; i < 6; i++) {
+      await db2.record.create({ data: { tenantId, recordTypeId: wo.id, title: `Sample job ${i + 1}`, customFields: { detail: `gate code needed on arrival ${i + 1}` }, createdAt: new Date(Date.now() - i * 86400000) } });
+    }
+    made.push("repeated wording (6 records)");
+    // (2) stage stall: a clutch of records parked in one status
+    const stages: any[] = Array.isArray(wo.recordStages) ? wo.recordStages : [];
+    if (stages.length > 1) {
+      // The stalled batch must be OLD *relative to* a moving batch — otherwise
+      // nothing is slower than anything else and the detector rightly stays quiet.
+      for (let i = 0; i < 8; i++) {
+        await db2.record.create({ data: { tenantId, recordTypeId: wo.id, title: `Parked ${i + 1}`, stageKey: stages[1].key, createdAt: new Date(Date.now() - 50 * 86400000), updatedAt: new Date(Date.now() - 50 * 86400000) } });
+      }
+      for (let i = 0; i < 14; i++) {
+        await db2.record.create({ data: { tenantId, recordTypeId: wo.id, title: `Moving ${i + 1}`, stageKey: stages[0].key, createdAt: new Date(Date.now() - 5 * 86400000), updatedAt: new Date(Date.now() - 2 * 86400000) } });
+      }
+      made.push(`stalled status “${stages[1].label}” (8 parked vs 14 moving)`);
+    }
+    // (3) unused module: nothing to seed — an untouched module IS the finding.
+    made.push("unused modules (whatever this workspace already has)");
+    res.json({ ok: true, seeded: made });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+adminRouter.post("/portals/:id/suggestions/run", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const p = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Portal not found" }); return; }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { runDetectorSweep } = require("../detectors");
+    res.json({ ok: true, counters: await runDetectorSweep(new Date(), tenantId) });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // devtools-data: the ErrorEvent surface — read-only, capped, filtered like its audit
 // sibling (source, tenant, day-inclusive dates, q over message/route). Newest first.
 adminRouter.get("/errors", async (req: Request, res: Response) => {

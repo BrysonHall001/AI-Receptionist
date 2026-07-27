@@ -72,16 +72,83 @@
     return row;
   }
 
+  let suggestionCount = 0; // open suggestions the CURRENT user may act on
   function tabsEl(active, onPick) {
     const wrap = el("div", "notif-tabs");
     [["activity", "Activity"], ["suggestions", "Suggestions"]].forEach(([k, label]) => {
       const b = el("button", "seg-btn" + (k === active ? " seg-on" : ""), esc(label));
       b.type = "button";
+      // The tab's OWN count pill — distinct from the bell badge, which counts
+      // unread ACTIVITY only (the batch-30 contract, unchanged).
+      if (k === "suggestions" && suggestionCount > 0) b.appendChild(el("span", "notif-tabcount", String(suggestionCount > 9 ? "9+" : suggestionCount)));
       b.onclick = () => onPick(k);
       wrap.appendChild(b);
     });
     return wrap;
   }
+
+  /** A suggestion CARD: type label -> finding -> transparency line -> actions. */
+  function suggestionCard(sg, onGone) {
+    const card = el("div", "card notif-sug");
+    const head = el("div", "notif-sug-head cell-muted");
+    head.appendChild(el("span", "notif-sug-ic", App.icons ? App.icons.forNotificationCategory("suggestion") : ""));
+    head.appendChild(el("span", null, esc(TYPE_LABELS[sg.type] || "Suggestion")));
+    card.appendChild(head);
+    card.appendChild(el("div", "notif-sug-title", esc(sg.title)));
+    if (sg.transparency) card.appendChild(el("div", "notif-sug-why cell-muted", esc(sg.transparency)));
+    const errLine = el("div", "notif-sug-err");
+    errLine.style.setProperty("display", "none");
+    card.appendChild(errLine);
+    const row = el("div", "notif-sug-actions");
+    const primary = el("button", "btn btn-primary btn-sm", esc(sg.verb || "Do it"));
+    primary.type = "button";
+    const dismiss = el("button", "btn-link notif-sug-dismiss", "Dismiss");
+    dismiss.type = "button";
+    primary.onclick = async () => {
+      primary.disabled = true; dismiss.disabled = true;
+      const label = primary.textContent; primary.textContent = "Working\u2026";
+      try {
+        const r = await App.portalApi("/api/suggestions/" + encodeURIComponent(sg.id) + "/accept", { method: "POST" });
+        // Replaced IN PLACE by a confirmation row (it leaves the list next open).
+        card.innerHTML = "";
+        card.classList.add("notif-sug-done");
+        const conf = el("div", "notif-sug-conf");
+        conf.appendChild(el("span", null, esc(r.outcome || "Done")));
+        if (r.link) {
+          const a2 = el("a", "btn-link", "Open");
+          a2.href = r.link;
+          a2.onclick = () => { closePanel(false); };
+          conf.appendChild(a2);
+        }
+        card.appendChild(conf);
+        suggestionCount = Math.max(0, suggestionCount - 1);
+      } catch (e) {
+        primary.disabled = false; dismiss.disabled = false; primary.textContent = label;
+        errLine.textContent = e.message || "That didn't work.";
+        errLine.style.setProperty("display", "");
+      }
+    };
+    dismiss.onclick = async () => {
+      try { await App.portalApi("/api/suggestions/" + encodeURIComponent(sg.id) + "/dismiss", { method: "POST" }); }
+      catch (e) { errLine.textContent = e.message || "Couldn't dismiss."; errLine.style.setProperty("display", ""); return; }
+      card.remove();
+      suggestionCount = Math.max(0, suggestionCount - 1);
+      if (onGone) onGone();
+      App.util.toast("Suggestion dismissed", false, {
+        label: "Undo",
+        onClick: async () => { try { await App.portalApi("/api/suggestions/" + encodeURIComponent(sg.id) + "/undismiss", { method: "POST" }); suggestionCount += 1; } catch (e2) { /* */ } },
+      });
+    };
+    row.appendChild(primary); row.appendChild(dismiss);
+    card.appendChild(row);
+    return card;
+  }
+  const TYPE_LABELS = {
+    repeated_phrase_field: "Repeated wording",
+    manual_message_pattern: "Repeated manual step",
+    unused_module: "Unused module",
+    stage_stall: "Pipeline insight",
+  };
 
   async function openPanel() {
     if (document.getElementById(PANEL_ID)) { closePanel(true); return; }
@@ -95,8 +162,19 @@
     const paint = async () => {
       body.innerHTML = "";
       if (tab === "suggestions") {
-        // Honest empty state — the Suggestions half ships in a later batch.
-        body.appendChild(el("div", "notif-empty cell-muted", "Nothing yet — Clarity will surface suggestions here as it notices patterns."));
+        body.appendChild(el("div", "notif-empty cell-muted", "Loading\u2026"));
+        try {
+          const r = await App.portalApi("/api/suggestions");
+          body.innerHTML = "";
+          const items = (r && r.items) || [];
+          suggestionCount = (r && r.openCount) || 0;
+          paintTabs();
+          if (!items.length) { body.appendChild(el("div", "notif-empty cell-muted", "Nothing right now — Clarity will post suggestions here as it spots patterns.")); return; }
+          items.forEach((sg) => body.appendChild(suggestionCard(sg, () => { if (!body.querySelector(".notif-sug")) paint(); })));
+        } catch (e) {
+          body.innerHTML = "";
+          body.appendChild(el("div", "notif-empty cell-muted", "Couldn't load suggestions."));
+        }
         return;
       }
       body.appendChild(el("div", "notif-empty cell-muted", "Loading…"));
@@ -160,6 +238,7 @@
       const r = await App.portalApi("/api/notifications?limit=10");
       categories = (r && r.categories) || categories;
       setBadge(r && r.unread);
+      try { const sr = await App.portalApi("/api/suggestions?limit=1"); suggestionCount = (sr && sr.openCount) || 0; } catch (e2) { /* the tab pill is cosmetic */ }
       const items = (r && r.items) || [];
       if (withToasts && lastSeenIds) {
         const byKey = {};
@@ -231,6 +310,51 @@
     wrap.appendChild(listCard);
     host.appendChild(wrap);
 
+    // Emergent layer 2: the page gains a SUGGESTIONS view alongside Activity,
+    // using the same chip row (the house filter pattern) as its switch.
+    let view = "activity";
+    const viewRow = el("div", "filter-chips notif-viewrow");
+    const paintViews = () => {
+      viewRow.innerHTML = "";
+      [["activity", "Activity"], ["suggestions", "Suggestions"]].forEach(([k, label]) => {
+        const b = el("button", "chip notif-chip" + (view === k ? " notif-chip-on" : ""), esc(label));
+        b.type = "button";
+        b.onclick = () => { view = k; paintViews(); if (view === "suggestions") paintSuggestions(); else reload(); };
+        viewRow.appendChild(b);
+      });
+    };
+    async function paintSuggestions() {
+      chips.innerHTML = "";
+      moreWrap.style.setProperty("display", "none");
+      listHost.innerHTML = "";
+      listHost.appendChild(el("div", "notif-empty cell-muted", "Loading\u2026"));
+      try {
+        const [openR, accR, disR] = await Promise.all([
+          App.portalApi("/api/suggestions?status=pending&limit=50"),
+          App.portalApi("/api/suggestions?status=accepted&limit=50"),
+          App.portalApi("/api/suggestions?status=dismissed&limit=50"),
+        ]);
+        if (view !== "suggestions") return; // ditto, the other way
+        listHost.innerHTML = "";
+        const open = (openR && openR.items) || [];
+        if (!open.length) listHost.appendChild(el("div", "notif-empty cell-muted", "Nothing right now — Clarity will post suggestions here as it spots patterns."));
+        open.forEach((sg) => listHost.appendChild(suggestionCard(sg, () => paintSuggestions())));
+        const history = ((accR && accR.items) || []).concat((disR && disR.items) || []);
+        if (history.length) {
+          listHost.appendChild(el("div", "field-label notif-hist-h", "Earlier"));
+          history.sort((a2, b2) => new Date(b2.actedAt || b2.createdAt) - new Date(a2.actedAt || a2.createdAt)).forEach((sg) => {
+            const row = el("div", "notif-sug-hist");
+            row.appendChild(el("span", null, esc(sg.title)));
+            row.appendChild(el("span", "cell-muted", esc(sg.status === "accepted" ? (sg.outcome || "Accepted") : "Dismissed")));
+            row.appendChild(el("span", "cell-muted", esc(sg.actedAt ? new Date(sg.actedAt).toLocaleDateString() : "")));
+            listHost.appendChild(row);
+          });
+        }
+      } catch (e) {
+        listHost.innerHTML = "";
+        listHost.appendChild(el("div", "notif-empty cell-muted", "Couldn't load suggestions."));
+      }
+    }
     const paintChips = () => {
       chips.innerHTML = "";
       const unreadChip = el("button", "chip notif-chip" + (state.unreadOnly ? " notif-chip-on" : ""), "Unread only");
@@ -263,6 +387,7 @@
       if (append && state.before) params.push("before=" + encodeURIComponent(state.before));
       try {
         const r = await App.portalApi("/api/notifications?" + params.join("&"));
+        if (view !== "activity") return; // the user switched while this was in flight
         categories = (r && r.categories) || categories;
         const items = (r && r.items) || [];
         state.items = append ? state.items.concat(items) : items;
@@ -276,6 +401,8 @@
       }
     }
     function reload() { state.before = null; return fetchPage(false); }
+    wrap.insertBefore(viewRow, toolbar); // the view switch sits above the filters
+    paintViews();
     moreBtn.onclick = () => fetchPage(true);
     let searchTimer = null;
     search.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.q = search.value.trim(); reload(); }, 250); };

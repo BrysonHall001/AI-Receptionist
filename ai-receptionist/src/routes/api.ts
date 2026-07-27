@@ -1878,6 +1878,73 @@ apiRouter.post("/notifications/read-all", async (req: Request, res: Response) =>
   try { res.json(await svc.markAllRead(notifUser(req))); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
+// ---- EMERGENT LAYER 2: suggestions ---------------------------------------
+// Propose-and-approve. Accept runs a REGISTERED action (a wrapper over an
+// existing service) inside the acting user's permission context; nothing here
+// writes configuration. Impersonation is read-only, as with read state.
+apiRouter.get("/suggestions", async (req: Request, res: Response) => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const svc = require("../services/suggestionService");
+  const q = req.query as any;
+  try { res.json(await svc.listSuggestions(notifUser(req), { status: typeof q.status === "string" ? q.status : "pending", limit: q.limit ? parseInt(String(q.limit), 10) : 25 })); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+apiRouter.post("/suggestions/:id/accept", async (req: Request, res: Response) => {
+  if ((req as any).impersonation) { res.status(403).json({ error: "Suggestions can't be accepted while impersonating." }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const svc = require("../services/suggestionService");
+  try { res.json(await svc.acceptSuggestion(notifUser(req), req.params.id)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+apiRouter.post("/suggestions/:id/dismiss", async (req: Request, res: Response) => {
+  if ((req as any).impersonation) { res.status(403).json({ error: "Suggestions can't be dismissed while impersonating." }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const svc = require("../services/suggestionService");
+  try { res.json(await svc.dismissSuggestion(notifUser(req), req.params.id)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+apiRouter.post("/suggestions/:id/undismiss", async (req: Request, res: Response) => {
+  if ((req as any).impersonation) { res.status(403).json({ error: "Suggestions can't be changed while impersonating." }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const svc = require("../services/suggestionService");
+  try { res.json(await svc.undismissSuggestion(notifUser(req), req.params.id)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.get("/suggestions/prefs", async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId as string;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { DETECTORS } = require("../detectors");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { prisma: pz } = require("../db/client");
+  const t = await (pz as any).tenant.findUnique({ where: { id: tenantId }, select: { suggestionPrefs: true } });
+  const prefs = (t && t.suggestionPrefs && typeof t.suggestionPrefs === "object" ? t.suggestionPrefs : {}) as any;
+  const dismissed = await (pz as any).suggestion.findMany({
+    where: { tenantId, status: "dismissed" }, orderBy: { actedAt: "desc" }, take: 25,
+    select: { id: true, type: true, finding: true, actedAt: true },
+  });
+  res.json({
+    enabled: prefs.enabled !== false,
+    detectors: (DETECTORS as any[]).map((d: any) => ({ id: d.id, label: d.label, description: d.description, floor: d.floor, on: prefs[d.id] !== false })),
+    dismissed: dismissed.map((d: any) => ({ id: d.id, type: d.type, title: (d.finding || {}).title || d.type, actedAt: d.actedAt })),
+  });
+});
+apiRouter.patch("/suggestions/prefs", async (req: Request, res: Response) => {
+  if ((req as any).impersonation) { res.status(403).json({ error: "Preferences can't be changed while impersonating." }); return; }
+  const tenantId = req.user!.tenantId as string;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { DETECTORS } = require("../detectors");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { prisma: pz } = require("../db/client");
+  const body = (req.body ?? {}) as any;
+  const t = await (pz as any).tenant.findUnique({ where: { id: tenantId }, select: { suggestionPrefs: true } });
+  const next: any = { ...(t && t.suggestionPrefs && typeof t.suggestionPrefs === "object" ? t.suggestionPrefs : {}) };
+  if (typeof body.enabled === "boolean") next.enabled = body.enabled;
+  for (const d of DETECTORS as any[]) if (body.detectors && typeof body.detectors[d.id] === "boolean") next[d.id] = body.detectors[d.id];
+  await (pz as any).tenant.update({ where: { id: tenantId }, data: { suggestionPrefs: next } });
+  res.json({ ok: true });
+});
+
 apiRouter.get("/notifications/prefs", async (req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const svc = require("../services/inAppNotificationService");

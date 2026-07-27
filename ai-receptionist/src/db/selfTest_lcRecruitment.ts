@@ -202,8 +202,10 @@ async function main() {
   await db.tenant.update({ where: { id: cells.rmChecked.t.id }, data: { lockedPages: [...((trow.lockedPages as string[]) || []), "#/jobs"] } });
   const wh = bootDom(base, cells.rmChecked.tok);
   await until(() => wh.App.state && wh.App.state.me);
+  await until(() => wh.App.isPageLocked && wh.App.isPageLocked("#/jobs")); // the lock must have reached the client
   wh.location.hash = "#/learn"; wh.dispatchEvent(new wh.Event("hashchange"));
   await until(() => (wh.document.body.textContent || "").includes("Getting started"));
+  await until(() => !(wh.document.body.textContent || "").includes("Job Openings: the roles you're marketing"), 4000);
   const hText = wh.document.body.textContent || "";
   check(!!jobRt && !hText.includes("Job Openings: the roles you're marketing") && hText.includes("Candidates: everyone in your funnel"),
     "hiding Job Openings hides ITS guide and nothing else (feature-tagging works inside the variant)");

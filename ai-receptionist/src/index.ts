@@ -8,6 +8,8 @@ import { sweepStaleCalls } from "./services/callOrchestrator";
 import { registerAuditSubscriber } from "./services/auditSubscriber";
 import { runNotificationPruneSweep } from "./services/inAppNotificationService";
 import { registerNotificationSubscriber } from "./services/notificationSubscriber";
+import { runDetectorSweep } from "./detectors";
+import { runSuggestionExpirySweep } from "./services/suggestionService";
 import { startHealthSweep, markSchedulerTick } from "./services/healthService";
 import { runErrorPruneSweep } from "./services/errorService";
 import { runWebhookPruneSweep } from "./services/webhookService";
@@ -87,6 +89,13 @@ async function main(): Promise<void> {
   // Resolved-feedback auto-delete: same in-process timer mechanism as above, but
   // a slow cadence (every 6 hours, plus once shortly after boot) since it only
   // needs to clear tickets resolved 30+ days ago. No new infrastructure.
+  // Emergent layer 2: the DAILY detector sweep (+ the suggestion expiry pass).
+  // Per-tenant isolation lives inside runDetectorSweep; this timer only starts
+  // it. A first run shortly after boot so a fresh deploy isn't silent for 24h.
+  setTimeout(() => { void runDetectorSweep().catch(() => {}); void runSuggestionExpirySweep().catch(() => {}); }, 60_000).unref();
+  const detectorTimer = setInterval(() => { void runDetectorSweep().catch(() => {}); void runSuggestionExpirySweep().catch(() => {}); }, 24 * 60 * 60_000);
+  detectorTimer.unref();
+
   void sweepResolvedFeedback().catch(() => {});
   const feedbackSweepTimer = setInterval(() => {
     void sweepResolvedFeedback().catch(() => {});

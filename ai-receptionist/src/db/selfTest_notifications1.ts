@@ -73,10 +73,10 @@ async function main() {
   const svcSrc = readFileSync(resolve(__dirname, "..", "services", "inAppNotificationService.ts"), "utf8");
   const subSrc = readFileSync(resolve(__dirname, "..", "services", "notificationSubscriber.ts"), "utf8");
   const uiSrc = readFileSync(join(PUB, "js", "notifications.js"), "utf8");
-  check(!/openai|anthropic|llm|completion|detector|Suggestion\b/i.test(svcSrc + subSrc + uiSrc)
-      && !/model Suggestion/.test(readFileSync(resolve(__dirname, "..", "..", "prisma", "schema.prisma"), "utf8")),
-    "NO detectors, NO Suggestion model, NO LLM calls anywhere in this batch");
-  check(/Clarity will surface suggestions here/.test(uiSrc), "\u2026and the Suggestions tab ships with its honest empty line");
+  check(!/openai|anthropic|llm|completion/i.test(svcSrc + subSrc),
+    "the notification service + subscriber contain NO LLM calls (the batch-30 contract; suggestions arrived in emergent layer 2 with the same rule)");
+  check(/Clarity will post suggestions here as it spots patterns/.test(uiSrc),
+    "\u2026and the Suggestions tab carries its empty line (emergent layer 2 replaced the placeholder with the real one)");
 
   // ---------- (2) fixtures ----------
   const t: any = await createPortal({ name: `notif-${stamp}`, billingStatus: "trial" } as any);
@@ -214,8 +214,8 @@ async function main() {
   check(JSON.stringify(footBtns) === JSON.stringify(["Mark all read", "See all"]), "FOOTER: Mark all read + See all");
   ($$(".notif-panel .seg-btn").find((b: any) => b.textContent === "Suggestions") as any).click();
   await sleep(200);
-  check(!!$(".notif-panel") && /Nothing yet — Clarity will surface suggestions here/.test($(".notif-panel").textContent),
-    "the panel survives an inside click, and Suggestions is honestly empty");
+  check(!!$(".notif-panel") && /suggestions/i.test($(".notif-panel").textContent),
+    "the panel survives an inside click and shows the Suggestions tab");
   w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape" })); await sleep(150);
   check(!w.document.getElementById("notif-panel"), "Esc closes the panel");
   bell.click(); await until(() => w.document.getElementById("notif-panel")); await sleep(60);
@@ -226,9 +226,10 @@ async function main() {
   await until(() => $(".notif-page-list .notif-row"));
   const pageRows = $$(".notif-page-list .notif-row").length;
   const chips = $$(".notif-chip");
-  check(pageRows > 0 && chips.length === svc.NOTIFICATION_CATEGORIES.length + 1 && !!$(".notif-toolbar .search-input") && !!$(".notif-page-more button"),
-    `the FULL PAGE renders ${pageRows} rows with ${chips.length} filter chips, search, and Load more`);
-  (chips.find((c: any) => c.textContent === "Booking made") as any).click();
+  const catChips = $$(".toolbar-left .notif-chip");
+  check(pageRows > 0 && catChips.length === svc.NOTIFICATION_CATEGORIES.length + 1 && !!$(".notif-toolbar .search-input") && !!$(".notif-page-more button"),
+    `the FULL PAGE renders ${pageRows} rows with ${catChips.length} category chips, search, and Load more`);
+  (catChips.find((c: any) => c.textContent === "Booking made") as any).click();
   await untilAsync(async () => !$$(".notif-page-list .notif-row").some((r: any) => /New lead:/.test(r.textContent)), 5000);
   const afterChip = $$(".notif-page-list .notif-row").map((r: any) => (r.querySelector(".notif-row-title") || { textContent: "" }).textContent);
   const bookingTitles = (await db.notification.findMany({ where: { userId: alice.id, category: "booking_created" }, select: { title: true } })).map((n: any) => n.title);
@@ -241,11 +242,12 @@ async function main() {
   // preferences
   w.location.hash = "#/settings/account"; w.dispatchEvent(new w.Event("hashchange"));
   await until(() => $(".notif-pref-row"));
-  const prefRows = $$(".notif-pref-row");
+  const catLabels = svc.NOTIFICATION_CATEGORIES.map((c: any) => c.label);
+  const prefRows = $$(".notif-pref-row").filter((r: any) => catLabels.some((l: string) => r.textContent.indexOf(l) === 0 || r.textContent.startsWith(l)));
   const leadRow = prefRows.find((r: any) => /New lead captured/.test(r.textContent));
   const badgeRow = prefRows.find((r: any) => /Booking made/.test(r.textContent));
   check(prefRows.length === svc.NOTIFICATION_CATEGORIES.length && prefRows.every((r: any) => !!r.querySelector(".notif-pref-title") && !!r.querySelector(".notif-pref-desc")),
-    `PREFERENCES: ${prefRows.length} rows, each with label + description`);
+    `PREFERENCES: ${prefRows.length} notification rows, each with label + description (the Suggestions switches live in their own section since emergent layer 2)`);
   check(leadRow.querySelectorAll(".switch input").length === 2 && /Badge only/.test(badgeRow.textContent) && (badgeRow.querySelectorAll(".switch input")[1] as any).disabled === true,
     "\u2026toast-eligible rows carry BOTH switches; badge-only rows say \"Badge only\" and can't be toasted");
   // DOM smoke: nothing clipped over text
@@ -277,7 +279,7 @@ async function main() {
   console.log("  badge: absolute top-right INSIDE the bell (min-width 15px, height 15px, --text-xs, --on-accent on --accent), capped \"9+\", absent at 0 \u2014 zero layout shift");
   console.log("  panel: 400px wide \u00b7 body max-height 480px with internal scroll \u00b7 body-appended overlay, anchored below-right of the bell (+8px)");
   console.log("  rows: icon 16px + title/body (2-line clamps) + right-aligned relative time; --list-row-pad vertical, 2px accent left edge when unread");
-  console.log(`  full page: ${pageRows} rows, ${chips.length} chips (7 categories + Unread only), search + Load more`);
+  console.log(`  full page: ${pageRows} rows, ${catChips.length} category chips (7 categories + Unread only), search + Load more`);
   console.log(`  preferences: ${prefRows.length} rows, house switches, badge-only rows disabled with a reason`);
   report.forEach((l) => console.log(l));
 

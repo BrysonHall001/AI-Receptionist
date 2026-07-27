@@ -5832,6 +5832,67 @@
       });
     }
 
+    /** Emergent layer 2: the Suggestions switches. A master toggle, one per
+     *  detector (each with its plain-English description and the evidence it
+     *  needs before it will speak), and the DISMISSED list — nothing Clarity
+     *  has stopped showing you is ever hidden from you. */
+    async function suggestionPrefsSection(panel) {
+      const sec = el("div", "notif-prefs");
+      sec.appendChild(el("h2", "settings-h", "Suggestions"));
+      sec.appendChild(el("p", "cell-muted notif-prefs-hint", "Clarity watches for patterns in your own data and proposes changes here. It never changes anything without you clicking."));
+      const card = el("div", "card notif-prefs-card");
+      sec.appendChild(card);
+      panel.appendChild(sec);
+      let data;
+      try { data = await App.portalApi("/api/suggestions/prefs"); }
+      catch (e) { card.appendChild(el("div", "cell-muted", "Couldn't load your suggestion settings.")); return; }
+      const state = { enabled: data.enabled !== false, detectors: {} };
+      (data.detectors || []).forEach((d) => { state.detectors[d.id] = d.on !== false; });
+      const save = async () => {
+        try { await App.portalApi("/api/suggestions/prefs", { method: "PATCH", body: JSON.stringify({ enabled: state.enabled, detectors: state.detectors }) }); toast("Saved"); }
+        catch (e) { toast(e.message || "Couldn't save", true); }
+      };
+      const mkRow = (title, desc, checked, onChange) => {
+        const row = el("div", "notif-pref-row");
+        const text = el("div", "notif-pref-text");
+        text.appendChild(el("div", "notif-pref-title", esc(title)));
+        if (desc) text.appendChild(el("div", "cell-muted notif-pref-desc", esc(desc)));
+        row.appendChild(text);
+        const ctrls = el("div", "notif-pref-ctrls");
+        const box = el("label", "notif-pref-switch");
+        const sw = el("span", "switch");
+        const cb = el("input"); cb.type = "checkbox"; cb.checked = !!checked;
+        cb.onchange = () => onChange(cb.checked);
+        sw.appendChild(cb); sw.appendChild(el("span", "switch-track"));
+        box.appendChild(sw);
+        ctrls.appendChild(box);
+        row.appendChild(ctrls);
+        return row;
+      };
+      card.appendChild(mkRow("Show suggestions", "Turn this off and Clarity stops proposing anything at all.", state.enabled, (v) => { state.enabled = v; save(); }));
+      (data.detectors || []).forEach((d) => {
+        card.appendChild(mkRow(d.label, d.description + (d.floor ? ` Needs ${d.floor}.` : ""), state.detectors[d.id], (v) => { state.detectors[d.id] = v; save(); }));
+      });
+      const dismissed = data.dismissed || [];
+      const dwrap = el("div", "sug-dismissed");
+      dwrap.appendChild(el("div", "field-label", "Suggestions you've dismissed"));
+      if (!dismissed.length) dwrap.appendChild(el("div", "cell-muted sug-dismissed-empty", "None yet — anything you dismiss will be listed here, never silently hidden."));
+      dismissed.forEach((d) => {
+        const row = el("div", "notif-sug-hist");
+        row.appendChild(el("span", null, esc(d.title)));
+        row.appendChild(el("span", "cell-muted", esc(d.actedAt ? new Date(d.actedAt).toLocaleDateString() : "")));
+        const back = el("button", "btn-link", "Show it again");
+        back.type = "button";
+        back.onclick = async () => {
+          try { await App.portalApi("/api/suggestions/" + encodeURIComponent(d.id) + "/undismiss", { method: "POST" }); row.remove(); toast("It'll show up again in Suggestions"); }
+          catch (e) { toast(e.message || "Couldn't restore it", true); }
+        };
+        row.appendChild(back);
+        dwrap.appendChild(row);
+      });
+      sec.appendChild(dwrap);
+    }
+
     async function secAccount(panel) {
       panel.innerHTML = `<h2 class="settings-h">Your account</h2>
         <div class="field-grid">
@@ -5892,6 +5953,7 @@
         catch (err) { toast(err.message, true); }
       };
       void notifPrefsSection(panel); // emergent layer 1: per-category notification preferences
+      void suggestionPrefsSection(panel); // emergent layer 2: suggestions master + per-detector
     }
 
     // Modules & Fields — module tabs row, then the per-module VIEWS strip, then TWO columns:

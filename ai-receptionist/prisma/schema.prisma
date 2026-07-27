@@ -50,6 +50,9 @@ model Tenant {
   // (e.g. "calls" = their prior call history). Curated keys, empty = off.
   aiKnowledgePages Json       @default("[]")
   theme        Json          @default("{}")
+  // Emergent layer 2: { enabled?: boolean, <detectorId>?: boolean } — the
+  // Suggestions master switch and per-detector switches for this workspace.
+  suggestionPrefs Json       @default("{}")
   // Per-portal overrides for GENERIC display words that aren't a record type
   // (e.g. "record", "stage"). Shape: {"record":{"one":"Item","many":"Items"}}.
   // Additive + defaulted; empty means "use the built-in English defaults".
@@ -579,6 +582,36 @@ model WorkOrderVisit {
 
   @@index([tenantId, recordId])
   @@index([tenantId, state, startAt])
+}
+
+// (Tenant.suggestionPrefs holds the master + per-detector switches; see below.)
+// EMERGENT LAYER 2 — SUGGESTIONS. A detector's finding, PROPOSED to the owner
+// and applied only on an explicit click. dedupeKey is unique per tenant so a
+// nightly re-run UPSERTS the existing row (reviving an expired one, refreshing
+// its payload) instead of stacking duplicates — and a dismissal's history
+// (actedAt/actedByUserId) survives the revival, which is what the later
+// adaptation work will read. requiredArea/requiredRight mirror the batch-30
+// read-time permission model, so a suggestion is invisible to anyone who
+// couldn't perform the underlying action.
+model Suggestion {
+  id             String    @id @default(cuid())
+  tenantId       String
+  type           String
+  dedupeKey      String
+  finding        Json      @default("{}")
+  proposedAction Json      @default("{}")
+  requiredArea   String?
+  requiredRight  String?
+  status         String    @default("pending") // pending | accepted | dismissed | expired
+  outcome        String?                       // short, human-readable result of an accept
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  actedAt        DateTime?
+  actedByUserId  String?
+  expiresAt      DateTime?
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, status, createdAt])
 }
 
 // EMERGENT LAYER 1 — NOTIFICATIONS. One row per RECIPIENT (read state is
