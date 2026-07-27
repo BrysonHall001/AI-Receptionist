@@ -117,8 +117,11 @@ async function main() {
   const jset = await (await fetch(base + "/api/account/ai-instructions", { headers: { Cookie: `air_session=${rmCell.tok}` } })).json();
   check(jset.aiScheduleTargetEffective === "booking", "the AI's EFFECTIVE target resolves into the visible, relabeled Interviews module (real endpoint)");
   // the RM flag-matrix cells, honest: stock LC until RM-3
-  check(trow.customLearningCenter === true && (await meOf(rmCell.tok)).features.lcVariant === null,
-    "RM+checked: the preference PERSISTS, and lcVariant is null \u2014 STOCK LC until RM-3 ships (current behavior, asserted honestly)");
+  // REPINNED (RM-3): the variant now EXISTS, so the honest gap is closed —
+  // RM+checked resolves to the recruitment_marketing variant. The full
+  // six-cell matrix lives in selfTest_lcRecruitment.
+  check(trow.customLearningCenter === true && (await meOf(rmCell.tok)).features.lcVariant === "recruitment_marketing",
+    "RM+checked: the preference persists AND resolves to the recruitment_marketing LC variant");
   const rmUn = await mk({ template: "recruitment_marketing", hiddenRecordTypes: rm.modulesHiddenPrefill });
   check((await db.tenant.findUnique({ where: { id: rmUn.t.id } })).customLearningCenter === false && (await meOf(rmUn.tok)).features.lcVariant === null,
     "RM+unchecked: false + stock");
@@ -126,7 +129,15 @@ async function main() {
   await listRecordTypes(rmCell.t.id);
   const wl = bootDom(base, rmCell.tok);
   await until(() => wl.App.state && wl.App.state.me);
-  check(wl.App.learn.activeGuides() === wl.App.learn.GUIDES, "the RM tenant's LC tree IS stock (reference equality)");
+  // REPINNED (RM-3): this cell was opted IN (customLearningCenter true), so it
+  // now assembles the RM variant; the stock-tree reference-equality proof moved
+  // to the UNCHECKED cell, where it still holds byte-for-byte.
+  check(wl.App.learn.activeGuides() !== wl.App.learn.GUIDES && wl.App._lc.activeVariantKey() === "recruitment_marketing",
+    "the opted-in RM tenant assembles the RM variant tree");
+  const wlUn = bootDom(base, rmUn.tok);
+  await until(() => wlUn.App.state && wlUn.App.state.me);
+  check(wlUn.App.learn.activeGuides() === wlUn.App.learn.GUIDES, "the UNCHECKED RM tenant's LC tree IS stock (reference equality)");
+  freeze(wlUn); await sleep(150);
   wl.location.hash = "#/learn"; wl.dispatchEvent(new wl.Event("hashchange")); await sleep(400);
   const lText = () => wl.document.body.textContent || "";
   check(!!(await until(() => lText().includes("Getting started"))), "the stock LC renders in the RM module mix (no crash)");

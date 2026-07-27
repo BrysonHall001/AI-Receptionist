@@ -134,10 +134,11 @@ async function main() {
   // ---- HOURS FIX: the module calendar honors tenant weekly hours ----
   // Same stale-toolbar race as the Day button: re-query + re-click fresh each poll.
   let hoursDebug = "";
+  let weekText = ""; // the EXACT week-grid text the poll accepted (asserted below)
   const hoursOk = await until(() => {
     const txt = ($(".record-view-host") || { textContent: "" }).textContent || "";
     hoursDebug = txt.slice(0, 400).replace(/\s+/g, " ");
-    const onWeek = /(Mon|Tue|Wed|Thu|Fri)/.test(txt); // week grid shows weekday headers
+    const onWeek = $$(".cal-dayhead").length >= 5; // the week grid renders one day header per day (the day board renders none)
     if (!onWeek) {
       // With lanes ON, "All" IS the per-resource day board (Week/Day toggle
       // hidden by design). The WEEK grid lives behind a specific staff selection
@@ -154,12 +155,16 @@ async function main() {
     }
     // the pinned 9–5 window: business-day hour labels present, and the weekday
     // headers are not Closed-stamped (Closed remains only on the weekend)
-    return /9 AM/.test(txt) && /4 PM/.test(txt);
+    if (/9 AM/.test(txt) && /4 PM/.test(txt)) { weekText = txt; return true; }
+    return false;
   }, 15000);
   if (!hoursOk) console.log("    [debug] week view:", hoursDebug);
   check(hoursOk, "HOURS FIX: week view renders open weekdays (no CLOSED stamp) and a grid spanning the business day");
-  check((($(".record-view-host") || { textContent: "" }).textContent || "").match(/Closed/i) !== null,
-    "\u2026while a day with no hours (the weekend) still shows Closed");
+  // Asserted on the CAPTURED week-grid text, not on a fresh read: with lanes ON
+  // the calendar re-renders back to the per-resource day board, and a weekday
+  // day-board legitimately carries no Closed stamp (which made this check
+  // date-dependent — it only passed when "today" happened to be a weekend).
+  check(/Closed/i.test(weekText), "\u2026while a day with no hours (the weekend) still shows Closed");
 
   // ---- (e) record click -> route + consistent chrome ----
   await go("#/records/work_order");

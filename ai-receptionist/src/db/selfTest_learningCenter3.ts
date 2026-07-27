@@ -90,6 +90,15 @@ async function main() {
       for (const coll of [t.stages, t.recordStages, t.subtypes]) for (const st of Array.isArray(coll) ? coll : []) { addSeed(st && st.label); for (const sub of (st && st.stages) || []) addSeed(sub && sub.label); }
     }
     for (const f of await prisma.fieldDef.findMany({ where: { tenantId: seedTenant.id }, select: { label: true } })) addSeed((f as any).label);
+    // RM-3: a TEMPLATE's shipped vocabulary counts as shipped too — its field
+    // tweaks and module relabels are our words, not a human's. Derived
+    // MECHANICALLY from the template registry (no hardcoded list; a future
+    // template's vocabulary auto-joins, exactly like the seed set above).
+    const { TENANT_TEMPLATES } = require("../services/tenantTemplates");
+    for (const t of TENANT_TEMPLATES as any[]) {
+      for (const tw of t.fieldTweaks || []) { addSeed(tw.field && tw.field.label); for (const o of (tw.field && tw.field.options) || []) addSeed(o); }
+      for (const rl of Object.values(t.moduleRelabels || {}) as any[]) { addSeed(rl.label); addSeed(rl.labelPlural); }
+    }
     await prisma.tenant.delete({ where: { id: seedTenant.id } }).catch(() => { /* best-effort */ });
     await (prisma as any).$disconnect?.();
     dbOk = true;
@@ -121,7 +130,7 @@ async function main() {
     check(found, `${id}: sourceFn ${sc.sourceFn} resolves to a real function (${sc.regions.length} regions)`);
     if (!found) metaOk = false;
   }
-  check(metaOk && sceneIds.length === 17, `all ${sceneIds.length} scenes carry machine-checkable fidelity metadata`); // repinned: lc-field-services adds related-tabs, dispatch-lanes, estimate-public, preset-library
+  check(metaOk && sceneIds.length === 20, `all ${sceneIds.length} scenes carry machine-checkable fidelity metadata`); // repinned: lc-field-services added 4; lc-recruitment adds rm-candidate-stages, rm-lead-capture-links, rm-ad-to-candidate
 
   // ---------- (3) framing + voice ----------
   console.log("\n(3) framing + voice rule:");

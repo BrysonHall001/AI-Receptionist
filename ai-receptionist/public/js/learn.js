@@ -643,6 +643,14 @@
   // No variant -> activeGuides() returns the GUIDES array ITSELF (reference
   // equality = byte-identical stock, provable).
   const FS_GUIDES = {}; // id -> variant-only guide (assigned below)
+  const RM_GUIDES = {}; // RM-3: the recruitment-marketing variant's own guides
+  // Every variant map, in one place: assembly + deep-link resolution read this
+  // list, so a future variant is one entry — no new machinery.
+  const VARIANT_GUIDE_MAPS = [FS_GUIDES, RM_GUIDES];
+  function variantGuideById(id) {
+    for (const m of VARIANT_GUIDE_MAPS) { if (m[id]) return m[id]; }
+    return null;
+  }
   // -------- FS variant guides, part 1: getting started + your modules --------
   // Voice rule everywhere: tenant-facing, field-service vocabulary; never the
   // hub, templates, or platform administration. Bodies live HERE only (stock
@@ -812,6 +820,160 @@
       { visual: "kanban-drag", note: "dragging a card across a board" },
     ],
   };
+  // ===== RM-3: the RECRUITMENT MARKETING variant's own guides =====
+  // Voice: candidates, sources, campaigns, interviews, clients. Content is
+  // GENERIC + structural — it describes what the workspace ships with, never a
+  // tenant's own seeded values (the seeded-data scan), and never mentions
+  // templates, other workspaces, or administration of the platform.
+  RM_GUIDES["rm-home-dashboard"] = {
+    id: "rm-home-dashboard", features: ["page:#/dashboard"],
+    title: "Your Home Dashboard: the recruiting numbers",
+    blocks: [
+      { p: "Your [[#/dashboard|Home Dashboard]] opens with a set of widgets built for recruitment marketing. They're ordinary widgets \u2014 edit them, rearrange them, remove any you don't want, and add your own." },
+      { steps: [
+        "NEW CANDIDATES counts the people who arrived in the last week \u2014 your top of funnel at a glance.",
+        "CANDIDATES BY SOURCE is the one to watch: it splits those arrivals by where they came from, so you can see which ads and boards are actually working.",
+        "INTERVIEWS counts the interviews on the calendar for the same window.",
+        "PIPELINE SNAPSHOT breaks your candidates down by the stage they're sitting in.",
+        "HIRED counts the candidates who made it all the way through.",
+      ] },
+      { tip: "Every tile is editable: open the widget's menu to change what it counts, or press Add widget to build another. The Analytics section's \"Building a widget\" guide covers every option." },
+      { visual: "home-dashboard", note: "faithful mini Home Dashboard: reports bar + widget grid" },
+    ],
+  };
+  RM_GUIDES["rm-candidates"] = {
+    id: "rm-candidates", features: ["always"],
+    title: "Candidates: everyone in your funnel",
+    blocks: [
+      { p: "[[#/contacts|Candidates]] holds every person who has raised a hand \u2014 from the first ad click to a hire. Each one carries the usual name, phone, and email, plus the recruiting fields your workspace starts with." },
+      { steps: [
+        "CANDIDATE SOURCE records where they came from (an ad channel, a job board, a referral, or organic). It's what the source widgets and reports count.",
+        "ROLE INTEREST is the job they're asking about, in their words or yours.",
+        "CANDIDATE STAGE is the funnel itself \u2014 a new lead becomes contacted, prescreened, interview scheduled, interviewed, submitted to client, and finally hired (or not a fit). Move a candidate along by changing this field.",
+        "PRESCREEN CHECKS is a tick-list for the things you verify before submitting anyone \u2014 licence, work eligibility, experience, availability, background.",
+        "RESUME LINK and LINKEDIN URL keep their documents one click away.",
+        "DESIRED PAY and AVAILABILITY DATE are the two answers a client always asks for.",
+      ] },
+      { p: "Open any candidate to edit these; use the view switcher on the list for a table, a board grouped by stage, or a map. Every field is yours \u2014 rename them, add your own, or remove what you don't use in [[#/settings/fields|Settings \u2192 Modules & Fields]]." },
+      { visual: "rm-candidate-stages", note: "the candidate list: view switcher + a stage column" },
+      { tip: "Their Related section gathers everything attached to that person \u2014 interviews, notes, and files \u2014 in one place." },
+    ],
+  };
+  RM_GUIDES["rm-job-openings"] = {
+    id: "rm-job-openings", features: ["rt:job"],
+    title: "Job Openings: the roles you're marketing",
+    blocks: [
+      { p: "[[#/jobs|Job Openings]] is one record per role you're advertising \u2014 what it is, who it's for, and what it pays. Keeping them here means every candidate conversation has something to point at." },
+      { steps: [
+        "DEPARTMENT and LOCATION place the role; WORK MODE says on-site, remote, or hybrid.",
+        "EMPLOYMENT TYPE covers full-time, part-time, contract, or temp.",
+        "PAY RANGE and OPENINGS COUNT are the two numbers candidates and clients both ask about.",
+        "CLIENT OR HIRING MANAGER records who you're filling it for.",
+        "AD CAMPAIGN ties the role to the campaign that's promoting it \u2014 so when a source looks strong, you know which role it fed.",
+        "TARGET START is the date the client wants somebody in the seat.",
+      ] },
+      { p: "Job Openings carry a pipeline of their own, so a role moves through its stages as you work it. Use the board view to see every open role side by side." },
+      { visual: "views-switcher", note: "the list views: table, board, and the rest" },
+    ],
+  };
+  RM_GUIDES["rm-interviews"] = {
+    id: "rm-interviews", features: ["rt:booking"],
+    title: "Interviews: the appointments themselves",
+    blocks: [
+      { p: "[[#/bookings|Interviews]] is your appointment book. Each interview holds who it's with, when it is, and which of your interviewers is taking it \u2014 and it's the module your receptionist books into when a candidate calls." },
+      { steps: [
+        "Press Create on [[#/bookings|Interviews]] to add one by hand: pick the candidate, the time, and the interviewer.",
+        "Add your interviewers in [[#/settings/scheduling|Settings \u2192 Scheduling & Resources]] \u2014 each one gets their own availability, and the calendar keeps their day straight.",
+        "Open the Calendar view to see the week; drag an interview to move it, and it's rescheduled.",
+        "An interview's STATUS carries it from requested to confirmed, completed, no-show, or cancelled \u2014 which is what the interview reports count.",
+      ] },
+      { p: "Your business hours (also in [[#/settings/scheduling|Settings \u2192 Scheduling & Resources]]) decide when interviews can be offered at all, so nobody gets booked at 10pm." },
+      { visual: "calendar-mapping", note: "a module's calendar view, mapped to its date field" },
+    ],
+  };
+
+  RM_GUIDES["rm-ad-to-candidate"] = {
+    id: "rm-ad-to-candidate", features: ["always"],
+    title: "From ad click to candidate",
+    blocks: [
+      { p: "This is the front door. Someone sees your ad, clicks it, lands on a form, and fills it in \u2014 and a candidate appears in your workspace, already tagged with where they came from. Nobody retypes anything." },
+      { steps: [
+        "Open [[#/settings/leadcapture|Settings \u2192 Lead capture]] and create a link. That's the form your landing page points at (share the link, or embed it).",
+        "Map the form's fields to your candidate fields \u2014 the answer about where they heard about you maps to Candidate source, so every arrival is labelled automatically.",
+        "Use one link per campaign when you want clean numbers: the source that comes in on each submission is exactly what your source widgets and reports count.",
+        "Submissions land in [[#/contacts|Candidates]] as new records, ready to work \u2014 stage New lead, source filled in.",
+        "From there the nurture takes over: a welcome goes out, and the candidate moves along the funnel as you talk to them.",
+      ] },
+      { visual: "rm-ad-to-candidate", note: "the journey: form \u2192 captured candidate \u2192 tagged by source \u2192 nurture" },
+      { visual: "rm-lead-capture-links", note: "the lead-capture settings page: one card per link" },
+      { tip: "Callers arrive the same way: your receptionist captures the person and the role they're asking about, and books the interview \u2014 same funnel, different door." },
+    ],
+  };
+  RM_GUIDES["rm-nurturing"] = {
+    id: "rm-nurturing", features: ["page:#/automations"],
+    title: "Nurturing candidates automatically",
+    blocks: [
+      { p: "[[#/automations|Automations]] does the chasing you'd otherwise do by hand. Your workspace starts with a shelf of recruiting recipes in the library \u2014 ready to use, and switched OFF until you say so." },
+      { steps: [
+        "Open [[#/automations|Automations]] and browse the library. The recruiting recipes sit at the top: a welcome for every new candidate, interview reminders, a nudge when somebody's gone quiet, an alert when a candidate is submitted to a client, and a post-interview follow-up.",
+        "Press Use on one and it's added to your flows as a DRAFT \u2014 disabled, doing nothing.",
+        "Open the draft and read it: the trigger (what starts it), any conditions (who it applies to), and the actions (what it sends). Change the wording to sound like you.",
+        "When you're happy, switch it on. Turn it off any time \u2014 nothing about it is permanent.",
+      ] },
+      { p: "The recipes are ordinary flows, not special ones: anything they do you can build yourself, and anything you don't like you can delete." },
+      { visual: "preset-library", note: "the automation library: recipe cards you can add" },
+      { tip: "Texts need a phone number connected and emails need your email service connected; until then a switched-on flow simply skips those sends and says so in its run history." },
+    ],
+  };
+  RM_GUIDES["rm-booking-interviews"] = {
+    id: "rm-booking-interviews", features: ["page:#/calls"],
+    title: "Booking interviews",
+    blocks: [
+      { p: "When a candidate calls, your receptionist can book the interview itself \u2014 straight into [[#/bookings|Interviews]], on a real slot, with a real interviewer." },
+      { steps: [
+        "Add your interviewers in [[#/settings/scheduling|Settings \u2192 Scheduling & Resources]] and set each one's availability; set your business hours in the same place.",
+        "The receptionist offers only times that are actually free: hours, the interviewer's own availability, and anything already on the calendar all narrow what it can say.",
+        "A booked interview appears on the Interviews calendar immediately, with the candidate attached.",
+        "Add the interview-reminder recipes from the library if you want the day-before and hour-before texts to go out on their own.",
+        "If a candidate needs to move, drag the interview on the calendar \u2014 the record follows.",
+      ] },
+      { visual: "calendar-mapping", note: "the calendar view interviews land on" },
+      { tip: "Interview statuses (confirmed, completed, no-show, cancelled) are what the interview reports count \u2014 keeping them current keeps your numbers honest." },
+    ],
+  };
+  RM_GUIDES["rm-client-reporting"] = {
+    id: "rm-client-reporting", features: ["page:#/reports"],
+    title: "Reporting to your client",
+    blocks: [
+      { p: "[[#/reports|Analytics]] is where you answer the two questions clients ask: how's the pipeline, and where are these people coming from? Your workspace starts with dashboards for both." },
+      { steps: [
+        "CANDIDATE PIPELINE shows the funnel \u2014 how candidates are spread across the stages, how many arrive each week, and how the stages fill over time.",
+        "WHERE CANDIDATES COME FROM breaks arrivals down by source, over time and as a share, with a grid that crosses source against stage \u2014 so you can see not just which channel sends the most people, but which sends the ones who get hired.",
+        "HIRES BY SOURCE is the ad-ROI view: spend follows the sources that actually produce hires.",
+        "INTERVIEWS & CALLS tracks interviews booked per week alongside your call volume, plus cancellations and no-shows.",
+      ] },
+      { p: "Moving a candidate to SUBMITTED TO CLIENT is what makes your submission numbers real \u2014 the stage is the record of what you sent them, and an automation recipe can alert you the moment it happens." },
+      { visual: "widget-wizard", note: "the widget editor behind every tile" },
+      { tip: "Every dashboard is yours: change a widget, add your own, or build a fresh dashboard for a single client." },
+    ],
+  };
+  RM_GUIDES["rm-receptionist-knowledge"] = {
+    id: "rm-receptionist-knowledge", features: ["page:#/calls", "receptionist"],
+    title: "What your receptionist knows \u2014 and what it won't say",
+    blocks: [
+      { p: "Your receptionist answers with what you've told it. Its instructions live in [[#/settings/aireceptionist|Settings \u2192 AI Receptionist]], and your workspace starts with a short recruiting section already in there for you to edit." },
+      { steps: [
+        "Fill in what you recruit for \u2014 the kinds of roles, the areas you cover \u2014 so it can answer the first question every caller asks.",
+        "Say how candidates usually reach you (most callers are ringing about an ad they've seen), so the conversation starts in the right place.",
+        "Leave the booking instruction alone unless you mean to change it: the receptionist books callers into Interviews and confirms the time back to them.",
+        "Keep the promises list honest \u2014 no job offers, no pay rates, no start dates, and no client names unless you've said it may share them.",
+        "Set the tone you want. Candidates are job hunting; warm and plain beats pushy.",
+      ] },
+      { p: "You can also point it at pages of your own for background \u2014 it reads what you give it and nothing else, so it never invents a role or a rate." },
+      { tip: "Everything it says on a call is in the transcript on [[#/calls|Calls]] \u2014 the fastest way to spot an instruction worth tightening." },
+    ],
+  };
+
   const LC_VARIANTS = {
     field_services: {
       sections: [
@@ -822,6 +984,25 @@
         { cat: "Admin", items: [{ ref: "staff-resources" }, { ref: "business-hours" }, { ref: "invite-team" }, { ref: "modules-fields" }, { ref: "appearance" }, { ref: "rename-pages" }, { ref: "integrations" }, { ref: "billing" }, { ref: "data-admin" }] },
         // R1-approved: the remaining stock sections ride along BY REFERENCE so
         // no capability loses its help in the variant.
+        { stockCat: "Working with records" },
+        { stockCat: "Finding & organizing" },
+        { stockCat: "Analytics & dashboards" },
+        { stockCat: "Communication" },
+        { stockCat: "Automations" },
+        { stockCat: "Scheduling & team" },
+        { stockCat: "Housekeeping" },
+      ],
+    },
+    // RM-3: the RECRUITMENT MARKETING variant. Same assembly rules as
+    // field_services — stock guides ride BY REFERENCE, only the genuinely
+    // different surfaces get their own guide.
+    recruitment_marketing: {
+      sections: [
+        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "rm-home-dashboard" }, { ref: "account-basics" }] },
+        { cat: "Your modules", items: [{ id: "rm-candidates" }, { id: "rm-job-openings" }, { id: "rm-interviews" }] },
+        { cat: "Workflows", items: [{ id: "rm-ad-to-candidate" }, { id: "rm-nurturing" }, { id: "rm-booking-interviews" }, { id: "rm-client-reporting" }] },
+        { cat: "Your receptionist", page: "#/calls", items: [{ ref: "receptionist-setup" }, { id: "rm-receptionist-knowledge" }, { ref: "call-log" }, { ref: "lead-capture" }] },
+        { cat: "Admin", items: [{ ref: "staff-resources" }, { ref: "business-hours" }, { ref: "invite-team" }, { ref: "modules-fields" }, { ref: "appearance" }, { ref: "rename-pages" }, { ref: "integrations" }, { ref: "billing" }, { ref: "data-admin" }] },
         { stockCat: "Working with records" },
         { stockCat: "Finding & organizing" },
         { stockCat: "Analytics & dashboards" },
@@ -855,7 +1036,7 @@
       const items = [];
       (sec.items || []).forEach((it) => {
         if (it.ref) { const g = stockById(it.ref); if (g) items.push(g); return; } // same object
-        const vg = FS_GUIDES[it.id];
+        const vg = variantGuideById(it.id);
         if (vg) items.push(vg);
       });
       if (items.length) out.push({ cat: sec.cat, ...(sec.page ? { page: sec.page } : {}), ...(sec.pagesAll ? { pagesAll: sec.pagesAll } : {}), items });
@@ -868,10 +1049,10 @@
   // leak of the other tree's content.
   function idKnownAnywhere(id) {
     if (stockById(id)) return true;
-    if (FS_GUIDES[id]) return true;
+    if (variantGuideById(id)) return true;
     return false;
   }
-  App._lc = { activeGuides, activeVariantKey, LC_VARIANTS, FS_GUIDES, idKnownAnywhere }; // suite hooks
+  App._lc = { activeGuides, activeVariantKey, LC_VARIANTS, FS_GUIDES, RM_GUIDES, idKnownAnywhere }; // suite hooks
 
 
   // ---- deep links: [[#/route|Label]] inside p/steps/tip. Rendered as normal accent

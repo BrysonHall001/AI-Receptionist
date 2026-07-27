@@ -97,7 +97,9 @@ async function main() {
   const cbOf = (nm: string) => (rowOf(nm) as any).querySelector("input");
   const counts: Record<string, Record<string, number>> = { General: {}, "Field Services": {}, "Recruitment Marketing": {} };
   const MODULES = ["Contacts", "Job Openings", "Bookings", "Work Orders", "Equipment", "Vehicles"];
-  // (a) General
+  // (a) General — wait for the first chip paint (the wizard fills rows async;
+  // asserting on the very first frame was flaky).
+  await until(() => chipsOf("Contacts").length > 0 && chipsOf("Vehicles").length > 0);
   check(MODULES.every((m) => chipsOf(m).length > 0) && !chipsOf("Work Orders").some((c: string) => c === ""),
     "GENERAL: every module row (all checked) shows its stock chips");
   MODULES.forEach((m) => { counts.General[m] = chipsOf(m).length; });

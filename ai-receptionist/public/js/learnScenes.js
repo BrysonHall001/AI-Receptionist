@@ -261,6 +261,42 @@
     ],
   });
 
+  // ===== RM-3: recruitment-marketing scenes. Same contract as every scene:
+  // STATIC markup from the app's real component classes, inert, generic
+  // placeholder data, and a sourceFn naming the real render function each one
+  // replicates (read before writing).
+  register("rm-candidate-stages", {
+    sourceFn: "portal.js#renderRecordList",
+    regions: ["page-actions (Create/Import/Export)", "view seg-buttons", "the active view: table with a stage column"],
+    frames: [
+      { caption: "Your candidate list is an ordinary table \u2014 with the stage each person sits in as a column you can sort and filter.", html: pageTop("List") + miniTable(["Name", "Source", "Stage"], [["Avery Lane", "Facebook", pill("New lead")], ["Sam Reyes", "Indeed", pill("Interviewed", "success")], ["Kai Moss", "Referral", pill("Not a fit", "skipped")]]) },
+      { caption: "Switch to Kanban and the same candidates become cards in stage columns \u2014 drag one along as the conversation moves.", html: pageTop("Kanban") + kanban([["New lead", ["Avery Lane"]], ["Interviewed", ["Sam Reyes"]]]) },
+    ],
+  });
+
+  const ibCard = (name, state, foc) => {
+    const h = `<div class="card scene-drawer"><div class="scene-row"><span class="input scene-ctl">${name}</span><span class="pill${state === "Accepting leads" ? " success" : " skipped"}">${state}</span></div>${fieldRow("Link to share", input("your-workspace \u2044 form"))}${fieldRow("Form field \u2192 Candidate field", select("Where did you hear about us \u2192 Candidate source"))}</div>`;
+    return foc ? focus(h) : h;
+  };
+  register("rm-lead-capture-links", {
+    sourceFn: "inbound.js#render",
+    regions: ["intro + New link button", "one card per link: name + on/off head", "shareable link row", "field-mapping rows"],
+    frames: [
+      { caption: "Each lead-capture link is a card: name it, switch it on, share its link, and map the form's answers onto your candidate fields.", html: `<div class="scene-reports-bar"><span class="cell-muted">Lead capture</span>${btn("+ New link", true, true)}</div>${ibCard("Spring driver campaign", "Accepting leads", true)}${ibCard("Careers page form", "Paused")}` },
+    ],
+  });
+
+  register("rm-ad-to-candidate", {
+    sourceFn: "inbound.js#render",
+    regions: ["lead-capture link card + field mapping", "the candidate list the submission lands in", "the candidate's own fields", "the automations library the nurture comes from"],
+    frames: [
+      { caption: "It starts with a lead-capture link \u2014 the form your ad's landing page points at.", html: `<div class="scene-reports-bar"><span class="cell-muted">Lead capture</span>${btn("+ New link", true, true)}</div>${ibCard("Spring driver campaign", "Accepting leads", true)}` },
+      { caption: "Somebody fills it in, and a candidate appears in your list \u2014 no retyping.", html: pageTop("List") + miniTable(["Name", "Source", "Stage"], [[focus("Avery Lane"), "Facebook", pill("New lead")], ["Sam Reyes", "Indeed", pill("Interviewed", "success")]]) },
+      { caption: "They arrive already tagged with where they came from \u2014 which is what your source reports count.", html: `<div class="card scene-drawer"><div class="eyebrow">Candidate details</div>${fieldRow("Name", input("Avery Lane"))}${focus(fieldRow("Candidate source", select("Facebook")))}${fieldRow("Role interest", input("Warehouse \u2014 nights"))}${fieldRow("Candidate stage", select("New lead"))}</div>` },
+      { caption: "From there a nurture recipe takes over \u2014 added from the library as a draft, switched on when you're ready.", html: `<div class="scene-row">${focus('<div class="card scene-gal">New candidate welcome<div class="cell-muted">Trigger: a new candidate is created</div></div>')}<div class="card scene-gal">Stale candidate nudge<div class="cell-muted">Trigger: 7 days after they arrive</div></div></div>` },
+    ],
+  });
+
   // small per-scene builders used above
   function pageTop(activeView) {
     const segs = ["List", "Kanban", "Calendar", "Gallery", "Map"].map((v) => `<span class="seg-btn${v === activeView ? " seg-on" : ""}">${v}</span>`).join("");
