@@ -500,14 +500,9 @@ apiRouter.post("/contacts/import", async (req: Request, res: Response) => {
       await createImportRecord({ tenantId, dataType: "contact", name: "Contacts import", rowCount: result.imported + result.skipped, okCount: result.imported, failCount: result.skipped, createdById: req.user?.id ?? null });
     } catch { /* never fail the import on history write */ }
     audit({ tenantId, actorType: "user", actorId: req.user?.id ?? null, actorLabel: (req.user && ((req.user as any).name || (req.user as any).email)) || "Unknown user", actorRole: actorRoleOf(req), action: AUDIT_ACTIONS.IMPORT_RUN, subjectType: "import", subjectLabel: "Contacts import", meta: { imported: result.imported, skipped: result.skipped } });
-    // Emergent layer 1: counts only — never the rows themselves.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    require("../services/inAppNotificationService").notifyNever({
-      tenantId, category: "import_complete",
-      title: `Import finished: ${result.imported} contact${result.imported === 1 ? "" : "s"}`,
-      body: result.skipped ? `${result.skipped} row${result.skipped === 1 ? "" : "s"} skipped.` : null,
-      link: "#/contacts",
-    });
+    // (Emergent layer 1: the import_complete notification is emitted inside
+    // importContacts itself, so every caller of that service — this route, the
+    // demo seeder, anything later — goes through the same choke point.)
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1840,32 +1835,54 @@ apiRouter.post("/records/:id/notes", async (req: Request, res: Response) => {
 // must never write read state on their behalf.
 function notifUser(req: Request): any {
   const u = req.user as any;
-  return { id: u.id, role: u.role, tenantId: u.tenantId, customRoleId: u.customRoleId ?? null };
+  const scope = resolveTenantScope(req);
+  // A hub admin viewing a portal is scoped to that tenant but is NOT a member
+  // of it: their own user row has no tenantId. Carry the scope so permission
+  // checks resolve against the workspace being viewed.
+  return { id: u.id, role: u.role, tenantId: u.tenantId || scope, customRoleId: u.customRoleId ?? null };
+}
+/** True when the acting user actually belongs to the workspace being viewed. */
+function isTenantMember(req: Request): boolean {
+  const u = req.user as any;
+  const scope = resolveTenantScope(req);
+  return !!u.tenantId && !!scope && u.tenantId === scope;
 }
 apiRouter.get("/notifications", async (req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const svc = require("../services/inAppNotificationService");
   const q = req.query as any;
   const cats = typeof q.categories === "string" && q.categories.trim() ? String(q.categories).split(",").map((x: string) => x.trim()).filter(Boolean) : null;
+  const opts = {
+    limit: q.limit ? parseInt(String(q.limit), 10) : 20,
+    before: q.before ? new Date(String(q.before)) : null,
+    categories: cats,
+    unreadOnly: String(q.unread || "") === "1",
+    q: typeof q.q === "string" ? q.q : null,
+  };
   try {
-    const out = await svc.listNotifications(notifUser(req), {
-      limit: q.limit ? parseInt(String(q.limit), 10) : 20,
-      before: q.before ? new Date(String(q.before)) : null,
-      categories: cats,
-      unreadOnly: String(q.unread || "") === "1",
-      q: typeof q.q === "string" ? q.q : null,
-    });
-    res.json({ ...out, unread: await svc.unreadCount(notifUser(req)), categories: svc.NOTIFICATION_CATEGORIES });
+    if (!isTenantMember(req)) {
+      // HUB VISITOR: the workspace's activity, read-only. unread is NULL (not
+      // 0) so the bell hides its badge instead of claiming "all caught up".
+      const tenantId = resolveTenantScope(req);
+      if (!tenantId) { res.json({ items: [], hasMore: false, unread: null, visitor: true, categories: svc.NOTIFICATION_CATEGORIES }); return; }
+      const out = await svc.listTenantActivity(notifUser(req), tenantId, opts);
+      res.json({ ...out, unread: null, categories: svc.NOTIFICATION_CATEGORIES });
+      return;
+    }
+    const out = await svc.listNotifications(notifUser(req), opts);
+    res.json({ ...out, visitor: false, unread: await svc.unreadCount(notifUser(req)), categories: svc.NOTIFICATION_CATEGORIES });
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 apiRouter.get("/notifications/unread-count", async (req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const svc = require("../services/inAppNotificationService");
+  if (!isTenantMember(req)) { res.json({ unread: null, visitor: true }); return; }
   try { res.json({ unread: await svc.unreadCount(notifUser(req)) }); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 apiRouter.post("/notifications/:id/read", async (req: Request, res: Response) => {
   if ((req as any).impersonation) { res.status(403).json({ error: "Read state can't be changed while impersonating." }); return; }
+  if (!isTenantMember(req)) { res.status(403).json({ error: "You are viewing this workspace as an admin \u2014 read state belongs to its own people." }); return; }
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const svc = require("../services/inAppNotificationService");
   try { res.json(await svc.markRead(notifUser(req), req.params.id)); }
@@ -1873,6 +1890,7 @@ apiRouter.post("/notifications/:id/read", async (req: Request, res: Response) =>
 });
 apiRouter.post("/notifications/read-all", async (req: Request, res: Response) => {
   if ((req as any).impersonation) { res.status(403).json({ error: "Read state can't be changed while impersonating." }); return; }
+  if (!isTenantMember(req)) { res.status(403).json({ error: "You are viewing this workspace as an admin \u2014 read state belongs to its own people." }); return; }
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const svc = require("../services/inAppNotificationService");
   try { res.json(await svc.markAllRead(notifUser(req))); }

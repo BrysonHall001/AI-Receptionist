@@ -1541,6 +1541,15 @@
 
     const volume = el("p", "cell-muted dd-volume");
     card.appendChild(volume);
+    // Seed -> sweep in ONE action: the sweep is what fills the Suggestions tab,
+    // so it runs as the seeder's final step unless you turn it off here.
+    const sweepOpt = el("label", "notif-pref-switch dd-sweepopt");
+    const sweepSw = el("span", "switch");
+    const sweepCb = el("input"); sweepCb.type = "checkbox"; sweepCb.checked = true;
+    sweepSw.appendChild(sweepCb); sweepSw.appendChild(el("span", "switch-track"));
+    sweepOpt.appendChild(sweepSw);
+    sweepOpt.appendChild(el("span", "notif-pref-swlabel cell-muted", "Run the detector sweep when seeding finishes"));
+    card.appendChild(sweepOpt);
     const actions = el("div", "dd-actions");
     const seedBtn = el("button", "btn btn-primary btn-sm", "Seed demo data");
     const wipeBtn = el("button", "btn btn-ghost btn-sm", "Wipe seeded data");
@@ -1584,7 +1593,7 @@
     seedBtn.onclick = async () => {
       busy(true); out.textContent = "Seeding\u2026";
       try {
-        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/demo-data/seed", { method: "POST", body: JSON.stringify({ profile: pSel.value, confirm: confirmInp.value }) });
+        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/demo-data/seed", { method: "POST", body: JSON.stringify({ profile: pSel.value, confirm: confirmInp.value, runSweep: sweepCb.checked }) });
         out.textContent = "Seeded: " + Object.keys(r.counts).filter((k) => k !== "__deterministic").map((k) => `${k} ${r.counts[k]}`).join(", ");
         toast("Demo data seeded");
         loadFor(tSel.value);

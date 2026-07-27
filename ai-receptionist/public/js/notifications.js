@@ -102,7 +102,7 @@
     const row = el("div", "notif-sug-actions");
     const primary = el("button", "btn btn-primary btn-sm", esc(sg.verb || "Do it"));
     primary.type = "button";
-    const dismiss = el("button", "btn-link notif-sug-dismiss", "Dismiss");
+    const dismiss = el("button", "btn btn-ghost btn-sm notif-sug-dismiss", "Dismiss");
     dismiss.type = "button";
     primary.onclick = async () => {
       primary.disabled = true; dismiss.disabled = true;
@@ -115,7 +115,7 @@
         const conf = el("div", "notif-sug-conf");
         conf.appendChild(el("span", null, esc(r.outcome || "Done")));
         if (r.link) {
-          const a2 = el("a", "btn-link", "Open");
+          const a2 = el("a", "btn btn-ghost btn-sm", "Open");
           a2.href = r.link;
           a2.onclick = () => { closePanel(false); };
           conf.appendChild(a2);
@@ -181,28 +181,33 @@
       try {
         const r = await App.portalApi("/api/notifications?limit=20");
         body.innerHTML = "";
+        visitorMode = !!(r && r.visitor);
+        setBadge(r ? r.unread : null);
+        allRead.style.setProperty("display", visitorMode ? "none" : "");
+        if (visitorMode) body.appendChild(el("div", "notif-visitor cell-muted", "You're viewing as an admin \u2014 this is the workspace's activity, not your own."));
         const items = (r && r.items) || [];
-        if (!items.length) { body.appendChild(el("div", "notif-empty cell-muted", "Nothing new — activity will show up here.")); return; }
+        if (!items.length) { body.appendChild(el("div", "notif-empty cell-muted", visitorMode ? "Nothing has happened in this workspace yet." : "Nothing new \u2014 activity will show up here.")); return; }
         items.forEach((n) => body.appendChild(rowEl(n)));
       } catch (e) {
         body.innerHTML = "";
         body.appendChild(el("div", "notif-empty cell-muted", "Couldn't load notifications."));
       }
     };
-    paintTabs();
-    pop.appendChild(head);
-    pop.appendChild(body);
     const foot = el("div", "notif-foot");
-    const allRead = el("button", "btn-link notif-foot-l", "Mark all read");
+    // VISUAL NORMALIZATION: house small ghost buttons, not bespoke links.
+    const allRead = el("button", "btn btn-ghost btn-sm notif-foot-l", "Mark all read");
     allRead.type = "button";
     allRead.onclick = async () => {
       try { await App.portalApi("/api/notifications/read-all", { method: "POST" }); } catch (e) { /* */ }
       refreshCount(); paint();
     };
-    const seeAll = el("button", "btn-link notif-foot-r", "See all");
+    const seeAll = el("button", "btn btn-ghost btn-sm notif-foot-r", "See all");
     seeAll.type = "button";
     seeAll.onclick = () => { closePanel(false); App.go("#/notifications"); };
     foot.appendChild(allRead); foot.appendChild(seeAll);
+    paintTabs();
+    pop.appendChild(head);
+    pop.appendChild(body);
     pop.appendChild(foot);
     document.body.appendChild(pop);
     // anchored below-RIGHT of the bell, in document coords (body-appended, so no
@@ -237,7 +242,8 @@
     try {
       const r = await App.portalApi("/api/notifications?limit=10");
       categories = (r && r.categories) || categories;
-      setBadge(r && r.unread);
+      visitorMode = !!(r && r.visitor);
+      setBadge(r ? r.unread : null);
       try { const sr = await App.portalApi("/api/suggestions?limit=1"); suggestionCount = (sr && sr.openCount) || 0; } catch (e2) { /* the tab pill is cosmetic */ }
       const items = (r && r.items) || [];
       if (withToasts && lastSeenIds) {

@@ -279,7 +279,7 @@ async function main() {
   const prefRows = $$(".notif-pref-row").filter((r: any) => /Show suggestions|Repeated wording|Repeated manual step|Unused module|Pipeline insight/.test(r.textContent));
   check(prefRows.length === DETECTORS.length + 1, `PREFERENCES: a master switch + one per detector (${prefRows.length} rows)`);
   check(prefRows.slice(1).every((r: any) => /Needs /.test(r.textContent)), "\u2026each detector states the evidence it needs before it will speak");
-  check(!!$(".sug-dismissed") && /dismissed/i.test($(".sug-dismissed").textContent) && $$(".sug-dismissed .btn-link").length > 0,
+  check(!!$(".sug-dismissed") && /dismissed/i.test($(".sug-dismissed").textContent) && $$(".sug-dismissed .btn").length > 0,   // normalized to the house button in the bell-organic batch
     "\u2026and every dismissed suggestion stays listed, with a way to bring it back (nothing is silently suppressed)");
   const cssSrc = readFileSync(join(PUB, "styles.css"), "utf8");
   check(/\.notif-sug-title \{[^}]*-webkit-line-clamp: 3/.test(cssSrc) && /\.notif-sug-actions \{[^}]*flex-wrap: wrap[^}]*gap: var\(--sp-3\)/.test(cssSrc),

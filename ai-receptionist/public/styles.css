@@ -1734,6 +1734,7 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 /* demo seeder (dev tool) */
 .dd-hint { margin: 0 0 var(--sp-3); font-size: var(--text-sm); }
 .dd-volume { margin: var(--sp-3) 0 0; font-size: var(--text-xs); }
+.dd-sweepopt { display: inline-flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); cursor: pointer; }
 .dd-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-3); }
 .dd-out { margin-top: var(--sp-3); font-size: var(--text-xs); display: flex; flex-direction: column; gap: 4px; }
 /* emergent layer 2: suggestion cards (inside the panel and on the full page) */
@@ -1771,6 +1772,8 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .notif-pref-ctrls { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: center; }
 .notif-pref-switch { display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
 .notif-pref-swlabel { font-size: var(--text-xs); }
+/* The hub-visitor explanation: an ordinary muted caption, NOT an error state. */
+.notif-visitor { padding: var(--sp-2) var(--sp-3); font-size: var(--text-xs); border-bottom: 1px solid var(--line); }
 .notif-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--sp-3); border-top: 1px solid var(--line); padding: var(--sp-2) var(--sp-3); }
 .adm-mp-grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 6fr); gap: var(--sp-4); align-items: start; }
 .adm-mp-panel { min-width: 0; }

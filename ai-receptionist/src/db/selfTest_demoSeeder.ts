@@ -68,7 +68,7 @@ async function main() {
   const woCount = await db.record.count({ where: { tenantId: fsT.id, recordTypeId: wo.id } });
   const caps = DEMO_PROFILE_CAPS.field_services;
   check(woCount > 20 && woCount <= caps.workOrders, `work orders within the cap: ${woCount} \u2264 ${caps.workOrders}`);
-  check((await db.contact.count({ where: { tenantId: fsT.id } })) <= caps.contacts + caps.calls, "contacts within cap (+ the simulator's own callers)");
+  check((await db.contact.count({ where: { tenantId: fsT.id } })) <= caps.contacts + caps.calls + 5, "contacts within cap (+ the simulator's own callers and the events pass's lead)");
   const past = await db.record.count({ where: { tenantId: fsT.id, recordTypeId: wo.id, appointmentAt: { lt: new Date() } } });
   const future = await db.record.count({ where: { tenantId: fsT.id, recordTypeId: wo.id, appointmentAt: { gt: new Date() } } });
   const tray = await db.record.count({ where: { tenantId: fsT.id, recordTypeId: wo.id, appointmentAt: null } });
@@ -135,7 +135,7 @@ async function main() {
   const byStage: any = {}; const bySource: any = {};
   cands.forEach((c: any) => { const cf = c.customFields || {}; if (cf.candidate_stage) byStage[cf.candidate_stage] = (byStage[cf.candidate_stage] || 0) + 1; if (cf.candidate_source) bySource[cf.candidate_source] = (bySource[cf.candidate_source] || 0) + 1; });
   const stages: any[] = Object.entries(byStage).sort((a: any, b: any) => b[1] - a[1]);
-  check(cands.length <= RM_PROFILE_CAPS.candidates + RM_PROFILE_CAPS.calls && stages[0][0] === "New lead" && (byStage.Hired || 0) < (byStage["New lead"] || 0),
+  check(cands.length <= RM_PROFILE_CAPS.candidates + RM_PROFILE_CAPS.calls + 5 && stages[0][0] === "New lead" && (byStage.Hired || 0) < (byStage["New lead"] || 0),
     `a real FUNNEL: ${stages.slice(0, 4).map((x: any) => `${x[0]} ${x[1]}`).join(" \u203a ")}`);
   check((bySource.Indeed || 0) + (bySource.Facebook || 0) > (bySource.Referral || 0) + (bySource.Organic || 0),
     `sources weighted to the paid channels (${Object.entries(bySource).sort((a: any, b: any) => b[1] - a[1]).slice(0, 3).map((x: any) => `${x[0]} ${x[1]}`).join(", ")})`);
@@ -175,6 +175,11 @@ async function main() {
     `DETERMINISM: the same seed produces the same dataset (${JSON.stringify(rA.deterministic)}) \u2014 the call simulator's own rows are counted separately, by design`);
   // production gate
   const prevEnv = process.env.NODE_ENV;
+  // The override may ALREADY be set in this environment (a developer who switched
+  // it on in .env), so the test must control both variables rather
+  // than assume the flag is off.
+  const prevFlag = process.env.ALLOW_DEMO_SEEDER;
+  delete process.env.ALLOW_DEMO_SEEDER;
   process.env.NODE_ENV = "production";
   let refused = false;
   try { await seedDemoData(dA.id, { profile: "field_services" }); } catch (e: any) { refused = /production/i.test(e.message); }
@@ -183,7 +188,7 @@ async function main() {
   let allowed = false;
   try { await wipeDemoData(dA.id); allowed = true; } catch { /* */ }
   check(allowed, "\u2026and the explicit flag re-enables it");
-  delete process.env.ALLOW_DEMO_SEEDER;
+  if (prevFlag === undefined) delete process.env.ALLOW_DEMO_SEEDER; else process.env.ALLOW_DEMO_SEEDER = prevFlag;
   process.env.NODE_ENV = prevEnv;
   // typed confirmation + hub gating over the real endpoints
   const owner = await db.user.create({ data: { email: `ds-own-${stamp}@example.invalid`, name: "O", role: "OWNER", passwordHash: "x" } });

@@ -129,7 +129,14 @@ export async function notify(input: NotifyInput): Promise<number> {
       requiredArea: cat.requiredArea, requiredRight: cat.requiredRight,
     });
   }
-  if (!rows.length) return 0;
+  if (!rows.length) {
+    // NEVER SILENT: a tenant with no users (or with the category switched off
+    // for everyone) produced nothing. That's a legitimate outcome, but it used
+    // to be invisible — which is exactly how an empty bell hides a real bug.
+    logger.warn(`[notifications] "${cat.key}" for tenant ${input.tenantId} resolved to ZERO recipients (${users.length} user(s) considered) — nothing written`);
+    try { require("./healthService").markNotificationNoRecipients(input.tenantId, cat.key); } catch { /* health is a bystander */ }
+    return 0;
+  }
   const res = await db.notification.createMany({ data: rows });
   return res.count || rows.length;
 }
@@ -158,6 +165,36 @@ async function filterVisible(user: PermUserLike, rows: any[]): Promise<any[]> {
     if (pairs.get(key)) out.push(r);
   }
   return out;
+}
+
+/**
+ * A hub admin visiting a tenant portal has no notification identity there —
+ * their user row belongs to no tenant, so a per-user feed is empty by
+ * construction and the ordinary "Nothing new" state is a misleading answer to
+ * "who am I here?". Instead they get the WORKSPACE's recent activity: the same
+ * rows, permission-filtered, deduplicated across recipients (one line per
+ * event, not one per user), READ-ONLY. Read state is never written for anyone
+ * else — the batch-30 rule stands.
+ */
+export async function listTenantActivity(user: PermUserLike, tenantId: string, opts: FeedOptions = {}): Promise<{ items: any[]; hasMore: boolean; visitor: true }> {
+  const limit = Math.max(1, Math.min(100, opts.limit || 20));
+  const where: any = { tenantId };
+  if (opts.categories && opts.categories.length) where.category = { in: opts.categories };
+  if (opts.before) where.createdAt = { lt: opts.before };
+  const q = opts.q ? String(opts.q).trim() : "";
+  if (q) where.OR = [{ title: { contains: q, mode: "insensitive" } }, { body: { contains: q, mode: "insensitive" } }];
+  const raw = await db.notification.findMany({ where, orderBy: { createdAt: "desc" }, take: limit * 4 + 1 });
+  const visible = await filterVisible(user, raw);
+  // One row per EVENT: the same notification exists once per recipient.
+  const seen = new Set<string>();
+  const deduped: any[] = [];
+  for (const n of visible) {
+    const key = `${n.category}|${n.title}|${n.link || ""}|${new Date(n.createdAt).toISOString().slice(0, 16)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push({ ...n, readAt: null });   // "unread" is meaningless for a visitor
+  }
+  return { items: deduped.slice(0, limit), hasMore: deduped.length > limit, visitor: true };
 }
 
 export async function listNotifications(user: PermUserLike, opts: FeedOptions = {}): Promise<{ items: any[]; hasMore: boolean }> {

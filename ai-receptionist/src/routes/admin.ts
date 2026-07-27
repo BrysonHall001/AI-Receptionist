@@ -662,7 +662,9 @@ adminRouter.post("/portals/:id/demo-data/seed", async (req: Request, res: Respon
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { seedDemoData } = require("../services/demoSeeder");
-    res.json(await seedDemoData(tenantId, { profile, seed: typeof b2.seed === "string" && b2.seed.trim() ? b2.seed.trim() : undefined }));
+    // The acting hub admin answers the demo feedback ticket (the app's own
+    // canReply rule), so the reply producer runs without hunting the database.
+    res.json(await seedDemoData(tenantId, { profile, seed: typeof b2.seed === "string" && b2.seed.trim() ? b2.seed.trim() : undefined, runSweep: b2.runSweep !== false, actingUserId: req.user?.id ?? null }));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/portals/:id/demo-data/wipe", async (req: Request, res: Response) => {

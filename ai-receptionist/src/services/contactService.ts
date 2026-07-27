@@ -302,6 +302,17 @@ export async function importContacts(
     }
     imported++;
   }
+  // Emergent layer 1 producer: import finished. Counts only, never the rows.
+  // Lives HERE (not in the route) so every caller shares one choke point.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require("./inAppNotificationService").notifyNever({
+      tenantId, category: "import_complete",
+      title: `Import finished: ${imported} contact${imported === 1 ? "" : "s"}`,
+      body: skipped ? `${skipped} row${skipped === 1 ? "" : "s"} skipped.` : null,
+      link: "#/contacts",
+    });
+  } catch { /* never-block */ }
   return { imported, skipped };
 }
 

@@ -49,6 +49,15 @@ export function markAuditSweep(): void { lastAuditSweepAt = Date.now(); } // cal
 // Emergent layer 2: the nightly detector sweep reports its counters here.
 let lastDetectorSweepAt = 0;
 let lastDetectorCounters: any = null;
+// Emergent layer 1: emissions that found nobody to notify. A tenant with no
+// users is a legitimate state, but a SILENT one used to look like a bug in the
+// bell — this makes it visible.
+let notifNoRecipients: { count: number; lastAt: number; lastTenantId: string | null; lastCategory: string | null } = { count: 0, lastAt: 0, lastTenantId: null, lastCategory: null };
+export function markNotificationNoRecipients(tenantId: string, category: string): void {
+  notifNoRecipients = { count: notifNoRecipients.count + 1, lastAt: Date.now(), lastTenantId: tenantId, lastCategory: category };
+}
+export function notificationNoRecipientStatus(): typeof notifNoRecipients { return notifNoRecipients; }
+
 export function markDetectorSweep(counters?: any): void { lastDetectorSweepAt = Date.now(); if (counters) lastDetectorCounters = counters; }
 export function detectorSweepStatus(): { at: number; counters: any } { return { at: lastDetectorSweepAt, counters: lastDetectorCounters }; }
 export function _setMarksForTests(m: { scheduler?: number | null; audit?: number | null }): void {

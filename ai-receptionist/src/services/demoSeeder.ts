@@ -26,7 +26,7 @@ import { isProduction } from "../config/env";
 const db = prisma as any;
 const DAY = 86400000;
 
-export interface SeedOptions { profile: "field_services" | "recruitment_marketing"; seed?: string }
+export interface SeedOptions { profile: "field_services" | "recruitment_marketing"; seed?: string; runSweep?: boolean; actingUserId?: string | null }
 export interface SeedResult { runId: string; counts: Record<string, number>; deterministic: Record<string, number>; notes: string[] }
 
 /** Deterministic RNG: the same seed produces the same dataset, so a before/after
@@ -321,12 +321,43 @@ export async function seedDemoData(tenantId: string, opts: SeedOptions): Promise
   const notes: string[] = [];
   const t0 = Date.now();
   logger.info(`[seeder] seeding "${tenant.name}" with the ${opts.profile} profile (seed "${seed}")`);
+  // REAL USERS FIRST: notifications are per-recipient, so a tenant with nobody
+  // in it can only ever produce a silent no-op (the empty-bell bug).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const ev = require("./demoSeederEvents");
+  const users = await ev.seedTenantUsers(tenantId, led);
+  notes.push(`${users.length} demo users created (no invitations sent; these accounts cannot log in)`);
   if (opts.profile === "field_services") await seedFieldServices(tenantId, r, led, notes);
   else {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     await require("./demoSeederRm").seedRecruitmentMarketing(tenantId, r, led, notes);
   }
-  const run = await db.demoSeedRun.create({ data: { tenantId, profile: opts.profile, seed, counts: { ...led.counts, __deterministic: led.deterministic }, ids: led.ids } });
+  // REAL EVENTS: drive genuine producer paths so the bell fills organically.
+  const fired = await ev.seedRealEvents(tenantId, users, led, notes, opts.actingUserId || null);
+  const run = await db.demoSeedRun.create({ data: { tenantId, profile: opts.profile, seed, counts: { ...led.counts, __deterministic: led.deterministic, __producers: fired }, ids: led.ids } });
+  // Age the workspace past the unused-module floor — ONLY because this run's
+  // ledger exists (see ageSeededTenant's guard), and recorded on that run.
+  await ev.ageSeededTenant(tenantId, run.id);
+  if (opts.runSweep !== false) {
+    // The detector sweep as the final step, so one action yields a portal with
+    // BOTH activity and suggestions. Same sweep the nightly timer runs.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { runDetectorSweep } = require("../detectors");
+      const c = await runDetectorSweep(new Date(), tenantId);
+      // The sweep's suggestions belong to this run for cleanup purposes (we did
+      // not insert them — the detectors did — but Wipe must leave no trace).
+      const made = await db.suggestion.findMany({ where: { tenantId }, select: { id: true } });
+      const known = new Set(led.ids.filter((x: any) => x.model === "suggestion").map((x: any) => x.id));
+      for (const row of made) if (!known.has(row.id)) led.add("suggestion", row.id, true);
+      const stored = await db.demoSeedRun.findUnique({ where: { id: run.id }, select: { counts: true } });
+      await db.demoSeedRun.update({
+        where: { id: run.id },
+        data: { ids: led.ids, counts: { ...((stored && stored.counts) || {}), ...led.counts, __deterministic: led.deterministic, __producers: fired } },
+      });
+      notes.push(`detector sweep ran: ${c.created} suggestion(s) created`);
+    } catch (err) { logger.error(`[seeder] post-seed sweep: ${(err as Error).message}`); }
+  }
   logger.info(`[seeder] done in ${Math.round((Date.now() - t0) / 100) / 10}s: ${JSON.stringify(led.counts)}`);
   notes.push("counts marked __deterministic are the seeder's own; call-simulator rows vary run to run by design");
   return { runId: run.id, counts: led.counts, deterministic: led.deterministic, notes };

@@ -5881,7 +5881,7 @@
         const row = el("div", "notif-sug-hist");
         row.appendChild(el("span", null, esc(d.title)));
         row.appendChild(el("span", "cell-muted", esc(d.actedAt ? new Date(d.actedAt).toLocaleDateString() : "")));
-        const back = el("button", "btn-link", "Show it again");
+        const back = el("button", "btn btn-ghost btn-sm", "Show it again"); // VISUAL NORMALIZATION: house button, not a bespoke link
         back.type = "button";
         back.onclick = async () => {
           try { await App.portalApi("/api/suggestions/" + encodeURIComponent(d.id) + "/undismiss", { method: "POST" }); row.remove(); toast("It'll show up again in Suggestions"); }
