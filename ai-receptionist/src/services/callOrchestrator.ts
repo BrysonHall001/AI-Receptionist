@@ -477,6 +477,20 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
 export async function failCall(callSid: string, reason: string): Promise<void> {
   logger.warn(`Call ${callSid} ended abnormally: ${reason}`);
   await finalizeCall(callSid, "FAILED");
+  // Emergent layer 1: an unanswered/failed call is actionable NOW. One
+  // never-block call, and only the fact — never the caller's transcript.
+  try {
+    const cs = await prisma.callSession.findUnique({ where: { callSid }, select: { tenantId: true, fromNumber: true } });
+    if (cs && cs.tenantId) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require("./inAppNotificationService").notifyNever({
+        tenantId: cs.tenantId, category: "call_missed_or_failed",
+        title: "Missed or failed call",
+        body: cs.fromNumber ? `From ${String(cs.fromNumber).slice(0, 24)}` : null,
+        link: "#/calls",
+      });
+    }
+  } catch { /* never-block */ }
 }
 
 /** Merge newly extracted fields over prior ones; backfill phone from caller ID. */

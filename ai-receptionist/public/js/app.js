@@ -756,6 +756,10 @@
       presenceStrip.classList.add("app-presence-strip");
       pagesRight.appendChild(presenceStrip);
       if (App.presence) App.presence.mount(presenceStrip);
+      // Notifications bell (emergent layer 1) — mounted immediately BEFORE the
+      // gear in the SAME container, so it inherits the gear's size/hit-area/
+      // spacing tokens and the gear itself does not move.
+      if (App.notifications) { try { App.notifications.mount(pagesRight); } catch (e) { /* the bell never breaks the shell */ } }
       // Settings gear — relocated here (upper-right of the top row) now that the old
       // context row is gone. Still opens Settings.
       const gear = el("a", "icon-btn gear");
@@ -908,6 +912,18 @@
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       buildShell("portal", null);
       return App.portal.renderRecord(id);
+    }
+
+    // NOTIFICATIONS full page (emergent layer 1). Reached from the panel's
+    // "See all" or by direct route only — deliberately NOT a nav item and NOT a
+    // lockable page (notifications are interrupts, not destinations, and the
+    // top nav is renameable/hideable per portal). The router treats it as a
+    // plain portal route: buildShell with no active nav item, so the page-lock
+    // machinery never sees it and nothing highlights.
+    if (path === "/notifications") {
+      if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
+      buildShell("portal", null);
+      return App.notifications.renderPage(App.util.$("#view"));
     }
 
     // Recycle Bin read-only preview (contact or record). Stays INSIDE the bin:

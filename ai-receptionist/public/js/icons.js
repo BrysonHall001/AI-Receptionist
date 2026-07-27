@@ -92,7 +92,20 @@
     WALKIE: S(`<path d="M2.2 6.4c0-1 .5-1.8 1.4-2.1a13.6 13.6 0 0 1 8.8 0c.9.3 1.4 1.1 1.4 2.1v1.2a.9.9 0 0 1-1 .9l-2-.2a.9.9 0 0 1-.8-.9v-.9a7.9 7.9 0 0 0-3.9 0v.9a.9.9 0 0 1-.8.9l-2 .2a.9.9 0 0 1-1-.9V6.4Z"${K}/><path d="M8 9.2v2.6M5.4 13.4h5.2M6.1 11.8h3.8"${K}/>`),
     SMOOTH: S(`<path d="M4.6 2.8h6.8l2.6 3.4L8 13.6 2 6.2l2.6-3.4Z"${K}/><path d="M2 6.2h12M5.9 6.2 8 13.6 10.1 6.2M4.6 2.8l1.3 3.4M11.4 2.8l-1.3 3.4"${K}/>`),
   };
+  // ---- Notifications (emergent layer 1): the bell + one glyph per category ----
+  const BELL_ICON = S(`<path d="M8 2.2a3.6 3.6 0 0 0-3.6 3.6c0 3-1.2 3.9-1.2 4.6h9.6c0-.7-1.2-1.6-1.2-4.6A3.6 3.6 0 0 0 8 2.2Z"${K}/><path d="M6.7 12.3a1.4 1.4 0 0 0 2.6 0"${K}/>`);
+  const NOTIF_ICONS = {
+    lead_captured: S(`<path d="M8 8.4a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8Z"${K}/><path d="M3.2 13.4c.6-2.2 2.5-3.4 4.8-3.4s4.2 1.2 4.8 3.4"${K}/>`),
+    booking_created: S(`<path d="M3 3.6h10v9.4H3z"${K}/><path d="M3 6.4h10M5.8 2.2v2.4M10.2 2.2v2.4"${K}/><path d="m6 9.6 1.4 1.4 2.6-2.6"${K}/>`),
+    booking_cancelled: S(`<path d="M3 3.6h10v9.4H3z"${K}/><path d="M3 6.4h10M5.8 2.2v2.4M10.2 2.2v2.4"${K}/><path d="m6.3 8.9 3.4 3.4M9.7 8.9l-3.4 3.4"${K}/>`),
+    automation_failed: S(`<path d="M8.8 1.8 3.6 9h3.5l-.9 5.2L11.4 7H7.9l.9-5.2Z"${K}/>`),
+    import_complete: S(`<path d="M8 2.6v6.8"${K}/><path d="m5.2 6.8 2.8 2.8 2.8-2.8"${K}/><path d="M2.8 11.4v1.4a.8.8 0 0 0 .8.8h8.8a.8.8 0 0 0 .8-.8v-1.4"${K}/>`),
+    feedback_reply: S(`<path d="M13.4 10.2a1.2 1.2 0 0 1-1.2 1.2H5l-2.4 2.2V4a1.2 1.2 0 0 1 1.2-1.2h8.4A1.2 1.2 0 0 1 13.4 4Z"${K}/>`),
+    call_missed_or_failed: S(`<path d="M3 2.6h2.6l1.2 3-1.6 1.2a9.4 9.4 0 0 0 3.9 3.9l1.2-1.6 3 1.2v2.6a1 1 0 0 1-1.1 1A11.9 11.9 0 0 1 2 3.7a1 1 0 0 1 1-1.1Z"${K}/><path d="M10.4 2.6h3.2v3.2"${K}/><path d="m13.6 2.6-3.4 3.4"${K}/>`),
+    __default: S(`<circle cx="8" cy="8" r="5.4"${K}/><path d="M8 5.2v3.4M8 10.6v.2"${K}/>`),
+  };
+  function forNotificationCategory(key) { return NOTIF_ICONS[key] || NOTIF_ICONS.__default; }
   function forTemplateKey(key) { return TEMPLATE_ICONS[key] || TEMPLATE_ICONS.__default; }
 
-  App.icons = { forModuleKey, forNavHref, keyForNavHref, forTemplateKey, PAGE_ICONS, MODULE_ICONS, CUSTOM_DEFAULT, TEMPLATE_ICONS, AI_STATE_ICONS };
+  App.icons = { forModuleKey, forNavHref, keyForNavHref, forTemplateKey, forNotificationCategory, BELL_ICON, NOTIF_ICONS, PAGE_ICONS, MODULE_ICONS, CUSTOM_DEFAULT, TEMPLATE_ICONS, AI_STATE_ICONS };
 })();

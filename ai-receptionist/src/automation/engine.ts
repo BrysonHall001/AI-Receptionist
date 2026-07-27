@@ -424,6 +424,17 @@ async function writeRun(
     // Audit foundation: an automation EXECUTION (matched runs only) — actorType
     // "automation", never blocking the run log (audit() is fire-and-forget).
     if (data.matched) audit({ tenantId: auto.tenantId, actorType: "automation", actorId: auto.id, actorLabel: (auto as any).name || "Automation", action: AUDIT_ACTIONS.AUTOMATION_EXECUTED, subjectType: "automation", subjectId: auto.id, subjectLabel: (auto as any).name || null, meta: { status: data.status, eventType: data.eventType } });
+    // Emergent layer 1: a FAILED run is worth telling the owner about. One
+    // never-block call — it cannot delay or break the run it describes.
+    if (data.matched && data.status === "failed") {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require("../services/inAppNotificationService").notifyNever({
+        tenantId: auto.tenantId, category: "automation_failed",
+        title: `Automation problem: ${String((auto as any).name || "Automation").slice(0, 60)}`,
+        body: "An action didn't complete. Open the flow to see its run history.",
+        link: "#/automations",
+      });
+    }
   } catch (err) {
     logger.error(`automation run log failed (${auto.id}): ${(err as Error).message}`);
   }

@@ -5787,6 +5787,51 @@
       host.appendChild(saveBtn);
     }
 
+    /** Emergent layer 1: per-category notification preferences. Every category
+     *  gets "Notify me at all"; toast-eligible ones also get "Show as toast"
+     *  (a badge-only category has nothing to offer, so it says so). */
+    async function notifPrefsSection(panel) {
+      const sec = el("div", "notif-prefs");
+      sec.appendChild(el("h2", "settings-h", "Notifications"));
+      sec.appendChild(el("p", "cell-muted notif-prefs-hint", "Choose what Clarity tells you about, and which of those are worth interrupting you for."));
+      const card = el("div", "card notif-prefs-card");
+      sec.appendChild(card);
+      panel.appendChild(sec);
+      let data;
+      try { data = await App.portalApi("/api/notifications/prefs"); }
+      catch (e) { card.appendChild(el("div", "cell-muted", "Couldn't load your notification preferences.")); return; }
+      const prefs = (data && data.prefs) || {};
+      const cats = (data && data.categories) || [];
+      const save = async () => {
+        try { await App.portalApi("/api/notifications/prefs", { method: "PATCH", body: JSON.stringify({ prefs }) }); toast("Saved"); }
+        catch (e) { toast(e.message || "Couldn't save", true); }
+      };
+      cats.forEach((c) => {
+        const row = el("div", "notif-pref-row");
+        const text = el("div", "notif-pref-text");
+        text.appendChild(el("div", "notif-pref-title", esc(c.label)));
+        text.appendChild(el("div", "cell-muted notif-pref-desc", esc(c.description)));
+        row.appendChild(text);
+        const ctrls = el("div", "notif-pref-ctrls");
+        const mkSwitch = (labelText, checked, onChange, disabledNote) => {
+          const box = el("label", "notif-pref-switch");
+          const sw = el("span", "switch");
+          const cb = el("input"); cb.type = "checkbox"; cb.checked = !!checked; cb.disabled = !!disabledNote;
+          cb.onchange = () => onChange(cb.checked);
+          sw.appendChild(cb); sw.appendChild(el("span", "switch-track"));
+          box.appendChild(sw);
+          box.appendChild(el("span", "notif-pref-swlabel cell-muted", esc(disabledNote || labelText)));
+          return box;
+        };
+        ctrls.appendChild(mkSwitch("Notify me at all", prefs[c.key] && prefs[c.key].on, (v) => { prefs[c.key] = { ...(prefs[c.key] || {}), on: v }; save(); }));
+        ctrls.appendChild(c.urgency === "toast"
+          ? mkSwitch("Show as toast", prefs[c.key] && prefs[c.key].toast, (v) => { prefs[c.key] = { ...(prefs[c.key] || {}), toast: v }; save(); })
+          : mkSwitch("", false, () => { /* */ }, "Badge only"));
+        row.appendChild(ctrls);
+        card.appendChild(row);
+      });
+    }
+
     async function secAccount(panel) {
       panel.innerHTML = `<h2 class="settings-h">Your account</h2>
         <div class="field-grid">
@@ -5846,6 +5891,7 @@
         try { await App.portalApi("/api/account/signature", { method: "PATCH", body: JSON.stringify({ signature: sigApi.getHTML() }) }); toast("Signature saved"); }
         catch (err) { toast(err.message, true); }
       };
+      void notifPrefsSection(panel); // emergent layer 1: per-category notification preferences
     }
 
     // Modules & Fields — module tabs row, then the per-module VIEWS strip, then TWO columns:

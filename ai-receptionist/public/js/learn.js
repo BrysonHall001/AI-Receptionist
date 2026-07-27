@@ -59,6 +59,23 @@
           ],
         },
         {
+          id: "notifications", features: ["always"],
+          title: "The bell: what Clarity tells you",
+          blocks: [
+            { p: "The bell at the top right is how the workspace gets your attention. A number on it means there's something you haven't looked at; no number means nothing new." },
+            { steps: [
+              "Click the bell to open the panel. ACTIVITY lists what's happened — a lead arriving, a booking made or cancelled, an import finishing, a reply on your feedback.",
+              "Click any line to jump straight to the thing it's about; that also marks it read.",
+              "MARK ALL READ clears the count in one go. SEE ALL opens the full history, where you can filter by kind, show only unread, and search.",
+              "The SUGGESTIONS tab is where Clarity will start proposing things worth doing as it notices patterns. It's empty for now, and it will say so honestly.",
+            ] },
+            { p: "Read state is yours alone: marking something read never marks it read for anybody else on your team." },
+            { p: "A few things are urgent enough to pop up a small message as well as the badge \u2014 a new lead, a cancellation, a problem with an automation, a missed call. Everything else waits quietly on the bell." },
+            { p: "You decide all of it in [[#/settings/account|Settings \u2192 Your account]]: each kind of notification has a switch for whether you're told at all, and the urgent ones have a second switch for whether they pop up." },
+            { tip: "Notifications never carry the contents of a message or a call \u2014 just enough to say what happened. The link takes you to the real thing, where your usual permissions apply." },
+          ],
+        },
+        {
           id: "account-basics", features: ["always"],
           title: "Your account: password and email signature",
           blocks: [
@@ -977,7 +994,7 @@
   const LC_VARIANTS = {
     field_services: {
       sections: [
-        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "fs-home-dashboard" }, { ref: "account-basics" }] },
+        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "fs-home-dashboard" }, { ref: "notifications" }, { ref: "account-basics" }] },
         { cat: "Your modules", items: [{ id: "fs-contacts" }, { id: "fs-work-orders" }, { id: "fs-equipment" }, { id: "fs-estimates" }, { id: "fs-invoices" }, { id: "fs-products" }, { id: "fs-tasks" }] },
         { cat: "Workflows", items: [{ id: "fs-dispatch-day" }, { id: "fs-estimate-to-invoice" }, { id: "fs-maintenance-plans" }, { id: "fs-phone-rings" }] },
         { cat: "Your receptionist", page: "#/calls", items: [{ ref: "receptionist-setup" }, { ref: "service-request-intake" }, { ref: "call-log" }, { ref: "lead-capture" }] },
@@ -998,7 +1015,7 @@
     // different surfaces get their own guide.
     recruitment_marketing: {
       sections: [
-        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "rm-home-dashboard" }, { ref: "account-basics" }] },
+        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "rm-home-dashboard" }, { ref: "notifications" }, { ref: "account-basics" }] },
         { cat: "Your modules", items: [{ id: "rm-candidates" }, { id: "rm-job-openings" }, { id: "rm-interviews" }] },
         { cat: "Workflows", items: [{ id: "rm-ad-to-candidate" }, { id: "rm-nurturing" }, { id: "rm-booking-interviews" }, { id: "rm-client-reporting" }] },
         { cat: "Your receptionist", page: "#/calls", items: [{ ref: "receptionist-setup" }, { id: "rm-receptionist-knowledge" }, { ref: "call-log" }, { ref: "lead-capture" }] },

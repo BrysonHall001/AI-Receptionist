@@ -1706,6 +1706,50 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
    than stretching the page; below the hub breakpoint the panels stack, Pages
    first. Module rows reuse the create page's three-column row and wrap (never
    squeeze) when the panel is too narrow for three columns. */
+/* EMERGENT LAYER 1 — the bell, its badge, and the notifications panel. The bell
+   IS an .icon-btn (same size/hit-area/spacing as the gear); the badge is
+   absolutely positioned INSIDE it so the top bar can never shift; the panel
+   rides the house overlay layer (.col-popover) so nothing can clip it. */
+.notif-bell { position: relative; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-faint); }
+.notif-bell svg { width: 18px; height: 18px; }
+.notif-bell:hover { color: var(--ink); }
+.notif-badge { position: absolute; top: 1px; right: 1px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent); font-size: var(--text-xs); line-height: 15px; text-align: center; font-weight: 600; pointer-events: none; }
+.notif-panel { width: 400px; max-width: calc(100vw - 16px); padding: 0; display: flex; flex-direction: column; }
+.notif-head { padding: var(--sp-3) var(--sp-3) 0; }
+.notif-tabs { display: flex; gap: 4px; }
+.notif-body { max-height: 480px; overflow-y: auto; padding: var(--sp-2); display: flex; flex-direction: column; }
+.notif-empty { padding: var(--sp-5) var(--sp-3); text-align: center; font-size: var(--text-sm); }
+.notif-row { display: flex; gap: var(--sp-3); align-items: flex-start; width: 100%; text-align: left; background: none; border: none;
+  border-bottom: 1px solid var(--line); border-left: 2px solid transparent; padding: var(--list-row-pad) var(--sp-3); cursor: pointer; font: inherit; color: var(--ink); }
+.notif-row:last-child { border-bottom: none; }
+.notif-row:hover { background: var(--row-hover); }
+.notif-row.notif-unread { border-left-color: var(--accent); }
+.notif-row-ic { color: var(--ink-faint); display: inline-flex; flex: 0 0 auto; }
+.notif-row-ic svg { width: 16px; height: 16px; }
+.notif-row-mid { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.notif-row-title { font-size: var(--text-sm); font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.notif-row-body { font-size: var(--text-xs); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.notif-row-time { font-size: var(--text-xs); flex: 0 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* notifications: full page + preferences */
+.notif-page-card { padding: 0; }
+.notif-page-list { display: flex; flex-direction: column; }
+.notif-page-list .notif-row { border-left-width: 3px; }
+.notif-page-more { display: flex; justify-content: center; padding: var(--sp-3); }
+.notif-chip { border: 1px solid var(--line); background: var(--panel); color: var(--ink-soft); cursor: pointer; }
+.notif-chip-on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.notif-prefs { margin-top: var(--sp-6); }
+.notif-prefs-hint { margin: 0 0 var(--sp-3); font-size: var(--text-sm); }
+.notif-prefs-card { display: flex; flex-direction: column; }
+.notif-pref-row { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; justify-content: space-between; padding: var(--list-row-pad) 0; border-bottom: 1px solid var(--line); }
+.notif-pref-row:last-child { border-bottom: none; }
+.notif-pref-text { min-width: 0; flex: 1 1 240px; }
+.notif-pref-title { font-size: var(--text-sm); font-weight: 500; }
+.notif-pref-desc { font-size: var(--text-xs); }
+.notif-pref-ctrls { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: center; }
+.notif-pref-switch { display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
+.notif-pref-swlabel { font-size: var(--text-xs); }
+.notif-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--sp-3); border-top: 1px solid var(--line); padding: var(--sp-2) var(--sp-3); }
 .adm-mp-grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 6fr); gap: var(--sp-4); align-items: start; }
 .adm-mp-panel { min-width: 0; }
 .adm-mp-h { margin: 0 0 var(--sp-2); }

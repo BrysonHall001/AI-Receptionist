@@ -172,6 +172,9 @@ model User {
   disabled         Boolean   @default(false)
   signature        String?
   themePrefs       Json      @default("{}")
+  // Per-user notification preferences (per-category: on/off + toast on/off).
+  // Same dormant-JSON pattern as contactColumns; written only by userService.
+  notifPrefs       Json      @default("{}")
   contactColumns   Json      @default("{}")
   // When set, effective portal permissions come from this custom role (PortalRole);
   // the base enum `role` still acts as the tier/ceiling reference. Null = use the
@@ -576,6 +579,29 @@ model WorkOrderVisit {
 
   @@index([tenantId, recordId])
   @@index([tenantId, state, startAt])
+}
+
+// EMERGENT LAYER 1 — NOTIFICATIONS. One row per RECIPIENT (read state is
+// per-user by construction, never per-portal). Bodies stay short and generic:
+// the LINK carries the user to the real thing, where real permissions apply.
+// requiredArea/requiredRight are the permissionGate vocabulary, evaluated at
+// READ time — so a role change retroactively shows/hides the right items and
+// nothing is ever shown-then-denied.
+model Notification {
+  id            String    @id @default(cuid())
+  tenantId      String
+  userId        String
+  category      String
+  title         String
+  body          String?
+  link          String?
+  requiredArea  String?
+  requiredRight String?
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt]) // the unread count AND the feed's ordering
+  @@index([tenantId, createdAt])       // retention sweep
 }
 
 model Record {

@@ -302,6 +302,19 @@ export async function addFeedbackMessage(
   });
   await (prisma as any).feedbackTicket.update({ where: { id }, data: { updatedAt: new Date() } });
   await notifyReply({ ticket: t, actor: ctx.actor, body });
+  // Emergent layer 1: tell the ticket's AUTHOR (and only them) that a reply
+  // landed. The body itself never travels — the link opens the thread.
+  try {
+    if (t.createdById && t.createdById !== ctx.actor.id && t.tenantId) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require("./inAppNotificationService").notifyNever({
+        tenantId: t.tenantId, category: "feedback_reply", userIds: [t.createdById],
+        title: "New reply on your feedback",
+        body: null,
+        link: "#/feedback",
+      });
+    }
+  } catch { /* never-block */ }
   return messageDTO(m);
 }
 

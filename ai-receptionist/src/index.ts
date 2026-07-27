@@ -6,6 +6,8 @@ import { ensureInboundStatusCallback } from "./telephony/provisionStatusCallback
 import { attachConversationRelay } from "./telephony/conversationRelayWs";
 import { sweepStaleCalls } from "./services/callOrchestrator";
 import { registerAuditSubscriber } from "./services/auditSubscriber";
+import { runNotificationPruneSweep } from "./services/inAppNotificationService";
+import { registerNotificationSubscriber } from "./services/notificationSubscriber";
 import { startHealthSweep, markSchedulerTick } from "./services/healthService";
 import { runErrorPruneSweep } from "./services/errorService";
 import { runWebhookPruneSweep } from "./services/webhookService";
@@ -66,6 +68,9 @@ async function main(): Promise<void> {
   // contacts, bookings, sends — captured ONCE, here), and run the 14+14 retention
   // sweep hourly (the geocode-sweep pattern: bounded batches, never throws).
   registerAuditSubscriber();
+  // Emergent layer 1: the same pattern, one subscriber over — lead captured,
+  // booking created, booking cancelled/no-show.
+  registerNotificationSubscriber();
   const auditSweepTimer = setInterval(() => { void runAuditRetentionSweep(); }, 60 * 60_000);
   auditSweepTimer.unref();
 
@@ -74,7 +79,9 @@ async function main(): Promise<void> {
 
   // devtools-data: hourly ops retention — captured errors AND webhook deliveries.
   // Bounded batches; never blocks anything.
-  const opsPruneTimer = setInterval(() => { void runErrorPruneSweep(); void runWebhookPruneSweep(); }, 60 * 60_000);
+  // Emergent layer 1: in-app notification retention rides the SAME hourly ops
+  // timer (bounded batches, never throws — the audit-sweep pattern).
+  const opsPruneTimer = setInterval(() => { void runErrorPruneSweep(); void runWebhookPruneSweep(); void runNotificationPruneSweep(); }, 60 * 60_000);
   opsPruneTimer.unref();
 
   // Resolved-feedback auto-delete: same in-process timer mechanism as above, but
