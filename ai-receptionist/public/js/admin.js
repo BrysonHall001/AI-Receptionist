@@ -1504,8 +1504,112 @@
   const DEVTOOL_SECTIONS = [
     { key: "history", label: "History", render: renderHistorySection },
     { key: "health", label: "System Health", render: renderHealthSection }, // audit-fixes-health batch
+    { key: "demodata", label: "Demo data", render: renderDemoDataSection }, // demo-seeder batch (dev tool)
     // future sections register here
   ];
+
+  // ---------------- Demo data (DEV TOOL) ----------------
+  // Fills ONE chosen workspace with a modest backdated dataset so the dispatch
+  // board, analytics and suggestion cards can be looked at in context. Both
+  // buttons demand the workspace's name typed back. The detector sweep sits in
+  // the same panel: seed -> run sweep -> open the portal's bell.
+  function renderDemoDataSection(host) {
+    host.innerHTML = "";
+    const wrap = el("div", "dd-wrap");
+    wrap.appendChild(el("p", "cell-muted dd-hint", "A development aid: it fills a workspace you choose with obviously-fake, backdated data (names like Avery Lane, @example.invalid emails, 555 numbers). It never sends anything. Wipe removes exactly what a run created."));
+    const card = el("div", "card adm-card2");
+    wrap.appendChild(card);
+    host.appendChild(wrap);
+
+    const row1 = el("div", "adm-formrow3");
+    const colT = el("div", "adm-fcol");
+    colT.appendChild(el("label", "field-label", "Workspace"));
+    const tSel = el("select", "input");
+    colT.appendChild(tSel);
+    const colP = el("div", "adm-fcol");
+    colP.appendChild(el("label", "field-label", "Profile"));
+    const pSel = el("select", "input");
+    pSel.innerHTML = '<option value="field_services">Field Services</option><option value="recruitment_marketing">Recruitment Marketing</option>';
+    colP.appendChild(pSel);
+    const colC = el("div", "adm-fcol");
+    colC.appendChild(el("label", "field-label", "Type the workspace name to confirm"));
+    const confirmInp = el("input", "input");
+    confirmInp.placeholder = "Exact name";
+    colC.appendChild(confirmInp);
+    row1.appendChild(colT); row1.appendChild(colP); row1.appendChild(colC);
+    card.appendChild(row1);
+
+    const volume = el("p", "cell-muted dd-volume");
+    card.appendChild(volume);
+    const actions = el("div", "dd-actions");
+    const seedBtn = el("button", "btn btn-primary btn-sm", "Seed demo data");
+    const wipeBtn = el("button", "btn btn-ghost btn-sm", "Wipe seeded data");
+    const sweepBtn = el("button", "btn btn-ghost btn-sm", "Run detector sweep");
+    actions.appendChild(seedBtn); actions.appendChild(wipeBtn); actions.appendChild(sweepBtn);
+    card.appendChild(actions);
+    const out = el("div", "dd-out cell-muted");
+    card.appendChild(out);
+
+    let caps = null;
+    const paintVolume = () => {
+      if (!caps) { volume.textContent = ""; return; }
+      const c = caps[pSel.value] || {};
+      volume.textContent = "This will create about: " + Object.keys(c).map((k) => `${c[k]} ${k.replace(/([A-Z])/g, " $1").toLowerCase()}`).join(" \u00b7 ") + ".";
+    };
+    const loadFor = async (id) => {
+      if (!id) return;
+      try {
+        const r = await App.api("/api/admin/portals/" + encodeURIComponent(id) + "/demo-data");
+        caps = r.caps; paintVolume();
+        out.innerHTML = "";
+        const runs = r.runs || [];
+        if (!runs.length) out.appendChild(el("div", null, "No demo runs on this workspace yet."));
+        runs.forEach((run) => {
+          const line = el("div", "dd-run");
+          const counts = Object.keys(run.counts || {}).filter((k) => k !== "__deterministic").map((k) => `${k} ${run.counts[k]}`).join(", ");
+          line.textContent = `${new Date(run.createdAt).toLocaleString()} \u2014 ${run.profile} \u2014 ${counts}${run.wipedAt ? " (wiped)" : ""}`;
+          out.appendChild(line);
+        });
+      } catch (e) { out.textContent = e.message || "Couldn't load demo-data status."; }
+    };
+    pSel.onchange = paintVolume;
+    tSel.onchange = () => loadFor(tSel.value);
+    App.api("/api/admin/portals").then((r) => {
+      const list = (r && (r.portals || r)) || [];
+      tSel.innerHTML = list.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+      if (list.length) loadFor(tSel.value);
+    }).catch(() => { tSel.innerHTML = "<option>(couldn't load workspaces)</option>"; });
+
+    const busy = (on) => { seedBtn.disabled = on; wipeBtn.disabled = on; sweepBtn.disabled = on; };
+    seedBtn.onclick = async () => {
+      busy(true); out.textContent = "Seeding\u2026";
+      try {
+        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/demo-data/seed", { method: "POST", body: JSON.stringify({ profile: pSel.value, confirm: confirmInp.value }) });
+        out.textContent = "Seeded: " + Object.keys(r.counts).filter((k) => k !== "__deterministic").map((k) => `${k} ${r.counts[k]}`).join(", ");
+        toast("Demo data seeded");
+        loadFor(tSel.value);
+      } catch (e) { out.textContent = e.message || "Seeding failed."; toast(e.message || "Seeding failed", true); }
+      busy(false);
+    };
+    wipeBtn.onclick = async () => {
+      busy(true); out.textContent = "Wiping\u2026";
+      try {
+        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/demo-data/wipe", { method: "POST", body: JSON.stringify({ confirm: confirmInp.value }) });
+        out.textContent = `Removed ${r.removed} row(s) from ${r.runs} run(s).`;
+        toast("Seeded data wiped");
+        loadFor(tSel.value);
+      } catch (e) { out.textContent = e.message || "Wipe failed."; toast(e.message || "Wipe failed", true); }
+      busy(false);
+    };
+    sweepBtn.onclick = async () => {
+      busy(true); out.textContent = "Running the detector sweep\u2026";
+      try {
+        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/suggestions/run", { method: "POST" });
+        out.textContent = `Sweep done: ${r.counters.findings} finding(s), ${r.counters.created} new suggestion(s). Open the workspace's bell to read them.`;
+      } catch (e) { out.textContent = e.message || "Sweep failed."; }
+      busy(false);
+    };
+  }
   const HISTORY_SUBTABS = [
     { key: "changelog", label: "Change Log", mount: (host) => renderChangelog(host) },
     { key: "auditlog", label: "Audit Log", mount: (host) => renderAuditLog(host) }, // devtools batch 3

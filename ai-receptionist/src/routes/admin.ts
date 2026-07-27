@@ -638,6 +638,46 @@ adminRouter.get("/health/rollup/:check", async (req: Request, res: Response) => 
   } catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
+// DEMO DATA SEEDER (dev tool) — same placement and gating as the suggestions
+// controls below: hub router = requireRole(OWNER/SUPER_ADMIN/AUDITOR) +
+// impersonation lockout. Both mutating calls demand the tenant's NAME typed
+// back, so a mis-click can't fill (or empty) the wrong workspace.
+adminRouter.get("/portals/:id/demo-data", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const p = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Portal not found" }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { listDemoRuns, DEMO_PROFILE_CAPS } = require("../services/demoSeeder");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { RM_PROFILE_CAPS } = require("../services/demoSeederRm");
+  res.json({ tenantName: (p as any).name, runs: await listDemoRuns(tenantId), caps: { field_services: DEMO_PROFILE_CAPS.field_services, recruitment_marketing: RM_PROFILE_CAPS } });
+});
+adminRouter.post("/portals/:id/demo-data/seed", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const p: any = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Portal not found" }); return; }
+  const b2 = (req.body ?? {}) as any;
+  if (String(b2.confirm || "").trim() !== String(p.name || "").trim()) { res.status(400).json({ error: "Type the workspace's name exactly to confirm." }); return; }
+  const profile = b2.profile === "recruitment_marketing" ? "recruitment_marketing" : "field_services";
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { seedDemoData } = require("../services/demoSeeder");
+    res.json(await seedDemoData(tenantId, { profile, seed: typeof b2.seed === "string" && b2.seed.trim() ? b2.seed.trim() : undefined }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+adminRouter.post("/portals/:id/demo-data/wipe", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const p: any = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Portal not found" }); return; }
+  const b2 = (req.body ?? {}) as any;
+  if (String(b2.confirm || "").trim() !== String(p.name || "").trim()) { res.status(400).json({ error: "Type the workspace's name exactly to confirm." }); return; }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { wipeDemoData } = require("../services/demoSeeder");
+    res.json(await wipeDemoData(tenantId, b2.runId || null));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // EMERGENT LAYER 2 — devtools control for suggestions. Matches the sibling
 // dummy-data pattern (api.ts POST /records/dummy): a dev-only seeder plus, here,
 // an on-demand sweep so the detectors can be exercised without waiting 24h.

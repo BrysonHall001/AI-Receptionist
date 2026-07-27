@@ -242,8 +242,7 @@ async function main() {
     `the Suggestions TAB carries its own count pill (${(sugTab.querySelector(".notif-tabcount") || {}).textContent}) — the bell badge still counts unread Activity only`);
   sugTab.click();
   await until(() => $(".notif-sug"));
-  const card = $$(".notif-sug").find((c: any) => /ui field/.test(c.textContent)) as any;
-  if (!card) { console.log("    [dbg] cards:", $$(".notif-sug").map((c: any) => c.textContent.slice(0, 40))); }
+  const card = (await until(() => $$(".notif-sug").find((c: any) => /ui field/.test(c.textContent)))) as any;
   check(!!card.querySelector(".notif-sug-head") && !!card.querySelector(".notif-sug-title") && !!card.querySelector(".notif-sug-why") && !!card.querySelector(".notif-sug-actions .btn-primary") && !!card.querySelector(".notif-sug-dismiss"),
     "CARD anatomy: type label \u00b7 finding \u00b7 transparency line \u00b7 action row (primary verb + Dismiss)");
   check(card.querySelector(".btn-primary").textContent === "Add the field", `\u2026the primary button carries the concrete verb (“${card.querySelector(".btn-primary").textContent}”)`);

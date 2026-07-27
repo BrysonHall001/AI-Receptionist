@@ -585,6 +585,23 @@ model WorkOrderVisit {
 }
 
 // (Tenant.suggestionPrefs holds the master + per-detector switches; see below.)
+// DEMO DATA SEEDER (dev tool). One row per seed RUN, holding the ledger of
+// every id it created — so "wipe" removes exactly what a run made and can
+// never touch a row somebody actually typed. No marker column pollutes the
+// twenty models the seeder writes to.
+model DemoSeedRun {
+  id        String    @id @default(cuid())
+  tenantId  String
+  profile   String
+  seed      String
+  counts    Json      @default("{}")
+  ids       Json      @default("[]")   // [{ model, id }] in creation order
+  createdAt DateTime  @default(now())
+  wipedAt   DateTime?
+
+  @@index([tenantId, createdAt])
+}
+
 // EMERGENT LAYER 2 — SUGGESTIONS. A detector's finding, PROPOSED to the owner
 // and applied only on an explicit click. dedupeKey is unique per tenant so a
 // nightly re-run UPSERTS the existing row (reviving an expired one, refreshing
