@@ -114,6 +114,9 @@ export async function createOrUpdateContact(input: ContactInput, actor?: Mutatio
     /* emitting is non-critical */
   }
   await markContactGeoSafe(input.tenantId, contact); // contacts-on-the-map: queue geocoding (best-effort)
+  // SEARCH INDEX (fire-and-forget).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexContact(contact.id);
   return contact;
 }
 
@@ -228,6 +231,9 @@ export async function updateContact(
   }
 
   await markContactGeoSafe(tenantId, updated); // contacts-on-the-map: re-queue geocoding if the address changed
+  // SEARCH INDEX (fire-and-forget).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexContact(updated.id);
   return updated;
 }
 
@@ -349,6 +355,8 @@ export async function softDeleteContacts(tenantId: string, ids: string[], actor?
   for (const t of targets) {
     try { await emitEvent({ tenantId, type: EVENT_TYPES.ContactDeleted, actor: actorOf(actor as MutationActor), subject: { type: "contact", id: t.id }, payload: {} }); } catch { /* never block the delete on event emission */ }
   }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").removeFromIndex("contact", ids);
   return r.count;
 }
 
@@ -437,6 +445,9 @@ export async function createContact(
     await logActivity({ tenantId, contactId: contact.id, type: "created", summary: "Contact created", actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
   } catch { /* non-critical */ }
   await markContactGeoSafe(tenantId, contact); // contacts-on-the-map: queue geocoding (best-effort)
+  // SEARCH INDEX (fire-and-forget).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexContact(contact.id);
   return contact;
 }
 
@@ -584,6 +595,9 @@ export async function generateDummyContact(tenantId: string, actor?: MutationAct
     await logActivity({ tenantId, contactId: contact.id, type: "created", summary: "Dummy contact created", actor: { id: actor?.id, name: actor?.name, type: actor?.type ?? "user" } });
   } catch { /* non-critical */ }
   await markContactGeoSafe(tenantId, contact); // contacts-on-the-map: queue geocoding (best-effort)
+  // SEARCH INDEX (fire-and-forget).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexContact(contact.id);
   return contact;
 }
 

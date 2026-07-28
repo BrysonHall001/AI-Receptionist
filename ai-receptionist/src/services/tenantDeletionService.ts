@@ -25,6 +25,9 @@ const db = prisma as any;
 export const NON_CASCADING_MODELS: string[] = [
   // notification/suggestion layer first — they reference users and records
   "notification", "suggestion", "demoSeedRun",
+  // the search index carries a tenantId with no relation, so it would be left
+  // behind by the cascade (caught by this very list's schema assertion)
+  "searchIndex",
   // per-record and per-contact satellites
   "workOrderVisit", "recordGeo", "contactGeo", "fieldSection",
   // comms + exports

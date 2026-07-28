@@ -207,6 +207,9 @@ export async function deleteField(tenantId: string, id: string): Promise<void> {
   if (!field || field.tenantId !== tenantId) throw new Error("Field not found");
   if (field.system) throw new Error("System fields can't be deleted");
   await prisma.fieldDef.delete({ where: { id } });
+  // SEARCH INDEX: every record of this type just lost that field's text.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  if ((field as any).recordTypeId) void require("./searchIndexService").reindexRecordType(tenantId, (field as any).recordTypeId);
 }
 
 /** Reorder fields WITHIN one object type. Ids not belonging to that type are ignored. */

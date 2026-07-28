@@ -751,6 +751,10 @@
       pageItems.forEach(function (it) { pagesScroll.appendChild(makeNavAnchor(it)); });
       pagesRow.appendChild(pagesScroll);
 
+      // GLOBAL SEARCH sits between the tabs and the icons. The tab strip keeps
+      // flex: 1 1 auto (so it still scrolls when pages overflow); the search is
+      // flex: 0 0 auto and collapses to icon width on narrow screens.
+      const searchSlot = App.globalSearch ? App.globalSearch.mount() : null;
       const pagesRight = el("div", "pages-row-right");
       const presenceStrip = el("div", "presence-strip");
       presenceStrip.classList.add("app-presence-strip");
@@ -784,7 +788,9 @@
       gear.title = "Settings";
       gear.innerHTML = "&#9881;";
       pagesRight.appendChild(gear);
+      if (searchSlot) pagesRow.appendChild(searchSlot);
       pagesRow.appendChild(pagesRight);
+      if (App.globalSearch) App.globalSearch.bindShortcut();
       // Measured, not assumed: offsetHeight - clientHeight IS the horizontal
       // scrollbar's height in this browser (0 where scrollbars overlay).
       const alignPagesRight = () => {

@@ -672,6 +672,9 @@ export async function createRecord(
       return tx.record.create({ data: recData });
     });
     await markGeoSafe(tenantId, created); // Map foundation: queue address geocoding (best-effort)
+    // SEARCH INDEX (fire-and-forget: indexing can never delay or break a write).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    void require("./searchIndexService").indexRecord(created.id);
     return serializeRecord(created);
   }
 
@@ -702,6 +705,9 @@ export async function createRecord(
     } catch { /* never block the record create on event emission */ }
   }
   await markGeoSafe(tenantId, created); // Map foundation: queue address geocoding (best-effort)
+  // SEARCH INDEX (fire-and-forget: indexing can never delay or break a write).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexRecord(created.id);
   return serializeRecord(created);
 }
 
@@ -845,6 +851,9 @@ export async function updateRecord(tenantId: string, id: string, input: { title?
   // =================== END RECORD-UPDATED EVENT (Stage 2a) ===================
 
   await markGeoSafe(tenantId, updated); // Map foundation: re-queue geocoding if the address changed
+  // SEARCH INDEX (fire-and-forget: indexing can never delay or break a write).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexRecord(updated.id);
   return serializeRecord(updated);
 }
 
@@ -1117,6 +1126,8 @@ export async function softDeleteRecords(tenantId: string, ids: string[], actor: 
   for (const t of targets) {
     try { await emitEvent({ tenantId, type: "RecordDeleted", actor, subject: { type: "record", id: t.id }, payload: { record_id: t.id } }); } catch { /* never block the delete on event emission */ }
   }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").removeFromIndex("record", ids);
   return r.count;
 }
 
@@ -1313,6 +1324,9 @@ export async function generateDummyRecord(tenantId: string, recordType?: string 
       await createLink(tenantId, { recordId: created.id, parentType: "record", parentId: target.id, role: lt.role }).catch(() => { /* duplicate link on re-roll: fine */ });
     }
   }
+  // SEARCH INDEX (fire-and-forget: indexing can never delay or break a write).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexRecord(created.id);
   return serializeRecord(created);
 }
 

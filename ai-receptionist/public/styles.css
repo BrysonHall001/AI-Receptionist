@@ -1769,6 +1769,25 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .adm-demo-row .adm-ai-right { padding-top: 20px; flex: 1 1 200px; min-width: 180px; }
 .adm-demo-row .adm-ai-desc { font-size: var(--text-xs); }
 @media (max-width: 860px) { .adm-step2 { grid-template-columns: 1fr; } }
+/* GLOBAL SEARCH — the top-bar input and its anchored results panel. Built from
+   house tokens: the shared .search-input, .card elevation, .field-label section
+   headers, and the batch-38 row density. */
+.gs-wrap { flex: 0 0 auto; min-width: 0; margin-left: var(--sp-2); }
+.gs-input { width: 200px; max-width: 100%; }
+@media (max-width: 1100px) { .gs-input { width: 140px; max-width: 100%; } }
+@media (max-width: 860px) { .gs-input { width: 110px; max-width: 100%; } }
+.gs-panel { position: absolute; z-index: 60; padding: var(--sp-2) 0; overflow-y: auto; overflow-x: hidden; }
+.gs-group { padding: var(--sp-2) var(--sp-3) var(--sp-1); }
+.gs-row { display: flex; align-items: center; gap: var(--sp-2); width: 100%; text-align: left; background: none; border: none;
+  padding: var(--sp-1) var(--sp-3); font: inherit; color: var(--ink); cursor: pointer; min-height: 38px; }
+.gs-row:hover, .gs-row--active { background: var(--panel-2); }
+.gs-row-ic { flex: 0 0 auto; display: inline-flex; width: 16px; height: 16px; color: var(--ink-faint); }
+.gs-row-ic svg { width: 100%; height: 100%; }
+.gs-row-mid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.gs-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-row-ctx { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-row-meta { flex: 0 0 auto; font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-state, .gs-more { padding: var(--sp-3); font-size: var(--text-sm); }
 /* The in-portal demo banner: house amber-soft notice, dismissible per person. */
 .demo-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); background: var(--amber-soft); color: var(--amber); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); margin: 0 0 var(--sp-3); font-size: var(--text-sm); }
 .demo-banner-text { font-weight: 500; }

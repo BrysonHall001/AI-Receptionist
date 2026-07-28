@@ -471,6 +471,10 @@ export async function finalizeCall(callSid: string, finalState: "COMPLETED" | "F
   }
 
   logger.info(`Call ${callSid} finalized (${finalState}).`);
+
+  // SEARCH INDEX: the call is complete, so its transcript becomes findable.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  try { const sx = await (prisma as any).callSession.findUnique({ where: { callSid }, select: { id: true } }); if (sx) void require("./searchIndexService").indexCall(sx.id); } catch { /* never block a call */ }
 }
 
 /** Abnormal terminal Twilio statuses (busy/failed/no-answer/canceled). */
@@ -491,6 +495,10 @@ export async function failCall(callSid: string, reason: string): Promise<void> {
       });
     }
   } catch { /* never-block */ }
+
+  // SEARCH INDEX: the call is complete, so its transcript becomes findable.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  try { const sx = await (prisma as any).callSession.findUnique({ where: { callSid }, select: { id: true } }); if (sx) void require("./searchIndexService").indexCall(sx.id); } catch { /* never block a call */ }
 }
 
 /** Merge newly extracted fields over prior ones; backfill phone from caller ID. */

@@ -226,6 +226,12 @@
       defaultSort: "createdAt", defaultSortDir: "desc", highlightId: App._highlightCallId,
       emptyHtml: emptyCalls().outerHTML, pageSize: 6,
     });
+    // DEEP LINK: a search result lands here as #/calls?call=<id>. There is no
+    // per-call route, so we open that call's own drawer on top of the list.
+    if (App.routeQuery && App.routeQuery.call) {
+      const wanted = String(App.routeQuery.call);
+      if (calls.some((c) => String(c.id) === wanted)) setTimeout(() => { try { openCall(wanted); } catch (e) { /* */ } }, 60);
+    }
     // Always-visible "Simulate call" in the toolbar (next to Search), so it works
     // whether or not any calls exist yet. Same simulate() action as before.
     if (handle && handle.toolbarRight) {

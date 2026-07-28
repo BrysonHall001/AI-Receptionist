@@ -201,6 +201,14 @@ async function main(): Promise<void> {
     }
   };
   const usageSweepTimer = setInterval(() => { void runUsageSweep(); }, 10 * 60_000);
+  // SEARCH INDEX safety net: write hooks can be missed (a new path, a crash
+  // between the entity write and the index write), so this repairs drift and
+  // drops orphans hourly. Failures are logged, never thrown.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { reconcileSearchIndex } = require("./services/searchIndexService");
+  const searchIndexTimer = setInterval(() => {
+    void reconcileSearchIndex().catch((e: Error) => logger.error(`[search-index] reconcile tick failed: ${e.message}`));
+  }, 60 * 60_000);
   usageSweepTimer.unref();
 
   const shutdown = async (signal: string): Promise<void> => {

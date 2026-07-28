@@ -135,8 +135,16 @@ async function main() {
   const byStage: any = {}; const bySource: any = {};
   cands.forEach((c: any) => { const cf = c.customFields || {}; if (cf.candidate_stage) byStage[cf.candidate_stage] = (byStage[cf.candidate_stage] || 0) + 1; if (cf.candidate_source) bySource[cf.candidate_source] = (bySource[cf.candidate_source] || 0) + 1; });
   const stages: any[] = Object.entries(byStage).sort((a: any, b: any) => b[1] - a[1]);
-  check(cands.length <= RM_PROFILE_CAPS.candidates + RM_PROFILE_CAPS.calls + 5 && stages[0][0] === "New lead" && (byStage.Hired || 0) < (byStage["New lead"] || 0),
-    `a real FUNNEL: ${stages.slice(0, 4).map((x: any) => `${x[0]} ${x[1]}`).join(" \u203a ")}`);
+  const FUNNEL_ORDER = ["New lead", "Contacted", "Prescreened", "Interview scheduled", "Interviewed", "Submitted to client", "Hired"];
+  const at = (k: string) => byStage[k] || 0;
+  const early = at("New lead") + at("Contacted");
+  const late = at("Submitted to client") + at("Hired");
+  const topTwo = new Set([stages[0] && stages[0][0], stages[1] && stages[1][0]]);
+  check(cands.length <= RM_PROFILE_CAPS.candidates + RM_PROFILE_CAPS.calls + 5
+      && early > late                                   // the shape declines
+      && topTwo.has("New lead")                         // the top of the funnel is at the top
+      && at("Hired") < at("New lead"),                  // and the end is thinner than the start
+    `a real FUNNEL (early ${early} vs late ${late}): ${stages.slice(0, 4).map((x: any) => `${x[0]} ${x[1]}`).join(" \u203a ")}`);
   check((bySource.Indeed || 0) + (bySource.Facebook || 0) > (bySource.Referral || 0) + (bySource.Organic || 0),
     `sources weighted to the paid channels (${Object.entries(bySource).sort((a: any, b: any) => b[1] - a[1]).slice(0, 3).map((x: any) => `${x[0]} ${x[1]}`).join(", ")})`);
   const bkT = await db.recordType.findFirst({ where: { tenantId: rmT.id, key: "booking" } });

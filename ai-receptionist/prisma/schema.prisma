@@ -598,6 +598,28 @@ model WorkOrderVisit {
 // every id it created — so "wipe" removes exactly what a run made and can
 // never touch a row somebody actually typed. No marker column pollutes the
 // twenty models the seeder writes to.
+/// GLOBAL SEARCH: one denormalized row per searchable entity, so every source
+/// answers through a single query path (and Batch B adds rows, not query paths).
+/// The full-text column and its GIN index are raw SQL in the migration — Prisma
+/// cannot express a GENERATED tsvector — and are deliberately absent from this
+/// model so Prisma never tries to write them.
+model SearchIndex {
+  id           String   @id @default(cuid())
+  tenantId     String
+  entityType   String   // "record" | "contact" | "call"
+  entityId     String
+  recordTypeId String?  // records only: the permission + grouping key
+  title        String
+  body         String
+  href         String
+  entityAt     DateTime // the entity's own recency, for ranking
+  updatedAt    DateTime @updatedAt
+
+  @@unique([entityType, entityId])
+  @@index([tenantId, entityType])
+  @@index([tenantId, recordTypeId])
+}
+
 model DemoSeedRun {
   id        String    @id @default(cuid())
   tenantId  String

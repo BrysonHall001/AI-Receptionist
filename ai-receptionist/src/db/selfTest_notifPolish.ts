@@ -126,8 +126,14 @@ async function main() {
   wp.location.hash = "#/notifications"; wp.dispatchEvent(new wp.Event("hashchange"));
   await until(() => P(".settings-tabs .settings-tab"), 9000);
   await sleep(500);
-  (PP(".settings-tab").find((b: any) => /Suggestions/.test(b.textContent)) as any).click();
-  await until(() => P(".notif-sug-row"), 9000);
+  const clickSuggestions = () => {
+    const tab = PP(".settings-tab").find((b: any) => /Suggestions/.test(b.textContent));
+    if (tab) (tab as any).click();
+  };
+  clickSuggestions();
+  // Retry the click: the page's table mounts asynchronously, so an early click
+  // can land on a tab that is about to be replaced.
+  await until(() => { if (PP(".notif-sug-row").length < 4) clickSuggestions(); return PP(".notif-sug-row").length >= 4; }, 9000);
   const pageIcons = PP(".notif-sug-row .notif-row-ic").map((e: any) => e.innerHTML);
   check(pageIcons.length === 4 && new Set(pageIcons).size === 4, `PAGE: ${pageIcons.length} rows, ${new Set(pageIcons).size} distinct icons`);
   check(PP(".notif-sug-hist").length === 0 && !/Earlier/.test(wp.document.body.textContent || ""), "\u2026and no EARLIER section anywhere on it");

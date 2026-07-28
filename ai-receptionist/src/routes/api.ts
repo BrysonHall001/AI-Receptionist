@@ -922,6 +922,29 @@ apiRouter.patch("/account/contact-columns", async (req: Request, res: Response) 
   res.json({ layout });
 });
 
+// ---- GLOBAL SEARCH ----------------------------------------------------------
+// Tenant-scoped and user-scoped: the tenant comes from the request's scope and
+// the user from the session, so neither can be supplied by the caller. Results
+// are permission-filtered inside the service (see searchService's scope
+// resolution) and capped, so no query can scan unbounded.
+apiRouter.get("/search", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.json({ query: "", groups: [], truncated: false }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { search } = require("../services/searchService");
+  const u = req.user as any;
+  try {
+    const out = await search({
+      tenantId,
+      user: { id: u.id, role: u.role, tenantId: u.tenantId || tenantId, customRoleId: u.customRoleId ?? null },
+      q: String((req.query as any).q || ""),
+      perGroup: (req.query as any).perGroup ? parseInt(String((req.query as any).perGroup), 10) : undefined,
+      total: (req.query as any).total ? parseInt(String((req.query as any).total), 10) : undefined,
+    });
+    res.json(out);
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // ---- TABLE LAYOUTS (per-user column visibility, order and sort) --------------
 // Scoped to the ACTING user, always: the id is taken from the session and never
 // from the request, so a user cannot read or write anybody else's layouts.

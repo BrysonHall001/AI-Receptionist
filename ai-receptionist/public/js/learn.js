@@ -59,6 +59,21 @@
           ],
         },
         {
+          id: "search", features: ["always"],
+          title: "Finding anything: the search box",
+          blocks: [
+            { p: "The search box sits at the top of every screen, between your page tabs and the bell. It looks through what is actually inside your data \u2014 not just names. A phrase typed into a work order's notes, a caller's own words in a call transcript, a customer's email address, a sentence from one of these guides: all of it is searchable." },
+            { p: "Press Ctrl-K (Cmd-K on a Mac) from anywhere to jump straight into it, start typing, and results appear as you go. Two letters is enough to begin." },
+            { steps: [
+              "Type at least two characters \u2014 results appear grouped by what they are: each module, then Contacts, then Calls, then Guides.",
+              "Use the arrow keys to move through the results and Enter to open one, or just click it.",
+              "Press Escape to close the results and carry on with what you were doing.",
+            ] },
+            { p: "Results only ever include things you can already open. If a module is switched off for your portal, or a page is closed to your role, nothing from it appears here \u2014 search never becomes a side door." },
+            { tip: "A distinctive phrase works better than a common word: several words from the thing you remember will find the one you mean, where a single ordinary word may find dozens." },
+          ],
+        },
+        {
           id: "suggestions", features: ["always"],
           title: "Suggestions: what Clarity notices",
           blocks: [
@@ -1247,6 +1262,10 @@
     guides.forEach((g) => g.items.forEach((it) => { it._body = guideBody(it); }));
 
     let currentId = guides[0] && guides[0].items[0] && guides[0].items[0].id;
+    // A deep link (#/learn?guide=<id>) wins over the default first guide — this
+    // is how a search result opens the guide it matched.
+    const wantedGuide = (App.routeQuery && App.routeQuery.guide) ? String(App.routeQuery.guide) : "";
+    if (wantedGuide) currentId = wantedGuide;
 
     function showGuide(id) {
       // feature-lc: a deep link into a guide this portal has HIDDEN degrades to a
