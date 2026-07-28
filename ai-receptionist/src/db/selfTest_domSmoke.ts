@@ -225,7 +225,14 @@ async function main() {
   await until(() => bodyText().includes("Modules & Fields") || !!$(".content-page-title"));
   // Select the Estimates module on the fields page, then EDIT its Line items
   // field (field creation is drag-from-library; Edit opens the modal).
-  w.App.state.fieldsType = "estimate"; w.App._route();
+  const selectEstimates = () => { w.App.state.fieldsType = "estimate"; w.App._route(); };
+  selectEstimates();
+  // Wait for the module to actually BE selected, re-asking if a repaint reset it.
+  const onEstimates = await until(() => {
+    if (w.App.state.fieldsType !== "estimate") { selectEstimates(); return false; }
+    return bodyText().includes("Line items");
+  }, 15000);
+  if (!onEstimates) console.log("    [debug module]", "fieldsType=" + w.App.state.fieldsType);
   const rowUp = await until(() => bodyText().includes("Line items") && $$("button").some((b: any) => b.textContent.trim() === "Edit"), 15000);
   if (!rowUp) console.log("    [debug fields]", bodyText().slice(0, 500).replace(/\s+/g, " "));
   let modalOk = false, liBlockOk = false, preselected = false, noneOk = false;

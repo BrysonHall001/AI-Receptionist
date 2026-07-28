@@ -62,6 +62,33 @@ export function buildAuditWhere(q: Record<string, string | undefined>): { where:
   return { where, limit };
 }
 
+/** A cuid-shaped label is an id that leaked into the actor column. */
+const ID_SHAPED = /^c[a-z0-9]{20,}$/i;
+
+/**
+ * Resolve id-shaped actor labels to names AT READ TIME.
+ *
+ * This repairs history as well as new rows, and it never rewrites a stored
+ * event: the row keeps exactly what it recorded, and only the displayed name
+ * changes. An actor whose user no longer exists shows an honest placeholder
+ * rather than a raw id.
+ */
+export async function withResolvedActors(events: any[]): Promise<any[]> {
+  const needy = events.filter((e) => typeof e.actorLabel === "string" && ID_SHAPED.test(e.actorLabel));
+  if (!needy.length) return events;
+  const ids = Array.from(new Set(needy.map((e) => e.actorId || e.actorLabel).filter(Boolean)));
+  let byId = new Map<string, string>();
+  try {
+    const users = await db().user.findMany({ where: { id: { in: ids as string[] } }, select: { id: true, name: true, email: true } });
+    byId = new Map(users.map((u: any) => [u.id, String(u.name || u.email || "")]));
+  } catch { /* an unresolvable batch still renders honestly below */ }
+  return events.map((e) => {
+    if (typeof e.actorLabel !== "string" || !ID_SHAPED.test(e.actorLabel)) return e;
+    const name = byId.get(e.actorId || e.actorLabel);
+    return { ...e, actorLabel: name || "Deleted user" };
+  });
+}
+
 export async function queryAuditEvents(q: Record<string, string | undefined>): Promise<{ events: any[]; nextCursor: string | null }> {
   const { where, limit } = buildAuditWhere(q);
   const events = await db().auditEvent.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: limit + 1 });
@@ -69,7 +96,7 @@ export async function queryAuditEvents(q: Record<string, string | undefined>): P
   const page = hasMore ? events.slice(0, limit) : events;
   const last = page[page.length - 1];
   const nextCursor = hasMore && last ? encodeAuditCursor(last.createdAt, last.id) : null;
-  return { events: page, nextCursor };
+  return { events: await withResolvedActors(page), nextCursor };
 }
 
 // Re-exported so viewer copy interpolates the ONE config (never a hardcoded number).

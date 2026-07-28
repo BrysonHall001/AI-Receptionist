@@ -166,7 +166,7 @@ async function main() {
     const ordinaryOldest = await db.record.findFirst({ where: { tenantId: t.id, title: { not: "Awaiting parts" } }, orderBy: { createdAt: "asc" }, select: { createdAt: true } });
     const ordinaryAge = Math.round((Date.now() - new Date(ordinaryOldest.createdAt).getTime()) / DAY);
     check(ordinaryAge <= win + 2 && types.length === 4,
-      `WINDOW ${win}d: ordinary history spreads to ${ordinaryAge} days (the stall pattern is deliberately older, at ${ageDays}d, because its detector looks back 60) and all four detectors fire`);
+      `WINDOW ${win}d: ordinary history spreads to ${ordinaryAge} days (the stall pattern is deliberately older, at ${ageDays}d, because its detector looks back 60) and all four detectors fire [${types.sort().join(", ") || "none"}]`);
     report.push(`  window ${win}d: oldest seeded record ${ageDays} days back \u00b7 detectors fired ${types.length}/4`);
   }
   // template mismatch is skipped, not orphaned

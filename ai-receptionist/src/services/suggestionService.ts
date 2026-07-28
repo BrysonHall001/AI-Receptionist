@@ -136,6 +136,20 @@ export async function listSuggestions(user: PermUserLike, opts: { status?: strin
 
 /** ACCEPT: permission-check, run the REGISTERED service call, record the
  *  decision. One service call — nothing can be half-applied here. */
+/**
+ * The audit log's actor column shows a NAME. Every other writer passes
+ * `(u.name || u.email)`; these two paths passed the raw id, which is why
+ * suggestion rows showed `cmrgq…` where the rest showed "Bryson Hall".
+ */
+async function actorNameFor(user: { id: string; name?: string | null; email?: string | null }): Promise<string> {
+  if (user && (user.name || user.email)) return String(user.name || user.email);
+  try {
+    const u = await db.user.findUnique({ where: { id: user.id }, select: { name: true, email: true } });
+    if (u && (u.name || u.email)) return String(u.name || u.email);
+  } catch { /* fall through to the honest placeholder */ }
+  return "Unknown user";
+}
+
 export async function acceptSuggestion(user: PermUserLike, id: string): Promise<{ ok: true; outcome: string; link?: string | null }> {
   const row = await db.suggestion.findFirst({ where: { id, tenantId: user.tenantId as string } });
   if (!row) throw new Error("Suggestion not found.");
@@ -153,7 +167,7 @@ export async function acceptSuggestion(user: PermUserLike, id: string): Promise<
   const res = await action.run({ tenantId: user.tenantId as string, userId: user.id, role: user.role, customRoleId: user.customRoleId ?? null }, params);
   await db.suggestion.update({ where: { id: row.id }, data: { status: "accepted", outcome: res.outcome, actedAt: new Date(), actedByUserId: user.id } });
   audit({
-    tenantId: user.tenantId as string, actorType: "user", actorId: user.id, actorLabel: user.id, actorRole: user.role,
+    tenantId: user.tenantId as string, actorType: "user", actorId: user.id, actorLabel: await actorNameFor(user), actorRole: user.role,
     action: AUDIT_ACTIONS.SUGGESTION_ACCEPTED, subjectType: "settings", subjectId: row.id, subjectLabel: row.type,
     meta: { suggestion_type: row.type, action_type: action.type },
   } as any);
@@ -165,7 +179,7 @@ export async function dismissSuggestion(user: PermUserLike, id: string): Promise
   if (!row) throw new Error("Suggestion not found.");
   await db.suggestion.update({ where: { id: row.id }, data: { status: "dismissed", actedAt: new Date(), actedByUserId: user.id } });
   audit({
-    tenantId: user.tenantId as string, actorType: "user", actorId: user.id, actorLabel: user.id, actorRole: user.role,
+    tenantId: user.tenantId as string, actorType: "user", actorId: user.id, actorLabel: await actorNameFor(user), actorRole: user.role,
     action: AUDIT_ACTIONS.SUGGESTION_DISMISSED, subjectType: "settings", subjectId: row.id, subjectLabel: row.type,
     meta: { suggestion_type: row.type },
   } as any);

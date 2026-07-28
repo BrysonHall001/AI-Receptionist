@@ -800,15 +800,71 @@
   function modulesPanel(portal) {
     const panel = el("div", "adm-mp-panel");
     panel.appendChild(el("h3", "settings-h adm-mp-h", "Modules"));
+    // The same heading -> description -> card rhythm Pages uses, so the two
+    // columns' headings, descriptions and content all begin at the same height.
+    const hint = el("p", "cell-muted"); hint.classList.add("adm-hint");
+    hint.textContent = "Checked = the module is on for this tenant and appears in its portal. Uncheck a module to switch it OFF — it disappears from Settings → Modules & Fields for everyone in the tenant, including its Portal Admin, though nothing is deleted and switching it back on restores it exactly. (A module's fields, layout and stages are managed inside the portal, not here.)";
+    panel.appendChild(hint);
     const card = el("div", "card adm-card2 adm-mp-card");
     const listHost = el("div", "adm-mp-list");
     listHost.innerHTML = `<div class="cell-muted">Loading modules…</div>`;
     card.appendChild(listHost);
     const foot = el("p", "cell-muted adm-mp-foot", "Switch a module on or off for this tenant here. Its fields, layout and stages are managed inside the portal, under Settings → Modules & Fields.");
     card.appendChild(foot);
+    // BATCHED like Pages: toggling marks a module dirty, Save commits them all.
+    const save = el("button", "btn btn-primary btn-sm u-mt-12", "Save module access");
+    save.disabled = true;
+    card.appendChild(save);
     panel.appendChild(card);
+    // Dirty state: key -> intended visibility. Empty means nothing to save.
+    const pending = {};
+    let modsRef = [];
+    const dirtyKeys = () => Object.keys(pending).filter((k) => {
+      const m = modsRef.find((x) => x.key === k);
+      return m && (m.visible !== false) !== pending[k];
+    });
+    function refreshSave() { save.disabled = dirtyKeys().length === 0; }
+
+    save.onclick = async () => {
+      const keys = dirtyKeys();
+      if (!keys.length) return;
+      const turningOff = keys.filter((k) => pending[k] === false).map((k) => modsRef.find((x) => x.key === k)).filter(Boolean);
+      if (turningOff.length) {
+        // Batch 38's confirmation semantics, preserved but asked ONCE: every
+        // module being switched off, each with its real record count.
+        const lines = turningOff.map((m) => {
+          const n = Number(m.recordCount || 0);
+          const name = m.labelPlural || m.label;
+          return n > 0
+            ? `${name} — ${n} record${n === 1 ? "" : "s"}, kept and restored if you switch it back on`
+            : `${name} — no records yet`;
+        });
+        const ok = await App.ui.confirmModal({
+          title: turningOff.length === 1 ? "Hide this module?" : `Hide ${turningOff.length} modules?`,
+          message: `These will disappear from ${portal.name}'s portal for everyone, including its Portal Admin. Nothing is deleted.\n\n` + lines.join("\n"),
+          confirmText: "Hide and save",
+        });
+        if (!ok) return;
+      }
+      save.disabled = true;
+      const failed = [];
+      for (const k of keys) {
+        try {
+          // The SAME service batch 38 wrote through — no parallel writer.
+          await App.api(`/api/admin/portals/${encodeURIComponent(portal.id)}/modules/${encodeURIComponent(k)}/visibility`, { method: "POST", body: JSON.stringify({ visible: pending[k] }) });
+          const m = modsRef.find((x) => x.key === k);
+          if (m) m.visible = pending[k];
+          delete pending[k];
+        } catch (e) { failed.push(k); }
+      }
+      refreshSave();
+      if (failed.length) toast(`${failed.length} module${failed.length === 1 ? "" : "s"} couldn't be saved`, true);
+      else toast("Module access saved");
+    };
+
     App.api("/api/admin/portals/" + encodeURIComponent(portal.id) + "/modules").then((r) => {
       const mods = (r && r.modules) || [];
+      modsRef = mods;
       listHost.innerHTML = "";
       mods.forEach((m) => {
         const row = el("div", "adm-row3 adm-mp-row");
@@ -830,28 +886,9 @@
         }
         ind.setAttribute("aria-label", (m.labelPlural || m.label) + (m.visible === false ? " (hidden)" : " (visible)"));
         if (!m.pageLocked) {
-          ind.onchange = async () => {
-            const turningOn = ind.checked;
-            const name = m.labelPlural || m.label;
-            const n = Number(m.recordCount || 0);
-            const message = turningOn
-              ? `Turn ${name} back on for ${portal.name}? It reappears in the portal with everything it held.`
-              : (n > 0
-                ? `Hide ${name} from ${portal.name}? ${name} holds ${n} record${n === 1 ? "" : "s"} — they stay intact and reappear if you switch it back on.`
-                : `Hide ${name} from ${portal.name}? It holds no records yet, and you can switch it back on here at any time.`);
-            const ok = await App.ui.confirmModal({ title: turningOn ? "Turn this module on?" : "Hide this module?", message, confirmText: turningOn ? "Turn it on" : "Hide it" });
-            if (!ok) { ind.checked = !turningOn; return; }
-            ind.disabled = true;
-            try {
-              await App.api(`/api/admin/portals/${encodeURIComponent(portal.id)}/modules/${encodeURIComponent(m.key)}/visibility`, { method: "POST", body: JSON.stringify({ visible: turningOn }) });
-              m.visible = turningOn;
-              toast(turningOn ? `${name} is on` : `${name} is hidden`);
-            } catch (e) {
-              ind.checked = !turningOn;
-              toast(e.message || "That didn't work", true);
-            }
-            ind.disabled = false;
-          };
+          // BATCHED: a toggle only marks this module dirty. Nothing is written
+          // until Save, exactly like Pages.
+          ind.onchange = () => { pending[m.key] = ind.checked; refreshSave(); };
         }
         head.appendChild(ind);
         head.appendChild(el("span", "adm-rowname", esc(m.labelPlural || m.label)));
