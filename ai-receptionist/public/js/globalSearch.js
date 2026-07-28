@@ -28,6 +28,22 @@
   let rows = [];              // flat list of focusable result rows
   let lastQuery = "";
 
+  /** Settings pages matching a query. The catalog is the one the settings page
+   *  renders (portal.js SECTIONS), exposed for reuse — already filtered to what
+   *  this person may open, so no separate permission check is needed here. */
+  function settingsHits(q) {
+    const cat = (App.portal && App.portal.settingsCatalog && App.portal.settingsCatalog()) || [];
+    const needle = q.toLowerCase();
+    return cat
+      .filter((sx) => String(sx.label || "").toLowerCase().indexOf(needle) !== -1)
+      .slice(0, 5)
+      .map((sx) => ({
+        type: "settings", id: sx.key, title: sx.label,
+        context: "Settings", href: "#/settings/" + sx.key, at: null,
+        exact: String(sx.label).toLowerCase() === needle,
+      }));
+  }
+
   /** Guides matching a query, from the set this tenant actually has. */
   function guideHits(q) {
     if (!App.learn || !App.learn.activeGuides) return [];
@@ -113,15 +129,44 @@
     const t = el("span", "gs-row-title", esc(hit.title || "(untitled)"));
     t.title = hit.title || "";
     mid.appendChild(t);
-    if (hit.context) {
-      const c = el("span", "gs-row-ctx cell-muted", esc(hit.context));
-      c.title = hit.context;
-      mid.appendChild(c);
-    }
+    const ctx = snippetEl(hit) || (hit.context ? contextEl(hit.context) : null);
+    if (ctx) mid.appendChild(ctx);
     row.appendChild(ic); row.appendChild(mid);
     if (hit.at) row.appendChild(el("span", "gs-row-meta cell-muted", esc(shortDate(hit.at))));
     row.onclick = () => go(hit);
     return row;
+  }
+
+  /** A plain context caption. */
+  function contextEl(text) {
+    const c = el("span", "gs-row-ctx cell-muted");
+    c.textContent = text;
+    c.title = text;
+    return c;
+  }
+
+  /** The snippet, with the matched terms emphasised.
+   *  The payload is DATA — { text, marks: [[start, end], …] } — so the text is
+   *  written with textContent and only OUR OWN <mark> elements are created.
+   *  There is no path by which stored content becomes markup. */
+  function snippetEl(hit) {
+    const sn = hit && hit.snippet;
+    if (!sn || typeof sn.text !== "string" || !sn.text) return null;
+    const wrap = el("span", "gs-row-ctx cell-muted");
+    wrap.title = sn.text;
+    const marks = Array.isArray(sn.marks) ? sn.marks.slice(0, 12) : [];
+    let at = 0;
+    marks.forEach((m) => {
+      const start = Math.max(at, Math.min(sn.text.length, m[0] | 0));
+      const end = Math.max(start, Math.min(sn.text.length, m[1] | 0));
+      if (start > at) wrap.appendChild(document.createTextNode(sn.text.slice(at, start)));
+      const mk = el("mark", "gs-mark");
+      mk.textContent = sn.text.slice(start, end);
+      wrap.appendChild(mk);
+      at = end;
+    });
+    if (at < sn.text.length) wrap.appendChild(document.createTextNode(sn.text.slice(at)));
+    return wrap;
   }
 
   function shortDate(iso) {
@@ -133,6 +178,10 @@
     if (hit.type === "contact") return App.icons.forModuleKey("contact");
     if (hit.type === "call") return App.icons.forNotificationCategory("call_missed_or_failed");
     if (hit.type === "guide") return App.icons.forNavHref ? App.icons.forNavHref("#/learn") : "";
+    if (hit.type === "settings") return App.icons.forNavHref ? App.icons.forNavHref("#/settings") : "";
+    if (hit.type === "automation") return App.icons.forNotificationCategory("automation_failed");
+    if (hit.type === "template" || hit.type === "survey") return App.icons.forNavHref ? App.icons.forNavHref("#/communication") : "";
+    if (hit.type === "dashboard") return App.icons.forNavHref ? App.icons.forNavHref("#/reports") : "";
     const key = (hit.groupKey || "").indexOf("record:") === 0 ? hit.groupKey.slice(7) : "";
     return key ? App.icons.forModuleKey(key) : App.icons.forModuleKey("general");
   }
@@ -148,6 +197,8 @@
     p.innerHTML = "";
     rows = []; focusIndex = -1;
     const groups = (result.groups || []).slice();
+    const settings = settingsHits(result.query || lastQuery || "");
+    if (settings.length) groups.push({ key: "settings", label: "Settings", hits: settings });
     if (guides.length) groups.push({ key: "guide", label: "Guides", hits: guides });
     if (!groups.length) { paintState("Nothing matched \u201c" + esc(result.query || lastQuery) + "\u201d."); return; }
     groups.forEach((g) => {
@@ -158,7 +209,59 @@
         rows.push(r);
       });
     });
-    if (result.truncated) p.appendChild(el("div", "gs-more cell-muted", "Keep typing to narrow this down."));
+    // SEE ALL — the house text button in the panel footer, matching batch 34's
+    // See-all treatment (which lives in the notification panel's chrome).
+    const foot = el("div", "gs-foot");
+    const seeAll = el("button", "btn btn-ghost btn-sm", result.truncated ? "See all results" : "Open in full page");
+    seeAll.onclick = () => { const q = (inputEl && inputEl.value.trim()) || lastQuery; closePanel(); App.go("#/search?q=" + encodeURIComponent(q)); };
+    foot.appendChild(seeAll);
+    p.appendChild(foot);
+    fitPanel();
+  }
+
+  // ---- recent searches: per user, per tenant portal ----
+  let recents = [];
+  async function loadRecents() {
+    try { const r = await App.portalApi("/api/search/recent"); recents = (r && r.recent) || []; }
+    catch (e) { recents = []; }
+    return recents;
+  }
+  function remember(q) {
+    // fire-and-forget: a search must never wait on its own history
+    App.portalApi("/api/search/recent", { method: "POST", body: JSON.stringify({ q }) })
+      .then((r) => { recents = (r && r.recent) || recents; })
+      .catch(() => { /* history is a convenience */ });
+  }
+  function paintRecents() {
+    const p = ensurePanel();
+    p.innerHTML = "";
+    rows = []; focusIndex = -1;
+    if (!recents.length) { p.appendChild(el("div", "gs-state cell-muted", "Start typing to search this portal.")); fitPanel(); return; }
+    const head = el("div", "gs-group gs-recent-head");
+    head.appendChild(el("span", "field-label", "Recent"));
+    const clear = el("button", "btn btn-ghost btn-sm", "Clear");
+    clear.onclick = async (e) => {
+      e.stopPropagation();
+      recents = [];
+      try { await App.portalApi("/api/search/recent", { method: "DELETE" }); } catch (err) { /* */ }
+      paintRecents();
+    };
+    head.appendChild(clear);
+    p.appendChild(head);
+    recents.forEach((q) => {
+      const row = el("button", "gs-row");
+      row.type = "button";
+      const ic = el("span", "gs-row-ic");
+      ic.innerHTML = (App.icons && App.icons.forNavHref) ? App.icons.forNavHref("#/learn") : "";
+      const mid = el("span", "gs-row-mid");
+      const t2 = el("span", "gs-row-title");
+      t2.textContent = q;
+      mid.appendChild(t2);
+      row.appendChild(ic); row.appendChild(mid);
+      row.onclick = () => { if (inputEl) { inputEl.value = q; runSearch(q); } };
+      p.appendChild(row);
+      rows.push(row);
+    });
     fitPanel();
   }
 
@@ -167,10 +270,11 @@
     lastQuery = q;
     paintState("Searching\u2026");
     let result = { query: q, groups: [], truncated: false };
-    try { result = await App.portalApi("/api/search?q=" + encodeURIComponent(q)); }
+    try { result = await App.portalApi("/api/search?snippets=1&q=" + encodeURIComponent(q)); }
     catch (e) { /* the guides half still works offline */ }
     if (q !== lastQuery) return;   // a later keystroke owns the panel
     paintResults(result, guideHits(q));
+    remember(q);
   }, DEBOUNCE_MS);
 
   function focusRow(i) {
@@ -204,13 +308,98 @@
     input.autocomplete = "off";
     input.oninput = () => runSearch(input.value.trim());
     input.onkeydown = onKey;
-    input.onfocus = () => { if (input.value.trim().length >= MIN_CHARS) runSearch(input.value.trim()); };
+    input.onfocus = async () => {
+      const q = input.value.trim();
+      if (q.length >= MIN_CHARS) { runSearch(q); return; }
+      // Empty and focused: offer what this person searched for last, in THIS portal.
+      await loadRecents();
+      if (document.activeElement === input && !input.value.trim()) paintRecents();
+    };
     // The house search box supplies the magnifying glass and the brand mark.
     const wrap = App.util.searchBox(input);
     wrap.classList.add("gs-wrap");
     inputEl = input;
     wrapEl = wrap;
     return wrap;
+  }
+
+  /**
+   * #/search?q=… — every match, filterable by type.
+   * Reachable from the panel and by direct URL only, like the notifications
+   * page: it is a destination, not a nav item.
+   */
+  async function renderPage(host) {
+    if (!host) return;
+    const q = ((App.routeQuery && App.routeQuery.q) || "").toString();
+    host.innerHTML = "";
+    const wrap = el("div", "gs-page");
+    const head = el("div", "page-head");
+    head.appendChild(el("h1", null, q ? `Results for \u201c${esc(q)}\u201d` : "Search"));
+    wrap.appendChild(head);
+    const tabsBar = el("div", "settings-tabs");
+    const body = el("div", "gs-page-body");
+    wrap.appendChild(tabsBar); wrap.appendChild(body);
+    host.appendChild(wrap);
+
+    if (q.length < MIN_CHARS) {
+      body.appendChild(el("div", "empty", "<h3>Search this portal</h3><p>Type at least two characters in the box at the top, or press Ctrl-K.</p>"));
+      return;
+    }
+    body.appendChild(el("div", "gs-state cell-muted", "Searching\u2026"));
+
+    let result = { query: q, groups: [], truncated: false };
+    try { result = await App.portalApi("/api/search?snippets=1&total=200&perGroup=50&q=" + encodeURIComponent(q)); }
+    catch (e) { body.innerHTML = ""; body.appendChild(el("div", "empty", "<h3>Couldn't run that search</h3><p>Try again in a moment.</p>")); return; }
+
+    const groups = (result.groups || []).slice();
+    const settings = settingsHits(q);
+    if (settings.length) groups.push({ key: "settings", label: "Settings", hits: settings });
+    const guides = guideHits(q);
+    if (guides.length) groups.push({ key: "guide", label: "Guides", hits: guides });
+
+    let filter = "all";
+    let shown = 20;
+    const PAGE = 20;
+
+    function paintTabs() {
+      tabsBar.innerHTML = "";
+      const tabs = [["all", "All"]].concat(groups.map((g) => [g.key, g.label]));
+      tabs.forEach(([key, label]) => {
+        const b = el("button", null, esc(label));
+        b.className = "settings-tab" + (filter === key ? " active" : "");
+        b.onclick = () => { if (filter !== key) { filter = key; shown = PAGE; paintBody(); paintTabs(); } };
+        tabsBar.appendChild(b);
+      });
+    }
+
+    function paintBody() {
+      body.innerHTML = "";
+      const visible = groups.filter((g) => filter === "all" || g.key === filter);
+      const flat = [];
+      visible.forEach((g) => g.hits.forEach((h) => flat.push({ ...h, groupKey: h.groupKey || g.key, groupLabel: g.label })));
+      if (!flat.length) {
+        body.appendChild(el("div", "empty", `<h3>Nothing matched \u201c${esc(q)}\u201d</h3><p>Try fewer words, or a phrase you know appears in the thing you want.</p>`));
+        return;
+      }
+      const list = el("div", "gs-page-list card");
+      flat.slice(0, shown).forEach((h) => {
+        const row = rowEl(h);
+        row.classList.add("gs-page-row");
+        const badge = el("span", "pill gs-page-type", esc(h.groupLabel || h.type));
+        row.insertBefore(badge, row.lastChild && row.lastChild.className === "gs-row-meta" ? row.lastChild : null);
+        list.appendChild(row);
+      });
+      body.appendChild(list);
+      if (flat.length > shown) {
+        const more = el("div", "gs-page-more");
+        const btn = el("button", "btn btn-ghost btn-sm", `Load more (${flat.length - shown} left)`);
+        btn.onclick = () => { shown += PAGE; paintBody(); };
+        more.appendChild(btn);
+        body.appendChild(more);
+      }
+    }
+
+    paintTabs(); paintBody();
   }
 
   // Cmd/Ctrl-K from anywhere in the portal; Esc closes.
@@ -236,5 +425,5 @@
     });
   }
 
-  App.globalSearch = { mount, bindShortcut, closePanel, fitPanel, _rows: () => rows, _guideHits: guideHits, MIN_CHARS, DEBOUNCE_MS };
+  App.globalSearch = { mount, bindShortcut, closePanel, fitPanel, renderPage, _rows: () => rows, _guideHits: guideHits, _settingsHits: settingsHits, _recents: () => recents, MIN_CHARS, DEBOUNCE_MS };
 })();

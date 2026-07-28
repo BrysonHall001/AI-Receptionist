@@ -45,6 +45,8 @@ export async function getOrCreateHomeDashboard(tenantId: string, createdById?: s
       createdById: createdById ?? null,
     },
   });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexDashboard(d.id);
   return serialize(d);
 }
 
@@ -56,6 +58,8 @@ export async function createDashboard(tenantId: string, name: string, createdByI
   const d = await prisma.dashboard.create({
     data: { tenantId, name: clean, widgets: [] as any, order: Math.max(0, (max._max.order ?? -1) + 1), createdById: createdById ?? null },
   });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexDashboard(d.id);
   return serialize(d);
 }
 
@@ -74,6 +78,8 @@ export async function updateDashboard(id: string, tenantId: string, data: { name
   }
   if (data.widgets != null) patch.widgets = data.widgets as any;
   const updated = await prisma.dashboard.update({ where: { id }, data: patch });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexDashboard(updated.id);
   return serialize(updated);
 }
 
@@ -82,5 +88,7 @@ export async function deleteDashboard(id: string, tenantId: string): Promise<boo
   if (!d || d.tenantId !== tenantId) return false;
   if (d.name === HOME_DASHBOARD_NAME) return false; // never delete the home dashboard
   await prisma.dashboard.delete({ where: { id } });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").removeFromIndex("dashboard", id);
   return true;
 }

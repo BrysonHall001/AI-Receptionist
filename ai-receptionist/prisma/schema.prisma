@@ -187,6 +187,9 @@ model User {
   // hub:tenants:table, ...). Generalises the older contactColumns blob, which
   // is carried over on first read and then left untouched.
   tableLayouts     Json      @default("{}")
+  /// RECENT SEARCHES, keyed by tenantId: { "<tenantId>": ["gate code", …] }.
+  /// Keyed by tenant so another portal's history is never even read.
+  recentSearches   Json      @default("{}")
   contactColumns   Json      @default("{}")
   // When set, effective portal permissions come from this custom role (PortalRole);
   // the base enum `role` still acts as the tier/ceiling reference. Null = use the

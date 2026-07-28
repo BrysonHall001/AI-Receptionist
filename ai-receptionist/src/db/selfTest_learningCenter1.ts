@@ -64,7 +64,7 @@ for (const g of GUIDES) {
 console.log("\n(1) deep links vs the real route map:");
 // the route map, grounded from the actual sources:
 const routeMap = new Set<string>(["#/dashboard", "#/calls", "#/contacts", "#/jobs", "#/bookings", "#/reports", "#/automations", "#/communication", "#/learn", "#/feedback", "#/settings"]);
-for (const m of portalJs.matchAll(/\{ key: "([a-z]+)", label: "[^"]+", admin: (?:true|false), build: \w+ \}/g)) routeMap.add("#/settings/" + m[1]);
+for (const m of portalJs.matchAll(/\{ key: "([a-z]+)", label: "[^"]+", admin: (?:true|false) \}/g)) routeMap.add("#/settings/" + m[1]);
 // Registry record-type pages (Work Orders batch): every system module lives at
 // #/records/<key> by the navModel convention (bespoke hrefs for the original
 // three). Grounded from the REAL registry source, so a future system module's

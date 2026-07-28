@@ -18,7 +18,7 @@ import { logger } from "../utils/logger";
 
 const db = prisma as any;
 
-export type SearchEntityType = "record" | "contact" | "call";
+export type SearchEntityType = "record" | "contact" | "call" | "automation" | "template" | "survey" | "dashboard";
 
 /** Field types whose values are meaningless to search: bytes, references and
  *  derived values. Everything else contributes its text. */
@@ -41,6 +41,34 @@ export function fieldValuesToText(customFields: any, defsByKey: Record<string, a
     }
   }
   return parts.join(" ").trim();
+}
+
+// AUTOMATION ACTION CONFIG — a WHITELIST, deliberately.
+// `send_webhook` carries `url`, `headerName` and `headerValue`, and a bearer
+// token or API key lives in exactly those. A blacklist would rot the moment a
+// new action type appeared, so only keys known to hold HUMAN PROSE are read.
+const AUTOMATION_TEXT_KEYS = new Set([
+  "subject", "html", "body", "text", "title", "value", "values",
+  "field", "fromStage", "toStage", "stage", "dest", "note", "message",
+]);
+
+/** Human-readable strings from an action list — never credentials. */
+export function automationActionsToText(actions: any): string {
+  if (!Array.isArray(actions)) return "";
+  const parts: string[] = [];
+  for (const a of actions) {
+    if (!a || typeof a !== "object") continue;
+    if (typeof a.type === "string") parts.push(a.type.replace(/_/g, " "));
+    const cfg = a.config && typeof a.config === "object" ? a.config : {};
+    for (const k of Object.keys(cfg)) {
+      if (!AUTOMATION_TEXT_KEYS.has(k)) continue;   // url / headerName / headerValue never qualify
+      const v = cfg[k];
+      if (typeof v === "string" || typeof v === "number") parts.push(String(v));
+      else if (Array.isArray(v)) parts.push(v.filter((x) => typeof x === "string" || typeof x === "number").join(" "));
+    }
+  }
+  // Strip markup so an HTML email body indexes as its words, not its tags.
+  return parts.join(" ").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 8000);
 }
 
 /** The turn array a call carries -> one searchable string. */
@@ -153,6 +181,75 @@ export async function indexCall(callId: string): Promise<void> {
   });
 }
 
+export async function indexAutomation(id: string): Promise<void> {
+  await indexSafely(`automation ${id}`, async () => {
+    const a = await db.automation.findUnique({ where: { id } });
+    if (!a) { await db.searchIndex.deleteMany({ where: { entityType: "automation", entityId: id } }); return; }
+    await upsertRow({
+      tenantId: a.tenantId,
+      entityType: "automation",
+      entityId: a.id,
+      title: a.name || "(untitled automation)",
+      body: [String(a.triggerType || "").replace(/_/g, " "), a.enabled ? "enabled" : "draft off", automationActionsToText(a.actions)].filter(Boolean).join(" "),
+      href: `#/automations?flow=${a.id}`,   // the batch-38 param: scrolls and flashes the card
+      entityAt: a.updatedAt || a.createdAt || new Date(),
+    });
+  });
+}
+
+export async function indexTemplate(id: string): Promise<void> {
+  await indexSafely(`template ${id}`, async () => {
+    const t = await db.emailTemplate.findUnique({ where: { id } });
+    if (!t) { await db.searchIndex.deleteMany({ where: { entityType: "template", entityId: id } }); return; }
+    await upsertRow({
+      tenantId: t.tenantId,
+      entityType: "template",
+      entityId: t.id,
+      title: t.name || "(untitled template)",
+      body: [t.kind || "", t.subject || "", String(t.body || "").replace(/<[^>]*>/g, " ")].filter(Boolean).join(" "),
+      href: `#/communication?template=${t.id}`,
+      entityAt: t.updatedAt || t.createdAt || new Date(),
+    });
+  });
+}
+
+export async function indexSurvey(id: string): Promise<void> {
+  await indexSafely(`survey ${id}`, async () => {
+    const sv = await db.survey.findUnique({ where: { id } });
+    if (!sv) { await db.searchIndex.deleteMany({ where: { entityType: "survey", entityId: id } }); return; }
+    const qs = await db.surveyQuestion.findMany({ where: { surveyId: sv.id }, select: { text: true } }).catch(() => []);
+    await upsertRow({
+      tenantId: sv.tenantId,
+      entityType: "survey",
+      entityId: sv.id,
+      title: sv.name || "(untitled survey)",
+      body: [sv.description || "", sv.status || "", (qs as any[]).map((q: any) => q.text).filter(Boolean).join(" ")].filter(Boolean).join(" "),
+      href: `#/communication?survey=${sv.id}`,
+      entityAt: sv.updatedAt || sv.createdAt || new Date(),
+    });
+  });
+}
+
+export async function indexDashboard(id: string): Promise<void> {
+  await indexSafely(`dashboard ${id}`, async () => {
+    const d = await db.dashboard.findUnique({ where: { id } });
+    if (!d) { await db.searchIndex.deleteMany({ where: { entityType: "dashboard", entityId: id } }); return; }
+    const widgets = Array.isArray(d.widgets) ? d.widgets : [];
+    const widgetText = widgets
+      .map((wgt: any) => [wgt && wgt.title, wgt && wgt.kind, wgt && wgt.metric].filter((x: any) => typeof x === "string").join(" "))
+      .join(" ");
+    await upsertRow({
+      tenantId: d.tenantId,
+      entityType: "dashboard",
+      entityId: d.id,
+      title: d.name || "(untitled dashboard)",
+      body: ["dashboard", widgetText].filter(Boolean).join(" "),
+      href: `#/reports?dashboard=${d.id}`,
+      entityAt: d.updatedAt || d.createdAt || new Date(),
+    });
+  });
+}
+
 /** Re-index everything a record type owns — used when a field is deleted, since
  *  that changes what every record of that type contributes. */
 export async function reindexRecordType(tenantId: string, recordTypeId: string): Promise<void> {
@@ -166,12 +263,12 @@ export async function reindexRecordType(tenantId: string, recordTypeId: string):
 // Backfill + reconciliation
 // ---------------------------------------------------------------------------
 
-export interface BackfillResult { records: number; contacts: number; calls: number }
+export interface BackfillResult { records: number; contacts: number; calls: number; automations: number; templates: number; surveys: number; dashboards: number }
 
 /** Idempotent and batched: safe to run on a live database, safe to re-run. */
 export async function backfillSearchIndex(tenantId?: string | null, batchSize = 200): Promise<BackfillResult> {
   const scope = tenantId ? { tenantId } : {};
-  const out: BackfillResult = { records: 0, contacts: 0, calls: 0 };
+  const out: BackfillResult = { records: 0, contacts: 0, calls: 0, automations: 0, templates: 0, surveys: 0, dashboards: 0 };
   for (;;) {
     const rows = await db.record.findMany({ where: { ...scope, deletedAt: null }, select: { id: true }, orderBy: { id: "asc" }, take: batchSize, skip: out.records });
     if (!rows.length) break;
@@ -190,7 +287,21 @@ export async function backfillSearchIndex(tenantId?: string | null, batchSize = 
     for (const s of rows) { await indexCall(s.id); out.calls += 1; }
     if (rows.length < batchSize) break;
   }
-  logger.info(`[search-index] backfill complete: ${out.records} records, ${out.contacts} contacts, ${out.calls} calls`);
+  // the four sources added in Global Search B, same batched shape
+  for (const [model, key, fn] of [
+    ["automation", "automations", indexAutomation],
+    ["emailTemplate", "templates", indexTemplate],
+    ["survey", "surveys", indexSurvey],
+    ["dashboard", "dashboards", indexDashboard],
+  ] as any[]) {
+    for (;;) {
+      const rows = await db[model].findMany({ where: { ...scope }, select: { id: true }, orderBy: { id: "asc" }, take: batchSize, skip: (out as any)[key] }).catch(() => []);
+      if (!rows.length) break;
+      for (const r of rows) { await fn(r.id); (out as any)[key] += 1; }
+      if (rows.length < batchSize) break;
+    }
+  }
+  logger.info(`[search-index] backfill complete: ${out.records} records, ${out.contacts} contacts, ${out.calls} calls, ${out.automations} automations, ${out.templates} templates, ${out.surveys} surveys, ${out.dashboards} dashboards`);
   return out;
 }
 
@@ -234,6 +345,24 @@ export async function reconcileSearchIndex(limit = 500): Promise<ReconcileResult
   // 2) ORPHANS — rows whose entity is gone or soft-deleted. Done as three set
   //    operations rather than a sampled row-by-row walk: sampling missed
   //    orphans once the index grew past the sample size.
+  // the B sources: same freshness rule
+  for (const [model, type, fn] of [
+    ["automation", "automation", indexAutomation],
+    ["emailTemplate", "template", indexTemplate],
+    ["survey", "survey", indexSurvey],
+    ["dashboard", "dashboard", indexDashboard],
+  ] as any[]) {
+    const live = await db[model].findMany({ select: { id: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, take: limit }).catch(() => []);
+    if (!live.length) continue;
+    const rows = await db.searchIndex.findMany({ where: { entityType: type, entityId: { in: live.map((x: any) => x.id) } }, select: { entityId: true, updatedAt: true } });
+    const seen = new Map<string, any>();
+    for (const r of rows) seen.set(r.entityId, r);
+    for (const e of live) {
+      const row = seen.get(e.id);
+      if (!row) { await fn(e.id); out.added += 1; }
+      else if (e.updatedAt && new Date(e.updatedAt).getTime() > new Date(row.updatedAt).getTime() + 1000) { await fn(e.id); out.repaired += 1; }
+    }
+  }
   const orphanSql = [
     `DELETE FROM "SearchIndex" si WHERE si."entityType" = 'record'
        AND NOT EXISTS (SELECT 1 FROM "Record" r WHERE r.id = si."entityId" AND r."deletedAt" IS NULL)`,
@@ -241,6 +370,14 @@ export async function reconcileSearchIndex(limit = 500): Promise<ReconcileResult
        AND NOT EXISTS (SELECT 1 FROM "Contact" c WHERE c.id = si."entityId" AND c."deletedAt" IS NULL)`,
     `DELETE FROM "SearchIndex" si WHERE si."entityType" = 'call'
        AND NOT EXISTS (SELECT 1 FROM "CallSession" cs WHERE cs.id = si."entityId")`,
+    `DELETE FROM "SearchIndex" si WHERE si."entityType" = 'automation'
+       AND NOT EXISTS (SELECT 1 FROM "Automation" a WHERE a.id = si."entityId")`,
+    `DELETE FROM "SearchIndex" si WHERE si."entityType" = 'template'
+       AND NOT EXISTS (SELECT 1 FROM "EmailTemplate" t WHERE t.id = si."entityId")`,
+    `DELETE FROM "SearchIndex" si WHERE si."entityType" = 'survey'
+       AND NOT EXISTS (SELECT 1 FROM "Survey" sv WHERE sv.id = si."entityId")`,
+    `DELETE FROM "SearchIndex" si WHERE si."entityType" = 'dashboard'
+       AND NOT EXISTS (SELECT 1 FROM "Dashboard" d WHERE d.id = si."entityId")`,
   ];
   for (const sql of orphanSql) {
     try { out.orphansRemoved += await db.$executeRawUnsafe(sql); }

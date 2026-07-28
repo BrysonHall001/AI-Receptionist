@@ -349,7 +349,11 @@
     const tabsBar = el("div", "tabs");
     const tabBody = el("div", "tab-body");
     const TABS = [["email", "Email"], ["templates", "Email Templates"], ["surveys", "Surveys"], ["drips", "Drips"], ["audiences", "Audiences"]];
-    let active = "email";
+    // A search result for a template or survey lands on its own TAB. There is
+    // no per-item route in this app and this batch did not invent one.
+    const dl = App.routeQuery || {};
+    const openTab = dl.template ? "templates" : dl.survey ? "surveys" : null;
+    let active = openTab || "email";
     function setTab(key) {
       active = key;
       App.util.$$(".tab", tabsBar).forEach((t) => t.classList.toggle("active", t.dataset.tab === key));

@@ -2937,6 +2937,37 @@
   // Modules & Fields isn't mounted.
   let mfViewsRepaint = null;
   function fieldsView() { return fieldsMount || view(); }
+  /** THE settings registry: key + label + who may see it. The settings page
+   *  attaches builders to this; global search matches against it. One list,
+   *  one set of visibility rules, so a tab you cannot open can never appear as
+   *  a search result. */
+  function settingsSectionMeta() {
+    const canEditPortal = App.state.me && App.state.me.role !== "CLIENT_USER";
+    return [
+      { key: "general", label: "Business Profile", admin: true },
+      { key: "appearance", label: "Appearance", admin: true },
+      { key: "aireceptionist", label: "AI Receptionist", admin: true },
+      { key: "team", label: "Team & Permissions", admin: true },
+      { key: "leadcapture", label: "Lead capture", admin: true },
+      { key: "scheduling", label: "Scheduling & Resources", admin: true },
+      // Integrations is visible to EVERY role (admin:false) — Twilio/OpenAI edit
+      // is gated inside the section, Google is editable by all.
+      { key: "integrations", label: "Integrations", admin: false },
+      { key: "billing", label: "Billing", admin: false },
+      { key: "data", label: "Data Administration", admin: false },
+      { key: "account", label: "Your account", admin: false },
+      { key: "labels", label: "Pages", admin: true },
+      { key: "fields", label: "Modules & Fields", admin: true },
+    ].filter((s) => canEditPortal || !s.admin)
+      // Owner page-lock: hide a settings tab that exists only to serve a locked page.
+      .filter((s) => {
+        if (s.key === "scheduling") return !App.isPageLocked("#/bookings");
+        if (s.key === "fields") return !(App.isPageLocked("#/contacts") && App.isAreaLocked("records"));
+        if (s.key === "billing") return !App.isPageLocked("#/billing") && App.canViewArea("billing");
+        return true;
+      });
+  }
+
   async function renderFields(refresh, mountEl) {
     if (mountEl) fieldsMount = mountEl; // set on first mount; persists across refresh(true)
     if (!refresh && !fieldsMount) loading(); // on refresh we hold the current view until the rebuilt one is ready — no blink
@@ -4897,34 +4928,15 @@
     // Section registry. `admin` = needs portal-edit rights (CLIENT_USER sees only
     // "Your account"). Each builder relocates the EXISTING content + wiring
     // unchanged; "labels" and "fields" are reserved placeholders for later steps.
-    const SECTIONS = [
-      { key: "general", label: "Business Profile", admin: true, build: secGeneral },
-      { key: "appearance", label: "Appearance", admin: true, build: secAppearance },
-      { key: "aireceptionist", label: "AI Receptionist", admin: true, build: secAiReceptionist },
-      { key: "team", label: "Team & Permissions", admin: true, build: secTeam },
-      { key: "leadcapture", label: "Lead capture", admin: true, build: secLeadCapture },
-      { key: "scheduling", label: "Scheduling & Resources", admin: true, build: secSchedulingResources },
-      // Integrations is visible to EVERY role (admin:false) — Twilio/OpenAI edit
-      // is gated inside the section, Google is editable by all. renderIntegrations
-      // fills the panel directly (same build(panel) contract as the others).
-      { key: "integrations", label: "Integrations", admin: false, build: renderIntegrations },
-      { key: "billing", label: "Billing", admin: false, build: renderBillingSettings },
-      { key: "data", label: "Data Administration", admin: false, build: renderDataAdmin },
-      { key: "account", label: "Your account", admin: false, build: secAccount },
-      { key: "labels", label: "Pages", admin: true, build: secLabels },
-      { key: "fields", label: "Modules & Fields", admin: true, build: secFields },
-    ].filter((s) => canEditPortal || !s.admin)
-      // Owner page-lock: hide a settings tab that exists only to serve a locked page.
-      //   scheduling -> Scheduling & Resources serves Bookings (#/bookings).
-      //   fields     -> needs at least one editable record type (Contacts OR a records type).
-      //   data       -> stays (its Events export target has no nav page); contents filter below.
-      // general/appearance/team/leadcapture/integrations/account/labels are not page-dependent.
-      .filter((s) => {
-        if (s.key === "scheduling") return !App.isPageLocked("#/bookings");
-        if (s.key === "fields") return !(App.isPageLocked("#/contacts") && App.isAreaLocked("records"));
-        if (s.key === "billing") return !App.isPageLocked("#/billing") && App.canViewArea("billing"); // page-lock AND billing permission
-        return true;
-      });
+    const SETTINGS_BUILDERS = {
+      general: secGeneral, appearance: secAppearance, aireceptionist: secAiReceptionist,
+      team: secTeam, leadcapture: secLeadCapture, scheduling: secSchedulingResources,
+      integrations: renderIntegrations, billing: renderBillingSettings, data: renderDataAdmin,
+      account: secAccount, labels: secLabels, fields: secFields,
+    };
+    const SECTIONS = settingsSectionMeta()
+      .map((m) => ({ ...m, build: SETTINGS_BUILDERS[m.key] }))
+      .filter((s) => !!s.build);
 
     // Allow an optional sub-tab after the section, e.g. #/settings/data/recycle.
     const [secKey, ...rest] = String(sub || "").split("/");
@@ -8666,7 +8678,8 @@
     function scheduleCandRefresh() { setTimeout(function () { try { remountRelated(); } catch (e) {} }, 1200); setTimeout(function () { try { remountRelated(); } catch (e) {} }, 3000); }
   }
 
-  App.portal = { render, refresh, simulate, renderContact, renderRecord, renderRecycledPreview, current: () => current, contactColumnDefs };
+  App.portal = {
+    settingsCatalog: settingsSectionMeta, render, refresh, simulate, renderContact, renderRecord, renderRecycledPreview, current: () => current, contactColumnDefs };
   // Mountable labels editor (the SAME secLabels used by Settings > Labels), so the
   // portal setup screen can render it for a just-created portal. It targets whatever
   // App.state.currentPortalId is set to (via App.portalApi), like the in-portal pane.

@@ -985,6 +985,12 @@
 
     // Settings (with optional sub-section, e.g. #/settings/appearance) — the
     // sub-section drives the in-view sub-shell; refresh/back keep their place.
+    if (path === "/search") {
+      if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
+      buildShell("portal", "#/search");
+      return App.globalSearch.renderPage(App.util.$("#view"));
+    }
+
     if (path === "/settings" || path.indexOf("/settings/") === 0) {
       if (App.isAdminTier(me.role) && !App.state.currentPortalId) return App.go("#/admin/portals");
       buildShell("portal", "#/settings");

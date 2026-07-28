@@ -35,6 +35,9 @@ export async function listManualAutomations(tenantId: string) {
 export async function getAutomation(id: string, tenantId: string) {
   const a = await db.automation.findUnique({ where: { id } });
   if (!a || a.tenantId !== tenantId) return null;
+  // SEARCH INDEX (fire-and-forget, matching batch 39's pattern).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexAutomation(a.id);
   return serialize(a);
 }
 
@@ -78,6 +81,9 @@ export async function updateAutomation(id: string, tenantId: string, input: Auto
   if (input.enabled != null) patch.enabled = !!input.enabled;
   if (input.dripId !== undefined) patch.dripId = input.dripId;
   const updated = await db.automation.update({ where: { id }, data: patch });
+  // SEARCH INDEX (fire-and-forget, matching batch 39's pattern).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexAutomation(updated.id);
   return serialize(updated);
 }
 
@@ -85,6 +91,8 @@ export async function deleteAutomation(id: string, tenantId: string): Promise<bo
   const a = await db.automation.findUnique({ where: { id } });
   if (!a || a.tenantId !== tenantId) return false;
   await db.automation.delete({ where: { id } });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").removeFromIndex("automation", id);
   return true;
 }
 

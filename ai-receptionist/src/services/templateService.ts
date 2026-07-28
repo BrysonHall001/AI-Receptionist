@@ -38,6 +38,8 @@ export async function createTemplate(input: { tenantId: string; name: string; ki
       createdById: input.createdById ?? null,
     },
   });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexTemplate(t.id);
   return dto(t);
 }
 
@@ -56,6 +58,8 @@ export async function updateTemplate(
   if (input.body !== undefined) data.body = input.body ?? "";
   if (input.tag !== undefined) data.tag = input.tag ?? null;
   const t = await db.emailTemplate.update({ where: { id }, data });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexTemplate(t.id);
   return dto(t);
 }
 
@@ -63,5 +67,7 @@ export async function deleteTemplate(id: string, tenantId: string): Promise<bool
   const t = await db.emailTemplate.findUnique({ where: { id } });
   if (!t || t.tenantId !== tenantId) return false;
   await db.emailTemplate.delete({ where: { id } });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").removeFromIndex("template", id);
   return true;
 }

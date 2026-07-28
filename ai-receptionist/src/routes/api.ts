@@ -940,9 +940,38 @@ apiRouter.get("/search", async (req: Request, res: Response) => {
       q: String((req.query as any).q || ""),
       perGroup: (req.query as any).perGroup ? parseInt(String((req.query as any).perGroup), 10) : undefined,
       total: (req.query as any).total ? parseInt(String((req.query as any).total), 10) : undefined,
+      snippets: String((req.query as any).snippets || "") === "1",
     });
     res.json(out);
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// RECENT SEARCHES — acting user, current tenant portal. Writes are
+// fire-and-forget from the client's point of view and never block a search.
+apiRouter.get("/search/recent", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getRecentSearches } = require("../services/searchService");
+  res.json({ recent: tenantId ? await getRecentSearches(req.user!.id, tenantId) : [] });
+});
+
+apiRouter.post("/search/recent", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.json({ recent: [] }); return; }
+  if ((req as any).impersonation) { res.json({ recent: [] }); return; }   // never write someone else's history
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { rememberSearch } = require("../services/searchService");
+  try { res.json({ recent: await rememberSearch(req.user!.id, tenantId, String((req.body ?? {}).q || "")) }); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.delete("/search/recent", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.json({ ok: true }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { clearRecentSearches } = require("../services/searchService");
+  await clearRecentSearches(req.user!.id, tenantId);
+  res.json({ ok: true });
 });
 
 // ---- TABLE LAYOUTS (per-user column visibility, order and sort) --------------

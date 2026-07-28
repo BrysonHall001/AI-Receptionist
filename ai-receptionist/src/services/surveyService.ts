@@ -160,9 +160,13 @@ export async function upsertSurvey(input: {
 
   if (surveyId) {
     await db.survey.update({ where: { id: surveyId }, data });
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    void require("./searchIndexService").indexSurvey(surveyId);
     await db.surveyQuestion.deleteMany({ where: { surveyId } });
   } else {
     const created = await db.survey.create({ data: { ...data, tenantId: input.tenantId, createdById: input.createdById ?? null, publicId: crypto.randomBytes(9).toString("hex") } });
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    void require("./searchIndexService").indexSurvey(created.id);
     surveyId = created.id;
   }
 
@@ -214,6 +218,8 @@ export async function deleteSurvey(tenantId: string, id: string): Promise<boolea
   const s = await db.survey.findFirst({ where: { id, tenantId } });
   if (!s) return false;
   await db.survey.delete({ where: { id } }); // cascades to questions (+ any responses)
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").removeFromIndex("survey", id);
   return true;
 }
 
@@ -224,5 +230,7 @@ export async function setSurveyStatus(tenantId: string, id: string, status: stri
   const s = await db.survey.findFirst({ where: { id, tenantId } });
   if (!s) return null;
   const upd = await db.survey.update({ where: { id }, data: { status } });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./searchIndexService").indexSurvey(id);
   return { id: upd.id, status: upd.status };
 }
