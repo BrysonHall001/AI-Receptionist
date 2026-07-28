@@ -182,6 +182,11 @@ model User {
   // Per-user notification preferences (per-category: on/off + toast on/off).
   // Same dormant-JSON pattern as contactColumns; written only by userService.
   notifPrefs       Json      @default("{}")
+  // TABLE LAYOUTS: per-user column visibility, order and sort for every table
+  // in the product, keyed by a stable table key (portal:<tenantId>:module:<key>,
+  // hub:tenants:table, ...). Generalises the older contactColumns blob, which
+  // is carried over on first read and then left untouched.
+  tableLayouts     Json      @default("{}")
   contactColumns   Json      @default("{}")
   // When set, effective portal permissions come from this custom role (PortalRole);
   // the base enum `role` still acts as the tier/ceiling reference. Null = use the

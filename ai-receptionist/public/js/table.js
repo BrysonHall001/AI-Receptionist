@@ -200,9 +200,21 @@
       ? String(opts.tableId)
       : "sig:" + (opts.columns || []).map((c) => c && c.key).filter(Boolean).slice().sort().join(",");
     const SORT_STORE_KEY = "tblsort:" + sortStoreId;
+    // Opt-in server persistence: a caller that names its table gets its SORT
+    // remembered per user, not per browser. A saved sort pointing at a column
+    // that no longer exists is ignored (the table falls back to its default).
+    const layoutKey = opts.layoutKey || null;
+    const savedLayout = layoutKey ? App.table.layouts.get(layoutKey) : null;
+    const layoutSort = layoutKey ? App.table.layouts.usableSort(savedLayout, columns) : null;
     function loadSort() { try { return JSON.parse(localStorage.getItem(SORT_STORE_KEY) || "null"); } catch (e) { return null; } }
-    function saveSort() { try { localStorage.setItem(SORT_STORE_KEY, JSON.stringify({ sortKey: state.sortKey, sortDir: state.sortDir })); } catch (e) {} }
-    const savedSort = loadSort();
+    function saveSort() {
+      try { localStorage.setItem(SORT_STORE_KEY, JSON.stringify({ sortKey: state.sortKey, sortDir: state.sortDir })); } catch (e) { /* */ }
+      if (layoutKey) {
+        const prev = App.table.layouts.get(layoutKey) || {};
+        App.table.layouts.save(layoutKey, { order: prev.order || [], hidden: prev.hidden || [], sortKey: state.sortKey, sortDir: state.sortDir });
+      }
+    }
+    const savedSort = layoutSort || loadSort();
 
     const state = { search: "", colFilters: {}, rules: [], sortKey: (savedSort && savedSort.sortKey) || opts.defaultSort || null, sortDir: (savedSort && savedSort.sortDir) || opts.defaultSortDir || "desc", railOpen: false, page: 0 };
     const { el, esc, debounce } = App.util;
@@ -588,15 +600,25 @@
   // columns and calls handle.setColumns() with the visible subset. Layout is in-memory
   // unless the caller wires getLayout/setLayout to persist it.
   function applyColumnLayout(all, layout, defaultKeys) {
+    // (see the unknown-column rule below)
     const byKey = {}; all.forEach((c) => (byKey[c.key] = c));
     const defaults = (defaultKeys && defaultKeys.length ? defaultKeys : all.map((c) => c.key));
     const hasLayout = layout && ((layout.order || []).length || (layout.hidden || []).length);
     if (!hasLayout) return defaults.filter((k) => byKey[k]).map((k) => byKey[k]);
     const hidden = new Set(layout.hidden || []);
+    const known = new Set((layout.order || []).concat(layout.hidden || []));
+    const defaultSet = defaultKeys && defaultKeys.length ? new Set(defaultKeys) : null;
     const ordered = [];
     (layout.order || []).forEach((k) => { if (byKey[k]) ordered.push(byKey[k]); });
     all.forEach((c) => { if (ordered.indexOf(c) === -1) ordered.push(c); });
-    return ordered.filter((c) => !hidden.has(c.key));
+    return ordered.filter((c) => {
+      if (hidden.has(c.key)) return false;
+      // A column the saved layout never mentioned (added since, or hidden by
+      // default) follows its DEFAULT visibility rather than appearing because
+      // the user once arranged something else.
+      if (!known.has(c.key) && defaultSet) return defaultSet.has(c.key);
+      return true;
+    });
   }
 
   // options (all optional, defaults preserve the original "Manage columns" behavior):
@@ -608,6 +630,8 @@
   //               field picker, where card layout order is fixed)
   function openColumnManager(allColumns, layout, defaultKeys, onSave, options) {
     options = options || {};
+    // options.onReset — when supplied, a "Reset to default" ghost button appears
+    // in the footer beside Save (no confirmation: it is instantly re-doable).
     const noReorder = !!options.noReorder;
     const el = App.util.el, esc = App.util.esc;
     const byKey = {}; allColumns.forEach((c) => (byKey[c.key] = c));
@@ -656,13 +680,20 @@
       });
     }
     paint();
+    const close = () => overlay.remove();
     const foot = el("div", "modal-foot");
     const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
     const save = el("button", "btn btn-primary btn-sm", options.saveText || "Save columns");
+    // RESET, left of Cancel: the same house ghost button at the same size. No
+    // confirmation — it is non-destructive and one click to redo.
+    if (options.onReset) {
+      const reset = el("button", "btn btn-ghost btn-sm mc-reset", "Reset to default");
+      reset.onclick = () => { options.onReset(); close(); if (App.util.toast) App.util.toast("Columns reset to default"); };
+      foot.appendChild(reset);
+    }
     foot.appendChild(cancel); foot.appendChild(save);
     modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    const close = () => overlay.remove();
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
     modal.querySelector("#mc-close").onclick = close;
     cancel.onclick = close;
@@ -684,5 +715,80 @@
     return { getLayout: () => layout };
   }
 
-  App.table = { pipeline, evalRule, evalRules, ruleComplete, mount, ruleEditor, OPS, manageColumns: mountColumnManager, openColumnManager, applyColumnLayout };
+  // ---------------------------------------------------------------------------
+  // LAYOUT PERSISTENCE (per user, server-side) — ONE layer for every table in
+  // the product. The hub's column manager and the portal's own manager both
+  // call this; neither renderer changed. localStorage is kept as an OFFLINE
+  // FALLBACK so a table still remembers itself if the request fails, but the
+  // server is the source of truth and wins whenever it answers.
+  // ---------------------------------------------------------------------------
+  const layouts = (function () {
+    let cache = null;           // { tableKey: {order, hidden, sortKey, sortDir} }
+    let inflight = null;
+    const timers = {};
+    const LS = (key) => "tbllayout:" + key;
+
+    const localGet = (key) => { try { return JSON.parse(localStorage.getItem(LS(key)) || "null"); } catch (e) { return null; } };
+    const localSet = (key, l) => { try { localStorage.setItem(LS(key), JSON.stringify(l || null)); } catch (e) { /* private mode */ } };
+
+    /** Load every layout once per session. Callers put this in the SAME
+     *  Promise.all as their data fetch, so the first paint is already correct
+     *  and no default-column arrangement ever flashes. */
+    function prime() {
+      if (cache) return Promise.resolve(cache);
+      if (inflight) return inflight;
+      inflight = (App.portalApi ? App.portalApi("/api/account/table-layouts") : App.api("/api/account/table-layouts"))
+        .then((r) => { cache = (r && r.layouts) || {}; inflight = null; return cache; })
+        .catch(() => { cache = null; inflight = null; return {}; });   // offline: fall through to localStorage
+      return inflight;
+    }
+
+    /** The layout for one table. Server value if we have it, else whatever this
+     *  browser remembered, else nothing (= today's defaults). */
+    function get(key) {
+      if (cache && cache[key]) return cache[key];
+      if (cache) return localGet(key) || null;   // server answered and has none
+      return localGet(key) || null;
+    }
+
+    /** Save, debounced and fire-and-forget: a failed write must never block a
+     *  render, and a drag must never write per frame. */
+    function save(key, layout) {
+      const clean = {
+        order: (layout && layout.order) || [],
+        hidden: (layout && layout.hidden) || [],
+        sortKey: (layout && layout.sortKey) || null,
+        sortDir: (layout && layout.sortDir) || null,
+      };
+      if (cache) cache[key] = clean;
+      localSet(key, clean);
+      clearTimeout(timers[key]);
+      timers[key] = setTimeout(() => {
+        const url = "/api/account/table-layouts/" + encodeURIComponent(key);
+        const req = App.portalApi ? App.portalApi(url, { method: "PUT", body: JSON.stringify({ layout: clean }) })
+          : App.api(url, { method: "PUT", body: JSON.stringify({ layout: clean }) });
+        Promise.resolve(req).catch(() => { /* the browser copy still holds it */ });
+      }, 400);
+    }
+
+    /** Reset: forget this table entirely, here and on the server. */
+    function reset(key) {
+      if (cache) delete cache[key];
+      try { localStorage.removeItem(LS(key)); } catch (e) { /* */ }
+      const url = "/api/account/table-layouts/" + encodeURIComponent(key);
+      const req = App.portalApi ? App.portalApi(url, { method: "DELETE" }) : App.api(url, { method: "DELETE" });
+      return Promise.resolve(req).catch(() => ({}));
+    }
+
+    /** Drop a saved SORT that points at a column which no longer exists. */
+    function usableSort(layout, columns) {
+      if (!layout || !layout.sortKey) return null;
+      const has = (columns || []).some((c) => c && c.key === layout.sortKey);
+      return has ? { sortKey: layout.sortKey, sortDir: layout.sortDir === "asc" ? "asc" : "desc" } : null;
+    }
+
+    return { prime, get, save, reset, usableSort, _forget: () => { cache = null; } };
+  })();
+
+  App.table = { pipeline, evalRule, evalRules, ruleComplete, mount, ruleEditor, OPS, manageColumns: mountColumnManager, openColumnManager, applyColumnLayout, layouts };
 })(typeof window !== "undefined" ? window : globalThis);

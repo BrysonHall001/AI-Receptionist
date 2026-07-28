@@ -238,7 +238,7 @@
 
   async function renderPortals() {
     loading();
-    const portals = await App.api("/api/admin/portals");
+    const [portals] = await Promise.all([App.api("/api/admin/portals"), App.table.layouts.prime()]);
     portalsCache = portals;
     const wrap = el("div", "fade-in");
 
@@ -278,8 +278,20 @@
     // saved order + hidden set on mount and write it back on save, so hiding/reordering a
     // column survives navigating away and back — identical behavior to the portal tables.
     const TENANTS_COLS_KEY = "admincols:tenants";
-    const loadTenantsLayout = () => { try { return JSON.parse(localStorage.getItem(TENANTS_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
-    const saveTenantsLayout = (layout) => { try { localStorage.setItem(TENANTS_COLS_KEY, JSON.stringify(layout || {})); } catch (e) {} };
+    const TENANTS_TABLE_KEY = "hub:tenants:table";
+    const TENANTS_PANELS_KEY = "hub:tenants:panels";
+    // Per-USER layouts, from the shared table-layout layer. The old
+    // per-browser value is still read when the server has nothing (offline
+    // fallback), so nobody's existing arrangement disappears.
+    const loadTenantsLayout = () => {
+      const fromServer = App.table.layouts.get(TENANTS_TABLE_KEY);
+      if (fromServer) return fromServer;
+      try { return JSON.parse(localStorage.getItem(TENANTS_COLS_KEY) || "{}") || {}; } catch (e) { return {}; }
+    };
+    const saveTenantsLayout = (layout) => {
+      App.table.layouts.save(TENANTS_TABLE_KEY, layout || {});
+      try { localStorage.setItem(TENANTS_COLS_KEY, JSON.stringify(layout || {})); } catch (e) { /* offline copy */ }
+    };
     // The Demo column is filterable but NOT shown by default: the pill beside
     // the tenant name is the signal, and a whole column for one word was noise.
     // It remains available in the column manager and in the Filters rail.
@@ -295,8 +307,15 @@
     const loadView = () => { try { const v = localStorage.getItem(VIEW_KEY); return v === "panel" ? "panel" : "table"; } catch (e) { return "table"; } };
     const saveView = (v) => { try { localStorage.setItem(VIEW_KEY, v); } catch (e) {} };
     const PANEL_FIELDS_KEY = "panelfields:tenants"; // { hidden: [...] } — which card fields are hidden
-    const loadPanelFields = () => { try { return JSON.parse(localStorage.getItem(PANEL_FIELDS_KEY) || "{}") || {}; } catch (e) { return {}; } };
-    const savePanelFields = (layout) => { try { localStorage.setItem(PANEL_FIELDS_KEY, JSON.stringify(layout || {})); } catch (e) {} };
+    const loadPanelFields = () => {
+      const fromServer = App.table.layouts.get(TENANTS_PANELS_KEY);
+      if (fromServer) return fromServer;
+      try { return JSON.parse(localStorage.getItem(PANEL_FIELDS_KEY) || "{}") || {}; } catch (e) { return {}; }
+    };
+    const savePanelFields = (layout) => {
+      App.table.layouts.save(TENANTS_PANELS_KEY, layout || {});
+      try { localStorage.setItem(PANEL_FIELDS_KEY, JSON.stringify(layout || {})); } catch (e) { /* offline copy */ }
+    };
     // Panel cards expose the SAME fields as the table columns (same keys/labels) so the
     // "Manage panels" picker and the cards stay in lock-step. Order on the card is fixed,
     // so the picker is check-on/off only (no reorder).
@@ -375,6 +394,7 @@
     }
 
     const handle = App.table.mount({
+      layoutKey: TENANTS_TABLE_KEY,   // per-user sort, same layer as the columns
       container: tableHost,
       rows: portals,
       columns: initialColumns,
@@ -423,12 +443,20 @@
           panelLayout = { order: nl.order, hidden: nl.hidden };
           savePanelFields(panelLayout);
           renderCards(handle.getFiltered());
-        }, { title: "Manage panels", help: "Check to show a field on each card.", saveText: "Save panels", savedToast: "Panels updated", noReorder: true });
+        }, { title: "Manage panels", help: "Check to show a field on each card.", saveText: "Save panels", savedToast: "Panels updated", noReorder: true,
+          onReset: () => { App.table.layouts.reset(TENANTS_PANELS_KEY); panelLayout = {}; savePanelFields(panelLayout); renderCards(handle.getFiltered()); } });
       } else {
         App.table.openColumnManager(columns, tenantsLayout, tenantsDefaultKeys, (nl) => {
           tenantsLayout = { order: nl.order, hidden: nl.hidden };
           saveTenantsLayout(tenantsLayout);
           handle.setColumns(App.table.applyColumnLayout(columns, tenantsLayout, tenantsDefaultKeys));
+        }, {
+          onReset: () => {
+            App.table.layouts.reset(TENANTS_TABLE_KEY);
+            try { localStorage.removeItem(TENANTS_COLS_KEY); } catch (e) { /* */ }
+            tenantsLayout = {};
+            handle.setColumns(App.table.applyColumnLayout(columns, tenantsLayout, tenantsDefaultKeys));
+          },
         });
       }
     };

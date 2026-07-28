@@ -2504,6 +2504,8 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .mc-row.dragging { opacity: 0.5; }
 .mc-drag { color: var(--ink-faint); cursor: grab; }
 .mc-label { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--ink); cursor: pointer; }
+/* the column manager's reset sits to the LEFT, away from Save/Cancel */
+.mc-reset { margin-right: auto; }
 .modal-foot { display: flex; justify-content: flex-end; gap: var(--sp-2); padding: 14px 24px 18px; border-top: 1px solid var(--line); flex-wrap: wrap; min-width: 0; } /* hardening: modal footers ARE the actions-row pattern (documented alias) */
 
 /* ---------- Recycle bin ---------- */

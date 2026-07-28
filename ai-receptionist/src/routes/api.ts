@@ -922,6 +922,37 @@ apiRouter.patch("/account/contact-columns", async (req: Request, res: Response) 
   res.json({ layout });
 });
 
+// ---- TABLE LAYOUTS (per-user column visibility, order and sort) --------------
+// Scoped to the ACTING user, always: the id is taken from the session and never
+// from the request, so a user cannot read or write anybody else's layouts.
+//
+// IMPERSONATION (mirrors the batch-30 read-state rule at api.ts:1884): while
+// impersonating you SEE what they see — their layouts are read, so their tables
+// look exactly as they look to them — but nothing is written on their behalf.
+apiRouter.get("/account/table-layouts", async (req: Request, res: Response) => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getTableLayouts } = require("../services/tableLayoutService");
+  res.json({ layouts: await getTableLayouts(req.user!.id) });
+});
+
+apiRouter.put("/account/table-layouts/:tableKey", async (req: Request, res: Response) => {
+  if ((req as any).impersonation) { res.status(403).json({ error: "Table layouts can't be changed while impersonating." }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { setTableLayout } = require("../services/tableLayoutService");
+  try {
+    const layout = await setTableLayout(req.user!.id, String(req.params.tableKey || ""), (req.body ?? {}).layout ?? req.body);
+    res.json({ layout });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+apiRouter.delete("/account/table-layouts/:tableKey", async (req: Request, res: Response) => {
+  if ((req as any).impersonation) { res.status(403).json({ error: "Table layouts can't be changed while impersonating." }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { clearTableLayout } = require("../services/tableLayoutService");
+  try { res.json(await clearTableLayout(req.user!.id, String(req.params.tableKey || ""))); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // ---- AI Instructions (per-portal, client-editable; layered onto the AI prompt) ----
 // Capability gate: currently ON for every portal. To later restrict to "AI-enabled"
 // portals, replace `aiEnabled` with a real per-portal flag (e.g. portal.aiEnabled).

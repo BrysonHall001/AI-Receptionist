@@ -197,7 +197,7 @@
           blocks: [
             { p: "Every module can offer up to five ways of seeing the same records. Switch views with the buttons above the table." },
             { steps: [
-              "List — the classic table: sort, filter, and manage columns.",
+              "List — the classic table: sort, filter, and manage columns. However you arrange it is remembered for you, on any device.",
               "Kanban — cards grouped into status columns; drag a card to change its status.",
               "Calendar — appears when the module has a date field; records land on their date.",
             ] },

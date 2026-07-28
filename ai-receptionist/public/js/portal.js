@@ -1969,6 +1969,12 @@
       App.portalApi("/api/contacts"),
       App.portalApi("/api/fields").catch(() => []),
       App.portalApi("/api/account/contact-columns").catch(() => ({ layout: {} })),
+      App.table.layouts.prime(),   // per-user layouts, in the SAME round trip — no default-columns flash
+    ]).then((r) => [
+      r[0], r[1],
+      // Prefer the shared per-user layer; the older contact-columns response is
+      // the fallback for a client that somehow has no layouts yet.
+      { layout: App.table.layouts.get("portal:" + (App.state.currentPortalId || App.state.tenantId || "p") + ":contacts") || (r[2] && r[2].layout) || {} },
     ]);
     const allColumns = contactColumnDefs(fields);
     let layout = (colResp && colResp.layout) || {};
@@ -2072,6 +2078,7 @@
     handle = App.table.mount({
       container: tableHost, columns, rows: contacts, selectable: true, rowId: (r) => r.id,
       tableId: "portal-contacts",
+      layoutKey: "portal:" + (App.state.currentPortalId || App.state.tenantId || "p") + ":contacts",
       scrollX: true, pageSize: 50,
       onRowClick: (r) => App.go("#/contact/" + r.id),
       onSelectionChange: (ids) => updateBulkBar(ids),
@@ -2114,17 +2121,26 @@
 
     // Manage columns (right, next to search)
     const mc = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#9776;</span> Manage columns`);
+    const contactsTableKey = "portal:" + (App.state.currentPortalId || App.state.tenantId || "p") + ":contacts";
     mc.onclick = () => openManageColumns(allColumns, layout, async (newLayout) => {
       layout = newLayout;
+      App.table.layouts.save(contactsTableKey, layout);   // the shared, per-user home
       try { const r = await App.portalApi("/api/account/contact-columns", { method: "PATCH", body: JSON.stringify({ layout }) }); layout = r.layout; }
       catch (e) { App.util.toast(e.message, true); }
       handle.setColumns(applyColumnLayout(allColumns, layout));
+    }, {
+      onReset: async () => {
+        await App.table.layouts.reset(contactsTableKey);   // clears the legacy blob too
+        layout = {};
+        handle.setColumns(applyColumnLayout(allColumns, layout));
+      },
     });
     if (handle.toolbarRight) handle.toolbarRight.insertBefore(mc, handle.toolbarRight.firstChild);
   }
 
   // ---------------- Manage columns popup (show/hide + drag reorder) ----------------
-  function openManageColumns(allColumns, layout, onSave) {
+  function openManageColumns(allColumns, layout, onSave, options) {
+    options = options || {};
     const byKey = {}; allColumns.forEach((c) => (byKey[c.key] = c));
     // working order: existing order first (known keys), then any remaining; default order if none.
     let order = (layout && layout.order && layout.order.length) ? layout.order.filter((k) => byKey[k]) : DEFAULT_COLS.filter((k) => byKey[k]);
@@ -2173,6 +2189,13 @@
     const foot = el("div", "modal-foot");
     const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
     const save = el("button", "btn btn-primary btn-sm", "Save columns");
+    // RESET, matching the hub manager's footer exactly (same house ghost
+    // button, same position, no confirmation).
+    if (options.onReset) {
+      const reset = el("button", "btn btn-ghost btn-sm mc-reset", "Reset to default");
+      reset.onclick = () => { options.onReset(); overlay.remove(); App.util.toast("Columns reset to default"); };
+      foot.appendChild(reset);
+    }
     foot.appendChild(cancel); foot.appendChild(save);
 
     modal.appendChild(body); modal.appendChild(foot); overlay.appendChild(modal);
@@ -6368,8 +6391,18 @@
   // field editor. Column layout for record types is kept in the browser (no
   // migration); contacts keep their server-synced layout untouched.
   function recordLayoutKey(typeKey) { return "recordcols:" + (App.state.currentPortalId || "p") + ":" + typeKey; }
-  function loadRecordLayout(typeKey) { try { return JSON.parse(localStorage.getItem(recordLayoutKey(typeKey)) || "{}") || {}; } catch (e) { return {}; } }
-  function saveRecordLayout(typeKey, layout) { try { localStorage.setItem(recordLayoutKey(typeKey), JSON.stringify(layout || {})); } catch (e) {} }
+  /** The SHARED table-layout key: tenant + record-type KEY, never the label, so
+   *  renaming a module keeps the arrangement. */
+  function recordTableKey(typeKey) { return "portal:" + (App.state.currentPortalId || App.state.tenantId || "p") + ":module:" + typeKey; }
+  function loadRecordLayout(typeKey) {
+    const fromServer = App.table.layouts.get(recordTableKey(typeKey));
+    if (fromServer) return fromServer;
+    try { return JSON.parse(localStorage.getItem(recordLayoutKey(typeKey)) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function saveRecordLayout(typeKey, layout) {
+    App.table.layouts.save(recordTableKey(typeKey), layout || {});
+    try { localStorage.setItem(recordLayoutKey(typeKey), JSON.stringify(layout || {})); } catch (e) { /* offline copy */ }
+  }
   function applyRecordLayout(all, layout) {
     const byKey = {}; all.forEach((c) => (byKey[c.key] = c));
     const has = layout && ((layout.order || []).length || (layout.hidden || []).length);
@@ -7537,6 +7570,9 @@
         // Resource names/colors for the bookings/work-orders list column (display-
         // only) and, on Work Orders, the "My work orders" preset resolution.
         (typeKey === "booking" || typeKey === "work_order") ? App.portalApi("/api/resources").catch(() => []) : Promise.resolve([]),
+        // Per-user layouts ride the SAME parallel fetch as the records, so the
+        // saved arrangement is known before the first paint.
+        App.table.layouts.prime(),
       ]);
     } catch (e) {
       // FS Punch List 1 (F3): never surface a raw server message ("Record not
@@ -7676,6 +7712,7 @@
     handle = App.table.mount({
       container: tableHost, columns, rows: records, selectable: true, rowId: (r) => r.id,
       tableId: "portal-records-" + typeKey,
+      layoutKey: recordTableKey(typeKey),   // per-user sort, same layer as the columns
       onRowClick: (r) => App.go("#/record/" + r.id),
       onSelectionChange: (ids) => { selCount.textContent = ids.length ? `${ids.length} selected` : ""; },
       defaultSort: "createdAt", defaultSortDir: "desc",
@@ -7722,6 +7759,13 @@
     mc.onclick = () => openManageColumns(allColumns, layout, (newLayout) => {
       layout = newLayout; saveRecordLayout(typeKey, layout);
       handle.setColumns(applyRecordLayout(allColumns, layout));
+    }, {
+      onReset: () => {
+        App.table.layouts.reset(recordTableKey(typeKey));
+        try { localStorage.removeItem(recordLayoutKey(typeKey)); } catch (e) { /* */ }
+        layout = {};
+        handle.setColumns(applyRecordLayout(allColumns, layout));
+      },
     });
     if (handle.toolbarRight) handle.toolbarRight.insertBefore(mc, handle.toolbarRight.firstChild);
   }
