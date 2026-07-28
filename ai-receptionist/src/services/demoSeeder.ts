@@ -26,7 +26,18 @@ import { isProduction } from "../config/env";
 const db = prisma as any;
 const DAY = 86400000;
 
-export interface SeedOptions { profile: "field_services" | "recruitment_marketing"; seed?: string; runSweep?: boolean; actingUserId?: string | null }
+export interface SeedOptions {
+  profile: "field_services" | "recruitment_marketing";
+  seed?: string;
+  runSweep?: boolean;
+  actingUserId?: string | null;
+  /** "small" | "medium" | "large" — see VOLUMES. */
+  volume?: string;
+  /** 30 | 90 | 365 — how far back the seeded history spreads. */
+  windowDays?: number;
+  /** Seed a template that ISN'T this tenant's own (the escape hatch). */
+  allowTemplateMismatch?: boolean;
+}
 export interface SeedResult { runId: string; counts: Record<string, number>; deterministic: Record<string, number>; notes: string[] }
 
 /** Deterministic RNG: the same seed produces the same dataset, so a before/after
@@ -77,7 +88,60 @@ function assertAllowed(): void {
 // --------------------------------------------------------------- FS profile
 const FS_CAPS = { contacts: 40, workOrders: 60, multiVisit: 6, dateless: 8, resources: 4, equipment: 15, estimates: 12, invoices: 15, products: 10, recurring: 3, calls: 20, comms: 30 };
 
-async function seedFieldServices(tenantId: string, r: () => number, led: Ledger, notes: string[]): Promise<void> {
+/** VOLUME. Small is the shipped profile; Medium and Large multiply the
+ *  entity counts (staff and the price book stay put — a bigger dataset needs
+ *  more work, not more technicians). Large runs in the BACKGROUND with progress
+ *  written to its ledger row, so a slow seed can never time out a request. */
+export const VOLUMES: Record<string, { label: string; mult: number; async: boolean }> = {
+  small: { label: "Small", mult: 1, async: false },
+  medium: { label: "Medium", mult: 2, async: false },
+  large: { label: "Large", mult: 4, async: true },
+};
+/** TIME WINDOW: how far back the seeded history is spread. */
+export const WINDOWS = [30, 90, 365];
+/** VERIFIED at all three windows: every detector still fires. The window sets
+ *  how far the ordinary HISTORY spreads; the detector patterns are planted at
+ *  the ages their own floors require (the stalled batch sits ~45-50 days back
+ *  whatever the window), so a 30-day dataset still produces four cards. */
+export const WINDOW_DETECTOR_NOTE: Record<number, string> = {
+  30: "A tight window: three months of history compressed into one. All four detectors still fire.",
+  90: "The default \u2014 a quarter of history. All four detectors fire.",
+  365: "A full year of history. All four detectors fire.",
+};
+
+function scaled(base: Record<string, number>, mult: number, fixed: string[] = []): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(base)) out[k] = fixed.includes(k) ? base[k] : Math.round(base[k] * mult);
+  return out;
+}
+
+/** Which record types this tenant actually SHOWS. Seeding a template a tenant
+ *  doesn't use would otherwise create real records in modules hidden from its
+ *  nav — visible nowhere, which is exactly what the mismatch report found. */
+async function visibleModuleKeys(tenantId: string): Promise<Set<string>> {
+  const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { labels: true } });
+  const hidden: string[] = (((t && t.labels) || {}).nav || {}).hidden || [];
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { listRecordTypes, recordTypeHref } = require("./recordTypeService");
+  const types = await listRecordTypes(tenantId);
+  const out = new Set<string>();
+  for (const rt of types as any[]) if (!hidden.includes(recordTypeHref(rt.key))) out.add(rt.key);
+  return out;
+}
+
+async function seedFieldServices(tenantId: string, r: () => number, led: Ledger, notes: string[], opts: { mult: number; windowDays: number; onProgress?: (done: number, total: number, step: string) => void; skipHidden?: boolean } = { mult: 1, windowDays: 90 }): Promise<void> {
+  const CAPS = scaled(FS_CAPS, opts.mult, ["resources", "products", "multiVisit", "recurring"]) as typeof FS_CAPS;
+  const WINDOW = opts.windowDays;
+  const step = (name: string, done: number, total: number) => { if (opts.onProgress) opts.onProgress(done, total, name); };
+  // SKIP-WITH-REPORT: modules this tenant hides are left alone, and the run
+  // says which — instead of filling invisible modules with real rows.
+  const visible = opts.skipHidden === false ? null : await visibleModuleKeys(tenantId);
+  const skipped: string[] = [];
+  const shows = (key: string) => {
+    if (!visible || visible.has(key)) return true;
+    if (skipped.indexOf(key) === -1) skipped.push(key);
+    return false;
+  };
   const { createContact } = require("./contactService");
   const { createRecord, updateRecord } = require("./recordService");
   const { createResource } = require("./resourceService");
@@ -96,24 +160,27 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
 
   // --- staff (with hours, so the lanes calendar actually renders) ---
   const HOURS = { mon: [["08:00", "17:00"]], tue: [["08:00", "17:00"]], wed: [["08:00", "17:00"]], thu: [["08:00", "17:00"]], fri: [["08:00", "16:00"]], sat: [], sun: [] };
+  step("staff", 0, 8);
   const resources: any[] = [];
-  for (let i = 0; i < FS_CAPS.resources; i++) {
+  for (let i = 0; i < CAPS.resources; i++) {
     const res = await createResource(tenantId, { name: personName(r), hours: HOURS });
     led.add("resource", res.id); resources.push(res);
   }
 
+  step("price book", 1, 8);
   // --- price book ---
   const products: any[] = [];
   const PRODUCTS = [["Service call", 89], ["Diagnostic fee", 65], ["Condenser fan motor", 240], ["Capacitor", 45], ["Thermostat (smart)", 190], ["Refrigerant top-up", 130], ["Drain clearing", 110], ["Filter pack", 35], ["Labour (per hour)", 95], ["After-hours callout", 180]];
-  for (let i = 0; i < Math.min(FS_CAPS.products, PRODUCTS.length); i++) {
+  for (let i = 0; shows("product") && i < Math.min(CAPS.products, PRODUCTS.length); i++) {
     const [title, price] = PRODUCTS[i] as any[];
     const p = await createRecord(tenantId, "product", { title, customFields: { price, description: `${title} — demo price book item` } }, { source: "manual" });
     led.add("record", p.id); products.push({ id: p.id, title, price });
   }
 
+  step("contacts", 2, 8);
   // --- contacts ---
   const contacts: any[] = [];
-  for (let i = 0; i < FS_CAPS.contacts; i++) {
+  for (let i = 0; i < CAPS.contacts; i++) {
     const name = personName(r);
     const c = await createContact(tenantId, {
       name, phone: fakePhone(r), email: fakeEmail(name, r),
@@ -121,20 +188,21 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
       source: r() < 0.35 ? "lead_capture" : "manual",
     } as any);
     led.add("contact", c.id); contacts.push(c);
-    await backdate("contact", c.id, new Date(Date.now() - Math.floor(r() * 90) * DAY));
+    await backdate("contact", c.id, new Date(Date.now() - Math.floor(r() * WINDOW) * DAY));
   }
 
+  step("work orders", 3, 8);
   // --- work orders: 90 days back, 14 forward ---
   // The cap is a TOTAL: the detector-pattern jobs (6 + 14 + 8) and the recurring
   // plans + successors (3 + 3) are spent from the same budget.
-  const PATTERN_JOBS = 6 + 14 + 8 + FS_CAPS.recurring * 2;
+  const PATTERN_JOBS = 6 + 14 + 8 + CAPS.recurring * 2;
   const SIM_ALLOWANCE = 12; // the AI-intake path turns some simulated calls into jobs (measured 8-12)
-  const baseJobs = Math.max(10, FS_CAPS.workOrders - PATTERN_JOBS - SIM_ALLOWANCE);
+  const baseJobs = Math.max(10, CAPS.workOrders - PATTERN_JOBS - SIM_ALLOWANCE);
   const wos: any[] = [];
   for (let i = 0; i < baseJobs; i++) {
     const future = i >= baseJobs - 8;                                // the tail is upcoming work
-    const dateless = i >= baseJobs - 8 - FS_CAPS.dateless && !future;
-    const daysOut = future ? Math.floor(r() * 14) : -Math.floor(r() * 90);
+    const dateless = i >= baseJobs - 8 - CAPS.dateless && !future;
+    const daysOut = future ? Math.floor(r() * 14) : -Math.floor(r() * WINDOW);
     const when = new Date(Date.now() + daysOut * DAY);
     when.setUTCHours(9 + Math.floor(r() * 7), r() < 0.5 ? 0 : 30, 0, 0);
     const stage = future ? S("scheduled") : (r() < 0.72 ? S("completed") : r() < 0.85 ? S("in_progress") : S("cancelled"));
@@ -152,7 +220,7 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
   }
 
   // --- multi-visit jobs (through the visit service, so the mirror stays true) ---
-  for (let i = 0; i < FS_CAPS.multiVisit; i++) {
+  for (let i = 0; i < CAPS.multiVisit; i++) {
     const job = wos[i];
     const extra = 1 + Math.floor(r() * 2); // 2-3 visits total
     for (let v = 0; v < extra; v++) {
@@ -163,10 +231,11 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
       if (r() < 0.3) await visitSvc.completeVisit(tenantId, vis.id);
     }
   }
-  notes.push(`${FS_CAPS.multiVisit} multi-visit jobs created through the visit service (mirror recomputed in-transaction)`);
+  notes.push(`${CAPS.multiVisit} multi-visit jobs created through the visit service (mirror recomputed in-transaction)`);
 
+  step("equipment", 4, 8);
   // --- equipment with service history (the batch-18 link conventions) ---
-  for (let i = 0; i < FS_CAPS.equipment; i++) {
+  for (let i = 0; shows("equipment") && i < CAPS.equipment; i++) {
     const eq = await createRecord(tenantId, "equipment", {
       title: ["Carrier 59TP6", "Trane XR14", "Rheem Classic", "Bosch 500 Series", "Goodman GSX16"][Math.floor(r() * 5)],
       customFields: { serial_number: `SN-${Math.floor(r() * 900000 + 100000)}` },
@@ -177,16 +246,17 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
     for (let h = 0; h < historyCount; h++) {
       await createLink(tenantId, { recordId: wos[Math.floor(r() * wos.length)].id, parentType: "record", parentId: eq.id }).catch(() => { /* */ });
     }
-    await backdate("record", eq.id, new Date(Date.now() - Math.floor(r() * 90) * DAY));
+    await backdate("record", eq.id, new Date(Date.now() - Math.floor(r() * WINDOW) * DAY));
   }
 
+  step("estimates and invoices", 5, 8);
   // --- estimates + invoices with line items, some converted ---
   const lineItems = (n: number) => Array.from({ length: n }, () => {
     const p = products[Math.floor(r() * products.length)];
     const qty = 1 + Math.floor(r() * 3);
     return { description: p.title, quantity: qty, unitPrice: p.price, total: qty * p.price };
   });
-  for (let i = 0; i < FS_CAPS.estimates; i++) {
+  for (let i = 0; shows("estimate") && i < CAPS.estimates; i++) {
     const items = lineItems(1 + Math.floor(r() * 3));
     const status = ["draft", "sent", "accepted", "declined"][Math.floor(r() * 4)];
     const est = await createRecord(tenantId, "estimate", {
@@ -195,26 +265,26 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
     }, { source: "manual" });
     led.add("record", est.id);
     await createLink(tenantId, { recordId: est.id, parentType: "contact", parentId: contacts[Math.floor(r() * contacts.length)].id }).catch(() => { /* */ });
-    await backdate("record", est.id, new Date(Date.now() - Math.floor(r() * 80) * DAY));
+    await backdate("record", est.id, new Date(Date.now() - Math.floor(r() * Math.min(80, WINDOW)) * DAY));
   }
-  for (let i = 0; i < FS_CAPS.invoices; i++) {
+  for (let i = 0; shows("invoice") && i < CAPS.invoices; i++) {
     const items = lineItems(1 + Math.floor(r() * 3));
     const paid = r() < 0.6;
     const inv = await createRecord(tenantId, "invoice", {
       title: `Invoice ${1000 + i}`,
       customFields: {
         invoice_number: `INV-${1000 + i}`, line_items: items, total: items.reduce((a: number, x: any) => a + x.total, 0),
-        invoice_date: new Date(Date.now() - Math.floor(r() * 70) * DAY).toISOString().slice(0, 10),
+        invoice_date: new Date(Date.now() - Math.floor(r() * Math.min(70, WINDOW)) * DAY).toISOString().slice(0, 10),
         ...(paid ? { paid_date: new Date(Date.now() - Math.floor(r() * 30) * DAY).toISOString().slice(0, 10), payment_method: ["Card", "Bank transfer", "Cash"][Math.floor(r() * 3)] } : {}),
       },
     }, { source: "manual" });
     led.add("record", inv.id);
     await createLink(tenantId, { recordId: inv.id, parentType: "contact", parentId: contacts[Math.floor(r() * contacts.length)].id }).catch(() => { /* */ });
-    await backdate("record", inv.id, new Date(Date.now() - Math.floor(r() * 70) * DAY));
+    await backdate("record", inv.id, new Date(Date.now() - Math.floor(r() * Math.min(70, WINDOW)) * DAY));
   }
 
   // --- recurring plans mid-cycle ---
-  for (let i = 0; i < FS_CAPS.recurring; i++) {
+  for (let i = 0; i < CAPS.recurring; i++) {
     const when = new Date(Date.now() - (10 + i * 5) * DAY);
     when.setUTCHours(11, 0, 0, 0);
     const plan = await createRecord(tenantId, "work_order", {
@@ -227,6 +297,7 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
     led.add("record", successor.id); // sits dateless in the tray, as a spawned successor would
   }
 
+  step("detector patterns", 6, 8);
   // --- DETECTOR PATTERNS (batch 31) ---
   // (1) the repeated phrase, comfortably over its floor
   for (let i = 0; i < 6; i++) {
@@ -274,19 +345,20 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
     });
     led.add("emailLog", row.id); mailed += 1;
   }
-  for (let i = mailed; i < FS_CAPS.comms; i++) {
+  for (let i = mailed; i < CAPS.comms; i++) {
     const c = contacts[Math.floor(r() * contacts.length)];
     const row = await db.emailLog.create({
       data: {
         tenantId, type: "single", status: "mock", toEmail: c.email, toName: c.name, subject: "Following up on your visit",
-        contactId: c.id, createdAt: new Date(Date.now() - Math.floor(r() * 60) * DAY),
+        contactId: c.id, createdAt: new Date(Date.now() - Math.floor(r() * Math.min(60, WINDOW)) * DAY),
       },
     });
     led.add("emailLog", row.id);
   }
-  notes.push(`${Math.max(mailed, FS_CAPS.comms)} comms rows written directly as mock logs (no send path touched)`);
+  notes.push(`${Math.max(mailed, CAPS.comms)} comms rows written directly as mock logs (no send path touched)`);
 
   // --- simulated calls (the simulator is transport-free) ---
+  step("simulated calls", 7, 8);
   const { runSimulatedCall } = require("./simulationService");
   // A simulated call creates its own contact, sometimes a record, and a mock
   // call-summary log. Those are OURS too — snapshot and diff so every one lands
@@ -297,13 +369,14 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
     emailLog: new Set((await db.emailLog.findMany({ where: { tenantId }, select: { id: true } })).map((x: any) => x.id)),
   });
   const beforeCalls = await snap();
-  for (let i = 0; i < FS_CAPS.calls; i++) {
+  for (let i = 0; i < CAPS.calls; i++) {
     try {
       const call = await runSimulatedCall(tenantId, null);
       led.add("callSession", call.id, true);
-      await backdate("callSession", call.id, new Date(Date.now() - Math.floor(r() * 60) * DAY));
+      await backdate("callSession", call.id, new Date(Date.now() - Math.floor(r() * Math.min(60, WINDOW)) * DAY));
     } catch (err) { logger.error(`[seeder] simulated call: ${(err as Error).message}`); }
   }
+  if (skipped.length) notes.push(`skipped (this tenant does not show these modules): ${skipped.join(", ")}`);
   const afterCalls = await snap();
   for (const model of ["contact", "record", "emailLog"] as const) {
     for (const id of afterCalls[model]) if (!beforeCalls[model].has(id)) led.add(model, id as string, true);
@@ -320,6 +393,10 @@ export async function seedDemoData(tenantId: string, opts: SeedOptions): Promise
   const led = new Ledger();
   const notes: string[] = [];
   const t0 = Date.now();
+  // The ledger row is created UP FRONT and updated as the run proceeds, so an
+  // interrupted seed still knows exactly what it made and Wipe stays exact.
+  const runRow = await db.demoSeedRun.create({ data: { tenantId, profile: opts.profile, seed: String(opts.seed || "clarity-demo"), counts: {}, ids: [] } });
+  const runId = runRow.id;
   logger.info(`[seeder] seeding "${tenant.name}" with the ${opts.profile} profile (seed "${seed}")`);
   // REAL USERS FIRST: notifications are per-recipient, so a tenant with nobody
   // in it can only ever produce a silent no-op (the empty-bell bug).
@@ -327,15 +404,22 @@ export async function seedDemoData(tenantId: string, opts: SeedOptions): Promise
   const ev = require("./demoSeederEvents");
   const users = await ev.seedTenantUsers(tenantId, led);
   notes.push(`${users.length} demo users created (no invitations sent; these accounts cannot log in)`);
-  if (opts.profile === "field_services") await seedFieldServices(tenantId, r, led, notes);
+  const vol = VOLUMES[String(opts.volume || "small")] || VOLUMES.small;
+  const windowDays = WINDOWS.includes(Number(opts.windowDays)) ? Number(opts.windowDays) : 90;
+  notes.push(`volume ${vol.label} (\u00d7${vol.mult}) over a ${windowDays}-day window`);
+  const onProgress = async (done: number, total: number, stepName: string) => {
+    try { await db.demoSeedRun.update({ where: { id: runId }, data: { ids: led.ids, counts: { ...led.counts, __progress: { done, total, step: stepName } } } }); }
+    catch { /* progress is a courtesy, never a failure mode */ }
+  };
+  if (opts.profile === "field_services") await seedFieldServices(tenantId, r, led, notes, { mult: vol.mult, windowDays, onProgress, skipHidden: true });
   else {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     await require("./demoSeederRm").seedRecruitmentMarketing(tenantId, r, led, notes);
   }
   // REAL EVENTS: drive genuine producer paths so the bell fills organically.
   const fired = await ev.seedRealEvents(tenantId, users, led, notes, opts.actingUserId || null);
-  const run = await db.demoSeedRun.create({ data: { tenantId, profile: opts.profile, seed, counts: { ...led.counts, __deterministic: led.deterministic, __producers: fired }, ids: led.ids } });
-  // Age the workspace past the unused-module floor — ONLY because this run's
+  const run = await db.demoSeedRun.update({ where: { id: runId }, data: { counts: { ...led.counts, __deterministic: led.deterministic, __producers: fired, __volume: vol.label, __windowDays: windowDays }, ids: led.ids } });
+  // Age the tenant past the unused-module floor — ONLY because this run's
   // ledger exists (see ageSeededTenant's guard), and recorded on that run.
   await ev.ageSeededTenant(tenantId, run.id);
   if (opts.runSweep !== false) {

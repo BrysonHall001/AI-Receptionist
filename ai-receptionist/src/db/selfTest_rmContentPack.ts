@@ -277,7 +277,7 @@ async function main() {
 
   console.log("");
   if (failures.length) { console.log(`${failures.length} FAILED \u274c: ${failures[0]}`); process.exitCode = 1; }
-  else console.log("ALL PASSED \u2705 (the recruiting workspace arrives furnished, nothing switches itself on, and chips tell the truth about what you checked)");
+  else console.log("ALL PASSED \u2705 (the recruiting tenant arrives furnished, nothing switches itself on, and chips tell the truth about what you checked)");
   await disconnectDb();
   process.exit(failures.length ? 1 : 0);
 }

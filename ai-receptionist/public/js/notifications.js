@@ -205,6 +205,7 @@
         body.appendChild(el("div", "notif-empty cell-muted", "Loading\u2026"));
         try {
           const r = await App.portalApi("/api/suggestions");
+          if (tab !== "suggestions") return;   // the user switched while this was in flight
           body.innerHTML = "";
           const items = (r && r.items) || [];
           suggestionCount = (r && r.openCount) || 0;
@@ -220,13 +221,14 @@
       body.appendChild(el("div", "notif-empty cell-muted", "Loading…"));
       try {
         const r = await App.portalApi("/api/notifications?limit=20");
+        if (tab !== "activity") return;      // ditto, the other way
         body.innerHTML = "";
         visitorMode = !!(r && r.visitor);
         setBadge(r ? r.unread : null);
         allRead.style.setProperty("display", visitorMode ? "none" : "");
-        if (visitorMode) body.appendChild(el("div", "notif-visitor cell-muted", "You're viewing as an admin \u2014 this is the workspace's activity, not your own."));
+        if (visitorMode) body.appendChild(el("div", "notif-visitor cell-muted", "You're viewing as an admin \u2014 this is the tenant's activity, not your own."));
         const items = (r && r.items) || [];
-        if (!items.length) { body.appendChild(el("div", "notif-empty cell-muted", visitorMode ? "Nothing has happened in this workspace yet." : "Nothing new \u2014 activity will show up here.")); return; }
+        if (!items.length) { body.appendChild(el("div", "notif-empty cell-muted", visitorMode ? "Nothing has happened in this tenant yet." : "Nothing new \u2014 activity will show up here.")); return; }
         items.forEach((n) => body.appendChild(rowEl(n)));
       } catch (e) {
         body.innerHTML = "";
@@ -389,7 +391,7 @@
         defaultSort: "when",
         defaultSortDir: "desc",
         rowClass: (r) => (r.readAt ? "" : "notif-row-unread"),
-        emptyHtml: `<div class="empty"><h3>Nothing new</h3><p>Activity will show up here as things happen in this workspace.</p></div>`,
+        emptyHtml: `<div class="empty"><h3>Nothing new</h3><p>Activity will show up here as things happen in this tenant.</p></div>`,
         columns: [
           { key: "categoryLabel", label: "Kind", cellClass: "notif-col-kind", get: (r) => r.categoryLabel,
             render: (r) => `<span class="notif-col-kindwrap"><span class="notif-row-ic">${App.icons ? App.icons.forNotificationCategory(r.category) : ""}</span>${esc(r.categoryLabel)}</span>` },

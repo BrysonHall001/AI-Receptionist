@@ -116,5 +116,5 @@ check(readFileSync(resolve(__dirname, "selfTest_contactsAllViews.ts"), "utf8").i
 check(css.includes("--ink-on-bg: #f6ecff;") && readFileSync(resolve(__dirname, "selfTest_allThemeContrast.ts"), "utf8").includes("const CSSRESOLVE = (k: string) =>"), "ledger 4: Prompt A's explicit per-theme inks + computational resolver kept");
 check(audit.totals.rawHex <= (baseline as any).totals.rawHex && LAYOUT_COUNTERS.every((k) => (audit.layout as any)[k] <= (baseline as any).layout[k]), "ratchet (color + all seven counters) at-or-below baseline");
 
-console.log(`\n${failures.length === 0 ? "ALL PASSED \u2705 (the Learning Center speaks the workspace's language, links resolve, part-2 hooks in place)" : failures.length + " FAILED \u274c"}`);
+console.log(`\n${failures.length === 0 ? "ALL PASSED \u2705 (the Learning Center speaks the tenant's language, links resolve, part-2 hooks in place)" : failures.length + " FAILED \u274c"}`);
 process.exit(failures.length ? 1 : 0);

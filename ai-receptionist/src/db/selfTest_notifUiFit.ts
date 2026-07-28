@@ -197,11 +197,12 @@ async function main() {
   check(rows.some((r: any) => r.className.includes("notif-row-unread")) && /\.notif-row-unread td:first-child \{ box-shadow: inset 2px 0 0 var\(--accent\)/.test(css),
     "\u2026unread is a subtle row marker (2px accent inset), not a column of its own");
   // the house search really searches (this needs col.get \u2014 the bug this suite caught)
-  const searchInput = P(".table-toolbar .search-input");
-  searchInput.value = "Job 6"; searchInput.dispatchEvent(new wp.Event("input"));  // exactly one seeded row (only even indices are "Job N")
-  await until(() => PP("table tbody tr").length === 1, 6000);
+  await sleep(600); // let any second mount settle before typing
+  const typeSearch = () => { const si = P(".table-toolbar .search-input"); si.value = "Job 6"; si.dispatchEvent(new wp.Event("input")); };
+  typeSearch();  // "Job 6" matches exactly one seeded row (only even indices are "Job N")
+  if (!(await until(() => PP("table tbody tr").length === 1, 4000))) { typeSearch(); await until(() => PP("table tbody tr").length === 1, 4000); }
   check(PP("table tbody tr").length === 1, "\u2026and the house search filters the table (columns expose data through the house col.get contract)");
-  searchInput.value = ""; searchInput.dispatchEvent(new wp.Event("input"));
+  { const si = P(".table-toolbar .search-input"); si.value = ""; si.dispatchEvent(new wp.Event("input")); }
   await sleep(300);
   // suggestions tab
   (PP(".settings-tabs .settings-tab").find((b: any) => /Suggestions/.test(b.textContent)) as any).click();

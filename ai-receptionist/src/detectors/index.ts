@@ -166,13 +166,13 @@ const unusedModule: DetectorDef = {
   label: "Unused module",
   description: "Points out a module nothing has touched in three months, and offers to tuck it out of the way (reversible, never deleted).",
   lookbackDays: UNUSED_FLOOR.lookbackDays,
-  floor: `no records at all in ${UNUSED_FLOOR.lookbackDays} days, in a workspace older than ${UNUSED_FLOOR.tenantAgeDays} days with at least ${UNUSED_FLOOR.minTenantRecords} records of its own`,
+  floor: `no records at all in ${UNUSED_FLOOR.lookbackDays} days, in a tenant older than ${UNUSED_FLOOR.tenantAgeDays} days with at least ${UNUSED_FLOOR.minTenantRecords} records of its own`,
   run: async (tenantId, now) => {
     const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { createdAt: true, labels: true } });
     if (!tenant) return [];
     if (now.getTime() - new Date(tenant.createdAt).getTime() < UNUSED_FLOOR.tenantAgeDays * DAY) return []; // too new to judge
-    // A workspace that hasn't been used at all is not "unused modules" — it's a
-    // new workspace. Only speak when the place is demonstrably in use.
+    // A tenant that hasn't been used at all is not "unused modules" — it's a
+    // new tenant. Only speak when the place is demonstrably in use.
     const totalRecords = await db.record.count({ where: { tenantId, deletedAt: null } });
     if (totalRecords < UNUSED_FLOOR.minTenantRecords) return [];
     const hidden: string[] = (((tenant.labels || {}) as any).nav || {}).hidden || [];

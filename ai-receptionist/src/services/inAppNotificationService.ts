@@ -171,7 +171,7 @@ async function filterVisible(user: PermUserLike, rows: any[]): Promise<any[]> {
  * A hub admin visiting a tenant portal has no notification identity there —
  * their user row belongs to no tenant, so a per-user feed is empty by
  * construction and the ordinary "Nothing new" state is a misleading answer to
- * "who am I here?". Instead they get the WORKSPACE's recent activity: the same
+ * "who am I here?". Instead they get the TENANT's recent activity: the same
  * rows, permission-filtered, deduplicated across recipients (one line per
  * event, not one per user), READ-ONLY. Read state is never written for anyone
  * else — the batch-30 rule stands.

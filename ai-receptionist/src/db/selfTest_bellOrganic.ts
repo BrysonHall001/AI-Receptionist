@@ -73,7 +73,7 @@ async function main() {
     "zero-recipient emissions are recorded rather than vanishing");
 
   // ---------- (2) the bell fills organically ----------
-  console.log("\n(2) a seeded workspace fills the bell through REAL producers:");
+  console.log("\n(2) a seeded tenant fills the bell through REAL producers:");
   const fs: any = getTemplate("field_services");
   const t: any = await createPortal({ name: `bell-${stamp}`, billingStatus: "trial", template: "field_services", hiddenRecordTypes: fs.modulesHiddenPrefill } as any);
   cleanup.push(t.id);
@@ -112,7 +112,7 @@ async function main() {
   // suggestions from the auto-sweep
   const sugTypes = Array.from(new Set((await db.suggestion.findMany({ where: { tenantId: t.id }, select: { type: true } })).map((s: any) => s.type))).sort();
   check(sugTypes.length === 4, `the seeder's own sweep produced FOUR suggestion types: ${sugTypes.join(", ")}`);
-  check(!!((run.counts || {}) as any).__agedTenantTo, "the workspace was aged past the unused-module floor, recorded on its seed run");
+  check(!!((run.counts || {}) as any).__agedTenantTo, "the tenant was aged past the unused-module floor, recorded on its seed run");
 
   // ---------- (3) regressions: viewer identity + zero recipients ----------
   console.log("\n(3) viewer identity + recipient resolution:");
@@ -123,7 +123,7 @@ async function main() {
   const hubTok = await createSession(hubOwner.id);
   const visitFeed = await (await fetch(base + `/api/notifications?limit=20&tenantId=${t.id}`, { headers: { Cookie: `air_session=${hubTok}` } })).json();
   check(visitFeed.visitor === true && visitFeed.items.length > 0 && visitFeed.unread === null,
-    `a HUB VISITOR sees the workspace's activity (${visitFeed.items.length} items), read-only, unread=null`);
+    `a HUB VISITOR sees the tenant's activity (${visitFeed.items.length} items), read-only, unread=null`);
   const perEvent = new Set(visitFeed.items.map((n: any) => `${n.category}|${n.title}`));
   check(perEvent.size === visitFeed.items.length, "\u2026deduplicated to one line per EVENT, not one per recipient");
   check(visitFeed.items.every((n: any) => n.readAt === null), "\u2026with no read state attributed to the visitor");
@@ -140,7 +140,7 @@ async function main() {
   const wrote = await svc.notify({ tenantId: empty.id, category: "lead_captured", title: "New lead: Nobody Home" });
   const health = require("../services/healthService").notificationNoRecipientStatus();
   check(wrote === 0 && health.count > 0 && health.lastTenantId === empty.id,
-    "a zero-user workspace logs its no-op to Health instead of failing silently (the original bug's fingerprint)");
+    "a zero-user tenant logs its no-op to Health instead of failing silently (the original bug's fingerprint)");
 
   // ---------- (4) catastrophics ----------
   console.log("\n(4) catastrophics:");
@@ -198,7 +198,7 @@ async function main() {
   wv.location.hash = "#/contacts"; wv.dispatchEvent(new wv.Event("hashchange"));
   const V = (s: string) => wv.document.querySelector(s) as any;
   const bellV = await until(() => V(".notif-bell"), 8000);
-  check(!!bellV, "the portal shell (and its bell) mounts for a hub owner viewing a workspace");
+  check(!!bellV, "the portal shell (and its bell) mounts for a hub owner viewing a tenant");
   if (!bellV) { freeze(wv); throw new Error("no bell in visitor shell"); }
   await wv.App.notifications.refreshCount(false);
   V(".notif-bell").click();

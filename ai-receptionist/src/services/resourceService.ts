@@ -200,7 +200,7 @@ export async function setResourceUser(tenantId: string, resourceId: string, user
   const uid = userId == null || String(userId).trim() === "" ? null : String(userId).trim();
   if (uid) {
     const user = await db.user.findFirst({ where: { id: uid, tenantId }, select: { id: true } });
-    if (!user) throw new Error("That user does not belong to this workspace.");
+    if (!user) throw new Error("That user does not belong to this tenant.");
     // One linked resource per user per tenant: move the link, never duplicate it.
     await db.resource.updateMany({ where: { tenantId, userId: uid, id: { not: resourceId } }, data: { userId: null } });
   }

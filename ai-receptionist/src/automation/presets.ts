@@ -1347,7 +1347,7 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
         { type: "notify_business", config: { message: "{{name}} came in a week ago and is still early-stage — worth a call today." } },
       ],
     },
-    note: "References the Candidate stage field the Recruitment Marketing template seeds; on a workspace without that field the condition simply never matches.",
+    note: "References the Candidate stage field the Recruitment Marketing template seeds; on a tenant without that field the condition simply never matches.",
   },
   {
     key: "rm_submitted_to_client",

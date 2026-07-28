@@ -28,7 +28,7 @@ inviteRouter.get("/:token", inviteLimiter, async (req: Request, res: Response) =
     res.status(404).json({ error: GENERIC });
     return;
   }
-  let portalName = "your workspace";
+  let portalName = "your tenant portal";
   try {
     const t = await prisma.tenant.findUnique({ where: { id: inv.tenantId } });
     if (t) portalName = (t as any).name || portalName;

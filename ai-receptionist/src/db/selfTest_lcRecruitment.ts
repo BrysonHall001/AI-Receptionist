@@ -119,8 +119,8 @@ async function main() {
     "the four workflow guides render");
   check(!/Work Orders: the jobs themselves|A day of dispatch/.test(vText()), "ZERO field-services content leaks into the RM tree");
   const rmBodies = learnSrc.slice(learnSrc.indexOf('RM_GUIDES["rm-home-dashboard"]'), learnSrc.indexOf("const LC_VARIANTS"));
-  check(!/\btenants?\b|\btemplates?\b|\bhub\b|multi-tenant|other workspaces|platform admin/i.test(rmBodies),
-    "LC VOICE: the RM guide bodies never mention the hub, templates, other workspaces, or platform administration");
+  check(!/\btenants?\b|\btemplates?\b|\bhub\b|multi-tenant|other tenants|platform admin/i.test(rmBodies),
+    "LC VOICE: the RM guide bodies never mention the hub, templates, other tenants, or platform administration");
   // search, both directions
   const sb = V$("input.learn-search")[0];
   sb.value = "candidate"; sb.dispatchEvent(new wv.Event("input")); await sleep(260);
@@ -224,7 +224,7 @@ async function main() {
 
   console.log("");
   if (failures.length) { console.log(`${failures.length} FAILED \u274c: ${failures[0]}`); process.exitCode = 1; }
-  else console.log("ALL PASSED \u2705 (the recruiting workspace gets its own manual, everyone else keeps theirs to the byte)");
+  else console.log("ALL PASSED \u2705 (the recruiting tenant gets its own manual, everyone else keeps theirs to the byte)");
   await disconnectDb();
   process.exit(failures.length ? 1 : 0);
 }

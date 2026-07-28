@@ -209,7 +209,9 @@
 
     const columns = [
       { key: "name", label: "Tenant Name", get: (p) => p.name,
-        render: (p) => `<span class="adm-t1">${esc(p.name)}</span>` },
+        render: (p) => `<span class="adm-t1">${esc(p.name)}</span>${p.isDemo ? ' <span class="pill adm-demo-pill">Demo</span>' : ""}` },
+      { key: "demo", label: "Demo", get: (p) => (p.isDemo ? "Demo" : "Real"),
+        render: (p) => (p.isDemo ? '<span class="pill adm-demo-pill">Demo</span>' : '<span class="cell-muted">\u2014</span>') },
       { key: "status", label: "Status", get: (p) => (p.status === "ACTIVE" ? "Active" : "Suspended"),
         render: (p) => statusBadge(p.status) },
       { key: "created", label: "Created", type: "date", get: (p) => p.createdAt, text: (p) => fmtDate(p.createdAt),
@@ -221,8 +223,8 @@
       { key: "users", label: "Users", type: "number", get: (p) => p.users },
       // Actions column trimmed to a single compact square arrow that enters the portal.
       // Users, Page access, and Suspend/Activate now live in the row-detail panel (row click).
-      { key: "actions", label: "Open tenant", filterable: false, get: () => "",
-        render: (p) => `<button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button>` },
+      { key: "actions", label: "Tenant actions", filterable: false, get: () => "",
+        render: (p) => `<span class="adm-actions-cell"><button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button><button class="btn btn-danger btn-sm t-delbtn adm-t2" data-act="delete" data-id="${esc(p.id)}" title="Delete tenant" aria-label="Delete tenant">\u2715</button></span>` },
     ];
 
     // Persist the Tenants column layout per-browser, mirroring how portal.js persists
@@ -271,7 +273,7 @@
       head.appendChild(title);
       if (shows("actions")) {
         const openWrap = el("div");
-        openWrap.innerHTML = `<button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button>`;
+        openWrap.innerHTML = `<span class="adm-actions-stack"><button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button><button class="btn btn-danger btn-sm t-delbtn adm-t2" data-act="delete" data-id="${esc(p.id)}" title="Delete tenant" aria-label="Delete tenant">\u2715</button></span>`;
         head.appendChild(openWrap);
       }
       card.appendChild(head);
@@ -445,6 +447,7 @@
       const p = findP(btn.getAttribute("data-id"));
       if (!p) return;
       if (btn.getAttribute("data-act") === "open") return enterPortal(p);
+      if (btn.getAttribute("data-act") === "delete") return confirmDeleteTenant(p, renderPortals);
     });
 
     view().innerHTML = "";
@@ -507,6 +510,59 @@
     table.appendChild(tb);
     card.appendChild(table);
     host.appendChild(card);
+  }
+
+  /** DELETE TENANT — the destructive half of Tenant actions.
+   *  Two locks: the operator must type the tenant's exact name, AND a
+   *  non-demo tenant must already be suspended (the server enforces the second
+   *  independently, so this dialog explains rather than gatekeeps). */
+  function confirmDeleteTenant(p, onDone) {
+    const back = el("div", "modal-overlay");
+    const card = el("div", "modal adm-del-modal");
+    card.innerHTML = `<div class="modal-head"><h2>Delete this tenant?</h2></div>`;
+    const blocked = !p.isDemo && p.status !== "SUSPENDED";
+    const lines = el("div", "modal-body adm-del-body");
+    lines.appendChild(el("p", "cell-muted", esc(`Everything belonging to “${p.name}” goes: its records, contacts, calls, files, users, notifications and history. This cannot be undone.`)));
+    if (p.isDemo) lines.appendChild(el("p", "cell-muted", "This is a demo tenant, so it can be deleted directly."));
+    if (blocked) {
+      const warn = el("div", "adm-del-warn");
+      warn.appendChild(el("p", null, "This is a real tenant and it is still active. Suspend it first, then delete it."));
+      lines.appendChild(warn);
+    }
+    card.appendChild(lines);
+    const label = el("label", "field-label", `Type the tenant's name to confirm`);
+    const input = el("input", "input adm-del-input");
+    input.placeholder = p.name;
+    card.appendChild(label); card.appendChild(input);
+    const err = el("div", "adm-del-err");
+    err.style.setProperty("display", "none");
+    card.appendChild(err);
+    const row = el("div", "modal-actions adm-del-actions");
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    const go = el("button", "btn btn-danger btn-sm", "Delete tenant");
+    go.disabled = true;
+    input.oninput = () => { go.disabled = input.value.trim() !== p.name.trim() || blocked; };
+    if (blocked) go.disabled = true;
+    cancel.onclick = () => back.remove();
+    go.onclick = async () => {
+      go.disabled = true; cancel.disabled = true; go.textContent = "Deleting\u2026";
+      try {
+        const r = await App.api("/api/admin/portals/" + encodeURIComponent(p.id), { method: "DELETE", body: JSON.stringify({ confirm: input.value.trim() }) });
+        back.remove();
+        toast(`Deleted ${p.name} \u2014 ${Object.values(r.deletedRows || {}).reduce((a2, b2) => a2 + b2, 0)} row(s), ${r.filesRemoved || 0} file(s)`);
+        if (onDone) onDone();
+      } catch (e) {
+        go.disabled = false; cancel.disabled = false; go.textContent = "Delete tenant";
+        err.textContent = e.message || "Deletion failed.";
+        err.style.setProperty("display", "");
+      }
+    };
+    row.appendChild(cancel); row.appendChild(go);
+    card.appendChild(row);
+    back.appendChild(card);
+    back.onclick = (e) => { if (e.target === back) back.remove(); };
+    document.body.appendChild(back);
+    input.focus();
   }
 
   async function enterPortal(p) {
@@ -637,7 +693,7 @@
         head.appendChild(ind);
         head.appendChild(el("span", "adm-rowname", esc(m.labelPlural || m.label)));
         row.appendChild(head);
-        row.appendChild(el("span", "adm-rowdesc adm-r3-desc", esc(MODULE_DESCS[m.key] ? (MODULE_DESCS[m.key].neutral || "") : (m.system ? "" : "A module this workspace added."))));
+        row.appendChild(el("span", "adm-rowdesc adm-r3-desc", esc(MODULE_DESCS[m.key] ? (MODULE_DESCS[m.key].neutral || "") : (m.system ? "" : "A module this tenant added."))));
         const chipsHost = el("span", "adm-chips adm-r3-chips");
         row.appendChild(chipsHost);
         listHost.appendChild(row);
@@ -745,7 +801,7 @@
   // no theme. Every step is active from the start; there is no "create tenant first" gate.
   function renderSetupScreen() {
     const prior = { id: App.state.currentPortalId, name: App.state.currentPortalName };
-    const draft = { users: [], themePreset: "", voiceMode: "OFF", lockedPages: [], hiddenRecordTypes: [] };
+    const draft = { users: [], themePreset: "", voiceMode: "OFF", lockedPages: [], hiddenRecordTypes: [], isDemo: false };
 
     // Built-in theme preset ids (match src/theme/themes.ts). "" = leave the default.
     // (HUB-UI: the hardcoded 7-preset dropdown list is gone — the carousel reads
@@ -813,16 +869,34 @@
     wrap.appendChild(s1);
 
     // ---- Step 2: add users (queued into the draft; invited on Finish) ----
-    const s2 = sectionCard(2, "Add users", "Queue teammates to invite. Each gets an invite link when you finish. You can add none, one, or several.");
+    const s2 = sectionCard(2, "Add users or mark as demo", "Queue teammates to invite. Each gets an invite link when you finish. You can add none, one, or several.");
+    // Two columns: people on the left, the demo switch on the right. The demo
+    // flag MARKS the tenant only — it seeds nothing by itself.
+    const s2cols = el("div", "adm-step2");
+    const s2left = el("div", "adm-step2-left");
+    const s2right = el("div", "adm-step2-right");
+    s2cols.appendChild(s2left); s2cols.appendChild(s2right);
+    const demoWrap = el("div", "card adm-demo-card");
+    const demoRow = el("label", "adm-demo-row");
+    const demoSw = el("span", "switch");
+    const demoCb = el("input"); demoCb.type = "checkbox"; demoCb.id = "sp-isdemo";
+    demoCb.onchange = () => { draft.isDemo = demoCb.checked; };
+    demoSw.appendChild(demoCb); demoSw.appendChild(el("span", "switch-track"));
+    demoRow.appendChild(demoSw);
+    demoRow.appendChild(el("span", "adm-demo-label", "Mark as a demo tenant"));
+    demoWrap.appendChild(demoRow);
+    demoWrap.appendChild(el("p", "cell-muted adm-demo-cap", "Fills this tenant with obviously-fake data for testing; can be seeded and wiped from Developer Tools."));
+    s2right.appendChild(demoWrap);
     const uForm = el("div"); uForm.classList.add("adm-uform");
     uForm.innerHTML = `
       <div class="adm-t7"><label class="field-label">Email</label><input id="sp-user-email" class="input adm-t8" type="email" placeholder="teammate@company.com" /></div>
       <div class="adm-t9"><label class="field-label">Role</label><select id="sp-user-role" class="input adm-t8"><option value="CLIENT_USER">Client user</option><option value="PORTAL_ADMIN">Portal admin</option></select></div>`;
     const addUserBtn = el("button", "btn btn-ghost btn-sm", "+ Add to list");
     uForm.appendChild(addUserBtn);
-    s2.appendChild(uForm);
+    s2left.appendChild(uForm);
     const uList = el("div", "u-mt-10");
-    s2.appendChild(uList);
+    s2left.appendChild(uList);
+    s2.appendChild(s2cols);
     function paintUsers() {
       uList.innerHTML = "";
       if (!draft.users.length) { uList.appendChild(elNote("No users queued yet — that's fine, you can invite people later too.")); return; }
@@ -1190,7 +1264,7 @@
     App.api("/api/admin/tenant-templates").then((r) => {
       templatesMeta = (r && r.templates) || [];
       paintTemplateCards();
-    }).catch(() => { templatesMeta = [{ key: "general", label: "General", description: "A blank, everything-on workspace.", modulesHiddenPrefill: [] }]; paintTemplateCards(); });
+    }).catch(() => { templatesMeta = [{ key: "general", label: "General", description: "A blank, everything-on tenant portal.", modulesHiddenPrefill: [] }]; paintTemplateCards(); });
 
     App.api("/api/admin/portals/record-type-options").then((r) => {
       const options = (r && r.options) || [];
@@ -1260,7 +1334,7 @@
       // 1) Create the tenant. If THIS fails, nothing was persisted — stay on the screen.
       let portal;
       try {
-        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages, billingStatus, hiddenRecordTypes: draft.hiddenRecordTypes, template: draft.template || "general", customLearningCenter: !!draft.customLearningCenter }) });
+        portal = await App.api("/api/admin/portals", { method: "POST", body: JSON.stringify({ name, notifyEmail, lockedPages: draft.lockedPages, billingStatus, hiddenRecordTypes: draft.hiddenRecordTypes, template: draft.template || "general", customLearningCenter: !!draft.customLearningCenter, isDemo: !!draft.isDemo }) });
       } catch (err) { toast(err.message || "Could not create the tenant", true); finish.disabled = false; return; }
 
       // 2) Apply the queued draft in sequence. Collect failures instead of throwing, so
@@ -1504,119 +1578,269 @@
   const DEVTOOL_SECTIONS = [
     { key: "history", label: "History", render: renderHistorySection },
     { key: "health", label: "System Health", render: renderHealthSection }, // audit-fixes-health batch
-    { key: "demodata", label: "Demo data", render: renderDemoDataSection }, // demo-seeder batch (dev tool)
+    { key: "tools", label: "Tools", render: renderToolsSection }, // demo-seeder batch, restructured: a tab of TOOLS
     // future sections register here
   ];
 
   // ---------------- Demo data (DEV TOOL) ----------------
-  // Fills ONE chosen workspace with a modest backdated dataset so the dispatch
+  // Fills ONE chosen tenant with a modest backdated dataset so the dispatch
   // board, analytics and suggestion cards can be looked at in context. Both
-  // buttons demand the workspace's name typed back. The detector sweep sits in
+  // buttons demand the tenant's name typed back. The detector sweep sits in
   // the same panel: seed -> run sweep -> open the portal's bell.
-  function renderDemoDataSection(host) {
+  // ---------------- TOOLS (dev) ----------------
+  // A tab that holds tools, not one tool: Demo data is the first, the detector
+  // sweep is its own sibling (it is not demo-data functionality), and there is
+  // room for the next one without another tab.
+  function renderToolsSection(host) {
     host.innerHTML = "";
-    const wrap = el("div", "dd-wrap");
-    wrap.appendChild(el("p", "cell-muted dd-hint", "A development aid: it fills a workspace you choose with obviously-fake, backdated data (names like Avery Lane, @example.invalid emails, 555 numbers). It never sends anything. Wipe removes exactly what a run created."));
-    const card = el("div", "card adm-card2");
-    wrap.appendChild(card);
+    const wrap = el("div", "tools-wrap");
     host.appendChild(wrap);
+    renderDemoDataTool(wrap);
+    renderSweepTool(wrap);
+  }
 
-    const row1 = el("div", "adm-formrow3");
-    const colT = el("div", "adm-fcol");
-    colT.appendChild(el("label", "field-label", "Workspace"));
+  /** Tool 1 — Demo data. Only DEMO-flagged tenants can be chosen; the endpoint
+   *  refuses the rest independently, so the gate is structural, not cosmetic. */
+  function renderDemoDataTool(parent) {
+    const sec = el("section", "tool-card card");
+    sec.appendChild(el("h3", "tool-h", "Demo data"));
+    sec.appendChild(el("p", "cell-muted tool-hint", "Fills a demo tenant with obviously-fake, backdated data (names like Avery Lane, @example.invalid emails, 555 numbers) so every screen has something to show. It never sends anything."));
+    parent.appendChild(sec);
+
+    const form = el("div", "tool-form");
+    sec.appendChild(form);
+    const setup = el("div", "tool-setup");
+    form.appendChild(setup);
+
+    const mkField = (labelText) => {
+      const col = el("div", "tool-field");
+      col.appendChild(el("label", "field-label", labelText));
+      return col;
+    };
+    const colT = mkField("Tenant");
     const tSel = el("select", "input");
     colT.appendChild(tSel);
-    const colP = el("div", "adm-fcol");
-    colP.appendChild(el("label", "field-label", "Profile"));
+    const colP = mkField("Template");
     const pSel = el("select", "input");
     pSel.innerHTML = '<option value="field_services">Field Services</option><option value="recruitment_marketing">Recruitment Marketing</option>';
     colP.appendChild(pSel);
-    const colC = el("div", "adm-fcol");
-    colC.appendChild(el("label", "field-label", "Type the workspace name to confirm"));
-    const confirmInp = el("input", "input");
-    confirmInp.placeholder = "Exact name";
-    colC.appendChild(confirmInp);
-    row1.appendChild(colT); row1.appendChild(colP); row1.appendChild(colC);
-    card.appendChild(row1);
+    const colV = mkField("Volume");
+    const vSel = el("select", "input");
+    vSel.innerHTML = '<option value="small">Small</option><option value="medium">Medium</option><option value="large">Large (runs in the background)</option>';
+    colV.appendChild(vSel);
+    const colW = mkField("Time window");
+    const wSel = el("select", "input");
+    wSel.innerHTML = '<option value="90">90 days</option><option value="30">30 days</option><option value="365">365 days</option>';
+    colW.appendChild(wSel);
+    setup.appendChild(colT); setup.appendChild(colP); setup.appendChild(colV); setup.appendChild(colW);
 
-    const volume = el("p", "cell-muted dd-volume");
-    card.appendChild(volume);
-    // Seed -> sweep in ONE action: the sweep is what fills the Suggestions tab,
-    // so it runs as the seeder's final step unless you turn it off here.
-    const sweepOpt = el("label", "notif-pref-switch dd-sweepopt");
-    const sweepSw = el("span", "switch");
-    const sweepCb = el("input"); sweepCb.type = "checkbox"; sweepCb.checked = true;
-    sweepSw.appendChild(sweepCb); sweepSw.appendChild(el("span", "switch-track"));
-    sweepOpt.appendChild(sweepSw);
-    sweepOpt.appendChild(el("span", "notif-pref-swlabel cell-muted", "Run the detector sweep when seeding finishes"));
-    card.appendChild(sweepOpt);
-    const actions = el("div", "dd-actions");
+    // TEMPLATE LOCK: the template follows the tenant's own, and unlocking is a
+    // deliberate act with a warning attached.
+    const lockRow = el("div", "tool-lockrow");
+    const lockNote = el("span", "cell-muted tool-locknote", "Locked to this tenant's own template.");
+    const unlock = el("button", "btn btn-ghost btn-sm", "Seed a different template anyway");
+    unlock.type = "button";
+    const mismatchWarn = el("div", "tool-status tool-status--bad");
+    mismatchWarn.style.setProperty("display", "none");
+    mismatchWarn.textContent = "Records for modules this tenant doesn't use are skipped, not created \u2014 you'll get fewer entities than the volume suggests.";
+    lockRow.appendChild(lockNote); lockRow.appendChild(unlock);
+    form.appendChild(lockRow);
+    form.appendChild(mismatchWarn);
+    let locked = true;
+    pSel.disabled = true;
+    unlock.onclick = () => {
+      locked = !locked;
+      pSel.disabled = locked;
+      unlock.textContent = locked ? "Seed a different template anyway" : "Re-lock to this tenant's template";
+      lockNote.textContent = locked ? "Locked to this tenant's own template." : "Unlocked \u2014 choose carefully.";
+      mismatchWarn.style.setProperty("display", locked ? "none" : "");
+      if (locked) syncTemplateToTenant();
+    };
+    const syncTemplateToTenant = () => {
+      const t = demoTenants.find((x) => x.id === tSel.value);
+      const key = t && t.templateKey === "recruitment_marketing" ? "recruitment_marketing" : "field_services";
+      pSel.value = key;
+      paintVolume();
+    };
+
+    const sweepRow = el("label", "tool-check");
+    const sweepCb = el("span", "switch");
+    const sweepInput = el("input"); sweepInput.type = "checkbox"; sweepInput.checked = true;
+    sweepCb.appendChild(sweepInput); sweepCb.appendChild(el("span", "switch-track"));
+    sweepRow.appendChild(sweepCb);
+    sweepRow.appendChild(el("span", "tool-check-label", "Run the detector sweep when seeding finishes"));
+    form.appendChild(sweepRow);
+
+    const volume = el("p", "cell-muted tool-volume");
+    form.appendChild(volume);
+    const seedRow = el("div", "tool-actions");
     const seedBtn = el("button", "btn btn-primary btn-sm", "Seed demo data");
-    const wipeBtn = el("button", "btn btn-ghost btn-sm", "Wipe seeded data");
-    const sweepBtn = el("button", "btn btn-ghost btn-sm", "Run detector sweep");
-    actions.appendChild(seedBtn); actions.appendChild(wipeBtn); actions.appendChild(sweepBtn);
-    card.appendChild(actions);
-    const out = el("div", "dd-out cell-muted");
-    card.appendChild(out);
+    seedRow.appendChild(seedBtn);
+    form.appendChild(seedRow);
+
+    // The result of the last action, in the house status-line treatment rather
+    // than bare floating text.
+    const status = el("div", "tool-status");
+    status.style.setProperty("display", "none");
+    form.appendChild(status);
+    const setStatus = (text, kind) => {
+      status.className = "tool-status" + (kind ? " tool-status--" + kind : "");
+      status.textContent = text;
+      status.style.setProperty("display", text ? "" : "none");
+    };
+
+    // DANGER ZONE — visually separated, holding the typed confirmation and the
+    // only destructive control. House parts: a card with a red hairline, a
+    // field label, the house input, and .btn-danger.
+    const danger = el("div", "tool-danger");
+    danger.appendChild(el("div", "field-label tool-danger-h", "Danger zone"));
+    danger.appendChild(el("p", "cell-muted tool-danger-p", "Wiping removes exactly what a seeding run created \u2014 nothing a person typed."));
+    const confirmInp = el("input", "input tool-confirm");
+    confirmInp.placeholder = "Type the tenant name to confirm";
+    danger.appendChild(confirmInp);
+    const wipeBtn = el("button", "btn btn-danger btn-sm", "Wipe seeded data");
+    danger.appendChild(wipeBtn);
+    sec.appendChild(danger);
+
+    const runsWrap = el("div", "tool-runs cell-muted");
+    sec.appendChild(runsWrap);
 
     let caps = null;
+    let demoTenants = [];
     const paintVolume = () => {
       if (!caps) { volume.textContent = ""; return; }
       const c = caps[pSel.value] || {};
-      volume.textContent = "This will create about: " + Object.keys(c).map((k) => `${c[k]} ${k.replace(/([A-Z])/g, " $1").toLowerCase()}`).join(" \u00b7 ") + ".";
+      const mult = vSel.value === "large" ? 4 : vSel.value === "medium" ? 2 : 1;
+      const fixed = ["resources", "products", "multiVisit", "recurring"];
+      volume.textContent = "This will create about: " + Object.keys(c).map((k) => `${fixed.indexOf(k) === -1 ? Math.round(c[k] * mult) : c[k]} ${k.replace(/([A-Z])/g, " $1").toLowerCase()}`).join(" \u00b7 ") + `, spread across ${wSel.value} days.`;
     };
     const loadFor = async (id) => {
       if (!id) return;
       try {
         const r = await App.api("/api/admin/portals/" + encodeURIComponent(id) + "/demo-data");
         caps = r.caps; paintVolume();
-        out.innerHTML = "";
+        runsWrap.innerHTML = "";
         const runs = r.runs || [];
-        if (!runs.length) out.appendChild(el("div", null, "No demo runs on this workspace yet."));
+        if (!runs.length) { runsWrap.appendChild(el("div", null, "No demo runs on this tenant yet.")); return; }
         runs.forEach((run) => {
-          const line = el("div", "dd-run");
-          const counts = Object.keys(run.counts || {}).filter((k) => k !== "__deterministic").map((k) => `${k} ${run.counts[k]}`).join(", ");
-          line.textContent = `${new Date(run.createdAt).toLocaleString()} \u2014 ${run.profile} \u2014 ${counts}${run.wipedAt ? " (wiped)" : ""}`;
-          out.appendChild(line);
+          const counts = Object.keys(run.counts || {}).filter((k) => k.indexOf("__") !== 0).map((k) => `${k} ${run.counts[k]}`).join(", ");
+          runsWrap.appendChild(el("div", "tool-run", `${new Date(run.createdAt).toLocaleString()} \u2014 ${run.profile} \u2014 ${counts}${run.wipedAt ? " (wiped)" : ""}`));
         });
-      } catch (e) { out.textContent = e.message || "Couldn't load demo-data status."; }
+      } catch (e) { runsWrap.textContent = e.message || "Couldn't load demo-data status."; }
     };
     pSel.onchange = paintVolume;
-    tSel.onchange = () => loadFor(tSel.value);
-    App.api("/api/admin/portals").then((r) => {
-      const list = (r && (r.portals || r)) || [];
-      tSel.innerHTML = list.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
-      if (list.length) loadFor(tSel.value);
-    }).catch(() => { tSel.innerHTML = "<option>(couldn't load workspaces)</option>"; });
+    tSel.onchange = () => { if (locked) syncTemplateToTenant(); loadFor(tSel.value); };
+    wSel.onchange = () => paintVolume();
+    vSel.onchange = () => paintVolume();
 
-    const busy = (on) => { seedBtn.disabled = on; wipeBtn.disabled = on; sweepBtn.disabled = on; };
+    // ONLY demo tenants are listed. Not greyed — absent.
+    App.api("/api/admin/portals").then((r) => {
+      const all = (r && (r.portals || r)) || [];
+      demoTenants = all.filter((p) => p.isDemo === true);
+      if (!demoTenants.length) {
+        form.style.setProperty("display", "none");
+        danger.style.setProperty("display", "none");
+        runsWrap.innerHTML = "";
+        const empty = el("div", "empty tool-empty");
+        empty.innerHTML = `<h3>No demo tenants yet</h3><p>A tenant has to be marked as a demo tenant before it can hold demo data \u2014 switch it on when you create one, or from the tenant's own page.</p>`;
+        sec.appendChild(empty);
+        return;
+      }
+      tSel.innerHTML = demoTenants.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+      syncTemplateToTenant();
+      loadFor(tSel.value);
+    }).catch(() => { tSel.innerHTML = "<option>(couldn't load tenants)</option>"; });
+
+    /** Poll the run while a background (Large) seed is working. */
+    let pollTimer = null;
+    function pollProgress(tenantId) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const r = await App.api("/api/admin/portals/" + encodeURIComponent(tenantId) + "/demo-data");
+          const run = (r.runs || [])[0];
+          const prog = run && run.counts && run.counts.__progress;
+          if (prog && !run.wipedAt && !(run.counts && run.counts.__producers)) {
+            setStatus(`Seeding\u2026 ${prog.step} (${prog.done}/${prog.total})`, "working");
+          } else if (run && run.counts && run.counts.__producers) {
+            clearInterval(pollTimer); pollTimer = null;
+            const counts = Object.keys(run.counts).filter((k) => k.indexOf("__") !== 0).map((k) => `${k} ${run.counts[k]}`).join(", ");
+            setStatus("Seeded: " + counts, "ok");
+            toast("Demo data seeded");
+            loadFor(tenantId);
+          }
+        } catch (e) { /* keep polling; the run outlives a hiccup */ }
+      }, 2000);
+    }
+
+    const busy = (on) => { seedBtn.disabled = on; wipeBtn.disabled = on; };
     seedBtn.onclick = async () => {
-      busy(true); out.textContent = "Seeding\u2026";
+      busy(true); setStatus("Seeding\u2026", "working");
       try {
-        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/demo-data/seed", { method: "POST", body: JSON.stringify({ profile: pSel.value, confirm: confirmInp.value, runSweep: sweepCb.checked }) });
-        out.textContent = "Seeded: " + Object.keys(r.counts).filter((k) => k !== "__deterministic").map((k) => `${k} ${r.counts[k]}`).join(", ");
-        toast("Demo data seeded");
-        loadFor(tSel.value);
-      } catch (e) { out.textContent = e.message || "Seeding failed."; toast(e.message || "Seeding failed", true); }
+        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/demo-data/seed", { method: "POST", body: JSON.stringify({ profile: pSel.value, confirm: (demoTenants.find((x) => x.id === tSel.value) || {}).name, runSweep: sweepInput.checked, volume: vSel.value, windowDays: Number(wSel.value), allowTemplateMismatch: !locked }) });
+        if (r && r.async) {
+          setStatus("Seeding started \u2014 this one runs in the background.", "working");
+          pollProgress(tSel.value);
+        } else {
+          const counts = Object.keys(r.counts || {}).filter((k) => k.indexOf("__") !== 0).map((k) => `${k} ${r.counts[k]}`).join(", ");
+          setStatus("Seeded: " + counts, "ok");
+          toast("Demo data seeded");
+          loadFor(tSel.value);
+        }
+      } catch (e) { setStatus(e.message || "Seeding failed.", "bad"); toast(e.message || "Seeding failed", true); }
       busy(false);
     };
     wipeBtn.onclick = async () => {
-      busy(true); out.textContent = "Wiping\u2026";
+      busy(true); setStatus("Wiping\u2026", "working");
       try {
         const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/demo-data/wipe", { method: "POST", body: JSON.stringify({ confirm: confirmInp.value }) });
-        out.textContent = `Removed ${r.removed} row(s) from ${r.runs} run(s).`;
+        setStatus(`Removed ${r.removed} row(s) from ${r.runs} run(s).`, "ok");
         toast("Seeded data wiped");
+        confirmInp.value = "";
         loadFor(tSel.value);
-      } catch (e) { out.textContent = e.message || "Wipe failed."; toast(e.message || "Wipe failed", true); }
+      } catch (e) { setStatus(e.message || "Wipe failed.", "bad"); toast(e.message || "Wipe failed", true); }
       busy(false);
     };
-    sweepBtn.onclick = async () => {
-      busy(true); out.textContent = "Running the detector sweep\u2026";
+  }
+
+  /** Tool 2 — the detector sweep. Its own tool: it reads a tenant's real data
+   *  and has nothing to do with demo seeding (seeding merely offers to run it
+   *  as a final step). */
+  function renderSweepTool(parent) {
+    const sec = el("section", "tool-card card");
+    sec.appendChild(el("h3", "tool-h", "Detector sweep"));
+    sec.appendChild(el("p", "cell-muted tool-hint", "Runs the suggestion detectors over one tenant now, instead of waiting for tonight's pass. Reads only \u2014 it proposes, it never changes anything."));
+    parent.appendChild(sec);
+    const form = el("div", "tool-form");
+    sec.appendChild(form);
+    const setup = el("div", "tool-setup");
+    const col = el("div", "tool-field");
+    col.appendChild(el("label", "field-label", "Tenant"));
+    const tSel = el("select", "input");
+    col.appendChild(tSel);
+    setup.appendChild(col);
+    form.appendChild(setup);
+    const row = el("div", "tool-actions");
+    const runBtn = el("button", "btn btn-ghost btn-sm", "Run detector sweep");
+    row.appendChild(runBtn);
+    form.appendChild(row);
+    const status = el("div", "tool-status");
+    status.style.setProperty("display", "none");
+    form.appendChild(status);
+    App.api("/api/admin/portals").then((r) => {
+      const all = (r && (r.portals || r)) || [];
+      tSel.innerHTML = all.map((p) => `<option value="${p.id}">${esc(p.name)}${p.isDemo ? " (demo)" : ""}</option>`).join("");
+    }).catch(() => { tSel.innerHTML = "<option>(couldn't load tenants)</option>"; });
+    runBtn.onclick = async () => {
+      runBtn.disabled = true;
+      status.className = "tool-status tool-status--working";
+      status.textContent = "Running\u2026"; status.style.setProperty("display", "");
       try {
         const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/suggestions/run", { method: "POST" });
-        out.textContent = `Sweep done: ${r.counters.findings} finding(s), ${r.counters.created} new suggestion(s). Open the workspace's bell to read them.`;
-      } catch (e) { out.textContent = e.message || "Sweep failed."; }
-      busy(false);
+        status.className = "tool-status tool-status--ok";
+        status.textContent = `Sweep done: ${r.counters.findings} finding(s), ${r.counters.created} new suggestion(s). Open the tenant's bell to read them.`;
+      } catch (e) { status.className = "tool-status tool-status--bad"; status.textContent = e.message || "Sweep failed."; }
+      runBtn.disabled = false;
     };
   }
   const HISTORY_SUBTABS = [

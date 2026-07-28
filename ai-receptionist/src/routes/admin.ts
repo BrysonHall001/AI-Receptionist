@@ -119,7 +119,7 @@ adminRouter.get("/portals/:id/modules", async (req: Request, res: Response) => {
 });
 
 adminRouter.post("/portals", async (req: Request, res: Response) => {
-  const { name, notifyEmail, lockedPages, billingStatus, hiddenRecordTypes, template } = (req.body ?? {}) as Record<string, any>;
+  const { name, notifyEmail, lockedPages, billingStatus, hiddenRecordTypes, template, isDemo } = (req.body ?? {}) as Record<string, any>;
   // TENANT TEMPLATES: an unknown key is a client bug — reject loudly.
   if (template != null) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -140,13 +140,46 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
     // phone, greeting, and the identity rule are no longer set here (dead/decoupled or
     // set later under Integrations); requireEmail is hard-set true and not accepted.
     // lockedPages (owner page-lock) may be set atomically at creation.
-    const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages, billingStatus, hiddenRecordTypes, template: template != null ? String(template) : null, customLearningCenter: (req.body || {}).customLearningCenter === true });
+    const portal = await createPortal({ name, notifyEmail: notifyEmail || "", lockedPages, billingStatus, hiddenRecordTypes, template: template != null ? String(template) : null, customLearningCenter: (req.body || {}).customLearningCenter === true, isDemo: isDemo === true });
     { const u: any = (req as any).realUser || (req as any).user; audit({ tenantId: portal.id, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", actorRole: u?.role ?? null, action: AUDIT_ACTIONS.HUB_TENANT_CREATE, subjectType: "tenant", subjectId: portal.id, subjectLabel: portal.name }); }
     logger.info(`Portal created: ${portal.name} (${portal.id})`);
     res.json(portal);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
+});
+
+// The DEMO FLAG toggle, deliberately its own endpoint with its own typed
+// confirmation rather than a field on the general PATCH: switching it OFF while
+// seeded rows exist changes what the operator can still clean up.
+adminRouter.post("/portals/:id/demo-flag", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const p: any = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Tenant not found" }); return; }
+  const b2 = (req.body ?? {}) as any;
+  if (String(b2.confirm || "").trim() !== String(p.name || "").trim()) { res.status(400).json({ error: "Type the tenant's name exactly to confirm." }); return; }
+  const next = b2.isDemo === true;
+  const db2 = prisma as any;
+  // How many rows a seed run still owns here — the number the warning quotes.
+  const runs = await db2.demoSeedRun.findMany({ where: { tenantId, wipedAt: null }, select: { ids: true } });
+  const seededRows = runs.reduce((n: number, r: any) => n + (Array.isArray(r.ids) ? r.ids.length : 0), 0);
+  await db2.tenant.update({ where: { id: tenantId }, data: { isDemo: next } });
+  {
+    const u: any = (req as any).realUser || (req as any).user;
+    audit({ tenantId, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", actorRole: u?.role ?? null,
+      action: AUDIT_ACTIONS.HUB_SETTINGS_UPDATE, subjectType: "tenant", subjectId: tenantId, subjectLabel: p.name, meta: { isDemo: next, seededRows } });
+  }
+  res.json({ ok: true, isDemo: next, seededRows });
+});
+
+adminRouter.get("/portals/:id/demo-flag", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const p: any = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Tenant not found" }); return; }
+  const db2 = prisma as any;
+  const runs = await db2.demoSeedRun.findMany({ where: { tenantId, wipedAt: null }, select: { ids: true } });
+  const seededRows = runs.reduce((n: number, r: any) => n + (Array.isArray(r.ids) ? r.ids.length : 0), 0);
+  res.json({ isDemo: p.isDemo === true, seededRows });
 });
 
 adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
@@ -638,10 +671,27 @@ adminRouter.get("/health/rollup/:check", async (req: Request, res: Response) => 
   } catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
+// TENANT DELETION. Typed name confirmation is enforced HERE (the service is
+// also callable by tooling); the demo/suspended guard lives in the service so
+// it cannot be bypassed by a different caller.
+adminRouter.delete("/portals/:id", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const p: any = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Tenant not found" }); return; }
+  const confirm = String(((req.body ?? {}) as any).confirm || (req.query as any).confirm || "").trim();
+  if (confirm !== String(p.name || "").trim()) { res.status(400).json({ error: "Type the tenant's name exactly to confirm." }); return; }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { deleteTenantCompletely } = require("../services/tenantDeletionService");
+    const u: any = (req as any).realUser || (req as any).user;
+    res.json(await deleteTenantCompletely(tenantId, { id: u?.id ?? null, name: u?.name ?? null, email: u?.email ?? null, role: u?.role ?? null }));
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // DEMO DATA SEEDER (dev tool) — same placement and gating as the suggestions
 // controls below: hub router = requireRole(OWNER/SUPER_ADMIN/AUDITOR) +
 // impersonation lockout. Both mutating calls demand the tenant's NAME typed
-// back, so a mis-click can't fill (or empty) the wrong workspace.
+// back, so a mis-click can't fill (or empty) the wrong tenant.
 adminRouter.get("/portals/:id/demo-data", async (req: Request, res: Response) => {
   const tenantId = String(req.params.id || "");
   const p = await getPortal(tenantId);
@@ -657,22 +707,42 @@ adminRouter.post("/portals/:id/demo-data/seed", async (req: Request, res: Respon
   const p: any = await getPortal(tenantId);
   if (!p) { res.status(404).json({ error: "Portal not found" }); return; }
   const b2 = (req.body ?? {}) as any;
-  if (String(b2.confirm || "").trim() !== String(p.name || "").trim()) { res.status(400).json({ error: "Type the workspace's name exactly to confirm." }); return; }
+  if (String(b2.confirm || "").trim() !== String(p.name || "").trim()) { res.status(400).json({ error: "Type the tenant's name exactly to confirm." }); return; }
+  if (p.isDemo !== true) { res.status(400).json({ error: "That tenant is not marked as a demo tenant. Demo data can only be seeded into a demo tenant." }); return; }
   const profile = b2.profile === "recruitment_marketing" ? "recruitment_marketing" : "field_services";
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { seedDemoData } = require("../services/demoSeeder");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { seedDemoData, VOLUMES } = require("../services/demoSeeder");
+  const seedOpts = {
+    profile,
+    seed: typeof b2.seed === "string" && b2.seed.trim() ? b2.seed.trim() : undefined,
+    runSweep: b2.runSweep !== false,
     // The acting hub admin answers the demo feedback ticket (the app's own
     // canReply rule), so the reply producer runs without hunting the database.
-    res.json(await seedDemoData(tenantId, { profile, seed: typeof b2.seed === "string" && b2.seed.trim() ? b2.seed.trim() : undefined, runSweep: b2.runSweep !== false, actingUserId: req.user?.id ?? null }));
-  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    actingUserId: req.user?.id ?? null,
+    volume: String(b2.volume || "small"),
+    windowDays: Number(b2.windowDays || 90),
+    allowTemplateMismatch: b2.allowTemplateMismatch === true,
+  };
+  const vol = VOLUMES[seedOpts.volume] || VOLUMES.small;
+  if (vol.async) {
+    // LARGE runs in the BACKGROUND: the request returns at once with the run
+    // id and the panel polls for progress, so a long seed can never time out a
+    // request. Its ledger is written as it goes, so even an interrupted run is
+    // exactly wipeable.
+    void seedDemoData(tenantId, seedOpts).catch((err: Error) => logger.error(`[seeder] background run failed: ${err.message}`));
+    res.json({ started: true, async: true, message: "Seeding started \u2014 this one runs in the background." });
+    return;
+  }
+  try { res.json(await seedDemoData(tenantId, seedOpts)); }
+  catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/portals/:id/demo-data/wipe", async (req: Request, res: Response) => {
   const tenantId = String(req.params.id || "");
   const p: any = await getPortal(tenantId);
   if (!p) { res.status(404).json({ error: "Portal not found" }); return; }
   const b2 = (req.body ?? {}) as any;
-  if (String(b2.confirm || "").trim() !== String(p.name || "").trim()) { res.status(400).json({ error: "Type the workspace's name exactly to confirm." }); return; }
+  if (String(b2.confirm || "").trim() !== String(p.name || "").trim()) { res.status(400).json({ error: "Type the tenant's name exactly to confirm." }); return; }
+  if (p.isDemo !== true) { res.status(400).json({ error: "That tenant is not marked as a demo tenant. Mark it as demo to manage its demo data." }); return; }
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { wipeDemoData } = require("../services/demoSeeder");
@@ -714,7 +784,7 @@ adminRouter.post("/portals/:id/suggestions/seed", async (req: Request, res: Resp
       made.push(`stalled status “${stages[1].label}” (8 parked vs 14 moving)`);
     }
     // (3) unused module: nothing to seed — an untouched module IS the finding.
-    made.push("unused modules (whatever this workspace already has)");
+    made.push("unused modules (whatever this tenant already has)");
     res.json({ ok: true, seeded: made });
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });

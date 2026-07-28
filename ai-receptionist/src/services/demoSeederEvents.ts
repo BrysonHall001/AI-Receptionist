@@ -28,9 +28,9 @@ export async function seedTenantUsers(tenantId: string, led: any): Promise<Seede
     { name: "Priya Raman", role: "CLIENT_USER" },
   ];
   const out: SeededUser[] = [];
-  // Emails are globally unique, so the address carries the workspace: seeding a
-  // SECOND workspace must give it its own people, not silently reuse the first
-  // one's (which would leave the new workspace with nobody to notify — the very
+  // Emails are globally unique, so the address carries the tenant: seeding a
+  // SECOND tenant must give it its own people, not silently reuse the first
+  // one's (which would leave the new tenant with nobody to notify — the very
   // bug this batch exists to fix).
   const suffix = tenantId.slice(-6).toLowerCase();
   for (const w of wanted) {
@@ -58,7 +58,7 @@ export async function seedTenantUsers(tenantId: string, led: any): Promise<Seede
  */
 /** Ids that appeared while the producers ran. We did NOT insert these rows —
  *  the producers and the detector sweep did — but this run caused them, so the
- *  ledger owns them and Wipe can put the workspace back exactly as it was. */
+ *  ledger owns them and Wipe can put the tenant back exactly as it was. */
 async function ledgerDownstream(tenantId: string, led: any, before: Record<string, Set<string>>): Promise<void> {
   for (const model of ["notification", "suggestion", "emailLog"] as const) {
     const now = await db[model].findMany({ where: { tenantId }, select: { id: true } });
@@ -246,7 +246,7 @@ export async function seedRealEvents(tenantId: string, users: SeededUser[], led:
  *
  * GUARD (the owner's amendment): this refuses unless the tenant has a
  * DemoSeedRun ledger row — i.e. unless the seeder itself created that data.
- * A workspace nobody seeded can never be aged by this function, and the change
+ * A tenant nobody seeded can never be aged by this function, and the change
  * is recorded on the run so it is visible afterwards.
  */
 export async function ageSeededTenant(tenantId: string, runId: string, days = 200): Promise<boolean> {

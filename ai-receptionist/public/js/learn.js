@@ -1,6 +1,6 @@
 // Learning Center — categorized, step-by-step how-to guides (REBUILT, batch LC-1).
 //
-// AUDIENCE: written for the people using this workspace day to day. Guides describe
+// AUDIENCE: written for the people using this tenant portal day to day. Guides describe
 // only what THIS app can do for YOUR business — plain language, task-oriented.
 //
 // EDITING: everything lives in the GUIDES array. Each section has items; each guide
@@ -15,7 +15,7 @@
 // link that navigates with the app's own hash routing. Every href is verified against
 // the real route map by selfTest_learningCenter1.
 // RELABELING: titles and text run through App.relabelText, so renamed modules
-// (e.g. "Jobs" → "Projects") show the workspace's own words.
+// (e.g. "Jobs" → "Projects") show the tenant portal's own words.
 (function (global) {
   const App = global.App || (global.App = {});
   const { el, esc } = App.util;
@@ -41,7 +41,7 @@
               "The top bar also shows small colored presence dots for teammates who are online — hover one to see who it is.",
               "Click the logo in the top-left corner at any time to return to your [[#/dashboard|Home Dashboard]].",
             ] },
-            { tip: "If something named in a guide isn't in your navigation, it may be turned off for your workspace or your role — ask whoever manages your account." },
+            { tip: "If something named in a guide isn't in your navigation, it may be turned off for your portal or your role — ask whoever manages your account." },
             { visual: "shell-tour", note: "callout tour: module sidebar, page row, top bar" },
           ],
         },
@@ -63,7 +63,7 @@
           title: "Suggestions: what Clarity notices",
           blocks: [
             { p: "Every night, Clarity looks over your own data — nothing else — for patterns worth mentioning: the same wording typed into records again and again, a step you keep doing by hand, a module nobody has touched in months, a status where work sits far longer than anywhere else. What it finds appears under SUGGESTIONS in the bell." },
-            { p: "It never changes anything on its own. A suggestion is a proposal with a button; until you press that button, nothing in your workspace moves." },
+            { p: "It never changes anything on its own. A suggestion is a proposal with a button; until you press that button, nothing in your portal moves." },
             { steps: [
               "Open the bell and switch to the Suggestions tab.",
               "Each card says what it noticed, and — in plain numbers — what it looked at, so you can judge it: \u201cBased on 14 work orders in the last 30 days.\u201d",
@@ -79,7 +79,7 @@
           id: "notifications", features: ["always"],
           title: "The bell: what Clarity tells you",
           blocks: [
-            { p: "The bell at the top right is how the workspace gets your attention. A number on it means there's something you haven't looked at; no number means nothing new." },
+            { p: "The bell at the top right is how your portal gets your attention. A number on it means there's something you haven't looked at; no number means nothing new." },
             { steps: [
               "Click the bell to open the panel. ACTIVITY lists what's happened — a lead arriving, a booking made or cancelled, an import finishing, a reply on your feedback.",
               "Click any line to jump straight to the thing it's about; that also marks it read.",
@@ -131,7 +131,7 @@
               "Adjust the greeting and behavior options, then save.",
               "Business hours are not set here — the receptionist reads them from [[#/settings/scheduling|Settings → Scheduling & Resources]], so they always match your calendar.",
             ] },
-            { tip: "This section is available to owner/admin roles. If you can't see it, ask your workspace owner." },
+            { tip: "This section is available to owner/admin roles. If you can't see it, ask an owner or admin here." },
           ],
         },
         {
@@ -185,7 +185,7 @@
             { steps: [
               "Open a module page, e.g. [[#/contacts|Contacts]], and press the add button in the toolbar.",
               "Click any row to open the record's panel, where every field is editable.",
-              "Fields come in types — text, number, percent, date, progress, line items, and more; your workspace chooses them in [[#/settings/fields|Settings → Modules & Fields]].",
+              "Fields come in types — text, number, percent, date, progress, line items, and more; you choose them in [[#/settings/fields|Settings → Modules & Fields]].",
             ] },
             { tip: "If a teammate is viewing the same area, you'll see their presence dot in the top bar." },
             { visual: "record-drawer", note: "record panel opening with editable fields" },
@@ -325,7 +325,7 @@
           id: "dashboards-overview", features: ["page:#/reports"],
           title: "Dashboards: Home vs Analytics",
           blocks: [
-            { p: "[[#/reports|Analytics]] holds as many dashboards as you like; your [[#/dashboard|Home Dashboard]] is the one that greets you on sign-in. Both are built from the same widgets. Some workspaces come with a few dashboards already set up — they're ordinary dashboards, yours to edit, rearrange, or delete like any you'd build yourself." },
+            { p: "[[#/reports|Analytics]] holds as many dashboards as you like; your [[#/dashboard|Home Dashboard]] is the one that greets you on sign-in. Both are built from the same widgets. Some portals come with a few dashboards already set up — they're ordinary dashboards, yours to edit, rearrange, or delete like any you'd build yourself." },
             { steps: [
               "Open [[#/reports|Analytics]] and use the dashboard picker to switch or create dashboards.",
               "Every dashboard has its own date range control; individual widgets can override it.",
@@ -453,10 +453,10 @@
           title: "Starting from a preset",
           blocks: [
             { steps: [
-              "Open the preset library on [[#/automations|Automations]] — recipes are grouped by category, with the ones most relevant to how your workspace runs sorted toward the top.",
+              "Open the preset library on [[#/automations|Automations]] — recipes are grouped by category, with the ones most relevant to how you work sorted toward the top.",
               "Pick one to load it pre-built, adjust the details, and enable it.",
             ] },
-            { tip: "Presets that include a text-message step are hidden while texting is turned off for your workspace." },
+            { tip: "Presets that include a text-message step are hidden while texting is turned off for your portal." },
           ],
         },
         {
@@ -473,7 +473,7 @@
               "Turn each one on when the copy reads right. Times follow your business\u2019s wall clock.",
             ] },
             { feature: "sms", tip: "The two visit heads-up recipes send texts, and every text respects the app-wide texting switch — if it\u2019s ever off, the run records the step as skipped rather than quietly pretending." },
-            { featureOff: "sms", tip: "Texting is currently off for your workspace, so the text-based recipes are hidden. The email ones (the instant acknowledgment and the review ask) work today." },
+            { featureOff: "sms", tip: "Texting is currently off for your portal, so the text-based recipes are hidden. The email ones (the instant acknowledgment and the review ask) work today." },
             { p: "Every recipe is also buildable by hand, piece by piece: the \u201cBefore an appointment\u201d trigger now has a module picker (Bookings or Work Orders) with real hour-level timing, \u201cRecord created\u201d is a trigger of its own, the \u201cMessage the customer\u201d action emails or texts the record\u2019s linked contact — skipping politely when there\u2019s nobody linked or no number on file — and a \u201crecord type\u201d condition keeps a flow scoped to one module." },
             { p: "On a work order\u2019s page there\u2019s also a one-tap On my way button — it texts the linked customer that the technician is en route, at most once a day, and leaves a note on the work order. In fact every customer message sent about a record leaves one, so \u201cdid anyone tell the customer?\u201d is answered right on the record." },
           ],
@@ -584,13 +584,13 @@
       ],
     },
     {
-      cat: "Customizing your workspace",
+      cat: "Customizing your portal",
       items: [
         {
           id: "modules-fields", features: ["always"],
           title: "Modules & Fields",
           blocks: [
-            { p: "[[#/settings/fields|Settings → Modules & Fields]] is where your workspace takes shape: create modules, add fields of any type, adjust each module's Terms (the words it uses) and which of the five views it offers." },
+            { p: "[[#/settings/fields|Settings → Modules & Fields]] is where your portal takes shape: create modules, add fields of any type, adjust each module's Terms (the words it uses) and which of the five views it offers." },
             { steps: [
               "Open [[#/settings/fields|Settings → Modules & Fields]] and pick a module.",
               "Add or edit fields — drag to reorder; the field library offers ready-made ones.",
@@ -619,7 +619,7 @@
             { steps: [
               "Open [[#/settings/labels|Settings → Pages]].",
               "Rename any module — the navigation, buttons, and even these guides update to your words.",
-              "Owners can also hide pages a workspace doesn't use; hidden pages leave the navigation entirely.",
+              "Owners can also hide pages a portal doesn't use; hidden pages leave the navigation entirely.",
             ] },
           ],
         },
@@ -632,7 +632,7 @@
           id: "integrations", features: ["always"],
           title: "Integrations at a glance",
           blocks: [
-            { p: "[[#/settings/integrations|Settings → Integrations]] shows the connection status of the services your workspace uses: phone/text (Twilio), AI (OpenAI), Google Calendar, and maps (Mapbox)." },
+            { p: "[[#/settings/integrations|Settings → Integrations]] shows the connection status of the services your portal uses: phone/text (Twilio), AI (OpenAI), Google Calendar, and maps (Mapbox)." },
           ],
         },
         {
@@ -708,7 +708,7 @@
     id: "fs-contacts", features: ["always"],
     title: "Contacts: the customers you serve",
     blocks: [
-      { p: "[[#/contacts|Contacts]] holds every customer — name, phone, email, and address. Everything else in your workspace hangs off a customer: their work orders, equipment, estimates, and invoices all LINK back to the contact, so one open record shows the whole relationship." },
+      { p: "[[#/contacts|Contacts]] holds every customer — name, phone, email, and address. Everything else in your portal hangs off a customer: their work orders, equipment, estimates, and invoices all LINK back to the contact, so one open record shows the whole relationship." },
       { steps: [
         "Open [[#/contacts|Contacts]] and press Create to add a customer; the phone number matters most — it's how calls match to the right person.",
         "Open any customer and scroll to Related: their equipment, jobs, and paperwork, each under its own tab.",
@@ -856,9 +856,9 @@
   };
   // ===== RM-3: the RECRUITMENT MARKETING variant's own guides =====
   // Voice: candidates, sources, campaigns, interviews, clients. Content is
-  // GENERIC + structural — it describes what the workspace ships with, never a
+  // GENERIC + structural — it describes what the tenant portal ships with, never a
   // tenant's own seeded values (the seeded-data scan), and never mentions
-  // templates, other workspaces, or administration of the platform.
+  // templates, other tenants, or administration of the platform.
   RM_GUIDES["rm-home-dashboard"] = {
     id: "rm-home-dashboard", features: ["page:#/dashboard"],
     title: "Your Home Dashboard: the recruiting numbers",
@@ -879,7 +879,7 @@
     id: "rm-candidates", features: ["always"],
     title: "Candidates: everyone in your funnel",
     blocks: [
-      { p: "[[#/contacts|Candidates]] holds every person who has raised a hand \u2014 from the first ad click to a hire. Each one carries the usual name, phone, and email, plus the recruiting fields your workspace starts with." },
+      { p: "[[#/contacts|Candidates]] holds every person who has raised a hand \u2014 from the first ad click to a hire. Each one carries the usual name, phone, and email, plus the recruiting fields your portal starts with." },
       { steps: [
         "CANDIDATE SOURCE records where they came from (an ad channel, a job board, a referral, or organic). It's what the source widgets and reports count.",
         "ROLE INTEREST is the job they're asking about, in their words or yours.",
@@ -930,7 +930,7 @@
     id: "rm-ad-to-candidate", features: ["always"],
     title: "From ad click to candidate",
     blocks: [
-      { p: "This is the front door. Someone sees your ad, clicks it, lands on a form, and fills it in \u2014 and a candidate appears in your workspace, already tagged with where they came from. Nobody retypes anything." },
+      { p: "This is the front door. Someone sees your ad, clicks it, lands on a form, and fills it in \u2014 and a candidate appears in your portal, already tagged with where they came from. Nobody retypes anything." },
       { steps: [
         "Open [[#/settings/leadcapture|Settings \u2192 Lead capture]] and create a link. That's the form your landing page points at (share the link, or embed it).",
         "Map the form's fields to your candidate fields \u2014 the answer about where they heard about you maps to Candidate source, so every arrival is labelled automatically.",
@@ -947,7 +947,7 @@
     id: "rm-nurturing", features: ["page:#/automations"],
     title: "Nurturing candidates automatically",
     blocks: [
-      { p: "[[#/automations|Automations]] does the chasing you'd otherwise do by hand. Your workspace starts with a shelf of recruiting recipes in the library \u2014 ready to use, and switched OFF until you say so." },
+      { p: "[[#/automations|Automations]] does the chasing you'd otherwise do by hand. Your portal starts with a shelf of recruiting recipes in the library \u2014 ready to use, and switched OFF until you say so." },
       { steps: [
         "Open [[#/automations|Automations]] and browse the library. The recruiting recipes sit at the top: a welcome for every new candidate, interview reminders, a nudge when somebody's gone quiet, an alert when a candidate is submitted to a client, and a post-interview follow-up.",
         "Press Use on one and it's added to your flows as a DRAFT \u2014 disabled, doing nothing.",
@@ -979,7 +979,7 @@
     id: "rm-client-reporting", features: ["page:#/reports"],
     title: "Reporting to your client",
     blocks: [
-      { p: "[[#/reports|Analytics]] is where you answer the two questions clients ask: how's the pipeline, and where are these people coming from? Your workspace starts with dashboards for both." },
+      { p: "[[#/reports|Analytics]] is where you answer the two questions clients ask: how's the pipeline, and where are these people coming from? Your portal starts with dashboards for both." },
       { steps: [
         "CANDIDATE PIPELINE shows the funnel \u2014 how candidates are spread across the stages, how many arrive each week, and how the stages fill over time.",
         "WHERE CANDIDATES COME FROM breaks arrivals down by source, over time and as a share, with a grid that crosses source against stage \u2014 so you can see not just which channel sends the most people, but which sends the ones who get hired.",
@@ -995,7 +995,7 @@
     id: "rm-receptionist-knowledge", features: ["page:#/calls", "receptionist"],
     title: "What your receptionist knows \u2014 and what it won't say",
     blocks: [
-      { p: "Your receptionist answers with what you've told it. Its instructions live in [[#/settings/aireceptionist|Settings \u2192 AI Receptionist]], and your workspace starts with a short recruiting section already in there for you to edit." },
+      { p: "Your receptionist answers with what you've told it. Its instructions live in [[#/settings/aireceptionist|Settings \u2192 AI Receptionist]], and your portal starts with a short recruiting section already in there for you to edit." },
       { steps: [
         "Fill in what you recruit for \u2014 the kinds of roles, the areas you cover \u2014 so it can answer the first question every caller asks.",
         "Say how candidates usually reach you (most callers are ringing about an ad they've seen), so the conversation starts in the right place.",
@@ -1184,7 +1184,7 @@
     if (tag.indexOf("view:") === 0) return viewOnAnyModule(tag.slice(5));
     // Scheduling-calendar options (Scheduling Calendar batch): "calopt:scheduling"
     // is on when ANY non-locked module has lanes or the tray turned on — so the
-    // dispatch guide appears once a workspace actually uses the capability.
+    // dispatch guide appears once a tenant portal actually uses the capability.
     if (tag === "calopt:scheduling") {
       return ((App.state && App.state.recordTypes) || []).some((t) =>
         !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)) && (t.calendarLanes === true || t.calendarTray === true));
@@ -1222,7 +1222,7 @@
     const navList = el("div", "learn-nav-list");
     nav.appendChild(navList);
 
-    // Owner page-lock: hide guides for pages locked for this workspace — a locked page
+    // Owner page-lock: hide guides for pages locked for this tenant portal — a locked page
     // must not appear (or be openable) here. A section/guide is hidden when its `page`
     // is locked, or (for cross-cutting guides) when EVERY page in its `pagesAll` is
     // locked. Sections with neither tag always show. Filtering runs at BOTH the
@@ -1261,7 +1261,7 @@
         content.innerHTML = "";
         const note = el("div", "card learn-unavailable");
         note.appendChild(el("h2", null, "Not available in this portal"));
-        note.appendChild(el("p", "cell-muted", "This guide covers a feature that isn't currently turned on for this workspace. If it gets enabled later, the guide appears here automatically."));
+        note.appendChild(el("p", "cell-muted", "This guide covers a feature that isn't currently turned on for this portal. If it gets enabled later, the guide appears here automatically."));
         content.appendChild(note);
         return;
       }

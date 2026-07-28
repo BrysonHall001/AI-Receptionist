@@ -120,7 +120,7 @@ async function main() {
     `UNUSED MODULE: ${d3.length} suggestion(s), capped at 3, and always HIDE (never delete — FieldDef has no hide column, which is why this targets modules)`);
   const fresh: any = await mkTenant("d3-fresh", false);
   await runDetectorSweep(now, fresh.id);
-  check((await db.suggestion.count({ where: { tenantId: fresh.id, type: "unused_module" } })) === 0, "\u2026and a brand-new/empty workspace is never told to hide anything");
+  check((await db.suggestion.count({ where: { tenantId: fresh.id, type: "unused_module" } })) === 0, "\u2026and a brand-new/empty tenant is never told to hide anything");
   // D4 stage stall
   const t5: any = await mkTenant("d4");
   const wo5 = await db.recordType.findFirst({ where: { tenantId: t5.id, key: "work_order" }, select: { id: true, recordStages: true } });
@@ -217,13 +217,13 @@ async function main() {
   await db.tenant.update({ where: { id: t4.id }, data: { suggestionPrefs: { unused_module: false } } });
   await db.suggestion.deleteMany({ where: { tenantId: t4.id } });
   await runDetectorSweep(now, t4.id);
-  check((await db.suggestion.count({ where: { tenantId: t4.id, type: "unused_module" } })) === 0, "a switched-OFF detector stays silent for that workspace");
+  check((await db.suggestion.count({ where: { tenantId: t4.id, type: "unused_module" } })) === 0, "a switched-OFF detector stays silent for that tenant");
   await db.tenant.update({ where: { id: t4.id }, data: { suggestionPrefs: { enabled: false } } });
   await db.suggestion.deleteMany({ where: { tenantId: t4.id } });
   await runDetectorSweep(now, t4.id);
-  check((await db.suggestion.count({ where: { tenantId: t4.id } })) === 0, "the MASTER switch silences everything for that workspace");
+  check((await db.suggestion.count({ where: { tenantId: t4.id } })) === 0, "the MASTER switch silences everything for that tenant");
   check((await db.suggestion.count({ where: { tenantId: t2.id, type: "unused_module" } })) >= 0 && !(await db.suggestion.findFirst({ where: { tenantId: t2.id, dedupeKey: { contains: "acc:" } } })),
-    "TENANT SCOPING: one workspace's suggestions never appear in another's");
+    "TENANT SCOPING: one tenant's suggestions never appear in another's");
 
   // ---------- (6) DOM smoke ----------
   console.log("\n(6) DOM smoke:");

@@ -179,7 +179,7 @@ async function main() {
 
   console.log("");
   if (failures.length) { console.log(`${failures.length} FAILED \u274c: ${failures[0]}`); process.exitCode = 1; }
-  else console.log("ALL PASSED \u2705 (one manual per workspace: the FS shop gets its own book, everyone else keeps theirs to the byte)");
+  else console.log("ALL PASSED \u2705 (one manual per tenant: the FS shop gets its own book, everyone else keeps theirs to the byte)");
   await disconnectDb();
   process.exit(failures.length ? 1 : 0);
 }

@@ -46,6 +46,8 @@ export async function listPortals() {
     notifyEmail: t.notifyEmail,
     greeting: t.greeting,
     status: t.status,
+    isDemo: t.isDemo === true,
+    templateKey: (t as any).templateKey ?? null,
     billingStatus: (t as any).billingStatus ?? null,
     requireEmail: (t as any).requireEmail !== false,
     receptionistEnabled: (t as any).receptionistEnabled === true,
@@ -72,6 +74,7 @@ export async function getPortal(id: string) {
     lockedPages: sanitizeLockedPages((t as any).lockedPages),
     status: t.status,
     billingStatus: (t as any).billingStatus ?? null,
+    isDemo: (t as any).isDemo === true,
     requireEmail: (t as any).requireEmail !== false,
     receptionistEnabled: (t as any).receptionistEnabled === true,
     voiceMode: ((t as any).voiceMode as string) || ((t as any).receptionistEnabled === true ? "WALKIE" : "OFF"),
@@ -163,6 +166,8 @@ export async function createPortal(input: {
   // AI columns in this same create, then field tweaks/hooks via
   // applyTemplateAtCreation. Unknown keys are rejected by the route.
   template?: string | null;
+  /** Marks this tenant as a DEMO sandbox. Marking only — it seeds nothing. */
+  isDemo?: boolean;
   /** CREATE-UI-2 fidelity: the FS card's Learning Center preference. */
   customLearningCenter?: boolean;
 }) {
@@ -202,6 +207,7 @@ export async function createPortal(input: {
       // row is byte-identical to a pre-template creation otherwise.
       ...(template ? { templateKey: template.key } : {}),
       ...(input.customLearningCenter === true ? { customLearningCenter: true } : {}),
+      ...(input.isDemo === true ? { isDemo: true } : {}),
       ...(template && template.aiSchedulingTarget != null ? { aiScheduleTarget: template.aiSchedulingTarget } : {}),
       ...(template && template.aiIntake != null ? { aiCreateWorkOrders: template.aiIntake } : {}),
     } as any,

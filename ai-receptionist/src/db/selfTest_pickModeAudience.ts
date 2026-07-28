@@ -21,7 +21,7 @@ function main() {
 
   // ---------- PART 1: surveys master-detail ----------
   console.log("(1) surveys master-detail layout:");
-  check(/"card survey-master"/.test(comm) && /"survey-detail"/.test(comm) && /"survey-split"/.test(comm), "two-pane split: library (master) + workspace (detail)");
+  check(/"card survey-master"/.test(comm) && /"survey-detail"/.test(comm) && /"survey-split"/.test(comm), "two-pane split: library (master) + tenant (detail)");
   check(/\.survey-split\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*minmax\(0,\s*2fr\)/.test(css), "left ~1/3, right ~2/3 grid");
   check(/@media \(max-width: 900px\) \{ \.survey-split \{ grid-template-columns: 1fr; \}/.test(css), "stacks on a narrow viewport");
   check(/\[\["build", "Build"\], \["results", "Results"\]\]/.test(comm), "right-pane tab strip is ONLY Build/Results (no dead New tab)");

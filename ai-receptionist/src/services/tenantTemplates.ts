@@ -75,7 +75,7 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
   {
     key: "general",
     label: "General",
-    description: "A blank, everything-on workspace \u2014 exactly what Create has always made.",
+    description: "A blank, everything-on tenant portal \u2014 exactly what Create has always made.",
     // PRIME DIRECTIVE: byte-identical to today. No prefill, no server phase
     // beyond stamping the key: creating with General (or touching nothing)
     // produces the exact same tenant state as before this batch.

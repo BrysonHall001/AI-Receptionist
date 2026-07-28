@@ -15,7 +15,7 @@
 // helper draws the subtle accent ring where a guide references a specific control.
 //
 // VOICE RULE (absolute, inherited from LC-1): nothing in any scene or caption may
-// reference the master hub, other workspaces, or platform administration.
+// reference the master hub, other tenants, or platform administration.
 (function (global) {
   const App = global.App || (global.App = {});
 
@@ -275,7 +275,7 @@
   });
 
   const ibCard = (name, state, foc) => {
-    const h = `<div class="card scene-drawer"><div class="scene-row"><span class="input scene-ctl">${name}</span><span class="pill${state === "Accepting leads" ? " success" : " skipped"}">${state}</span></div>${fieldRow("Link to share", input("your-workspace \u2044 form"))}${fieldRow("Form field \u2192 Candidate field", select("Where did you hear about us \u2192 Candidate source"))}</div>`;
+    const h = `<div class="card scene-drawer"><div class="scene-row"><span class="input scene-ctl">${name}</span><span class="pill${state === "Accepting leads" ? " success" : " skipped"}">${state}</span></div>${fieldRow("Link to share", input("your-company \u2044 form"))}${fieldRow("Form field \u2192 Candidate field", select("Where did you hear about us \u2192 Candidate source"))}</div>`;
     return foc ? focus(h) : h;
   };
   register("rm-lead-capture-links", {

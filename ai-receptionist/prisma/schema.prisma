@@ -53,6 +53,10 @@ model Tenant {
   // Emergent layer 2: { enabled?: boolean, <detectorId>?: boolean } — the
   // Suggestions master switch and per-detector switches for this workspace.
   suggestionPrefs Json       @default("{}")
+  // DEMO TENANT FLAG: marks a tenant as a testing sandbox. The demo seeder can
+  // ONLY target a flagged tenant (selector + endpoint both enforce it), and a
+  // flagged tenant may be deleted without first being suspended.
+  isDemo          Boolean    @default(false)
   // Per-portal overrides for GENERIC display words that aren't a record type
   // (e.g. "record", "stage"). Shape: {"record":{"one":"Item","many":"Items"}}.
   // Additive + defaulted; empty means "use the built-in English defaults".

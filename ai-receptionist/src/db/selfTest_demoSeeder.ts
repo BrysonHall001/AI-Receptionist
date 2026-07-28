@@ -118,7 +118,7 @@ async function main() {
   const sugs = await db.suggestion.findMany({ where: { tenantId: fsT.id }, select: { type: true, finding: true } });
   const types = Array.from(new Set(sugs.map((s: any) => s.type))).sort();
   check(types.length === 4 && counters.errors === 0,
-    `ALL FOUR detectors fired on the seeded workspace: ${types.join(", ")}`);
+    `ALL FOUR detectors fired on the seeded tenant: ${types.join(", ")}`);
   const byType: any = {};
   sugs.forEach((s: any) => { if (!byType[s.type]) byType[s.type] = s.finding; });
   check(/Based on \d+ of \d+ completed jobs/.test((byType.manual_message_pattern || {}).transparency || ""),
@@ -207,7 +207,7 @@ async function main() {
 
   console.log("");
   if (failures.length) { console.log(`${failures.length} FAILED \u274c: ${failures[0]}`); process.exitCode = 1; }
-  else console.log("ALL PASSED \u2705 (a full-looking workspace in one click, and an exact undo in the next)");
+  else console.log("ALL PASSED \u2705 (a full-looking tenant in one click, and an exact undo in the next)");
   await disconnectDb();
   process.exit(failures.length ? 1 : 0);
 }

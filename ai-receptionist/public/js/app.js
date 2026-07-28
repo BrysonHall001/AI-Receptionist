@@ -756,6 +756,23 @@
       presenceStrip.classList.add("app-presence-strip");
       pagesRight.appendChild(presenceStrip);
       if (App.presence) App.presence.mount(presenceStrip);
+      // DEMO BANNER: a tenant portal holding demo data says so, once, to each
+      // person, until they dismiss it. Tenant-facing voice: it names no hub
+      // concept and gives no instruction only an admin could follow.
+      if (!App.state._demoBannerChecked) {
+        App.state._demoBannerChecked = true;
+        App.portalApi("/api/demo-banner").then((r) => {
+          if (!r || !r.show) return;
+          const bar = el("div", "demo-banner");
+          bar.appendChild(el("span", "demo-banner-text", "This tenant portal contains demo data for testing."));
+          const x = el("button", "btn btn-ghost btn-sm", "Dismiss");
+          x.onclick = () => { bar.remove(); App.portalApi("/api/demo-banner/dismiss", { method: "POST" }).catch(() => {}); };
+          bar.appendChild(x);
+          const host = App.util.$("#view");
+          if (host && host.parentElement) host.parentElement.insertBefore(bar, host);
+        }).catch(() => { /* the banner is never allowed to break a page */ });
+      }
+
       // Notifications bell (emergent layer 1) — mounted immediately BEFORE the
       // gear in the SAME container, so it inherits the gear's size/hit-area/
       // spacing tokens and the gear itself does not move.

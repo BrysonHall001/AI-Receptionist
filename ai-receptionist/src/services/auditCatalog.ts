@@ -58,6 +58,7 @@ export const AUDIT_ACTIONS = {
   // master hub (tenantId null or the target tenant, as appropriate)
   HUB_TENANT_CREATE: "hub.tenant.create",
   HUB_TENANT_SUSPEND: "hub.tenant.suspend",
+  HUB_TENANT_DELETE: "hub.tenant.delete",
   HUB_SETTINGS_UPDATE: "hub.settings.update",
 } as const;
 

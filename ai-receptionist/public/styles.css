@@ -1735,6 +1735,60 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .notif-row-title { font-size: var(--text-sm); font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .notif-row-body { font-size: var(--text-xs); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .notif-row-time { font-size: var(--text-xs); flex: 0 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* tenant deletion dialog: the house modal shell, plus a red-hairline warning
+   block and the danger action row. No new surface colour is introduced. */
+.adm-del-modal .adm-del-body { display: flex; flex-direction: column; gap: var(--sp-2); }
+.adm-del-warn { border-top: 2px solid var(--red); background: var(--red-soft); color: var(--red); padding: var(--sp-3); border-radius: var(--radius-sm); font-size: var(--text-sm); }
+.adm-del-input { margin: var(--sp-2) var(--sp-5) 0; max-width: 260px; }
+.adm-del-err { margin: var(--sp-2) var(--sp-5) 0; color: var(--red); font-size: var(--text-xs); }
+.adm-del-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); }
+.adm-del-modal .field-label { display: block; padding: var(--sp-3) var(--sp-5) 0; }
+/* tenant list: the Demo pill and the paired tenant actions */
+.adm-demo-pill { background: var(--amber-soft); color: var(--amber); }
+.adm-actions-cell { display: inline-flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-2); }
+.adm-actions-stack { display: inline-flex; flex-wrap: wrap; flex-direction: column; gap: var(--sp-2); }
+.adm-actions-stack .btn { width: 100%; }
+/* creation step 2: people on the left, the demo switch on the right */
+.adm-step2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: var(--sp-4); align-items: start; }
+.adm-step2-left { min-width: 0; }
+.adm-step2-right { min-width: 0; }
+.adm-uform .input { max-width: 260px; }   /* the house input width (.search-input) — the email box was running the full card */
+.adm-demo-card { padding: var(--sp-3); }
+.adm-demo-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); cursor: pointer; }
+.adm-demo-label { font-size: var(--text-sm); font-weight: 500; }
+.adm-demo-cap { margin: var(--sp-2) 0 0; font-size: var(--text-xs); }
+@media (max-width: 860px) { .adm-step2 { grid-template-columns: 1fr; } }
+/* The in-portal demo banner: house amber-soft notice, dismissible per person. */
+.demo-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); background: var(--amber-soft); color: var(--amber); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); margin: 0 0 var(--sp-3); font-size: var(--text-sm); }
+.demo-banner-text { font-weight: 500; }
+/* Developer Tools -> Tools: one card per tool, each a capped-width form so it
+   doesn't read as unfinished across a wide screen, with the destructive control
+   fenced off in its own zone. */
+.tools-wrap { display: flex; flex-direction: column; gap: var(--sp-5); max-width: 720px; }
+.tool-card { padding: var(--sp-4); }
+.tool-h { margin: 0 0 var(--sp-2); font-size: var(--text-md); }
+.tool-hint { margin: 0 0 var(--sp-4); font-size: var(--text-sm); }
+.tool-form { display: flex; flex-direction: column; gap: var(--sp-3); max-width: 560px; }
+.tool-setup { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); align-items: start; }
+.tool-field { display: flex; flex-direction: column; min-width: 0; }
+.tool-field .input { width: 100%; }
+.tool-check { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); cursor: pointer; }
+.tool-check-label { font-size: var(--text-sm); }
+.tool-volume { margin: 0; font-size: var(--text-xs); }
+.tool-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.tool-status { font-size: var(--text-sm); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: var(--panel-2); color: var(--ink-soft); }
+.tool-status--ok { background: var(--green-soft); color: var(--green); }
+.tool-status--bad { background: var(--red-soft); color: var(--red); }
+.tool-status--working { background: var(--gray-soft); color: var(--ink-soft); }
+.tool-danger { margin-top: var(--sp-5); border-top: 2px solid var(--red); background: var(--red-soft); border-radius: var(--radius-sm); padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); align-items: flex-start; max-width: 560px; }
+.tool-danger-h { color: var(--red); }
+.tool-danger-p { margin: 0; font-size: var(--text-xs); }
+.tool-confirm { max-width: 260px; }
+.tool-lockrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.tool-locknote { font-size: var(--text-xs); }
+.tool-runs { margin-top: var(--sp-4); font-size: var(--text-xs); display: flex; flex-direction: column; gap: 4px; }
+.tool-empty { padding: var(--sp-6) var(--sp-4); }
+@media (max-width: 860px) { .tool-setup { grid-template-columns: 1fr; } }
 /* demo seeder (dev tool) */
 .dd-hint { margin: 0 0 var(--sp-3); font-size: var(--text-sm); }
 .dd-volume { margin: var(--sp-3) 0 0; font-size: var(--text-xs); }

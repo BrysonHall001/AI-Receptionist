@@ -936,7 +936,7 @@
     const responsesHost = el("div"); shareWrap.appendChild(responsesHost);
     card.appendChild(shareWrap);
 
-    // ---- Master-detail layout: Surveys Library (left) + workspace (right) ----
+    // ---- Master-detail layout: Surveys Library (left) + work pane (right) ----
     const resultsCard = el("div", "card"); resultsCard.classList.add("cm-resultscard"); resultsCard.classList.add("u-hidden");
 
     // Right-pane tab strip — ONLY Build/Results, and only while a survey is open.
@@ -969,7 +969,7 @@
     libNote.classList.add("cm-libnote"); leftPane.appendChild(libNote);
     leftPane.appendChild(listHost);
 
-    // Right pane — the context-driven workspace.
+    // Right pane — the context-driven work pane.
     const rightPane = el("div", "survey-detail");
     rightPane.appendChild(tabStrip);
     rightPane.appendChild(card);

@@ -1838,10 +1838,10 @@ function notifUser(req: Request): any {
   const scope = resolveTenantScope(req);
   // A hub admin viewing a portal is scoped to that tenant but is NOT a member
   // of it: their own user row has no tenantId. Carry the scope so permission
-  // checks resolve against the workspace being viewed.
+  // checks resolve against the tenant being viewed.
   return { id: u.id, role: u.role, tenantId: u.tenantId || scope, customRoleId: u.customRoleId ?? null };
 }
-/** True when the acting user actually belongs to the workspace being viewed. */
+/** True when the acting user actually belongs to the tenant being viewed. */
 function isTenantMember(req: Request): boolean {
   const u = req.user as any;
   const scope = resolveTenantScope(req);
@@ -1861,7 +1861,7 @@ apiRouter.get("/notifications", async (req: Request, res: Response) => {
   };
   try {
     if (!isTenantMember(req)) {
-      // HUB VISITOR: the workspace's activity, read-only. unread is NULL (not
+      // HUB VISITOR: the tenant's activity, read-only. unread is NULL (not
       // 0) so the bell hides its badge instead of claiming "all caught up".
       const tenantId = resolveTenantScope(req);
       if (!tenantId) { res.json({ items: [], hasMore: false, unread: null, visitor: true, categories: svc.NOTIFICATION_CATEGORIES }); return; }
@@ -1882,7 +1882,7 @@ apiRouter.get("/notifications/unread-count", async (req: Request, res: Response)
 });
 apiRouter.post("/notifications/:id/read", async (req: Request, res: Response) => {
   if ((req as any).impersonation) { res.status(403).json({ error: "Read state can't be changed while impersonating." }); return; }
-  if (!isTenantMember(req)) { res.status(403).json({ error: "You are viewing this workspace as an admin \u2014 read state belongs to its own people." }); return; }
+  if (!isTenantMember(req)) { res.status(403).json({ error: "You are viewing this tenant as an admin \u2014 read state belongs to its own people." }); return; }
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const svc = require("../services/inAppNotificationService");
   try { res.json(await svc.markRead(notifUser(req), req.params.id)); }
@@ -1890,7 +1890,7 @@ apiRouter.post("/notifications/:id/read", async (req: Request, res: Response) =>
 });
 apiRouter.post("/notifications/read-all", async (req: Request, res: Response) => {
   if ((req as any).impersonation) { res.status(403).json({ error: "Read state can't be changed while impersonating." }); return; }
-  if (!isTenantMember(req)) { res.status(403).json({ error: "You are viewing this workspace as an admin \u2014 read state belongs to its own people." }); return; }
+  if (!isTenantMember(req)) { res.status(403).json({ error: "You are viewing this tenant as an admin \u2014 read state belongs to its own people." }); return; }
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const svc = require("../services/inAppNotificationService");
   try { res.json(await svc.markAllRead(notifUser(req))); }
@@ -1927,6 +1927,35 @@ apiRouter.post("/suggestions/:id/undismiss", async (req: Request, res: Response)
   const svc = require("../services/suggestionService");
   try { res.json(await svc.undismissSuggestion(notifUser(req), req.params.id)); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
+// DEMO BANNER: shown inside a tenant portal that is flagged AND still holds
+// seeded rows. Tenant-facing, so it names no hub concept — just the fact.
+apiRouter.get("/demo-banner", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.json({ show: false }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { prisma: pz } = require("../db/client");
+  const db2 = pz as any;
+  const t = await db2.tenant.findUnique({ where: { id: tenantId }, select: { isDemo: true } });
+  if (!t || t.isDemo !== true) { res.json({ show: false }); return; }
+  const runs = await db2.demoSeedRun.findMany({ where: { tenantId, wipedAt: null }, select: { ids: true } });
+  const seededRows = runs.reduce((n: number, r: any) => n + (Array.isArray(r.ids) ? r.ids.length : 0), 0);
+  const me = await db2.user.findUnique({ where: { id: req.user!.id }, select: { themePrefs: true } });
+  const dismissed = !!((me && me.themePrefs && (me.themePrefs as any).dismissedDemoBanner) || {})[tenantId];
+  res.json({ show: seededRows > 0 && !dismissed, seededRows });
+});
+apiRouter.post("/demo-banner/dismiss", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.json({ ok: true }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { prisma: pz } = require("../db/client");
+  const db2 = pz as any;
+  const me = await db2.user.findUnique({ where: { id: req.user!.id }, select: { themePrefs: true } });
+  const prefs = (me && me.themePrefs && typeof me.themePrefs === "object" ? { ...(me.themePrefs as any) } : {}) as any;
+  prefs.dismissedDemoBanner = { ...(prefs.dismissedDemoBanner || {}), [tenantId]: true };
+  await db2.user.update({ where: { id: req.user!.id }, data: { themePrefs: prefs } });
+  res.json({ ok: true });
 });
 
 apiRouter.get("/suggestions/prefs", async (req: Request, res: Response) => {
