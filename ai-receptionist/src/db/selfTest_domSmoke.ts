@@ -226,7 +226,7 @@ async function main() {
   // Select the Estimates module on the fields page, then EDIT its Line items
   // field (field creation is drag-from-library; Edit opens the modal).
   w.App.state.fieldsType = "estimate"; w.App._route();
-  const rowUp = await until(() => bodyText().includes("Line items") && $$("button").some((b: any) => b.textContent.trim() === "Edit"));
+  const rowUp = await until(() => bodyText().includes("Line items") && $$("button").some((b: any) => b.textContent.trim() === "Edit"), 15000);
   if (!rowUp) console.log("    [debug fields]", bodyText().slice(0, 500).replace(/\s+/g, " "));
   let modalOk = false, liBlockOk = false, preselected = false, noneOk = false;
   if (rowUp) {
@@ -243,9 +243,28 @@ async function main() {
       }
       return false;
     });
-    if (liEdit) (liEdit as any).click();
-    modalOk = await until(() => !!$("#fm-type") && ($("#fm-type") as any).value === "line_items");
-    liBlockOk = await until(() => { const wrap: any = $("#fm-libook-wrap"); return !!wrap && !wrap.classList.contains("u-hidden") && !!$("#fm-li-module"); });
+    const clickLineItemsEdit = () => {
+      const btns = $$("button").filter((b: any) => b.textContent.trim() === "Edit");
+      const target = btns.find((b: any) => {
+        let n: any = b;
+        for (let i = 0; i < 6 && n; i++) {
+          const lbl = n.querySelector && n.querySelector(".field-row-label");
+          if (lbl) return (lbl.textContent || "").trim() === "Line items";
+          n = n.parentElement;
+        }
+        return false;
+      });
+      if (target) (target as any).click();
+      return !!target;
+    };
+    clickLineItemsEdit();
+    modalOk = !!(await until(() => {
+      const t: any = $("#fm-type");
+      if (t && t.value === "line_items") return true;
+      if (!$(".modal-overlay")) clickLineItemsEdit();   // the row repainted under us
+      return false;
+    }, 15000));
+    liBlockOk = !!(await until(() => { const wrap: any = $("#fm-libook-wrap"); return !!wrap && !wrap.classList.contains("u-hidden") && !!$("#fm-li-module"); }, 15000));
     preselected = liBlockOk && (($("#fm-li-module") as any).value === "product");
     const opts: any[] = liBlockOk ? Array.from(($("#fm-li-module") as any).options) : [];
     noneOk = opts.length > 0 && /None/.test(opts[0].textContent) && !opts.some((o: any) => o.value === "estimate");

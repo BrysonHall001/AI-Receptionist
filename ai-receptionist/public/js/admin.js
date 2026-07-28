@@ -1751,8 +1751,7 @@
   const DEVTOOL_SECTIONS = [
     { key: "history", label: "History", render: renderHistorySection },
     { key: "health", label: "System Health", render: renderHealthSection }, // audit-fixes-health batch
-    { key: "demodata", label: "Demo Data", render: (host) => { host.innerHTML = ""; const wrap = el("div", "tools-wrap"); host.appendChild(wrap); renderDemoDataTool(wrap); } },
-    { key: "tools", label: "Tools", render: renderToolsSection }, // sibling tools (currently the detector sweep)
+    { key: "tools", label: "Tools", render: renderToolsSection }, // Demo Data + Detector Sweep live beneath this
     // future sections register here
   ];
 
@@ -1765,221 +1764,366 @@
   // A tab that holds tools, not one tool: Demo data is the first, the detector
   // sweep is its own sibling (it is not demo-data functionality), and there is
   // room for the next one without another tab.
-  function renderToolsSection(host) {
-    host.innerHTML = "";
-    const wrap = el("div", "tools-wrap");
-    host.appendChild(wrap);
-    // Demo Data was promoted to its own top-level tab; Tools holds the rest.
-    renderSweepTool(wrap);
+  // Sub-tabs beneath Tools, built with History's own pattern (see
+  // renderHistorySection): the same .settings-tabs bar, the same
+  // .settings-tab/.active classes, the same paintBar/paintBody shape.
+  const TOOLS_SUBTABS = [
+    { key: "demodata", label: "Demo Data", mount: (host) => { const wrap = el("div", "tools-wrap"); host.appendChild(wrap); renderDemoDataTool(wrap); } },
+    { key: "sweep", label: "Detector Sweep", mount: (host) => { const wrap = el("div", "tools-wrap"); host.appendChild(wrap); renderSweepTool(wrap); } },
+  ];
+
+  function renderToolsSection(panel) {
+    const bar = el("div", "settings-tabs");
+    const body = el("div");
+    const hint = App.state._devtoolsHint || null;
+    let active = (hint && hint.subtab) || (TOOLS_SUBTABS[0] && TOOLS_SUBTABS[0].key);
+    function paintBar() {
+      bar.innerHTML = "";
+      TOOLS_SUBTABS.forEach((t) => {
+        const b = el("button", null, t.label);
+        b.className = "settings-tab" + (active === t.key ? " active" : "");
+        b.onclick = () => { if (active !== t.key) { active = t.key; paintBar(); paintBody(); } };
+        bar.appendChild(b);
+      });
+    }
+    function paintBody() {
+      body.innerHTML = "";
+      const t = TOOLS_SUBTABS.find((x) => x.key === active);
+      if (t) t.mount(body);
+    }
+    panel.innerHTML = "";
+    panel.appendChild(bar);
+    panel.appendChild(body);
+    paintBar();
+    paintBody();
   }
 
   /** Tool 1 — Demo data. Only DEMO-flagged tenants can be chosen; the endpoint
    *  refuses the rest independently, so the gate is structural, not cosmetic. */
+  // ---------------------------------------------------------------------------
+  // DEMO DATA — the tenants TABLE is the interface. Every demo-flagged tenant is
+  // a row carrying its own Seed and Wipe; the options live in the flow that
+  // starts from a row, not in a permanent form. Batch 35's guards are unchanged:
+  // only isDemo tenants are listed AND the endpoints refuse anything else.
+  // ---------------------------------------------------------------------------
   function renderDemoDataTool(parent) {
     const sec = el("section", "tool-card card");
     sec.appendChild(el("h3", "tool-h", "Demo data"));
     sec.appendChild(el("p", "cell-muted tool-hint", "Fills a demo tenant with obviously-fake, backdated data (names like Avery Lane, @example.invalid emails, 555 numbers) so every screen has something to show. It never sends anything."));
     parent.appendChild(sec);
 
-    const form = el("div", "tool-form");
-    sec.appendChild(form);
-    const setup = el("div", "tool-setup");
-    form.appendChild(setup);
-
-    const mkField = (labelText) => {
-      const col = el("div", "tool-field");
-      col.appendChild(el("label", "field-label", labelText));
-      return col;
-    };
-    const colT = mkField("Tenant");
-    const tSel = el("select", "input");
-    colT.appendChild(tSel);
-    const colP = mkField("Template");
-    const pSel = el("select", "input");
-    pSel.innerHTML = '<option value="field_services">Field Services</option><option value="recruitment_marketing">Recruitment Marketing</option>';
-    colP.appendChild(pSel);
-    const colV = mkField("Volume");
-    const vSel = el("select", "input");
-    vSel.innerHTML = '<option value="small">Small</option><option value="medium">Medium</option><option value="large">Large (runs in the background)</option>';
-    colV.appendChild(vSel);
-    const colW = mkField("Time window");
-    const wSel = el("select", "input");
-    wSel.innerHTML = '<option value="90">90 days</option><option value="30">30 days</option><option value="365">365 days</option>';
-    colW.appendChild(wSel);
-    setup.appendChild(colT); setup.appendChild(colP); setup.appendChild(colV); setup.appendChild(colW);
-
-    // TEMPLATE LOCK: the template follows the tenant's own, and unlocking is a
-    // deliberate act with a warning attached.
-    const lockRow = el("div", "tool-lockrow");
-    const lockNote = el("span", "cell-muted tool-locknote", "Locked to this tenant's own template.");
-    const unlock = el("button", "btn btn-ghost btn-sm", "Seed a different template anyway");
-    unlock.type = "button";
-    const mismatchWarn = el("div", "tool-status tool-status--bad");
-    mismatchWarn.style.setProperty("display", "none");
-    mismatchWarn.textContent = "Records for modules this tenant doesn't use are skipped, not created \u2014 you'll get fewer entities than the volume suggests.";
-    lockRow.appendChild(lockNote); lockRow.appendChild(unlock);
-    form.appendChild(lockRow);
-    form.appendChild(mismatchWarn);
-    let locked = true;
-    pSel.disabled = true;
-    unlock.onclick = () => {
-      locked = !locked;
-      pSel.disabled = locked;
-      unlock.textContent = locked ? "Seed a different template anyway" : "Re-lock to this tenant's template";
-      lockNote.textContent = locked ? "Locked to this tenant's own template." : "Unlocked \u2014 choose carefully.";
-      mismatchWarn.style.setProperty("display", locked ? "none" : "");
-      if (locked) syncTemplateToTenant();
-    };
-    const syncTemplateToTenant = () => {
-      const t = demoTenants.find((x) => x.id === tSel.value);
-      const key = t && t.templateKey === "recruitment_marketing" ? "recruitment_marketing" : "field_services";
-      pSel.value = key;
-      paintVolume();
-    };
-
-    const sweepRow = el("label", "tool-check");
-    const sweepCb = el("span", "switch");
-    const sweepInput = el("input"); sweepInput.type = "checkbox"; sweepInput.checked = true;
-    sweepCb.appendChild(sweepInput); sweepCb.appendChild(el("span", "switch-track"));
-    sweepRow.appendChild(sweepCb);
-    sweepRow.appendChild(el("span", "tool-check-label", "Run the detector sweep when seeding finishes"));
-    form.appendChild(sweepRow);
-
-    const volume = el("p", "cell-muted tool-volume");
-    form.appendChild(volume);
-    const seedRow = el("div", "tool-actions");
-    const seedBtn = el("button", "btn btn-primary btn-sm", "Seed demo data");
-    seedRow.appendChild(seedBtn);
-    form.appendChild(seedRow);
-
-    // The result of the last action, in the house status-line treatment rather
-    // than bare floating text.
-    const status = el("div", "tool-status");
-    status.style.setProperty("display", "none");
-    form.appendChild(status);
-    const setStatus = (text, kind) => {
-      status.className = "tool-status" + (kind ? " tool-status--" + kind : "");
-      status.textContent = text;
-      status.style.setProperty("display", text ? "" : "none");
-    };
-
-    // DANGER ZONE — visually separated, holding the typed confirmation and the
-    // only destructive control. House parts: a card with a red hairline, a
-    // field label, the house input, and .btn-danger.
-    const danger = el("div", "tool-danger");
-    danger.appendChild(el("div", "field-label tool-danger-h", "Danger zone"));
-    danger.appendChild(el("p", "cell-muted tool-danger-p", "Wiping removes exactly what a seeding run created \u2014 nothing a person typed."));
-    const confirmInp = el("input", "input tool-confirm");
-    confirmInp.placeholder = "Type the tenant name to confirm";
-    danger.appendChild(confirmInp);
-    const wipeBtn = el("button", "btn btn-danger btn-sm", "Wipe seeded data");
-    danger.appendChild(wipeBtn);
-    sec.appendChild(danger);
-
-    const runsWrap = el("div", "tool-runs cell-muted");
-    sec.appendChild(runsWrap);
-
+    const host = el("div", "dd-table-host");
+    sec.appendChild(host);
     let caps = null;
-    let demoTenants = [];
-    const paintVolume = () => {
-      if (!caps) { volume.textContent = ""; return; }
-      const c = caps[pSel.value] || {};
-      const mult = vSel.value === "large" ? 4 : vSel.value === "medium" ? 2 : 1;
-      const fixed = ["resources", "products", "multiVisit", "recurring"];
-      volume.textContent = "This will create about: " + Object.keys(c).map((k) => `${fixed.indexOf(k) === -1 ? Math.round(c[k] * mult) : c[k]} ${k.replace(/([A-Z])/g, " $1").toLowerCase()}`).join(" \u00b7 ") + `, spread across ${wSel.value} days.`;
-    };
-    const loadFor = async (id) => {
-      if (!id) return;
-      try {
-        const r = await App.api("/api/admin/portals/" + encodeURIComponent(id) + "/demo-data");
-        caps = r.caps; paintVolume();
-        runsWrap.innerHTML = "";
-        const runs = r.runs || [];
-        if (!runs.length) { runsWrap.appendChild(el("div", null, "No demo runs on this tenant yet.")); return; }
-        runs.forEach((run) => {
-          const counts = Object.keys(run.counts || {}).filter((k) => k.indexOf("__") !== 0).map((k) => `${k} ${run.counts[k]}`).join(", ");
-          runsWrap.appendChild(el("div", "tool-run", `${new Date(run.createdAt).toLocaleString()} \u2014 ${run.profile} \u2014 ${counts}${run.wipedAt ? " (wiped)" : ""}`));
-        });
-      } catch (e) { runsWrap.textContent = e.message || "Couldn't load demo-data status."; }
-    };
-    pSel.onchange = paintVolume;
-    tSel.onchange = () => { if (locked) syncTemplateToTenant(); loadFor(tSel.value); };
-    wSel.onchange = () => paintVolume();
-    vSel.onchange = () => paintVolume();
+    let rows = [];
 
-    // ONLY demo tenants are listed. Not greyed — absent.
-    App.api("/api/admin/portals").then((r) => {
-      const all = (r && (r.portals || r)) || [];
-      demoTenants = all.filter((p) => p.isDemo === true);
-      if (!demoTenants.length) {
-        form.style.setProperty("display", "none");
-        danger.style.setProperty("display", "none");
-        runsWrap.innerHTML = "";
-        const empty = el("div", "empty tool-empty");
-        empty.innerHTML = `<h3>No demo tenants yet</h3><p>A tenant has to be marked as a demo tenant before it can hold demo data \u2014 switch it on when you create one, or from the tenant's own page.</p>`;
-        sec.appendChild(empty);
-        return;
-      }
-      tSel.innerHTML = demoTenants.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
-      syncTemplateToTenant();
-      loadFor(tSel.value);
-    }).catch(() => { tSel.innerHTML = "<option>(couldn't load tenants)</option>"; });
+    const fmtWhen = (iso) => {
+      if (!iso) return "\u2014";
+      const d = new Date(iso);
+      const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+      if (days === 0) return "Today";
+      if (days === 1) return "Yesterday";
+      if (days < 30) return `${days} days ago`;
+      return d.toLocaleDateString();
+    };
+    const templateLabel = (k) => (k === "field_services" ? "Field Services" : k === "recruitment_marketing" ? "Recruitment Marketing" : k === "general" || !k ? "General" : k);
 
-    /** Poll the run while a background (Large) seed is working. */
-    let pollTimer = null;
-    function pollProgress(tenantId) {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(async () => {
-        try {
-          const r = await App.api("/api/admin/portals/" + encodeURIComponent(tenantId) + "/demo-data");
-          const run = (r.runs || [])[0];
-          const prog = run && run.counts && run.counts.__progress;
-          if (prog && !run.wipedAt && !(run.counts && run.counts.__producers)) {
-            setStatus(`Seeding\u2026 ${prog.step} (${prog.done}/${prog.total})`, "working");
-          } else if (run && run.counts && run.counts.__producers) {
-            clearInterval(pollTimer); pollTimer = null;
-            const counts = Object.keys(run.counts).filter((k) => k.indexOf("__") !== 0).map((k) => `${k} ${run.counts[k]}`).join(", ");
-            setStatus("Seeded: " + counts, "ok");
-            toast("Demo data seeded");
-            loadFor(tenantId);
-          }
-        } catch (e) { /* keep polling; the run outlives a hiccup */ }
-      }, 2000);
+    async function load() {
+      host.innerHTML = "";
+      host.appendChild(el("div", "cell-muted", "Loading demo tenants\u2026"));
+      let data = { tenants: [] };
+      try { data = await App.api("/api/admin/demo-tenants"); }
+      catch (e) { host.innerHTML = ""; host.appendChild(el("div", "empty", "<h3>Couldn't load demo tenants</h3><p>Try again in a moment.</p>")); return; }
+      if (!caps) { try { const one = data.tenants[0]; if (one) { const r = await App.api("/api/admin/portals/" + encodeURIComponent(one.id) + "/demo-data"); caps = r.caps || null; } } catch (e) { /* estimate is a nicety */ } }
+      rows = data.tenants || [];
+      paint();
     }
 
-    const busy = (on) => { seedBtn.disabled = on; wipeBtn.disabled = on; };
-    seedBtn.onclick = async () => {
-      busy(true); setStatus("Seeding\u2026", "working");
-      try {
-        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/demo-data/seed", { method: "POST", body: JSON.stringify({ profile: pSel.value, confirm: (demoTenants.find((x) => x.id === tSel.value) || {}).name, runSweep: sweepInput.checked, volume: vSel.value, windowDays: Number(wSel.value), allowTemplateMismatch: !locked }) });
-        if (r && r.async) {
-          setStatus("Seeding started \u2014 this one runs in the background.", "working");
-          pollProgress(tSel.value);
+    function paint() {
+      host.innerHTML = "";
+      if (!rows.length) {
+        // No tenant is flagged yet: name BOTH honest paths to flagging one.
+        const empty = el("div", "empty tool-empty");
+        empty.innerHTML = `<h3>No demo tenants yet</h3><p>A tenant has to be marked as a demo tenant before it can hold demo data. Switch it on in step 2 of Create tenant, or from the tenant's own page under Tenant actions.</p>`;
+        const go = el("a", "btn btn-ghost btn-sm", "Open the tenant list");
+        go.href = "#/admin/portals";
+        empty.appendChild(go);
+        host.appendChild(empty);
+        return;
+      }
+      const ordered = rows.slice().sort((a, b) => {
+        const ta = a.lastSeededAt ? new Date(a.lastSeededAt).getTime() : -1;
+        const tb = b.lastSeededAt ? new Date(b.lastSeededAt).getTime() : -1;
+        return tb - ta || String(a.name).localeCompare(String(b.name));
+      });
+      const columns = [
+        { key: "name", label: "Tenant", get: (r) => r.name, render: (r) => `<span class="adm-rowname">${esc(r.name)}</span>` },
+        { key: "template", label: "Template", get: (r) => templateLabel(r.template), render: (r) => `<span class="cell-muted">${esc(templateLabel(r.template))}</span>` },
+        { key: "seeded", label: "Seeded?", get: (r) => (r.seeded ? "Seeded" : "Empty"),
+          render: (r) => `<span class="pill${r.seeded ? " success" : ""}">${r.seeded ? "Seeded" : "Empty"}</span>` },
+        { key: "rowsSeeded", label: "Records seeded", get: (r) => r.rowsSeeded || 0, render: (r) => (r.rowsSeeded ? String(r.rowsSeeded) : '<span class="cell-muted">\u2014</span>') },
+        { key: "lastSeededAt", label: "Last seeded", get: (r) => r.lastSeededAt || "", render: (r) => `<span class="cell-muted">${esc(fmtWhen(r.lastSeededAt))}</span>` },
+        { key: "actions", label: "Actions", sortable: false, render: () => "" },
+      ];
+      const handle = App.table.mount({
+        container: host, columns, rows: ordered, rowId: (r) => r.id,
+        tableId: "hub-demo-tenants",
+        emptyHtml: "<h3>No demo tenants yet</h3>",
+      });
+      // Actions are real buttons, so they are attached after mount rather than
+      // injected as markup.
+      App.util.$$("tbody tr", host).forEach((tr, i) => {
+        const r = ordered[i];
+        if (!r) return;
+        tr.dataset.tenantId = r.id;
+        const cell = tr.lastElementChild;
+        if (!cell) return;
+        cell.innerHTML = "";
+        const box = el("div", "adm-actions-cell");
+        const active = r.activeRun;
+        if (active) {
+          // Honest progress: the numbers come from the RUN's own ledger.
+          const prog = (active.counts && active.counts.__progress) || null;
+          const label = prog ? `Seeding\u2026 ${prog.done} of ~${prog.total}` : "Seeding\u2026";
+          const busy = el("span", "cell-muted dd-progress", label);
+          box.appendChild(busy);
+          const disabled = el("button", "btn btn-primary btn-sm", "Seed");
+          disabled.disabled = true;
+          box.appendChild(disabled);
         } else {
-          const counts = Object.keys(r.counts || {}).filter((k) => k.indexOf("__") !== 0).map((k) => `${k} ${r.counts[k]}`).join(", ");
-          setStatus("Seeded: " + counts, "ok");
-          toast("Demo data seeded");
-          loadFor(tSel.value);
+          const seed = el("button", "btn btn-primary btn-sm", "Seed");
+          seed.onclick = (e) => { e.stopPropagation(); openSeedModal(r); };
+          box.appendChild(seed);
+          if (r.seeded) {
+            const wipe = el("button", "btn btn-danger btn-sm", "Wipe");
+            wipe.onclick = (e) => { e.stopPropagation(); openWipeModal(r); };
+            box.appendChild(wipe);
+          }
         }
-      } catch (e) { setStatus(e.message || "Seeding failed.", "bad"); toast(e.message || "Seeding failed", true); }
-      busy(false);
+        cell.appendChild(box);
+        // EXPANDABLE DETAIL: the last run in plain words, opened from the row.
+        if (r.lastRun && !active) {
+          tr.classList.add("dd-row-clickable");
+          tr.onclick = () => {
+            const existing = tr.nextElementSibling;
+            if (existing && existing.classList.contains("dd-detail-row")) { existing.remove(); return; }
+            const detail = document.createElement("tr");
+            detail.className = "dd-detail-row";
+            const td = document.createElement("td");
+            td.colSpan = tr.children.length;
+            td.appendChild(resultBlock(r.lastRun));
+            detail.appendChild(td);
+            tr.parentNode.insertBefore(detail, tr.nextSibling);
+          };
+        }
+      });
+      // Keep watching any tenant whose run is still going (e.g. after a repaint).
+      ordered.forEach((r) => { if (r.activeRun && !watchers[r.id]) startWatching(r.id); });
+      return handle;
+    }
+
+    // ---- SEED: every batch-35 option, in the flow that starts from a row ----
+    function openSeedModal(t) {
+      const overlay = el("div", "modal-overlay");
+      const modal = el("div", "modal dd-modal");
+      modal.innerHTML = `<div class="modal-head"><h2>Seed ${esc(t.name)}</h2><button class="icon-btn" id="dd-x">&times;</button></div>`;
+      const body = el("div", "modal-body");
+
+      const mkField = (labelText) => { const c = el("div", "adm-fcol"); c.appendChild(el("label", "field-label", labelText)); return c; };
+      const row1 = el("div", "adm-frow");
+      const colP = mkField("Template");
+      const pSel = el("select", "input");
+      pSel.innerHTML = '<option value="field_services">Field Services</option><option value="recruitment_marketing">Recruitment Marketing</option>';
+      // TEMPLATE LOCK (batch 35): defaults to the tenant's own template and is
+      // disabled, with an explicit escape hatch that warns.
+      const ownTemplate = t.template === "recruitment_marketing" ? "recruitment_marketing" : "field_services";
+      pSel.value = ownTemplate;
+      pSel.disabled = true;
+      colP.appendChild(pSel);
+      const unlock = el("label", "adm-uhelp cell-muted");
+      const unlockCb = el("input"); unlockCb.type = "checkbox";
+      unlock.appendChild(unlockCb);
+      unlock.appendChild(document.createTextNode(" Seed a different template anyway"));
+      colP.appendChild(unlock);
+      const warn = el("p", "cell-muted adm-uhelp dd-warn hidden", "Seeding a template the tenant doesn't use creates records in modules it may not show.");
+      colP.appendChild(warn);
+      unlockCb.onchange = () => { pSel.disabled = !unlockCb.checked; warn.classList.toggle("hidden", !unlockCb.checked); if (!unlockCb.checked) pSel.value = ownTemplate; paintEstimate(); };
+      row1.appendChild(colP);
+
+      const colV = mkField("Volume");
+      const vSel = el("select", "input");
+      vSel.innerHTML = '<option value="small">Small (\u00d71)</option><option value="medium">Medium (\u00d72)</option><option value="large">Large (\u00d74)</option>';
+      colV.appendChild(vSel);
+      row1.appendChild(colV);
+
+      const colW = mkField("Time window");
+      const wSel = el("select", "input");
+      wSel.innerHTML = '<option value="30">Last 30 days</option><option value="90" selected>Last 90 days</option><option value="365">Last 365 days</option>';
+      colW.appendChild(wSel);
+      row1.appendChild(colW);
+      body.appendChild(row1);
+
+      const sweepRow = el("label", "adm-uhelp cell-muted dd-sweep");
+      const sweepCb = el("input"); sweepCb.type = "checkbox"; sweepCb.checked = true;
+      sweepRow.appendChild(sweepCb);
+      sweepRow.appendChild(document.createTextNode(" Run the detector sweep when seeding finishes"));
+      body.appendChild(sweepRow);
+
+      const estimate = el("p", "cell-muted dd-estimate");
+      body.appendChild(estimate);
+      function paintEstimate() {
+        if (!caps) { estimate.textContent = ""; return; }
+        const c = caps[pSel.value] || {};
+        const mult = vSel.value === "large" ? 4 : vSel.value === "medium" ? 2 : 1;
+        const fixed = ["resources", "products", "multiVisit", "recurring"];
+        estimate.textContent = "This will create about: " + Object.keys(c).map((k) => `${fixed.indexOf(k) === -1 ? Math.round(c[k] * mult) : c[k]} ${k.replace(/([A-Z])/g, " $1").toLowerCase()}`).join(" \u00b7 ") + `, spread across ${wSel.value} days.`;
+      }
+      vSel.onchange = paintEstimate; wSel.onchange = paintEstimate; pSel.onchange = paintEstimate;
+      paintEstimate();
+
+      modal.appendChild(body);
+      const foot = el("div", "modal-foot");
+      const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+      const go = el("button", "btn btn-primary btn-sm", "Seed this tenant");
+      foot.appendChild(cancel); foot.appendChild(go);
+      modal.appendChild(foot);
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+      modal.querySelector("#dd-x").onclick = close;
+      cancel.onclick = close;
+      go.onclick = async () => {
+        go.disabled = true; cancel.disabled = true;
+        try {
+          await App.api("/api/admin/portals/" + encodeURIComponent(t.id) + "/demo-data/seed", {
+            method: "POST",
+            body: JSON.stringify({
+              profile: pSel.value, confirm: t.name, runSweep: sweepCb.checked,
+              volume: vSel.value, windowDays: Number(wSel.value), allowTemplateMismatch: unlockCb.checked,
+            }),
+          });
+          close();
+          startWatching(t.id);
+        } catch (e) {
+          go.disabled = false; cancel.disabled = false;
+          toast(e.message || "Seeding couldn't start", true);
+        }
+      };
+    }
+
+    // ---- WIPE: the batch-35 danger zone, scoped to this row ----
+    function openWipeModal(t) {
+      const overlay = el("div", "modal-overlay");
+      // The batch-35 danger treatment, verbatim: house modal + red-hairline
+      // warning block + typed-name confirmation.
+      const modal = el("div", "modal adm-del-modal dd-modal");
+      modal.innerHTML = `<div class="modal-head"><h2>Wipe ${esc(t.name)}</h2><button class="icon-btn" id="dd-wx">&times;</button></div>`;
+      const body = el("div", "modal-body adm-del-body");
+      body.appendChild(el("div", "adm-del-warn", `Removes every row this tool created for ${esc(t.name)} \u2014 and nothing else. Anything you made by hand stays.`));
+      body.appendChild(el("label", "field-label", "Type the tenant's name to confirm"));
+      const inp = el("input", "input adm-del-input");
+      inp.placeholder = t.name;
+      body.appendChild(inp);
+      modal.appendChild(body);
+      const foot = el("div", "modal-foot adm-del-actions");
+      const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+      const go = el("button", "btn btn-danger btn-sm", "Wipe seeded data");
+      foot.appendChild(cancel); foot.appendChild(go);
+      modal.appendChild(foot);
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+      modal.querySelector("#dd-wx").onclick = close;
+      cancel.onclick = close;
+      go.onclick = async () => {
+        go.disabled = true;
+        try {
+          const r = await App.api("/api/admin/portals/" + encodeURIComponent(t.id) + "/demo-data/wipe", { method: "POST", body: JSON.stringify({ confirm: inp.value }) });
+          close();
+          toast(`Removed ${r.removed} row(s) from ${r.runs} run(s)`);
+          load();
+        } catch (e) { go.disabled = false; toast(e.message || "Wipe failed", true); }
+      };
+    }
+
+    // ---- PLAIN LANGUAGE for the ledger's internal entity names ----
+    const COUNT_WORDS = {
+      record: "records", contact: "contacts", user: "users", resource: "resources",
+      callSession: "calls", emailLog: "emails", notification: "notifications",
+      feedbackTicket: "feedback tickets", workOrderVisit: "work-order visits",
+      automation: "automations", suggestion: "suggestions", survey: "surveys",
+      emailTemplate: "email templates", dashboard: "dashboards",
     };
-    wipeBtn.onclick = async () => {
-      busy(true); setStatus("Wiping\u2026", "working");
-      try {
-        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/demo-data/wipe", { method: "POST", body: JSON.stringify({ confirm: confirmInp.value }) });
-        setStatus(`Removed ${r.removed} row(s) from ${r.runs} run(s).`, "ok");
-        toast("Seeded data wiped");
-        confirmInp.value = "";
-        loadFor(tSel.value);
-      } catch (e) { setStatus(e.message || "Wipe failed.", "bad"); toast(e.message || "Wipe failed", true); }
-      busy(false);
-    };
+    const VOLUME_WORDS = { small: "Small", medium: "Medium", large: "Large" };
+
+    /** The run summary, in words rather than a raw dump. */
+    function resultBlock(run) {
+      const wrap = el("div", "card dd-result");
+      if (!run) return wrap;
+      const counts = run.counts || {};
+      const when = new Date(run.completedAt || run.createdAt);
+      const bits = [
+        when.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+        templateLabel(run.profile),
+        VOLUME_WORDS[String(counts.__volume || "").toLowerCase()] || counts.__volume || null,
+        counts.__windowDays ? `${counts.__windowDays} days` : null,
+      ].filter(Boolean);
+      const head = el("p", "dd-result-head");
+      head.textContent = (run.status === "failed" ? "Attempted " : "Seeded ") + bits.join(" \u00b7 ");
+      wrap.appendChild(head);
+      if (run.status === "failed" && run.error) {
+        const why = el("p", "cell-muted dd-result-why");
+        why.textContent = run.error;
+        wrap.appendChild(why);
+      }
+      const named = Object.keys(counts)
+        .filter((k) => k.indexOf("__") !== 0 && Number(counts[k]) > 0)
+        .sort((a2, b2) => Number(counts[b2]) - Number(counts[a2]))
+        .map((k) => `${counts[k]} ${COUNT_WORDS[k] || k.replace(/([A-Z])/g, " $1").toLowerCase()}`);
+      if (named.length) {
+        const list = el("p", "cell-muted dd-result-counts");
+        list.textContent = named.join(" \u00b7 ");
+        wrap.appendChild(list);
+      } else if (run.status !== "failed") {
+        wrap.appendChild(el("p", "cell-muted dd-result-counts", "Nothing was created."));
+      }
+      return wrap;
+    }
+
+    // ---- LIVE RUNS: the row says "seeding" because a RUN EXISTS and is
+    // advancing, never merely because a button was pressed. If the run never
+    // starts, the row goes back to how it was and the error is shown.
+    const watchers = {};   // tenantId -> interval id
+    function stopWatch(id) { if (watchers[id]) { clearInterval(watchers[id]); delete watchers[id]; } }
+
+    function startWatching(tenantId) {
+      stopWatch(tenantId);
+      let misses = 0;
+      const tick = async () => {
+        let data;
+        try { data = await App.api("/api/admin/demo-tenants"); }
+        catch (e) { if (++misses > 5) { stopWatch(tenantId); load(); } return; }
+        misses = 0;
+        const fresh = (data.tenants || []).find((x) => x.id === tenantId);
+        rows = data.tenants || [];
+        if (!fresh) { stopWatch(tenantId); paint(); return; }
+        if (fresh.activeRun) { paint(); return; }          // still running: redraw progress
+        stopWatch(tenantId);
+        paint();
+        const last = fresh.lastRun;
+        if (last && last.status === "failed") toast(last.error || "Seeding failed", true);
+        else if (last && last.status === "complete") toast("Demo data seeded");
+      };
+      watchers[tenantId] = setInterval(tick, 2000);
+      void tick();
+    }
+
+    App.adminDemoData = { reload: load, _rows: () => rows };
+    load();
   }
 
-  /** Tool 2 — the detector sweep. Its own tool: it reads a tenant's real data
-   *  and has nothing to do with demo seeding (seeding merely offers to run it
-   *  as a final step). */
   function renderSweepTool(parent) {
     const sec = el("section", "tool-card card");
     sec.appendChild(el("h3", "tool-h", "Detector sweep"));

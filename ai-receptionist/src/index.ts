@@ -206,6 +206,15 @@ async function main(): Promise<void> {
   // drops orphans hourly. Failures are logged, never thrown.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { reconcileSearchIndex } = require("./services/searchIndexService");
+  // DEMO SEED RUNS: a restart used to leave a run "running" forever. Reap on
+  // boot, then hourly. The threshold is measured from the run's heartbeat, so an
+  // actively-advancing seed is never killed by its own cleanup.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { reapStaleDemoRuns } = require("./services/demoSeeder");
+  void reapStaleDemoRuns().catch((e: Error) => logger.error(`[seeder] boot reap failed: ${e.message}`));
+  const demoRunTimer = setInterval(() => {
+    void reapStaleDemoRuns().catch((e: Error) => logger.error(`[seeder] reap tick failed: ${e.message}`));
+  }, 60 * 60_000);
   const searchIndexTimer = setInterval(() => {
     void reconcileSearchIndex().catch((e: Error) => logger.error(`[search-index] reconcile tick failed: ${e.message}`));
   }, 60 * 60_000);

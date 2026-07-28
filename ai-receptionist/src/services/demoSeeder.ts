@@ -384,6 +384,34 @@ async function seedFieldServices(tenantId: string, r: () => number, led: Ledger,
 }
 
 // ------------------------------------------------------------------- runner
+/**
+ * Mark a run failed WITHOUT touching its ids: a partial seed must remain
+ * exactly wipeable. Used by the seeder's own error path and by the stale sweep.
+ */
+export async function failDemoRun(runId: string, reason: string): Promise<void> {
+  try {
+    await db.demoSeedRun.update({
+      where: { id: runId },
+      data: { status: "failed", error: String(reason || "Seeding failed").slice(0, 500), completedAt: new Date() },
+    });
+  } catch { /* the row may already be gone */ }
+}
+
+/**
+ * Reap runs that stopped advancing. Threshold is measured from the HEARTBEAT,
+ * not from the start, so a legitimately long Large seed is never killed by its
+ * own cleanup — only a run that has written nothing for the window is reaped.
+ */
+export async function reapStaleDemoRuns(staleMinutes = 10): Promise<number> {
+  const cutoff = new Date(Date.now() - staleMinutes * 60_000);
+  const stuck = await db.demoSeedRun.findMany({
+    where: { status: "running", OR: [{ heartbeatAt: { lt: cutoff } }, { heartbeatAt: null, startedAt: { lt: cutoff } }] },
+    select: { id: true },
+  });
+  for (const r of stuck) await failDemoRun(r.id, "Interrupted — the process stopped before this run finished. Anything it created can still be wiped.");
+  return stuck.length;
+}
+
 export async function seedDemoData(tenantId: string, opts: SeedOptions): Promise<SeedResult> {
   assertAllowed();
   const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { id: true, name: true } });
@@ -395,7 +423,10 @@ export async function seedDemoData(tenantId: string, opts: SeedOptions): Promise
   const t0 = Date.now();
   // The ledger row is created UP FRONT and updated as the run proceeds, so an
   // interrupted seed still knows exactly what it made and Wipe stays exact.
-  const runRow = await db.demoSeedRun.create({ data: { tenantId, profile: opts.profile, seed: String(opts.seed || "clarity-demo"), counts: {}, ids: [] } });
+  const runRow = await db.demoSeedRun.create({ data: {
+    tenantId, profile: opts.profile, seed: String(opts.seed || "clarity-demo"), counts: {}, ids: [],
+    status: "running", startedAt: new Date(), heartbeatAt: new Date(),
+  } });
   const runId = runRow.id;
   logger.info(`[seeder] seeding "${tenant.name}" with the ${opts.profile} profile (seed "${seed}")`);
   // REAL USERS FIRST: notifications are per-recipient, so a tenant with nobody
@@ -408,7 +439,9 @@ export async function seedDemoData(tenantId: string, opts: SeedOptions): Promise
   const windowDays = WINDOWS.includes(Number(opts.windowDays)) ? Number(opts.windowDays) : 90;
   notes.push(`volume ${vol.label} (\u00d7${vol.mult}) over a ${windowDays}-day window`);
   const onProgress = async (done: number, total: number, stepName: string) => {
-    try { await db.demoSeedRun.update({ where: { id: runId }, data: { ids: led.ids, counts: { ...led.counts, __progress: { done, total, step: stepName } } } }); }
+    // Each progress write is also a HEARTBEAT: an advancing run can never be
+    // reaped by the stale sweep, however long it legitimately takes.
+    try { await db.demoSeedRun.update({ where: { id: runId }, data: { ids: led.ids, heartbeatAt: new Date(), counts: { ...led.counts, __progress: { done, total, step: stepName } } } }); }
     catch { /* progress is a courtesy, never a failure mode */ }
   };
   if (opts.profile === "field_services") await seedFieldServices(tenantId, r, led, notes, { mult: vol.mult, windowDays, onProgress, skipHidden: true });
@@ -418,7 +451,10 @@ export async function seedDemoData(tenantId: string, opts: SeedOptions): Promise
   }
   // REAL EVENTS: drive genuine producer paths so the bell fills organically.
   const fired = await ev.seedRealEvents(tenantId, users, led, notes, opts.actingUserId || null);
-  const run = await db.demoSeedRun.update({ where: { id: runId }, data: { counts: { ...led.counts, __deterministic: led.deterministic, __producers: fired, __volume: vol.label, __windowDays: windowDays }, ids: led.ids } });
+  const run = await db.demoSeedRun.update({ where: { id: runId }, data: {
+    counts: { ...led.counts, __deterministic: led.deterministic, __producers: fired, __volume: vol.label, __windowDays: windowDays },
+    ids: led.ids, status: "complete", completedAt: new Date(), heartbeatAt: new Date(), error: null,
+  } });
   // Age the tenant past the unused-module floor — ONLY because this run's
   // ledger exists (see ageSeededTenant's guard), and recorded on that run.
   await ev.ageSeededTenant(tenantId, run.id);
@@ -469,7 +505,10 @@ export async function wipeDemoData(tenantId: string, runId?: string | null): Pro
 
 export async function listDemoRuns(tenantId: string): Promise<any[]> {
   const rows = await db.demoSeedRun.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" }, take: 5 });
-  return rows.map((r2: any) => ({ id: r2.id, profile: r2.profile, seed: r2.seed, counts: r2.counts, createdAt: r2.createdAt, wipedAt: r2.wipedAt }));
+  return rows.map((r2: any) => ({
+    id: r2.id, profile: r2.profile, seed: r2.seed, counts: r2.counts, createdAt: r2.createdAt, wipedAt: r2.wipedAt,
+    status: r2.status || null, startedAt: r2.startedAt || null, completedAt: r2.completedAt || null, error: r2.error || null,
+  }));
 }
 
 export const DEMO_PROFILE_CAPS = { field_services: FS_CAPS };

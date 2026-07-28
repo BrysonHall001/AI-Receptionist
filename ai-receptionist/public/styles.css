@@ -1769,6 +1769,18 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .adm-demo-row .adm-ai-right { padding-top: 20px; flex: 1 1 200px; min-width: 180px; }
 .adm-demo-row .adm-ai-desc { font-size: var(--text-xs); }
 @media (max-width: 860px) { .adm-step2 { grid-template-columns: 1fr; } }
+/* Demo data: the tenants table is the interface; the options live in a modal. */
+.dd-table-host { margin-top: var(--sp-3); }
+.dd-progress { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-xs); }
+.dd-row-clickable { cursor: pointer; }
+.dd-detail-row td { padding: 0 var(--sp-3) var(--sp-3); }
+.dd-result { padding: var(--sp-3); margin: 0; box-shadow: none; }
+.dd-result-head { margin: 0 0 var(--sp-1); font-weight: var(--heading-weight); }
+.dd-result-why, .dd-result-counts { margin: 0; font-size: var(--text-sm); }
+.dd-modal .adm-frow { margin-bottom: var(--sp-3); }
+.dd-sweep { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.dd-estimate { margin: 0; }
+.dd-warn { color: var(--warn, var(--ink-faint)); }
 /* GLOBAL SEARCH — the top-bar input and its anchored results panel. Built from
    house tokens: the shared .search-input, .card elevation, .field-label section
    headers, and the batch-38 row density. */

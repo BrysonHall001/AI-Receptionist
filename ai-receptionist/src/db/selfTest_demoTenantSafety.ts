@@ -267,34 +267,51 @@ async function main() {
   await sleep(200);
   // Tools tab
   await sleep(600);
-  w.App.state._devtoolsHint = { section: "demodata" };   // Demo Data is its own tab since the hub-polish batch
+  w.App.state._devtoolsHint = { section: "tools" };   // Tools is top-level; Demo Data is its default SUB-tab (demo-tooling batch)
   w.location.hash = "#/admin/devtools"; w.dispatchEvent(new w.Event("hashchange"));
   await until(() => w.document.querySelector(".tool-card"), 9000);
-  await until(() => { const sel = w.document.querySelector(".tool-card select") as any; return sel && sel.options.length > 0; }, 8000);
+  await until(() => w.document.querySelector(".dd-table-host table tbody tr"), 9000);
   const toolTitles = $$(".tool-card .tool-h").map((h: any) => h.textContent);
-  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]),
-    `the DEMO DATA tab holds its own tool (${toolTitles.join(" \u00b7 ")}); the detector sweep lives under Tools`);
-  const tSel = w.document.querySelector(".tool-card select") as any;
-  const optNames = Array.from(tSel.options).map((o: any) => o.textContent);
-  check(optNames.every((n: string) => n.indexOf("dts-live") === -1 && n.indexOf("dts-real") === -1) && optNames.some((n: string) => n.indexOf("dts-banner") !== -1),
-    `LAYER 1: the selector lists ONLY demo tenants (${optNames.length} options, no real ones)`);
-  const labels = $$(".tool-card .field-label").map((l: any) => l.textContent);
-  check(labels.indexOf("Tenant") !== -1 && labels.indexOf("Template") !== -1 && labels.indexOf("Volume") !== -1 && labels.indexOf("Time window") !== -1,
-    `panel labels: ${labels.join(" \u00b7 ")}`);
-  const pSel = $$(".tool-card select")[1];
-  check(pSel.disabled === true && /Locked to this tenant/.test(w.document.body.textContent), "TEMPLATE LOCK: the template follows the tenant and is locked");
-  const unlockBtn = $$(".tool-lockrow .btn").pop();
-  unlockBtn.click(); await sleep(150);
-  check(pSel.disabled === false && /skipped, not created/.test(w.document.body.textContent), "\u2026the escape hatch unlocks it and warns that unused modules are skipped");
-  const danger = w.document.querySelector(".tool-danger") as any;
-  check(!!danger.querySelector(".tool-confirm") && !!danger.querySelector(".btn-danger") && !w.document.querySelector(".tool-setup .tool-confirm"),
-    "DANGER ZONE holds the typed confirmation and Wipe, separated from the setup controls");
-  const seedBtn = w.document.querySelector(".tool-actions .btn") as any;
-  check(seedBtn.className.indexOf("btn-primary") !== -1 && danger.querySelector(".btn-danger").className.indexOf("btn-danger") !== -1,
-    "button weights: Seed is the house primary, Wipe the house destructive");
-  w.App.state._devtoolsHint = { section: "tools" };
-  w.location.hash = "#/admin/portals"; w.dispatchEvent(new w.Event("hashchange")); await sleep(400);
-  w.location.hash = "#/admin/devtools"; w.dispatchEvent(new w.Event("hashchange"));
+  const subTabs = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
+  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]) && subTabs.indexOf("Demo Data") === 0 && subTabs.indexOf("Detector Sweep") === 1,
+    `the TOOLS tab opens on its Demo Data sub-tab (${toolTitles.join(" \u00b7 ")}), with Detector Sweep beside it (${subTabs.join(" \u00b7 ")})`);
+  // LAYER 1 moved from a dropdown to the TABLE: only demo tenants get a row.
+  const tenantCells = $$(".dd-table-host tbody tr .adm-rowname").map((c: any) => c.textContent);
+  check(tenantCells.every((n: string) => n.indexOf("dts-live") === -1 && n.indexOf("dts-real") === -1) && tenantCells.some((n: string) => n.indexOf("dts-banner") !== -1),
+    `LAYER 1: the TABLE lists ONLY demo tenants (${tenantCells.length} rows, no real ones)`);
+  // The options moved into the per-row seed modal; the labels moved with them.
+  const bannerRow = $$(".dd-table-host tbody tr").find((tr: any) => /dts-banner/.test(tr.textContent));
+  (bannerRow.querySelector(".btn-primary") as any).click();
+  await until(() => w.document.querySelector(".dd-modal"));
+  const ddModal = w.document.querySelector(".dd-modal") as any;
+  const labels = Array.from(ddModal.querySelectorAll(".field-label")).map((l: any) => l.textContent);
+  check(labels.indexOf("Template") !== -1 && labels.indexOf("Volume") !== -1 && labels.indexOf("Time window") !== -1,
+    `seed-modal labels: ${labels.join(" \u00b7 ")}`);
+  const pSel = Array.from(ddModal.querySelectorAll("select"))[0] as any;
+  check(pSel.disabled === true, "TEMPLATE LOCK: the template follows the tenant and is locked");
+  (ddModal.querySelector(".adm-uhelp input") as any).click();
+  await sleep(150);
+  check(pSel.disabled === false && !ddModal.querySelector(".dd-warn").classList.contains("hidden"),
+    "\u2026the escape hatch unlocks it and warns about the mismatch");
+  check((ddModal.querySelector(".modal-foot .btn-primary") as any).className.indexOf("btn-primary") !== -1,
+    "button weights: Seed is the house primary");
+  (ddModal.querySelector("#dd-x") as any).click();
+  await sleep(150);
+  // DANGER ZONE moved into the per-row wipe modal, treatment intact.
+  const seededRow = $$(".dd-table-host tbody tr").find((tr: any) => !!tr.querySelector(".btn-danger"));
+  if (seededRow) {
+    (seededRow.querySelector(".btn-danger") as any).click();
+    await until(() => w.document.querySelector(".adm-del-modal"));
+    const wipeModal = w.document.querySelector(".adm-del-modal") as any;
+    check(!!wipeModal.querySelector(".adm-del-warn") && !!wipeModal.querySelector(".adm-del-input") && !!wipeModal.querySelector(".btn-danger"),
+      "DANGER ZONE: the wipe modal keeps the red-hairline block, the typed confirmation and the house destructive button");
+    (wipeModal.querySelector("#dd-wx") as any).click();
+    await sleep(150);
+  } else {
+    check(false, "fixture: no seeded row to open the wipe flow from");
+  }
+  const sweepSubTab = $$(".settings-tabs .settings-tab").find((b: any) => /Detector Sweep/.test(b.textContent));
+  if (sweepSubTab) (sweepSubTab as any).click();
   await until(() => $$(".tool-card").some((c: any) => /Detector sweep/.test(c.textContent)), 9000);
   const sweepCard = $$(".tool-card").find((c: any) => /Detector sweep/.test(c.textContent));
   check(!!sweepCard && !!sweepCard.querySelector(".btn-ghost"), "\u2026and under Tools, the sweep's button is the house ghost");

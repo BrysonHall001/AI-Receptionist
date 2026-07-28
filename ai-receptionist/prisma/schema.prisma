@@ -632,6 +632,14 @@ model DemoSeedRun {
   ids       Json      @default("[]")   // [{ model, id }] in creation order
   createdAt DateTime  @default(now())
   wipedAt   DateTime?
+  // DURABLE RUN STATE (demo-tooling batch). Completion used to be inferred from
+  // a marker inside , which meant a run could only be observed through
+  // the HTTP response that started it. These make it observable and restartable.
+  status      String    @default("complete")   // "running" | "complete" | "failed"
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  error       String?
+  heartbeatAt DateTime?                        // an advancing run is never reaped
 
   @@index([tenantId, createdAt])
 }

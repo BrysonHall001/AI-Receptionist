@@ -679,6 +679,44 @@ adminRouter.get("/health/rollup/:check", async (req: Request, res: Response) => 
   } catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
+// DEMO TENANTS — the demo-data table's single source. One query per model,
+// never N+1 from the client.
+adminRouter.get("/demo-tenants", async (_req: Request, res: Response) => {
+  try {
+    const tenants = await (prisma as any).tenant.findMany({
+      where: { isDemo: true },
+      select: { id: true, name: true, templateKey: true, status: true },
+      orderBy: { name: "asc" },
+    });
+    const ids = tenants.map((t: any) => t.id);
+    const runs = ids.length
+      ? await (prisma as any).demoSeedRun.findMany({ where: { tenantId: { in: ids } }, orderBy: { createdAt: "desc" } })
+      : [];
+    const byTenant = new Map<string, any[]>();
+    for (const r of runs) {
+      if (!byTenant.has(r.tenantId)) byTenant.set(r.tenantId, []);
+      byTenant.get(r.tenantId)!.push(r);
+    }
+    const out = tenants.map((t: any) => {
+      const mine = byTenant.get(t.id) || [];
+      // The SAME rule the wipe path uses: un-wiped runs with ledgered ids.
+      const live = mine.filter((r: any) => !r.wipedAt && Array.isArray(r.ids) && r.ids.length > 0);
+      const last = mine[0] || null;
+      const lastDone = mine.find((r: any) => !r.wipedAt && Array.isArray(r.ids) && r.ids.length > 0) || null;
+      const rowsSeeded = live.reduce((n: number, r: any) => n + (Array.isArray(r.ids) ? r.ids.length : 0), 0);
+      return {
+        id: t.id, name: t.name, template: t.templateKey || null, status: t.status || null,
+        seeded: live.length > 0,
+        rowsSeeded,
+        lastSeededAt: lastDone ? lastDone.createdAt : null,
+        activeRun: mine.find((r: any) => r.status === "running") || null,
+        lastRun: last ? { id: last.id, profile: last.profile, counts: last.counts, createdAt: last.createdAt, status: last.status || null, error: last.error || null, wipedAt: last.wipedAt } : null,
+      };
+    });
+    res.json({ tenants: out });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 // MODULE VISIBILITY from the hub. Hiding a module is now only possible here
 // (the portal has no such control, and hidden modules are absent from its
 // Modules & Fields entirely), so this endpoint owns BOTH directions. It writes
@@ -769,18 +807,19 @@ adminRouter.post("/portals/:id/demo-data/seed", async (req: Request, res: Respon
     windowDays: Number(b2.windowDays || 90),
     allowTemplateMismatch: b2.allowTemplateMismatch === true,
   };
-  const vol = VOLUMES[seedOpts.volume] || VOLUMES.small;
-  if (vol.async) {
-    // LARGE runs in the BACKGROUND: the request returns at once with the run
-    // id and the panel polls for progress, so a long seed can never time out a
-    // request. Its ledger is written as it goes, so even an interrupted run is
-    // exactly wipeable.
-    void seedDemoData(tenantId, seedOpts).catch((err: Error) => logger.error(`[seeder] background run failed: ${err.message}`));
-    res.json({ started: true, async: true, message: "Seeding started \u2014 this one runs in the background." });
-    return;
-  }
-  try { res.json(await seedDemoData(tenantId, seedOpts)); }
-  catch (err) { res.status(400).json({ error: (err as Error).message }); }
+  // EVERY volume runs in the background now. The ledger row is written before
+  // any data, so the caller can watch a real run rather than an optimistic
+  // guess, and a failure marks the row (keeping its ids, so it stays wipeable).
+  try {
+    void seedDemoData(tenantId, seedOpts).catch(async (err: Error) => {
+      logger.error(`[seeder] background run failed: ${err.message}`);
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { failDemoRun } = require("../services/demoSeeder");
+      const last = await (prisma as any).demoSeedRun.findFirst({ where: { tenantId, status: "running" }, orderBy: { createdAt: "desc" }, select: { id: true } });
+      if (last) await failDemoRun(last.id, err.message);
+    });
+    res.json({ started: true, async: true, message: "Seeding started." });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 adminRouter.post("/portals/:id/demo-data/wipe", async (req: Request, res: Response) => {
   const tenantId = String(req.params.id || "");

@@ -148,15 +148,19 @@ async function main() {
   (suspModal.querySelector(".btn-ghost") as any).click(); await sleep(200);
   // devtools tabs
   await sleep(400);
-  w2.App.state._devtoolsHint = { section: "demodata" };
+  w2.App.state._devtoolsHint = { section: "tools" };   // Demo Data is a SUB-tab of Tools since the demo-tooling batch
   w2.location.hash = "#/admin/devtools"; w2.dispatchEvent(new w2.Event("hashchange"));
   await until(() => $2(".settings-tile"), 9000);
   const tiles = $$2(".settings-tile").map((t: any) => t.textContent.trim());
-  check(JSON.stringify(tiles) === JSON.stringify(["History", "System Health", "Demo Data", "Tools"]),
-    `Developer Tools now has four top-level tabs: ${tiles.join(" \u00b7 ")}`);
-  await until(() => $2(".tool-card"), 9000);
+  check(JSON.stringify(tiles) === JSON.stringify(["History", "System Health", "Tools"]),
+    `Developer Tools has three top-level tabs, with Demo Data a sub-tab of Tools (${tiles.join(" \u00b7 ")})`);
+  await until(() => $2(".settings-tabs .settings-tab"), 9000);
+  await until(() => $2(".tool-card .tool-h"), 9000);
+  await sleep(300);
   const toolTitles = $$2(".tool-card .tool-h").map((h: any) => h.textContent);
-  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]), `\u2026Demo Data opens straight into its own tool (${toolTitles.join(", ")})`);
+  const hpSubs = $$2(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
+  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]) && hpSubs.indexOf("Demo Data") === 0,
+    `\u2026Tools opens on Demo Data (${toolTitles.join(", ")}; sub-tabs ${hpSubs.join(" \u00b7 ")})`);
   freeze(w2); await sleep(150);
 
   // ---------- (4) SUSPENSION, enforced ----------
