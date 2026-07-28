@@ -167,8 +167,8 @@ async function main() {
     `\u2026and the sentences match the page's exactly \u2014 e.g. \u201c${parts[0].finding.slice(0, 52)}\u2026\u201d`);
   const btnsInsideOwnCard = cards.every((c: any) => Array.from(c.querySelectorAll(".btn")).every((b: any) => c.contains(b)));
   check(btnsInsideOwnCard, "every button is a descendant of its own card \u2014 no button can belong to a neighbour (defect 2)");
-  check(/\.notif-sug--compact \.notif-sug-title \{ -webkit-line-clamp: 2; \}/.test(css) && /\.notif-sug--compact \.notif-sug-actions \{ margin-top: var\(--sp-2\); \}/.test(css),
-    "the compact variant clamps the finding to 2 lines and keeps a --sp-2 stack gap above the buttons");
+  check(/\.notif-sug--compact \.notif-sug-title \{ -webkit-line-clamp: 2; line-height: 1\.3; \}/.test(css) && /\.notif-sug--compact \.notif-sug-actions \{ margin-top: var\(--sp-2\); \}/.test(css),
+    "the compact variant clamps the finding to 2 lines and keeps its stack gap above the buttons (tightened in the notif-polish batch)");
   report.push(`  panel card (compact): .card.notif-sug.notif-sug--compact \u2014 --sp-3 padding, --sp-2 internal gap, content-driven height, finding clamped to 2 lines (house sibling: .card everywhere else, same padding token)`);
   report.push(`  panel card actions: .btn.btn-primary.btn-sm + .btn.btn-ghost.btn-sm, --sp-3 apart, --sp-2 above (house sibling: any list-page action pair)`);
   freeze(w); await sleep(150);
@@ -212,8 +212,8 @@ async function main() {
     `SUGGESTIONS are compact rows: ${srows.length} rows, each with finding + evidence + two inline buttons`);
   check(srows.every((r: any) => (r.querySelector(".notif-sugrow-title").getAttribute("title") || "").length > 10),
     "\u2026with the full finding available on hover when a row truncates");
-  check(/\.notif-sugrow-title \{ display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/.test(css),
-    "\u2026one line, ellipsis on overflow, never a mid-glyph cut");
+  check(/\.notif-sugrow-line \{[^}]*\}/.test(css) && /\.notif-sugrow-title \{[^}]*text-overflow: ellipsis[^}]*white-space: nowrap/.test(css),
+    "\u2026finding and evidence share one line, each ellipsised, never a mid-glyph cut (denser since notif-polish)");
   const verbs = srows.map((r: any) => (r.querySelector(".btn-primary") || { textContent: "" }).textContent);
   check(verbs.every((v: string) => v.length > 0), `\u2026each row carries its own verb inline: ${verbs.join(" / ")}`);
   // measured density: the compact row's markup vs the card's

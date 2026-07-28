@@ -102,12 +102,27 @@
     import_complete: S(`<path d="M8 2.6v6.8"${K}/><path d="m5.2 6.8 2.8 2.8 2.8-2.8"${K}/><path d="M2.8 11.4v1.4a.8.8 0 0 0 .8.8h8.8a.8.8 0 0 0 .8-.8v-1.4"${K}/>`),
     feedback_reply: S(`<path d="M13.4 10.2a1.2 1.2 0 0 1-1.2 1.2H5l-2.4 2.2V4a1.2 1.2 0 0 1 1.2-1.2h8.4A1.2 1.2 0 0 1 13.4 4Z"${K}/>`),
     call_missed_or_failed: S(`<path d="M3 2.6h2.6l1.2 3-1.6 1.2a9.4 9.4 0 0 0 3.9 3.9l1.2-1.6 3 1.2v2.6a1 1 0 0 1-1.1 1A11.9 11.9 0 0 1 2 3.7a1 1 0 0 1 1-1.1Z"${K}/><path d="M10.4 2.6h3.2v3.2"${K}/><path d="m13.6 2.6-3.4 3.4"${K}/>`),
-    // Emergent layer 2: the suggestions card head — a lightbulb.
+    // Emergent layer 2: the suggestions card head — a lightbulb (still the
+    // generic/fallback mark; each detector type now has its own glyph below).
     suggestion: S(`<path d="M6.1 11.2a4 4 0 1 1 3.8 0v1.1a.9.9 0 0 1-.9.9H7a.9.9 0 0 1-.9-.9v-1.1Z"${K}/><path d="M6.6 11.2h2.8"${K}/>`),
     __default: S(`<circle cx="8" cy="8" r="5.4"${K}/><path d="M8 5.2v3.4M8 10.6v.2"${K}/>`),
   };
+  // PER-SUGGESTION-TYPE glyphs. Three are new registry entries at the registry's
+  // own 16-box + stroke weight; the fourth deliberately REUSES the lightning
+  // bolt, because that is already this app's mark for automation.
+  const SUGGESTION_ICONS = {
+    // an eye with a slash — "this isn't being looked at"
+    unused_module: S(`<path d="M1.6 8S3.9 3.9 8 3.9c1 0 1.9.3 2.7.7M14.4 8s-1 1.8-2.8 3"${K}/><circle cx="8" cy="8" r="1.9"${K}/><path d="m2.6 2.6 10.8 10.8"${K}/>`),
+    // a tag — "these words want a field of their own"
+    repeated_phrase_field: S(`<path d="M7.4 2.4H3.2a.8.8 0 0 0-.8.8v4.2c0 .2.1.4.2.6l5.6 5.6a.8.8 0 0 0 1.2 0l4.2-4.2a.8.8 0 0 0 0-1.2L8 2.6a.8.8 0 0 0-.6-.2Z"${K}/><path d="M5.3 5.3v.01"${K}/>`),
+    // the automation bolt, reused verbatim from automation_failed
+    manual_message_pattern: S(`<path d="M8.8 1.8 3.6 9h3.5l-.9 5.2L11.4 7H7.9l.9-5.2Z"${K}/>`),
+    // a clock — "this has been sitting here"
+    stage_stall: S(`<circle cx="8" cy="8" r="5.6"${K}/><path d="M8 4.8V8l2.2 1.6"${K}/>`),
+  };
+  function forSuggestionType(type) { return SUGGESTION_ICONS[type] || NOTIF_ICONS.suggestion; }
   function forNotificationCategory(key) { return NOTIF_ICONS[key] || NOTIF_ICONS.__default; }
   function forTemplateKey(key) { return TEMPLATE_ICONS[key] || TEMPLATE_ICONS.__default; }
 
-  App.icons = { forModuleKey, forNavHref, keyForNavHref, forTemplateKey, forNotificationCategory, BELL_ICON, NOTIF_ICONS, PAGE_ICONS, MODULE_ICONS, CUSTOM_DEFAULT, TEMPLATE_ICONS, AI_STATE_ICONS };
+  App.icons = { forModuleKey, forNavHref, keyForNavHref, forTemplateKey, forNotificationCategory, forSuggestionType, SUGGESTION_ICONS, BELL_ICON, NOTIF_ICONS, PAGE_ICONS, MODULE_ICONS, CUSTOM_DEFAULT, TEMPLATE_ICONS, AI_STATE_ICONS };
 })();

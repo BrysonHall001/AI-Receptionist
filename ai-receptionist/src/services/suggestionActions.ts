@@ -52,7 +52,11 @@ const ACTIONS: ActionDef[] = [
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { createField } = require("./fieldService");
       const f = await createField(ctx.tenantId, { label: String(p.label).trim(), type: String(p.type || "text") } as any, String(p.moduleKey));
-      return { ok: true, outcome: `Added “${f.label}” to ${p.moduleLabel || p.moduleKey}`, link: "#/settings/fields" };
+      // The link names the MODULE the field landed on and the field itself —
+      // without these, Modules & Fields fell back to whatever module the user
+      // last had open (the reported bug: a field added to Estimates opened on
+      // Contacts).
+      return { ok: true, outcome: `Added “${f.label}” to ${p.moduleLabel || p.moduleKey}`, link: `#/settings/fields?module=${encodeURIComponent(String(p.moduleKey))}&field=${encodeURIComponent(f.id)}` };
     },
   },
   {
@@ -68,10 +72,14 @@ const ACTIONS: ActionDef[] = [
       const { applyFlowDefinition } = require("./flowProvisioningService");
       const preset = getPreset(String(p.presetKey));
       if (!preset) throw new Error("That recipe no longer exists.");
-      await applyFlowDefinition(ctx.tenantId, preset.definition, ctx.userId);
+      const applied = await applyFlowDefinition(ctx.tenantId, preset.definition, ctx.userId);
       // applyFlowDefinition creates flows DISABLED — accepting a suggestion can
       // never switch automation on, only put a draft in front of the owner.
-      return { ok: true, outcome: `Created the draft “${preset.definition.name}” — switched off until you say so`, link: "#/automations" };
+      // NOTE: there is no per-flow editor route in this app, and this batch did
+      // not invent one. The link lands on Automations and brings the new draft
+      // into view instead.
+      const newId = applied && applied.automation && applied.automation.id;
+      return { ok: true, outcome: `Created the draft “${preset.definition.name}” — switched off until you say so`, link: newId ? `#/automations?flow=${encodeURIComponent(String(newId))}` : "#/automations" };
     },
   },
   {

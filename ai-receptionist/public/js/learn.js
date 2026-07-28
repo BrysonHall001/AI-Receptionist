@@ -67,7 +67,7 @@
             { steps: [
               "Open the bell and switch to the Suggestions tab.",
               "Each card says what it noticed, and — in plain numbers — what it looked at, so you can judge it: \u201cBased on 14 work orders in the last 30 days.\u201d",
-              "Press the button to accept it and the change happens exactly as if you'd made it yourself: a new field appears in Modules & Fields, an automation arrives as a switched-OFF draft for you to read, a module tucks itself out of the nav (and can be brought straight back).",
+              "Press the button to accept it and the change happens exactly as if you'd made it yourself: a new field appears in Modules & Fields, an automation arrives as a switched-OFF draft for you to read, a module tucks itself out of the nav. Nothing is deleted when a module is tucked away \u2014 its records are kept, and whoever manages your account can switch it back on.",
               "Press Dismiss if it's not for you. You get an Undo for a moment, and every dismissed suggestion stays listed in your settings — nothing is ever hidden from you quietly.",
             ] },
             { p: "Suggestions wait until you deal with them, then step aside. A dismissed one stays away for a couple of months before it can come back, and only if the pattern is still true." },

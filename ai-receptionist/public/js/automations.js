@@ -1318,6 +1318,13 @@
 
   function workflowCard(a, pairInfo) {
     const card = el("div", "card auto-card");
+    if (App.routeQuery && App.routeQuery.flow && String(App.routeQuery.flow) === String(a.id)) {
+      card.classList.add("auto-card--flash");
+      setTimeout(() => {
+        try { card.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) { /* no layout in tests */ }
+        setTimeout(() => card.classList.remove("auto-card--flash"), 2200);
+      }, 60);
+    }
     const top = el("div", "auto-card-head");
 
     // Small "Branch pair" tag on the name line when this card is part of a pair.

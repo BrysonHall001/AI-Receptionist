@@ -2937,7 +2937,19 @@
     const types = await App.portalApi("/api/record-types");
     // Owner page-lock: don't offer field editing for a record type whose page is locked
     // (its data area is blocked for the tenant). Empty on the master hub -> no exclusion.
-    const visibleTypes = types.filter((t) => !App.isRecordTypeLocked(t.key));
+    // A module hidden from this tenant's nav is not managed here at all: it is
+    // absent for EVERY role (owner decision — not greyed, not struck through).
+    // Re-enabling lives in the hub's tenant-detail Modules panel.
+    const navHidden = ((App.navConfig && App.navConfig().hidden) || []);
+    const isModuleHidden = (key) => {
+      const href = App.recordTypeHref ? App.recordTypeHref(key) : null;
+      return !!href && navHidden.indexOf(href) !== -1;
+    };
+    const visibleTypes = types.filter((t) => !App.isRecordTypeLocked(t.key) && !isModuleHidden(t.key));
+    // A deep link wins over the remembered module — accepting a suggestion must
+    // land on the module the field was actually added to.
+    const dl = (App.routeQuery && App.routeQuery.module) ? String(App.routeQuery.module) : "";
+    if (dl && visibleTypes.some((t) => t.key === dl)) App.state.fieldsType = dl;
     if (!App.state.fieldsType || !visibleTypes.some((t) => t.key === App.state.fieldsType)) {
       App.state.fieldsType = (visibleTypes[0] && visibleTypes[0].key) || "contact";
     }
@@ -3348,6 +3360,14 @@
   function fieldRow(f, canEdit, allFields, recordTypeKey, sections, currentSectionId) {
     const row = el("div", "field-row");
     row.dataset.id = f.id;
+    // Deep link from an accepted suggestion: show the field it just created.
+    if (App.routeQuery && App.routeQuery.field && String(App.routeQuery.field) === String(f.id)) {
+      row.classList.add("field-row--flash");
+      setTimeout(() => {
+        try { row.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) { /* no layout in tests */ }
+        setTimeout(() => row.classList.remove("field-row--flash"), 2200);
+      }, 60);
+    }
     if (canEdit) row.draggable = true;
 
     const left = el("div", "field-row-left");
@@ -5987,7 +6007,12 @@
         <p class="cell-muted settings-intro">Your modules, the fields on each, and which views a module offers. Drag a field type onto a section to add it.</p>`;
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
-      const visible = (types || []).filter((t) => !App.isRecordTypeLocked(t.key)).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      // A module switched off for this tenant is ABSENT from Modules & Fields —
+      // for every role, owners included (owner decision). It stays in the data
+      // untouched, and is switched back on from the tenant's page in the hub.
+      const visible = (types || [])
+        .filter((t) => !App.isRecordTypeLocked(t.key) && !App.isNavHidden(App.recordTypeHref(t.key)))
+        .slice().sort((a, b) => (a.order || 0) - (b.order || 0));
       if (!App.state.fieldsType || !visible.some((t) => t.key === App.state.fieldsType)) {
         App.state.fieldsType = (visible[0] && visible[0].key) || "contact";
       }

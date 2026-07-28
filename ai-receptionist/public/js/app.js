@@ -785,6 +785,17 @@
       gear.innerHTML = "&#9881;";
       pagesRight.appendChild(gear);
       pagesRow.appendChild(pagesRight);
+      // Measured, not assumed: offsetHeight - clientHeight IS the horizontal
+      // scrollbar's height in this browser (0 where scrollbars overlay).
+      const alignPagesRight = () => {
+        try {
+          const gutter = Math.max(0, pagesScroll.offsetHeight - pagesScroll.clientHeight);
+          pagesRight.style.setProperty("margin-bottom", gutter ? gutter + "px" : "");
+        } catch (e) { /* alignment is cosmetic; never let it break the shell */ }
+      };
+      alignPagesRight();
+      setTimeout(alignPagesRight, 0);          // after first layout
+      window.addEventListener("resize", alignPagesRight);
 
       main.appendChild(pagesRow);
     } else {
@@ -862,6 +873,7 @@
 
   function route() {
     const { path, query } = parseHash();
+    App.routeQuery = query;   // deep-link params (?module=…&field=…) for renderers
     const me = App.state.me;
 
     // Keep the cached identity in step with the live role. Without this, App.state.me

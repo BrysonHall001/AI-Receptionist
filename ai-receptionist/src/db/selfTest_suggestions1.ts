@@ -247,10 +247,17 @@ async function main() {
     "CARD anatomy: type label \u00b7 finding \u00b7 transparency line \u00b7 action row (primary verb + Dismiss)");
   check(card.querySelector(".btn-primary").textContent === "Add the field", `\u2026the primary button carries the concrete verb (“${card.querySelector(".btn-primary").textContent}”)`);
   card.querySelector(".btn-primary").click();
-  await until(() => card.querySelector(".notif-sug-conf"));
-  check(!!card.querySelector(".notif-sug-conf") && /Added/.test(card.textContent) && !!(await db.fieldDef.findFirst({ where: { tenantId: t1.id, key: "ui_field" } })),
-    "ACCEPT: loading \u2192 in-place confirmation, and the field really exists");
-  const info = $$(".notif-sug").find((c: any) => /sit in/.test(c.textContent));
+  await until(async () => !!(await db.fieldDef.findFirst({ where: { tenantId: t1.id, key: "ui_field" } })), 8000).catch(() => null);
+  await sleep(600);
+  check(!!(await db.fieldDef.findFirst({ where: { tenantId: t1.id, key: "ui_field" } })),
+    "ACCEPT: the service call still happens and the field really exists (the panel now navigates to it \u2014 notif-polish batch)");
+  // The panel closed on navigation (notif-polish) — reopen it for the next leg.
+  await until(() => $(".notif-bell"));
+  ($(".notif-bell") as any).click();
+  await until(() => $(".notif-panel"));
+  const reTab = await until(() => $$(".notif-panel .seg-btn").find((b: any) => /Suggestions/.test(b.textContent)));
+  (reTab as any).click();
+  const info = (await until(() => $$(".notif-sug").find((c: any) => /sit in/.test(c.textContent)), 9000)) as any;
   info.querySelector(".notif-sug-dismiss").click();
   await until(() => !$$(".notif-sug").some((c: any) => /sit in/.test(c.textContent)));
   check(!$$(".notif-sug").some((c: any) => /sit in/.test(c.textContent)) && (await db.suggestion.findFirst({ where: { tenantId: t1.id, dedupeKey: "ui:2" } })).status === "dismissed",
@@ -274,9 +281,10 @@ async function main() {
   await sleep(700);
   const viewTab = $$(".settings-tabs .settings-tab").find((b: any) => /Suggestions/.test(b.textContent));
   viewTab.click();
-  await until(() => $(".notif-sug-hist") || $(".notif-sug-row"), 8000);
-  check($$(".notif-sug-hist").length > 0 && /Earlier/.test(w.document.body.textContent),
-    `FULL PAGE: the Suggestions tab lists history (${$$(".notif-sug-hist").length} earlier item(s)) under an “Earlier” heading`);
+  await until(() => $(".notif-sug-row") || $(".empty"), 8000);
+  check($$(".notif-sug-hist").length === 0 && !/Earlier/.test(w.document.body.textContent)
+    && (await db.suggestion.count({ where: { tenantId: t1.id, status: { in: ["accepted", "dismissed"] } } })) > 0,
+    "FULL PAGE: the Earlier history block is gone (owner decision, notif-polish) while accepted/dismissed statuses remain in the data");
   w.location.hash = "#/settings/account"; w.dispatchEvent(new w.Event("hashchange"));
   await until(() => /Show suggestions/.test(w.document.body.textContent || ""));
   await sleep(500);

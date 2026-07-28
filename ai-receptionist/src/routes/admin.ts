@@ -104,6 +104,7 @@ adminRouter.get("/portals/:id/modules", async (req: Request, res: Response) => {
     for (const t of types as any[]) {
       const fields = await listFields(tenantId, t.key);
       const href = recordTypeHref(t.key); // the SAME nav-href convention the portal uses
+      const recordCount = await (prisma as any).record.count({ where: { tenantId, recordTypeId: t.id, deletedAt: null } }).catch(() => 0);
       modules.push({
         key: t.key,
         label: t.label,
@@ -111,6 +112,9 @@ adminRouter.get("/portals/:id/modules", async (req: Request, res: Response) => {
         href,
         system: t.system === true,
         visible: !navHidden.includes(href) && !locked.includes(href),
+        navHidden: navHidden.includes(href),   // switched off here (reversible from this panel)
+        pageLocked: locked.includes(href),     // locked under Pages — a different control
+        recordCount,                           // what the hide confirmation quotes
         fields: (fields as any[]).map((f: any) => String(f.label)),
       });
     }
@@ -673,6 +677,44 @@ adminRouter.get("/health/rollup/:check", async (req: Request, res: Response) => 
     rows.sort((a, b) => String(a.tenant || "\uffff").localeCompare(String(b.tenant || "\uffff")));
     res.json({ rows, total: total || {}, window: win });
   } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+// MODULE VISIBILITY from the hub. Hiding a module is now only possible here
+// (the portal has no such control, and hidden modules are absent from its
+// Modules & Fields entirely), so this endpoint owns BOTH directions. It writes
+// through setTenantNav — the same service the create wizard and the portal's
+// own nav editor use — and audits either way.
+adminRouter.post("/portals/:id/modules/:key/visibility", async (req: Request, res: Response) => {
+  const tenantId = String(req.params.id || "");
+  const key = String(req.params.key || "");
+  const visible = (req.body ?? {}).visible === true;
+  const p: any = await getPortal(tenantId);
+  if (!p) { res.status(404).json({ error: "Tenant not found" }); return; }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { listRecordTypes, recordTypeHref } = require("../services/recordTypeService");
+    const types = await listRecordTypes(tenantId);
+    const type = (types as any[]).find((t: any) => t.key === key);
+    if (!type) { res.status(404).json({ error: "That module doesn't exist in this tenant." }); return; }
+    const href = recordTypeHref(key);
+    const nav = ((p.labels || {}).nav || {}) as any;
+    const hidden: string[] = Array.isArray(nav.hidden) ? nav.hidden.slice() : [];
+    const at = hidden.indexOf(href);
+    if (visible && at !== -1) hidden.splice(at, 1);
+    if (!visible && at === -1) hidden.push(href);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { setTenantNav } = require("../services/portalService");
+    await setTenantNav(tenantId, { order: Array.isArray(nav.order) ? nav.order : [], hidden, labels: nav.labels || {} });
+    {
+      const u: any = (req as any).realUser || (req as any).user;
+      audit({
+        tenantId, actorType: "user", actorId: u?.id ?? null, actorLabel: (u && (u.name || u.email)) || "Hub user", actorRole: u?.role ?? null,
+        action: AUDIT_ACTIONS.HUB_SETTINGS_UPDATE, subjectType: "module", subjectId: key, subjectLabel: type.labelPlural || type.label,
+        meta: { visible, href, via: "hub-modules-panel" },
+      });
+    }
+    res.json({ ok: true, key, visible });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
 // TENANT DELETION. Typed name confirmation is enforced HERE (the service is

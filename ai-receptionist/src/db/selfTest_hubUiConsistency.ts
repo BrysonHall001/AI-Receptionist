@@ -70,10 +70,15 @@ async function main() {
     "the carousel exists ONCE (theme.js) and the hub owns no copy of it");
   check(/mountThemePicker,/.test(themeSrc) && /App\.theme\.mountThemePicker\(/.test(admSrc) && /mountThemePicker\(\{/.test(themeSrc),
     "both hosts mount the SAME shared picker (portal Appearance + hub wizard)");
-  // PRIME DIRECTIVE: the hub gained a READ and nothing else
+  // REPINNED (notif-polish): the hub now owns module visibility, because the
+  // portal can no longer hide OR show a module. The guarantee that replaced the
+  // old read-only one: exactly two routes, and the write goes through the SAME
+  // setTenantNav service the create wizard uses — no parallel writer.
   const hubModuleRoutes = adminRouteSrc.match(/adminRouter\.(get|post|patch|put|delete)\("\/portals\/:id\/modules/g) || [];
-  check(hubModuleRoutes.length === 1 && hubModuleRoutes[0].includes(".get("),
-    "NO module-mutating hub route exists — the modules endpoint is GET-only (source-level assertion)");
+  const hubModuleWrite = /adminRouter\.post\("\/portals\/:id\/modules\/:key\/visibility"/.test(adminRouteSrc);
+  const usesSharedWriter = /setTenantNav\(tenantId, \{/.test(adminRouteSrc);
+  check(hubModuleRoutes.length === 2 && hubModuleWrite && usesSharedWriter,
+    `the hub has exactly ${hubModuleRoutes.length} module routes — the read plus a visibility write through setTenantNav (no parallel writer)`);
   const modHandler = adminRouteSrc.slice(adminRouteSrc.indexOf("/portals/:id/modules"), adminRouteSrc.indexOf("/portals/:id/modules") + 1800);
   check(!/\.(update|updateMany|create|createMany|delete|deleteMany|upsert)\(/.test(modHandler) && !/setRecordTypeLabels|setModuleViews|updatePortal/.test(modHandler),
     "\u2026and the handler only READS — no write call of any kind inside it");
@@ -170,11 +175,11 @@ async function main() {
   check(!!saveBtn && Array.from(pageRows).every((r: any) => r.querySelector("input").disabled === false), "\u2026its checkboxes stay EDITABLE and the existing Save button is still there");
   const modRows = D$(".adm-mp-row");
   const inds = D$(".adm-mp-ind");
-  check(modRows.length > 0 && inds.length === modRows.length && inds.every((i: any) => i.disabled === true && i.getAttribute("aria-disabled") === "true" && !i.onclick && !i.onchange),
-    `RIGHT: ${modRows.length} module rows whose indicator is NON-INTERACTIVE (disabled, no handlers)`);
+  check(modRows.length > 0 && inds.length === modRows.length && inds.some((i: any) => !i.disabled && typeof i.onchange === "function"),
+    `RIGHT: ${modRows.length} module rows, their switches now LIVE (the hub owns module visibility since the notif-polish batch)`);
   check(modRows.every((r: any) => !!r.querySelector(".adm-row-ic") && !!r.querySelector(".adm-rowname") && !!r.querySelector(".adm-r3-chips")),
     "\u2026each row: icon + indicator + title + description + chips column");
-  check(/Modules are managed inside the portal/.test(panels[1].textContent || ""), "\u2026and the quiet footer line points at the portal");
+  check(/Switch a module on or off for this tenant here/.test(panels[1].textContent || ""), "\u2026and the footer line says what the panel now does");
   // page-save regression: toggling still PATCHes and sticks
   const firstCb = pageRows[0].querySelector("input") as any;
   firstCb.checked = false; firstCb.onchange();

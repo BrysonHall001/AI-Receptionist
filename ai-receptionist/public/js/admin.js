@@ -804,7 +804,7 @@
     const listHost = el("div", "adm-mp-list");
     listHost.innerHTML = `<div class="cell-muted">Loading modules…</div>`;
     card.appendChild(listHost);
-    const foot = el("p", "cell-muted adm-mp-foot", "Modules are managed inside the portal — Settings → Modules & Fields.");
+    const foot = el("p", "cell-muted adm-mp-foot", "Switch a module on or off for this tenant here. Its fields, layout and stages are managed inside the portal, under Settings → Modules & Fields.");
     card.appendChild(foot);
     panel.appendChild(card);
     App.api("/api/admin/portals/" + encodeURIComponent(portal.id) + "/modules").then((r) => {
@@ -817,11 +817,42 @@
         if (icSvg) head.appendChild(el("span", "adm-row-ic", icSvg));
         // READ-ONLY indicator: the same checkbox VOCABULARY the create page
         // uses, rendered disabled — no handler, no hover affordance.
+        // The switch is LIVE now (it was a disabled indicator): hiding a module
+        // is only possible here, and so is turning it back on. A page LOCK is a
+        // different control on the Pages panel, so those stay read-only.
         const ind = el("input");
-        ind.type = "checkbox"; ind.checked = m.visible !== false; ind.disabled = true;
-        ind.setAttribute("aria-disabled", "true");
-        ind.setAttribute("aria-label", (m.labelPlural || m.label) + (m.visible === false ? " (hidden)" : " (visible)"));
+        ind.type = "checkbox"; ind.checked = m.visible !== false;
         ind.classList.add("adm-mp-ind");
+        if (m.pageLocked) {
+          ind.disabled = true;
+          ind.setAttribute("aria-disabled", "true");
+          ind.title = "This page is locked under Pages — unlock it there first.";
+        }
+        ind.setAttribute("aria-label", (m.labelPlural || m.label) + (m.visible === false ? " (hidden)" : " (visible)"));
+        if (!m.pageLocked) {
+          ind.onchange = async () => {
+            const turningOn = ind.checked;
+            const name = m.labelPlural || m.label;
+            const n = Number(m.recordCount || 0);
+            const message = turningOn
+              ? `Turn ${name} back on for ${portal.name}? It reappears in the portal with everything it held.`
+              : (n > 0
+                ? `Hide ${name} from ${portal.name}? ${name} holds ${n} record${n === 1 ? "" : "s"} — they stay intact and reappear if you switch it back on.`
+                : `Hide ${name} from ${portal.name}? It holds no records yet, and you can switch it back on here at any time.`);
+            const ok = await App.ui.confirmModal({ title: turningOn ? "Turn this module on?" : "Hide this module?", message, confirmText: turningOn ? "Turn it on" : "Hide it" });
+            if (!ok) { ind.checked = !turningOn; return; }
+            ind.disabled = true;
+            try {
+              await App.api(`/api/admin/portals/${encodeURIComponent(portal.id)}/modules/${encodeURIComponent(m.key)}/visibility`, { method: "POST", body: JSON.stringify({ visible: turningOn }) });
+              m.visible = turningOn;
+              toast(turningOn ? `${name} is on` : `${name} is hidden`);
+            } catch (e) {
+              ind.checked = !turningOn;
+              toast(e.message || "That didn't work", true);
+            }
+            ind.disabled = false;
+          };
+        }
         head.appendChild(ind);
         head.appendChild(el("span", "adm-rowname", esc(m.labelPlural || m.label)));
         row.appendChild(head);

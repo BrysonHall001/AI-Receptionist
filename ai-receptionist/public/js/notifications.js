@@ -123,7 +123,7 @@
     const compact = !!(opts && opts.compact);   // panel density; the page uses the roomy default
     const card = el("div", "card notif-sug" + (compact ? " notif-sug--compact" : ""));
     const head = el("div", "notif-sug-head cell-muted");
-    head.appendChild(el("span", "notif-sug-ic", App.icons ? App.icons.forNotificationCategory("suggestion") : ""));
+    head.appendChild(el("span", "notif-sug-ic", App.icons ? App.icons.forSuggestionType(sg.type) : ""));
     head.appendChild(el("span", null, esc(TYPE_LABELS[sg.type] || "Suggestion")));
     card.appendChild(head);
     card.appendChild(el("div", "notif-sug-title", esc(sg.title)));
@@ -146,13 +146,14 @@
         card.classList.add("notif-sug-done");
         const conf = el("div", "notif-sug-conf");
         conf.appendChild(el("span", null, esc(r.outcome || "Done")));
-        if (r.link) {
-          const a2 = el("a", "btn btn-ghost btn-sm", "Open");
-          a2.href = r.link;
-          a2.onclick = () => { closePanel(false); };
-          conf.appendChild(a2);
-        }
         card.appendChild(conf);
+        if (r.link) {
+          // The house toast confirms, then we take them there — no second click
+          // to find what they just agreed to.
+          App.util.toast(r.outcome || "Done");
+          closePanel(false);
+          App.go(r.link);
+        }
         suggestionCount = Math.max(0, suggestionCount - 1);
       } catch (e) {
         primary.disabled = false; dismiss.disabled = false; primary.textContent = label;
@@ -412,13 +413,9 @@
       content.innerHTML = "";
       const host2 = el("div");
       content.appendChild(host2);
-      let open, acc, dis;
+      let open;
       try {
-        [open, acc, dis] = await Promise.all([
-          App.portalApi("/api/suggestions?status=pending&limit=100"),
-          App.portalApi("/api/suggestions?status=accepted&limit=50"),
-          App.portalApi("/api/suggestions?status=dismissed&limit=50"),
-        ]);
+        open = await App.portalApi("/api/suggestions?status=pending&limit=100");
       } catch (e) { content.appendChild(el("div", "empty", "<h3>Couldn't load suggestions</h3><p>Try again in a moment.</p>")); return; }
       suggestionCount = (open && open.openCount) || 0;
       const rows = ((open && open.items) || []).map((s) => ({
@@ -434,9 +431,9 @@
         emptyHtml: `<div class="empty"><h3>Nothing right now</h3><p>Clarity will post suggestions here as it spots patterns in your own data.</p></div>`,
         columns: [
           { key: "typeLabel", label: "Kind", cellClass: "notif-col-kind", get: (r) => r.typeLabel,
-            render: (r) => `<span class="notif-col-kindwrap"><span class="notif-row-ic">${App.icons ? App.icons.forNotificationCategory("suggestion") : ""}</span>${esc(r.typeLabel)}</span>` },
+            render: (r) => `<span class="notif-col-kindwrap"><span class="notif-row-ic">${App.icons ? App.icons.forSuggestionType(r.type) : ""}</span>${esc(r.typeLabel)}</span>` },
           { key: "title", label: "What Clarity noticed", get: (r) => `${r.title} ${r.why || ""}`.trim(),
-            render: (r) => `<span class="notif-sugrow-title" title="${esc(r.title)}">${esc(r.title)}</span>${r.why ? `<span class="notif-sugrow-why cell-muted">${esc(r.why)}</span>` : ""}` },
+            render: (r) => `<span class="notif-sugrow-line"><span class="notif-sugrow-title" title="${esc(r.title)}">${esc(r.title)}</span>${r.why ? `<span class="notif-sugrow-why cell-muted" title="${esc(r.why)}">${esc(r.why)}</span>` : ""}</span>` },
           { key: "actions", label: "", sortable: false, cellClass: "notif-col-actions", get: () => "", render: (r) => `<span class="notif-sugrow-actions"><button type="button" class="btn btn-primary btn-sm" data-sug-accept="${esc(r.id)}">${esc(r.verb)}</button><button type="button" class="btn btn-ghost btn-sm" data-sug-dismiss="${esc(r.id)}">Dismiss</button></span>` },
         ],
       });
@@ -454,6 +451,7 @@
           if (acceptBtn) {
             const r2 = await App.portalApi("/api/suggestions/" + encodeURIComponent(id) + "/accept", { method: "POST" });
             App.util.toast(r2.outcome || "Done");
+            if (r2.link) { App.go(r2.link); return; }   // land on what was just created
           } else {
             await App.portalApi("/api/suggestions/" + encodeURIComponent(id) + "/dismiss", { method: "POST" });
             App.util.toast("Suggestion dismissed", false, { label: "Undo", onClick: async () => { try { await App.portalApi("/api/suggestions/" + encodeURIComponent(id) + "/undismiss", { method: "POST" }); void paintSuggestions(); } catch (e) { /* */ } } });
@@ -461,21 +459,6 @@
         } catch (e) { App.util.toast(e.message || "That didn't work", true); btn.disabled = false; return; }
         void paintSuggestions();
       };
-      // History of what's already been decided, beneath the open list.
-      const history = (((acc && acc.items) || []).concat(((dis && dis.items) || [])))
-        .sort((a2, b2) => new Date(b2.actedAt || b2.createdAt) - new Date(a2.actedAt || a2.createdAt));
-      if (history.length) {
-        content.appendChild(el("div", "field-label notif-hist-h", "Earlier"));
-        const card = el("div", "card notif-hist-card");
-        history.forEach((s) => {
-          const row = el("div", "notif-sug-hist");
-          row.appendChild(el("span", null, esc(s.title)));
-          row.appendChild(el("span", "cell-muted", esc(s.status === "accepted" ? (s.outcome || "Accepted") : "Dismissed")));
-          row.appendChild(el("span", "cell-muted", esc(s.actedAt ? new Date(s.actedAt).toLocaleDateString() : "")));
-          card.appendChild(row);
-        });
-        content.appendChild(card);
-      }
     }
 
     const paintTab = () => (tab === "activity" ? paintActivity() : paintSuggestions());
