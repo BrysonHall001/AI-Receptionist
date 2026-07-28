@@ -195,6 +195,47 @@
     paint();
   }
 
+  /**
+   * THE segmented control (one implementation, two consumers).
+   *  segments: [{ key, label, icon }] — 2 or 3
+   *  scale:    "md" (the AI receptionist control) | "sm" (75%, the demo pill)
+   * The active fill's positional geometry (the diagonal trapezoid on the end
+   * segments, the inset pill in a middle one) comes from the same three
+   * .seg-fill-* classes; --seg-count drives its width and offset so a
+   * two-segment control needs no second stylesheet.
+   */
+  function segmentedControl(opts) {
+    const segments = opts.segments || [];
+    const scale = opts.scale === "sm" ? "sm" : "md";
+    const seg = el("div", "adm-seg" + (scale === "sm" ? " adm-seg--sm" : ""));
+    seg.setAttribute("role", "tablist");
+    seg.style.setProperty("--seg-count", String(segments.length));
+    const fill = el("span", "adm-seg-fill seg-fill-left");
+    seg.appendChild(fill);
+    const btns = {};
+    const fillClassFor = (index) => {
+      if (index === 0) return "seg-fill-left";
+      if (index === segments.length - 1) return "seg-fill-right";
+      return "seg-fill-mid";
+    };
+    function setValue(key, fire) {
+      const i = Math.max(0, segments.findIndex((sgm) => sgm.key === key));
+      Object.keys(btns).forEach((k) => btns[k].classList.toggle("active", k === key));
+      fill.className = "adm-seg-fill " + fillClassFor(i);
+      fill.style.setProperty("--seg-index", String(i));
+      if (fire && opts.onChange) opts.onChange(key);
+    }
+    segments.forEach((sgm) => {
+      const b = el("button", "adm-seg-btn", `<span class="adm-seg-lab">${esc(sgm.label)}</span><span class="adm-seg-rule"></span><span class="adm-seg-ic">${sgm.icon || ""}</span>`);
+      b.type = "button";
+      b.onclick = () => setValue(sgm.key, true);
+      btns[sgm.key] = b;
+      seg.appendChild(b);
+    });
+    setValue(opts.value || (segments[0] && segments[0].key), false);
+    return { el: seg, buttons: btns, set: (k) => setValue(k, false), get: () => Object.keys(btns).find((k) => btns[k].classList.contains("active")) };
+  }
+
   async function renderPortals() {
     loading();
     const portals = await App.api("/api/admin/portals");
@@ -224,7 +265,12 @@
       // Actions column trimmed to a single compact square arrow that enters the portal.
       // Users, Page access, and Suspend/Activate now live in the row-detail panel (row click).
       { key: "actions", label: "Tenant actions", filterable: false, get: () => "",
-        render: (p) => `<span class="adm-actions-cell"><button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button><button class="btn btn-danger btn-sm t-delbtn adm-t2" data-act="delete" data-id="${esc(p.id)}" title="Delete tenant" aria-label="Delete tenant">\u2715</button></span>` },
+        render: (p) => {
+          const suspended = p.status !== "ACTIVE";
+          return `<span class="adm-actions-cell"><button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button>`
+            + `<button class="btn btn-ghost btn-sm t-suspbtn adm-t2" data-act="suspend" data-id="${esc(p.id)}" title="${suspended ? "Resume tenant" : "Suspend tenant"}" aria-label="${suspended ? "Resume tenant" : "Suspend tenant"}">${suspended ? "\u25b6" : "\u23f8"}</button>`
+            + `<button class="btn btn-danger btn-sm t-delbtn adm-t2" data-act="delete" data-id="${esc(p.id)}" title="Delete tenant" aria-label="Delete tenant">\u2715</button></span>`;
+        } },
     ];
 
     // Persist the Tenants column layout per-browser, mirroring how portal.js persists
@@ -234,7 +280,10 @@
     const TENANTS_COLS_KEY = "admincols:tenants";
     const loadTenantsLayout = () => { try { return JSON.parse(localStorage.getItem(TENANTS_COLS_KEY) || "{}") || {}; } catch (e) { return {}; } };
     const saveTenantsLayout = (layout) => { try { localStorage.setItem(TENANTS_COLS_KEY, JSON.stringify(layout || {})); } catch (e) {} };
-    const tenantsDefaultKeys = columns.map((c) => c.key);
+    // The Demo column is filterable but NOT shown by default: the pill beside
+    // the tenant name is the signal, and a whole column for one word was noise.
+    // It remains available in the column manager and in the Filters rail.
+    const tenantsDefaultKeys = columns.map((c) => c.key).filter((k) => k !== "demo");
     let tenantsLayout = loadTenantsLayout();
     // Apply the saved layout to the columns we mount with (like portal.js applies it
     // before mount) so there's no flash of the default layout before it settles.
@@ -273,7 +322,10 @@
       head.appendChild(title);
       if (shows("actions")) {
         const openWrap = el("div");
-        openWrap.innerHTML = `<span class="adm-actions-stack"><button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button><button class="btn btn-danger btn-sm t-delbtn adm-t2" data-act="delete" data-id="${esc(p.id)}" title="Delete tenant" aria-label="Delete tenant">\u2715</button></span>`;
+        const suspendedP = p.status !== "ACTIVE";
+        openWrap.innerHTML = `<span class="adm-actions-stack"><button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button>`
+          + `<button class="btn btn-ghost btn-sm t-suspbtn adm-t2" data-act="suspend" data-id="${esc(p.id)}" title="${suspendedP ? "Resume tenant" : "Suspend tenant"}" aria-label="${suspendedP ? "Resume tenant" : "Suspend tenant"}">${suspendedP ? "\u25b6" : "\u23f8"}</button>`
+          + `<button class="btn btn-danger btn-sm t-delbtn adm-t2" data-act="delete" data-id="${esc(p.id)}" title="Delete tenant" aria-label="Delete tenant">\u2715</button></span>`;
         head.appendChild(openWrap);
       }
       card.appendChild(head);
@@ -448,6 +500,7 @@
       if (!p) return;
       if (btn.getAttribute("data-act") === "open") return enterPortal(p);
       if (btn.getAttribute("data-act") === "delete") return confirmDeleteTenant(p, renderPortals);
+      if (btn.getAttribute("data-act") === "suspend") return confirmSuspendTenant(p, renderPortals);
     });
 
     view().innerHTML = "";
@@ -563,6 +616,57 @@
     back.onclick = (e) => { if (e.target === back) back.remove(); };
     document.body.appendChild(back);
     input.focus();
+  }
+
+  /** SUSPEND / RESUME. Suspending spells out what stops; resuming is a light
+   *  confirmation, because it only restores what already existed. */
+  function confirmSuspendTenant(p, onDone) {
+    const suspended = p.status !== "ACTIVE";
+    const back = el("div", "modal-overlay");
+    const card = el("div", "modal adm-susp-modal");
+    card.innerHTML = `<div class="modal-head"><h2>${suspended ? "Resume this tenant?" : "Suspend this tenant?"}</h2></div>`;
+    const body = el("div", "modal-body adm-susp-body");
+    if (suspended) {
+      body.appendChild(el("p", "cell-muted", esc(`“${p.name}” starts working again immediately: its people can sign in, the receptionist answers, scheduled work resumes, and its public links accept submissions again.`)));
+    } else {
+      body.appendChild(el("p", "cell-muted", esc(`While “${p.name}” is suspended:`)));
+      const ul = el("ul", "adm-susp-list");
+      [
+        "its people can't sign in \u2014 they see a short notice instead",
+        "the receptionist stops answering calls to its number",
+        "scheduled automations, reminders and repeat work don't run",
+        "its public links (estimates, surveys, forms) stop accepting submissions",
+        "nothing is deleted, and you can resume it at any time",
+      ].forEach((t) => ul.appendChild(el("li", null, esc(t))));
+      body.appendChild(ul);
+      body.appendChild(el("p", "cell-muted adm-susp-note", "You keep full access from here, including opening the portal to fix whatever caused this."));
+    }
+    card.appendChild(body);
+    const err = el("div", "adm-del-err");
+    err.style.setProperty("display", "none");
+    card.appendChild(err);
+    const row = el("div", "modal-actions adm-del-actions");
+    const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+    const go = el("button", suspended ? "btn btn-primary btn-sm" : "btn btn-danger btn-sm", suspended ? "Resume tenant" : "Suspend tenant");
+    cancel.onclick = () => back.remove();
+    go.onclick = async () => {
+      go.disabled = true; cancel.disabled = true;
+      try {
+        await App.api("/api/admin/portals/" + encodeURIComponent(p.id), { method: "PATCH", body: JSON.stringify({ status: suspended ? "ACTIVE" : "SUSPENDED" }) });
+        back.remove();
+        toast(suspended ? `${p.name} resumed` : `${p.name} suspended`);
+        if (onDone) onDone();
+      } catch (e) {
+        go.disabled = false; cancel.disabled = false;
+        err.textContent = e.message || "That didn't work.";
+        err.style.setProperty("display", "");
+      }
+    };
+    row.appendChild(cancel); row.appendChild(go);
+    card.appendChild(row);
+    back.appendChild(card);
+    back.onclick = (e) => { if (e.target === back) back.remove(); };
+    document.body.appendChild(back);
   }
 
   async function enterPortal(p) {
@@ -876,22 +980,40 @@
     const s2left = el("div", "adm-step2-left");
     const s2right = el("div", "adm-step2-right");
     s2cols.appendChild(s2left); s2cols.appendChild(s2right);
-    const demoWrap = el("div", "card adm-demo-card");
-    const demoRow = el("label", "adm-demo-row");
-    const demoSw = el("span", "switch");
-    const demoCb = el("input"); demoCb.type = "checkbox"; demoCb.id = "sp-isdemo";
-    demoCb.onchange = () => { draft.isDemo = demoCb.checked; };
-    demoSw.appendChild(demoCb); demoSw.appendChild(el("span", "switch-track"));
-    demoRow.appendChild(demoSw);
-    demoRow.appendChild(el("span", "adm-demo-label", "Mark as a demo tenant"));
-    demoWrap.appendChild(demoRow);
-    demoWrap.appendChild(el("p", "cell-muted adm-demo-cap", "Fills this tenant with obviously-fake data for testing; can be seeded and wiped from Developer Tools."));
-    s2right.appendChild(demoWrap);
+    // The demo control mirrors the AI receptionist zone: a field label, the
+    // segmented control, the vertical divider, and the caption centred against
+    // it — at 75% scale, and with no card around it.
+    const demoZone = el("div", "adm-demo-zone");
+    demoZone.innerHTML = `<label class="field-label">Demo tenant</label>`;
+    const demoRow = el("div", "adm-ai-row adm-demo-row");
+    const demoLeft = el("div", "adm-ai-left");
+    const demoSeg = segmentedControl({
+      scale: "sm",
+      segments: [
+        { key: "off", label: "Off", icon: (App.icons && App.icons.AI_STATE_ICONS && App.icons.AI_STATE_ICONS.OFF) || "" },
+        // The wrench reads as workshop/testing at 13px, where a tag reads as
+        // "label" — chosen from the module registry, not drawn for this batch.
+        { key: "demo", label: "Demo", icon: (App.icons && App.icons.forModuleKey && App.icons.forModuleKey("equipment")) || "" },
+      ],
+      value: "off",
+      onChange: (v) => { draft.isDemo = v === "demo"; },
+    });
+    demoLeft.appendChild(demoSeg.el);
+    demoRow.appendChild(demoLeft);
+    demoRow.appendChild(el("span", "adm-ai-div"));
+    const demoRight = el("div", "adm-ai-right");
+    demoRight.appendChild(el("p", "cell-muted adm-ai-desc", "Fills this tenant with obviously-fake data for testing; can be seeded and wiped from Developer Tools."));
+    demoRow.appendChild(demoRight);
+    demoZone.appendChild(demoRow);
+    s2right.appendChild(demoZone);
     const uForm = el("div"); uForm.classList.add("adm-uform");
+    // Step 1's exact anatomy: .adm-fcol columns (label above control, --sp-2
+    // between them) sitting side by side at the house form gap. Email keeps the
+    // house 260px input width; Role takes its natural width beside it.
     uForm.innerHTML = `
-      <div class="adm-t7"><label class="field-label">Email</label><input id="sp-user-email" class="input adm-t8" type="email" placeholder="teammate@company.com" /></div>
-      <div class="adm-t9"><label class="field-label">Role</label><select id="sp-user-role" class="input adm-t8"><option value="CLIENT_USER">Client user</option><option value="PORTAL_ADMIN">Portal admin</option></select></div>`;
-    const addUserBtn = el("button", "btn btn-ghost btn-sm", "+ Add to list");
+      <div class="adm-fcol adm-uform-email"><label class="field-label" for="sp-user-email">Email</label><input id="sp-user-email" class="input" type="email" placeholder="teammate@company.com" /></div>
+      <div class="adm-fcol adm-uform-role"><label class="field-label" for="sp-user-role">Role</label><select id="sp-user-role" class="input"><option value="CLIENT_USER">Client user</option><option value="PORTAL_ADMIN">Portal admin</option></select></div>`;
+    const addUserBtn = el("button", "btn btn-ghost btn-sm adm-uform-add", "+ Add to list");
     uForm.appendChild(addUserBtn);
     s2left.appendChild(uForm);
     const uList = el("div", "u-mt-10");
@@ -899,7 +1021,11 @@
     s2.appendChild(s2cols);
     function paintUsers() {
       uList.innerHTML = "";
-      if (!draft.users.length) { uList.appendChild(elNote("No users queued yet — that's fine, you can invite people later too.")); return; }
+      if (!draft.users.length) {
+        const note = el("p", "cell-muted adm-uhelp", "No users queued yet \u2014 that's fine, you can invite people later too.");
+        uList.appendChild(note);
+        return;
+      }
       draft.users.forEach((u, i) => {
         const row = el("div"); row.classList.add("adm-row-line");
         row.innerHTML = `<span class="u-flex-1">${esc(u.email)}</span><span class="pill adm-t10">${u.role === "PORTAL_ADMIN" ? "Portal admin" : "Client user"}</span>`;
@@ -1040,31 +1166,19 @@
     aiZone.innerHTML = `<label class="field-label">AI Receptionist</label>`;
     const aiRow = el("div", "adm-ai-row");
     const vWrap = el("div"); vWrap.classList.add("adm-featcol", "adm-ai-left");
-    const seg = el("div", "adm-seg");
-    seg.setAttribute("role", "tablist");
-    const SEG_STATES = [
-      ["OFF", "Off"],
-      ["WALKIE", "Standard"],
-      ["SMOOTH", "Premium"],
-    ];
-    const segBtns = {};
-    const segFill = el("span", "adm-seg-fill seg-fill-left"); // positional geometry class swaps per active column
-    seg.appendChild(segFill);
     const aiDesc = el("p", "cell-muted adm-ai-desc");
     function paintAiDesc() { aiDesc.textContent = AI_DESCS[draft.voiceMode || "OFF"]; }
-    const FILL_CLASS = { OFF: "seg-fill-left", WALKIE: "seg-fill-mid", SMOOTH: "seg-fill-right" };
-    function setAiMode(mode) {
-      draft.voiceMode = mode;
-      Object.keys(segBtns).forEach((m) => segBtns[m].classList.toggle("active", m === mode));
-      segFill.className = "adm-seg-fill " + FILL_CLASS[mode];
-      paintAiDesc(); updateStartSummary();
-    }
-    SEG_STATES.forEach(([mode, label]) => {
-      const icSvg = (App.icons && App.icons.AI_STATE_ICONS && App.icons.AI_STATE_ICONS[mode]) || "";
-      const b = el("button", "adm-seg-btn", `<span class="adm-seg-lab">${esc(label)}</span><span class="adm-seg-rule"></span><span class="adm-seg-ic">${icSvg}</span>`);
-      b.type = "button";
-      b.onclick = () => {
-        setAiMode(mode);
+    const aiIcon = (mode) => (App.icons && App.icons.AI_STATE_ICONS && App.icons.AI_STATE_ICONS[mode]) || "";
+    const aiSeg = segmentedControl({
+      segments: [
+        { key: "OFF", label: "Off", icon: aiIcon("OFF") },
+        { key: "WALKIE", label: "Standard", icon: aiIcon("WALKIE") },
+        { key: "SMOOTH", label: "Premium", icon: aiIcon("SMOOTH") },
+      ],
+      value: "OFF", // new tenants start off (unchanged default)
+      onChange: (mode) => {
+        draft.voiceMode = mode;
+        paintAiDesc(); updateStartSummary();
         // linkage: the AI side drives Calls (guarded — Calls' onchange then
         // sees _syncGuard and does not bounce back).
         if (!_syncGuard) {
@@ -1072,11 +1186,11 @@
           try { getLockedWiz.setPage("#/calls", mode !== "OFF"); } catch (e) { /* pre-mount */ }
           _syncGuard = false;
         }
-      };
-      segBtns[mode] = b;
-      seg.appendChild(b);
+      },
     });
-    segBtns.OFF.classList.add("active"); // new tenants start off (unchanged default)
+    const seg = aiSeg.el;
+    const segBtns = aiSeg.buttons;
+    function setAiMode(mode) { aiSeg.set(mode); draft.voiceMode = mode; paintAiDesc(); updateStartSummary(); }
     vWrap.appendChild(seg);
     aiRow.appendChild(vWrap);
     aiRow.appendChild(el("span", "adm-ai-div")); // the REQUIRED vertical divider
@@ -1578,7 +1692,8 @@
   const DEVTOOL_SECTIONS = [
     { key: "history", label: "History", render: renderHistorySection },
     { key: "health", label: "System Health", render: renderHealthSection }, // audit-fixes-health batch
-    { key: "tools", label: "Tools", render: renderToolsSection }, // demo-seeder batch, restructured: a tab of TOOLS
+    { key: "demodata", label: "Demo Data", render: (host) => { host.innerHTML = ""; const wrap = el("div", "tools-wrap"); host.appendChild(wrap); renderDemoDataTool(wrap); } },
+    { key: "tools", label: "Tools", render: renderToolsSection }, // sibling tools (currently the detector sweep)
     // future sections register here
   ];
 
@@ -1595,7 +1710,7 @@
     host.innerHTML = "";
     const wrap = el("div", "tools-wrap");
     host.appendChild(wrap);
-    renderDemoDataTool(wrap);
+    // Demo Data was promoted to its own top-level tab; Tools holds the rest.
     renderSweepTool(wrap);
   }
 

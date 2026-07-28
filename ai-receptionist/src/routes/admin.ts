@@ -183,6 +183,10 @@ adminRouter.get("/portals/:id/demo-flag", async (req: Request, res: Response) =>
 });
 
 adminRouter.patch("/portals/:id", async (req: Request, res: Response) => {
+  // Any status change takes effect at once (the suspension gate caches for a
+  // few seconds; a resumed tenant should not wait for it to expire).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  try { require("../services/tenantSuspensionService").forgetTenantStatus(String(req.params.id || "")); } catch { /* */ }
   try {
     // Whitelist updatable fields. requireEmail (the old identity rule) is no longer
     // accepted anywhere — it's hard-set true. businessType/greeting are dead and dropped.

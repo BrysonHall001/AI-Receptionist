@@ -245,12 +245,13 @@ async function main() {
   const demoRow = rowOf(banner.name);
   check(!!demoRow && !!demoRow.querySelector(".adm-demo-pill"), "the Demo pill marks a flagged tenant in the TABLE view (house .pill)");
   const heads = $$("table thead th").map((th: any) => th.textContent.replace(/[\u25be\u25bc\u25b4]/g, "").trim()).filter(Boolean);
-  check(heads.indexOf("Demo") !== -1 && heads.indexOf("Tenant actions") !== -1, `columns include a filterable Demo column and Tenant actions: ${heads.join(" \u00b7 ")}`);
+  check(heads.indexOf("Demo") === -1 && heads.indexOf("Tenant actions") !== -1,
+    `the Demo column is hidden by default (the pill carries it) and Tenant actions is present: ${heads.join(" \u00b7 ")}`);
   const pair = demoRow.querySelectorAll(".adm-actions-cell .btn");
   const cls = (b: any) => b.className.trim().split(/\s+/).filter((c: string) => c.indexOf("btn") === 0).join(".");
-  check(pair.length === 2 && cls(pair[0]) === "btn.btn-primary.btn-sm" && cls(pair[1]) === "btn.btn-danger.btn-sm",
-    `TENANT ACTIONS: two house buttons at identical size \u2014 .${cls(pair[0])} and .${cls(pair[1])}`);
-  report.push(`  tenant actions (table): .btn.btn-primary.btn-sm + .btn.btn-danger.btn-sm, --sp-2 apart (house sibling: any list-page button pair \u2014 identical class list, so identical computed box)`);
+  check(pair.length === 3 && cls(pair[0]) === "btn.btn-primary.btn-sm" && cls(pair[1]) === "btn.btn-ghost.btn-sm" && cls(pair[2]) === "btn.btn-danger.btn-sm",
+    `TENANT ACTIONS: three house buttons at identical size \u2014 .${cls(pair[0])} \u00b7 .${cls(pair[1])} \u00b7 .${cls(pair[2])} (suspend joined them in the hub-polish batch)`);
+  report.push(`  tenant actions (table): .btn.btn-primary.btn-sm + .btn.btn-ghost.btn-sm + .btn.btn-danger.btn-sm, --sp-2 apart (identical class lists, so identical computed boxes)`);
   // the delete dialog
   (demoRow.querySelector(".t-delbtn") as any).click();
   await until(() => w.document.querySelector(".adm-del-modal"));
@@ -266,13 +267,13 @@ async function main() {
   await sleep(200);
   // Tools tab
   await sleep(600);
-  w.App.state._devtoolsHint = { section: "tools" };
+  w.App.state._devtoolsHint = { section: "demodata" };   // Demo Data is its own tab since the hub-polish batch
   w.location.hash = "#/admin/devtools"; w.dispatchEvent(new w.Event("hashchange"));
   await until(() => w.document.querySelector(".tool-card"), 9000);
   await until(() => { const sel = w.document.querySelector(".tool-card select") as any; return sel && sel.options.length > 0; }, 8000);
   const toolTitles = $$(".tool-card .tool-h").map((h: any) => h.textContent);
-  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data", "Detector sweep"]),
-    `TOOLS tab holds two tools: ${toolTitles.join(" \u00b7 ")} (the sweep is no longer inside Demo data)`);
+  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]),
+    `the DEMO DATA tab holds its own tool (${toolTitles.join(" \u00b7 ")}); the detector sweep lives under Tools`);
   const tSel = w.document.querySelector(".tool-card select") as any;
   const optNames = Array.from(tSel.options).map((o: any) => o.textContent);
   check(optNames.every((n: string) => n.indexOf("dts-live") === -1 && n.indexOf("dts-real") === -1) && optNames.some((n: string) => n.indexOf("dts-banner") !== -1),
@@ -291,8 +292,12 @@ async function main() {
   const seedBtn = w.document.querySelector(".tool-actions .btn") as any;
   check(seedBtn.className.indexOf("btn-primary") !== -1 && danger.querySelector(".btn-danger").className.indexOf("btn-danger") !== -1,
     "button weights: Seed is the house primary, Wipe the house destructive");
+  w.App.state._devtoolsHint = { section: "tools" };
+  w.location.hash = "#/admin/portals"; w.dispatchEvent(new w.Event("hashchange")); await sleep(400);
+  w.location.hash = "#/admin/devtools"; w.dispatchEvent(new w.Event("hashchange"));
+  await until(() => $$(".tool-card").some((c: any) => /Detector sweep/.test(c.textContent)), 9000);
   const sweepCard = $$(".tool-card").find((c: any) => /Detector sweep/.test(c.textContent));
-  check(!!sweepCard.querySelector(".btn-ghost"), "\u2026and the sweep's button is the house ghost");
+  check(!!sweepCard && !!sweepCard.querySelector(".btn-ghost"), "\u2026and under Tools, the sweep's button is the house ghost");
   report.push(`  tools panel: .tools-wrap max-width 720px \u00b7 .tool-form max-width 560px \u00b7 setup grid 2\u00d7minmax(0,1fr) \u00b7 danger zone --red hairline over --red-soft`);
   freeze(w); await sleep(150);
   // creation step 2
@@ -302,8 +307,8 @@ async function main() {
   (createBtn as any).click();
   await until(() => w2.document.querySelector(".adm-step2"));
   const step2 = w2.document.querySelector(".adm-step2") as any;
-  check(!!step2.querySelector(".adm-step2-left .adm-uform") && !!step2.querySelector(".adm-step2-right .switch input"),
-    "CREATION STEP 2: users on the left, the demo switch on the right");
+  check(!!step2.querySelector(".adm-step2-left .adm-uform") && !!step2.querySelector(".adm-step2-right .adm-seg--sm"),
+    "CREATION STEP 2: users on the left, the demo control on the right (a two-segment mini-pill since the hub-polish batch)");
   const emailCss = readFileSync(join(PUB, "styles.css"), "utf8").match(/\.adm-uform \.input \{[^}]*\}/)![0];
   check(/max-width: 260px/.test(emailCss), `\u2026the email input is capped at the house 260px width (${emailCss.trim()})`);
   check(/Fills this tenant with obviously-fake data/.test(w2.document.body.textContent), "\u2026with the caption explaining what the flag does");

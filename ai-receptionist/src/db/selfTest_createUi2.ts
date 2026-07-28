@@ -123,16 +123,17 @@ async function main() {
   });
   const $ = (sel: string) => w.document.querySelector(sel) as any;
   const $$ = (sel: string) => Array.from(w.document.querySelectorAll(sel)) as any[];
-  const segTo = (label: string) => { $$(".adm-seg-btn").find((b: any) => b.textContent.trim() === label).click(); };
-  const aiActive = () => $(".adm-seg-btn.active").textContent.trim();
+  const AI_SEG = ".adm-seg:not(.adm-seg--sm)";   // the full-size AI control (the demo mini-pill is .adm-seg--sm)
+  const segTo = (label: string) => { $$(`${AI_SEG} .adm-seg-btn`).find((b: any) => b.textContent.trim() === label).click(); };
+  const aiActive = () => $(`${AI_SEG} .adm-seg-btn.active`).textContent.trim();
   const createBtn = await until(() => $$("button").find((b: any) => b.textContent.trim() === "+ Create tenant"));
   check(!!createBtn, "the hub tenants page mounts with the Create button");
   (createBtn as any).click();
-  check(!!(await until(() => $$(".adm-seg-btn").length === 3 && $$(".adm-seg-ic svg").length === 3 && aiActive() === "Off")),
+  check(!!(await until(() => $$(`${AI_SEG} .adm-seg-btn`).length === 3 && $$(`${AI_SEG} .adm-seg-ic svg`).length === 3 && aiActive() === "Off")),
     "the AI control mounts: three states with REGISTRY icons, Off active");
-  check($$(".adm-seg-btn .adm-seg-lab").length === 3 && $$(".adm-seg-btn .adm-seg-rule").length === 3,
+  check($$(`${AI_SEG} .adm-seg-btn .adm-seg-lab`).length === 3 && $$(`${AI_SEG} .adm-seg-btn .adm-seg-rule`).length === 3,
     "each column stacks LABEL \u2192 hairline rule \u2192 icon (v3 anatomy)");
-  const fillClass = () => ($(".adm-seg-fill") as any).className;
+  const fillClass = () => ($(`${AI_SEG} .adm-seg-fill`) as any).className;
   check(/seg-fill-left/.test(fillClass()), "ACTIVE-FILL geometry: Off (left column) \u2192 the left shape (rounded edge + diagonal)");
   segTo("Standard");
   check(/seg-fill-mid/.test(fillClass()), "\u2026Standard (middle) \u2192 the inset plain shape");
@@ -238,15 +239,15 @@ async function main() {
       && aiZone.children[1] && aiZone.children[1].classList.contains("adm-ai-row")
       && !$(".adm-ai-left .field-label"),
     "FIX 3: 'AI Receptionist' renders as a subsection HEADING (the Template section's exact label class) with the control row directly beneath \u2014 not beside the control");
-  check(!!$(".adm-ai-desc") && $(".adm-ai-desc").textContent.startsWith("AI Receptionist is off"), "the PER-STATE description renders (Off copy)");
+  check(!!$(".adm-ai-zone .adm-ai-desc") && $(".adm-ai-zone .adm-ai-desc").textContent.startsWith("AI Receptionist is off"), "the PER-STATE description renders (Off copy)");
   segTo("Standard");
-  check($(".adm-ai-desc").textContent.startsWith("Standard voice"), "\u2026and SWAPS instantly per state");
+  check($(".adm-ai-zone .adm-ai-desc").textContent.startsWith("Standard voice"), "\u2026and SWAPS instantly per state");
   // UI-FIDELITY v3: the summary line is DELETED by spec — the description
   // column carries the per-state sentence and NOTHING beneath (asserted).
   check(!$(".adm-start-sum"), "the old summary line is ABSENT (v3: nothing beneath the description)");
-  check($(".adm-ai-right") && $(".adm-ai-right").children.length === 1 && $(".adm-ai-right").firstElementChild.classList.contains("adm-ai-desc"),
+  check($(".adm-ai-zone .adm-ai-right") && $(".adm-ai-zone .adm-ai-right").children.length === 1 && $(".adm-ai-zone .adm-ai-right").firstElementChild.classList.contains("adm-ai-desc"),
     "the right column holds ONLY the vertically-centered description");
-  check(!!$(".adm-ai-div"), "the REQUIRED vertical divider sits between the control and the description");
+  check(!!$(".adm-ai-zone .adm-ai-div"), "the REQUIRED vertical divider sits between the control and the description");
   check(!!(await until(() => $$(".adm-row3 .adm-r3-head .adm-row-ic svg").length > 10)), "THREE-COLUMN rows mount with a row icon per page + module");
   check(!!(await until(() => $$(".adm-r3-chips .adm-chip").length > 8)) && $$(".adm-row3").some((r: any) => r.querySelector(".adm-r3-chips") && !r.querySelector(".adm-r3-chips .adm-chip")),
     "modules carry chips in col-3 while pages keep col-3 empty (one aligned grid)");
@@ -263,7 +264,7 @@ async function main() {
   check(aiActive() === "Off" && callsCb().checked === false, "unchecking Calls while on \u2192 AI Off, single hop, NO loop");
   callsCb().checked = true; callsCb().dispatchEvent(new w.Event("change"));
   check(aiActive() === "Standard", "checking Calls while Off \u2192 AI Standard");
-  check($(".adm-ai-desc").textContent.startsWith("Standard voice"), "\u2026with the description tracking the linkage");
+  check($(".adm-ai-zone .adm-ai-desc").textContent.startsWith("Standard voice"), "\u2026with the description tracking the linkage");
 
   // template selection: FS prefill + copy swap; manual wins; fixture transparency.
   const fsCard = $$(".adm-tpl-card").find((c: any) => c.textContent.includes("Field Services"));

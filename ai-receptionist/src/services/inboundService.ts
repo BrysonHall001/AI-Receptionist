@@ -121,6 +121,15 @@ export async function ingest(token: string, body: any, sourceIp: string | null):
 
   const tenantId: string = ep.tenantId; // <-- tenant derived solely from the token
 
+  // SUSPENSION: a suspended tenant stops ingesting from public endpoints —
+  // lead-capture forms, integrations, anything holding a live token. The
+  // attempt is LOGGED (so the owner can see what arrived while suspended) and
+  // rejected with the same shape a disabled endpoint gets.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  if (await require("./tenantSuspensionService").isTenantSuspended(tenantId)) {
+    await logCall(tenantId, ep.id, "rejected", "Portal is suspended", null, sourceIp);
+    return { status: 403, body: { error: "This endpoint is not accepting submissions." } };
+  }
   if (!ep.enabled) {
     await logCall(tenantId, ep.id, "rejected", "Endpoint is disabled", null, sourceIp);
     return { status: 403, body: { error: "Endpoint disabled" } };

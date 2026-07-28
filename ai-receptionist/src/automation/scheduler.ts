@@ -202,7 +202,9 @@ export function injectBookingTokens(action: ActionConfig, booking: any, extras?:
 }
 
 export async function runAppointmentReminderSweep(scope?: string): Promise<number> {
-  const where: any = { enabled: true };
+  // SUSPENSION: scheduled automations do not run for a suspended tenant. The
+  // flows are untouched and resume the moment the tenant does.
+  const where: any = { enabled: true, tenant: { status: { not: "SUSPENDED" } } };
   if (scope) where.tenantId = scope;
   const autos = await db.automation.findMany({ where });
   const reminders = autos.filter((a: any) => parseAppointmentReminderTrigger(a.triggerType || ""));
@@ -292,7 +294,9 @@ export async function runAppointmentReminderSweep(scope?: string): Promise<numbe
 // dedupeKey. Honors each flow's conditions before queuing.
 // ---------------------------------------------------------------------------
 export async function runDailySweep(scope?: string): Promise<number> {
-  const where: any = { enabled: true };
+  // SUSPENSION: scheduled automations do not run for a suspended tenant. The
+  // flows are untouched and resume the moment the tenant does.
+  const where: any = { enabled: true, tenant: { status: { not: "SUSPENDED" } } };
   if (scope) where.tenantId = scope;
   const autos = await db.automation.findMany({ where });
   const today = todayUtc();
@@ -382,7 +386,9 @@ export function injectRecordTokens(action: ActionConfig, record: any, custom: an
 }
 
 export async function runRecordDateSweep(scope?: string): Promise<number> {
-  const where: any = { enabled: true };
+  // SUSPENSION: scheduled automations do not run for a suspended tenant. The
+  // flows are untouched and resume the moment the tenant does.
+  const where: any = { enabled: true, tenant: { status: { not: "SUSPENDED" } } };
   if (scope) where.tenantId = scope;
   const autos = await db.automation.findMany({ where });
   const flows = autos.filter((a: any) => parseRecordDateTrigger(a.triggerType || ""));
@@ -500,7 +506,9 @@ export async function findStalledLinks(tenantId: string, days: number, stageKey?
 
 // Run every enabled "Stalled:" automation for a scope (one portal, or all).
 export async function runStalledSweep(scope?: string): Promise<{ automations: number; matched: number; acted: number; blocked: number }> {
-  const where: any = { enabled: true };
+  // SUSPENSION: scheduled automations do not run for a suspended tenant. The
+  // flows are untouched and resume the moment the tenant does.
+  const where: any = { enabled: true, tenant: { status: { not: "SUSPENDED" } } };
   if (scope) where.tenantId = scope;
   const autos = await db.automation.findMany({ where });
   let automations = 0, matched = 0, acted = 0, blocked = 0;

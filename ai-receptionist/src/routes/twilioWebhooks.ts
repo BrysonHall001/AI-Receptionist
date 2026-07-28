@@ -42,6 +42,15 @@ twilioRouter.post("/inbound", async (req: Request, res: Response) => {
     const tenantId = await resolveTenantId(p.to);
     const tenant = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId } }) : null;
     const t = tenant as any;
+    // SUSPENSION: the receptionist does not answer for a suspended tenant. The
+    // caller hears a short, neutral line and the call ends — no session is
+    // created, no data is written.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    if (await require("../services/tenantSuspensionService").isTenantSuspended(tenantId)) {
+      logger.info(`inbound: tenant ${tenantId} is suspended \u2014 declining the call`);
+      res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say>Sorry, this number is not taking calls at the moment. Goodbye.</Say><Hangup/></Response>`);
+      return;
+    }
     // Authoritative = voiceMode. If the column isn't present yet (e.g. the
     // migration hasn't run), fall back to the receptionistEnabled mirror so an
     // existing ON portal still answers as WALKIE rather than going dark.

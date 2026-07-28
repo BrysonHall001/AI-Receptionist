@@ -94,6 +94,8 @@ export async function runRecurringSpawnSweep(): Promise<{ examined: number; spaw
         stageKey: "completed",
         repeatRule: { not: null as any },
         OR: [{ spawnedNextId: null }, { spawnedNextId: "pending" }],
+        // SUSPENSION: no new work is spawned for a suspended tenant.
+        tenant: { status: { not: "SUSPENDED" } },
       },
       take: SWEEP_BATCH,
       orderBy: { updatedAt: "asc" },

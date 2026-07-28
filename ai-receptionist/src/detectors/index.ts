@@ -266,9 +266,11 @@ export function lastDetectorSweep(): { at: number; counters: SweepCounters } | n
 export async function runDetectorSweep(now: Date = new Date(), onlyTenantId?: string | null): Promise<SweepCounters> {
   const c: SweepCounters = { tenants: 0, findings: 0, created: 0, revived: 0, refreshed: 0, suppressed: 0, errors: 0 };
   try {
+    // SUSPENSION: suspended tenants are skipped by the nightly pass. Their data
+    // is untouched and detection resumes the moment they do.
     const tenants = onlyTenantId
-      ? await db.tenant.findMany({ where: { id: onlyTenantId }, select: { id: true, suggestionPrefs: true } })
-      : await db.tenant.findMany({ select: { id: true, suggestionPrefs: true }, take: 500 });
+      ? await db.tenant.findMany({ where: { id: onlyTenantId, status: { not: "SUSPENDED" } }, select: { id: true, suggestionPrefs: true } })
+      : await db.tenant.findMany({ where: { status: { not: "SUSPENDED" } }, select: { id: true, suggestionPrefs: true }, take: 500 });
     for (const t of tenants) {
       c.tenants += 1;
       const prefs = (t.suggestionPrefs && typeof t.suggestionPrefs === "object" ? t.suggestionPrefs : {}) as any;

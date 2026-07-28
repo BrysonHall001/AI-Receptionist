@@ -160,15 +160,16 @@ async function main() {
   const createBtn = await until(() => $$("button").find((b: any) => b.textContent.trim() === "+ Create tenant"));
   check(!!createBtn, "the hub tenants page mounts (OWNER session) with the Create button");
   if (createBtn) (createBtn as any).click();
-  const segOk = await until(() => $$(".adm-seg-btn").length === 3 && $(".adm-seg-btn.active") && $(".adm-seg-btn.active").textContent.includes("Off"));
+  // the demo mini-pill (.adm-seg--sm) shares these classes, so name the AI one
+  const segOk = await until(() => $$(".adm-seg:not(.adm-seg--sm) .adm-seg-btn").length === 3 && $(".adm-seg:not(.adm-seg--sm) .adm-seg-btn.active") && $(".adm-seg:not(.adm-seg--sm) .adm-seg-btn.active").textContent.includes("Off"));
   check(!!segOk, "the SEGMENTED AI control mounts \u2014 three states, compact, Off active by default");
-  check(!!$(".adm-featcol .adm-seg"), "\u2026inside the column-width wrapper (not panel-wide)");
+  check(!!$(".adm-featcol .adm-seg:not(.adm-seg--sm)"), "\u2026inside the column-width wrapper (not panel-wide)");
   const cardsOk = await until(() => $$(".adm-tpl-card").length === 3 && $(".adm-tpl-card.active") && $(".adm-tpl-card.active").textContent.includes("General"));
   check(!!cardsOk, "TEMPLATE cards mount \u2014 General + Field Services + Recruitment Marketing, exactly one active, General preselected"); // repinned: RM-1
   // STALE-TEST UPDATE (create-ui-2): v1's static caption block is GONE — the
   // AI control now carries a PER-STATE description to its right plus the live
   // starting-state summary. Assert the v2 contract at the same spot.
-  const aiDesc: any = $(".adm-ai-desc");
+  const aiDesc: any = $(".adm-ai-zone .adm-ai-desc");
   check(!!aiDesc && aiDesc.textContent.startsWith("AI Receptionist is off"), "the per-state description renders beside the control (Off copy while Off is active)");
   // STALE-TEST UPDATE (ui-fidelity v3): the summary line is DELETED by spec —
   // the description column carries the sentence and NOTHING beneath.

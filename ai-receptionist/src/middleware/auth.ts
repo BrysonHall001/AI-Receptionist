@@ -89,6 +89,20 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
+  // SUSPENSION: a tenant user of a suspended tenant is refused here, once, for
+  // every authenticated route. Hub admins are untouched — entering a suspended
+  // tenant's portal is exactly how its cause gets fixed. Nothing is deleted;
+  // resuming restores access immediately.
+  const u = req.realUser || req.user;
+  if (u && u.tenantId && !isAdminTier(u.role)) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { isTenantSuspended, SUSPENDED_MESSAGE } = require("../services/tenantSuspensionService");
+    void isTenantSuspended(u.tenantId).then((suspended: boolean) => {
+      if (suspended) { res.status(403).json({ error: SUSPENDED_MESSAGE, suspended: true }); return; }
+      next();
+    }).catch(() => next());
+    return;
+  }
   next();
 }
 

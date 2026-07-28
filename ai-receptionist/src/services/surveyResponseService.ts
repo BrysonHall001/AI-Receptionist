@@ -160,6 +160,10 @@ export async function submitSurvey(input: { token?: string | null; publicId?: st
   const ctx = await resolveContext({ token: input.token, publicId: input.publicId });
   if (!ctx) return { ok: false, code: "unavailable", message: "This survey isn't available." };
   const { survey, tenantId, contact, recipient } = ctx;
+  // SUSPENSION: stop accepting public responses, with the same answer an
+  // unavailable survey gives.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  if (await require("./tenantSuspensionService").isTenantSuspended(tenantId)) return { ok: false, code: "unavailable", message: "This survey isn't available." };
   if (survey.status !== "active") return { ok: false, code: "inactive", message: "This survey isn't accepting responses right now." };
 
   const answers = input.answers || {};

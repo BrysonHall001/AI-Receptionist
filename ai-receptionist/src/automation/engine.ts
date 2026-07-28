@@ -39,6 +39,10 @@ interface AutomationRow {
  * automations — emitters never reference it, keeping the two systems decoupled.
  */
 export async function handleEvent(event: DomainEvent): Promise<void> {
+  // SUSPENSION: instant automations are as silent as the scheduled ones. The
+  // event still happened (and is still audited); it simply drives nothing.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  if (event.tenantId && await require("../services/tenantSuspensionService").isTenantSuspended(event.tenantId)) return;
   // Loop guard (MVP): we record automation-sourced events for observability but
   // never let them re-trigger automations. Multi-step chaining can be enabled
   // later by replacing this with a depth/visited-set guard carried on the event.

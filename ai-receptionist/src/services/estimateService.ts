@@ -172,6 +172,10 @@ export async function decideEstimate(token: string, decision: string, comment?: 
   const t = String(token || "").trim();
   const link = t ? await db.estimateLink.findUnique({ where: { token: t } }) : null;
   if (!link || link.revokedAt) return { ok: false, code: "unavailable", message: PUBLIC_UNAVAILABLE };
+  // SUSPENSION: a suspended tenant stops accepting public decisions. Same
+  // "unavailable" answer a dead link gets — the public learns nothing.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  if (await require("./tenantSuspensionService").isTenantSuspended(link.tenantId)) return { ok: false, code: "unavailable", message: PUBLIC_UNAVAILABLE };
   if (link.decidedAt) {
     // Idempotent: the SAME decision again reports success-as-duplicate; a
     // DIFFERENT one is refused — decisions are terminal.
