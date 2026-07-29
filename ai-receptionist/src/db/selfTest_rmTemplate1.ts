@@ -45,7 +45,7 @@ function bootDom(base: string, token: string) {
 }
 const freeze = (w: any) => { try { w.fetch = () => new Promise(() => { /* frozen */ }); } catch { /* */ } };
 
-const RM_HIDDEN = ["work_order", "equipment", "estimate", "invoice", "vehicle", "property", "product", "task"];
+const RM_HIDDEN = ["work_order", "equipment", "estimate", "invoice", "vehicle", "property", "product", "task", "service_plan"];
 const CANDIDATE_FIELDS = [
   ["candidate_source", "single_select"], ["role_interest", "text"], ["candidate_stage", "single_select"], ["prescreen_checks", "multi_select"],
   ["resume_link", "url"], ["linkedin_url", "url"], ["desired_pay", "text"], ["availability_date", "date"],
@@ -73,7 +73,7 @@ async function main() {
   check(TENANT_TEMPLATES.length === 3 && !!rm && rm.label === "Recruitment Marketing", "the third template resolves");
   check(rm.aiIntake === false && rm.aiSchedulingTarget === "booking" && rm.pagesOffPrefill.length === 0
       && JSON.stringify([...rm.modulesHiddenPrefill].sort()) === JSON.stringify([...RM_HIDDEN].sort()),
-    "engine shape: intake OFF, target booking, all pages on, exactly the eight hidden modules");
+    `engine shape: intake OFF, target booking, all pages on, exactly the ${RM_HIDDEN.length} hidden modules`);
   // REPINNED (RM-2): the content pack now FILLS the hooks — this cell asserts
   // the relabels + LC offer, and that the hooks carry the RM-2 pack (its own
   // suite, selfTest_rmContentPack, owns the pack's depth).
@@ -92,7 +92,7 @@ async function main() {
     "the row: templateKey, intake OFF, target booking");
   const navHidden = (((trow.labels || {}) as any).nav || {}).hidden || [];
   check(JSON.stringify([...navHidden].sort()) === JSON.stringify(RM_HIDDEN.map((k) => "#/records/" + k).sort()),
-    "exactly the eight hidden module hrefs (Contacts + Job Openings + Interviews remain)");
+    `exactly the ${RM_HIDDEN.length} hidden module hrefs (Contacts + Job Openings + Interviews remain)`);
   const cRt = await db.recordType.findFirst({ where: { tenantId: rmCell.t.id, key: "contact" } });
   const bRt = await db.recordType.findFirst({ where: { tenantId: rmCell.t.id, key: "booking" } });
   check(cRt.label === "Candidate" && cRt.labelPlural === "Candidates" && cRt.key === "contact", "Contacts \u2192 Candidate / Candidates (key untouched)");

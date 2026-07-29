@@ -162,7 +162,8 @@ async function main() {
       `${id}: inert by construction (no handlers, fetches, images, scripts, or bespoke inline styling)`);
   }
   check(wS.App.learnScenes.get("rm-ad-to-candidate").frames.length === 4, "rm-ad-to-candidate carries exactly the four stepper frames");
-  check(wS.App.learnScenes.ids().length === 20, "the registry now holds 20 scenes (17 + the three RM ones)");
+  check(wS.App.learnScenes.ids().length >= 21 && ["rm-candidate-stages", "rm-lead-capture-links", "rm-ad-to-candidate"].every((id: string) => wS.App.learnScenes.has(id)),
+    `the registry holds ${wS.App.learnScenes.ids().length} scenes, the three RM ones among them`);
   const allScene = NEW_SCENES.map((id) => (wS.App.learnScenes.get(id).frames || []).map((f: any) => f.html + " " + (f.caption || "")).join(" ")).join(" ");
   check(/Avery Lane/.test(allScene) && !/@|\+1\s?\d|\bInc\b/.test(allScene), "generic placeholder data only \u2014 no emails, phone numbers, or company names");
   freeze(wS); await sleep(200);

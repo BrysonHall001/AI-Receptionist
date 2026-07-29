@@ -165,9 +165,11 @@ async function main() {
     const types = Array.from(new Set((await db.suggestion.findMany({ where: { tenantId: t.id }, select: { type: true } })).map((s: any) => s.type)));
     const ordinaryOldest = await db.record.findFirst({ where: { tenantId: t.id, title: { not: "Awaiting parts" } }, orderBy: { createdAt: "asc" }, select: { createdAt: true } });
     const ordinaryAge = Math.round((Date.now() - new Date(ordinaryOldest.createdAt).getTime()) / DAY);
-    check(ordinaryAge <= win + 2 && types.length === 4,
-      `WINDOW ${win}d: ordinary history spreads to ${ordinaryAge} days (the stall pattern is deliberately older, at ${ageDays}d, because its detector looks back 60) and all four detectors fire [${types.sort().join(", ") || "none"}]`);
-    report.push(`  window ${win}d: oldest seeded record ${ageDays} days back \u00b7 detectors fired ${types.length}/4`);
+    const BATCH31_FOUR = ["repeated_phrase_field", "manual_message_pattern", "unused_module", "stage_stall"];
+    const missing = BATCH31_FOUR.filter((id) => types.indexOf(id) === -1);
+    check(ordinaryAge <= win + 2 && missing.length === 0,
+      `WINDOW ${win}d: ordinary history spreads to ${ordinaryAge} days (the stall pattern is deliberately older, at ${ageDays}d, because its detector looks back 60) and all four original detectors fire${missing.length ? ` \u2014 MISSING ${missing.join(", ")}` : ""} [${types.sort().join(", ") || "none"}]`);
+    report.push(`  window ${win}d: oldest seeded record ${ageDays} days back \u00b7 ${types.length} detector kinds fired, all four originals among them`);
   }
   // template mismatch is skipped, not orphaned
   const rmTenant: any = await mkTenant("dts-mismatch", { template: "recruitment_marketing", isDemo: true });

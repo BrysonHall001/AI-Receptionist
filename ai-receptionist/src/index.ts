@@ -138,6 +138,11 @@ async function main(): Promise<void> {
     // Recurring Work batch: spawn successors for completed repeat-plan work
     // orders. Rule-less records are excluded in the query; overlaps skip.
     runRecurringSpawnSweep().catch((e) => logger.error(`[recurring] pass failed (will retry next tick): ${(e as Error).message}`));
+    // Service plans ride the SAME timer as the recurrence chain: one cadence,
+    // one place to reason about when work appears.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require("./services/recurringWorkService").runServicePlanSpawnSweep()
+      .catch((e: Error) => logger.error(`[service-plans] pass failed (will retry next tick): ${e.message}`));
   }, 2 * 60_000); // health: the scheduler-age check watches this tick
   automationSweepTimer.unref();
 

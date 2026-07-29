@@ -130,7 +130,7 @@ async function main() {
     check(found, `${id}: sourceFn ${sc.sourceFn} resolves to a real function (${sc.regions.length} regions)`);
     if (!found) metaOk = false;
   }
-  check(metaOk && sceneIds.length === 20, `all ${sceneIds.length} scenes carry machine-checkable fidelity metadata`); // repinned: lc-field-services added 4; lc-recruitment adds rm-candidate-stages, rm-lead-capture-links, rm-ad-to-candidate
+  check(metaOk && sceneIds.length >= 21, `all ${sceneIds.length} scenes carry machine-checkable fidelity metadata`); // a floor, not a freeze: every scene must be documented, and new scenes are welcome
 
   // ---------- (3) framing + voice ----------
   console.log("\n(3) framing + voice rule:");

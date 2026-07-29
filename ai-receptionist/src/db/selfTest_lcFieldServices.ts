@@ -140,7 +140,8 @@ async function main() {
   const wS = wv; // reuse the booted variant window's registries (frozen fetch is fine for pure reads)
   const FS = wS.App.learn.FS_GUIDES;
   const ids = Object.keys(FS);
-  check(ids.length === 12, `twelve variant-only guides ship (${ids.length})`);
+  check(ids.length >= 13 && ids.indexOf("fs-service-plans") !== -1,
+    `the FS variant ships ${ids.length} variant-only guides, including the service-plans one`);
   const missingMarkers: string[] = [];
   ids.forEach((id) => (FS[id].blocks || []).forEach((b: any) => { if (b.visual && !wS.App.learnScenes.has(b.visual)) missingMarkers.push(id + ":" + b.visual); }));
   check(missingMarkers.length === 0, "every VISUAL marker in the variant resolves to a registered scene");

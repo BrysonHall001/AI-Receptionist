@@ -45,7 +45,10 @@ async function main() {
   check(eq.linkConventions.some((c: any) => c.role === "serviced_equipment" && c.labelTo === "Service history"),
     "\u2026and equipment sees the SAME convention from the reverse side (Service history)");
   await ensureLinkConventions(T); await ensureLinkConventions(T);
-  check((await db.linkConvention.count({ where: { tenantId: T } })) === 3, "seeding is idempotent by key (3 rows after repeated ensures, lineage included, unsurfaced)");
+  const { DEFAULT_LINK_CONVENTION_COUNT } = require("../services/recordTypeService");
+  const SEEDED_CONVENTIONS = await db.linkConvention.count({ where: { tenantId: T } });
+  check(SEEDED_CONVENTIONS === DEFAULT_LINK_CONVENTION_COUNT,
+    `seeding is idempotent by key (${SEEDED_CONVENTIONS} rows after repeated ensures \u2014 every declared convention, once each)`);
 
   // Panel-path add/remove = the exact services the routes call.
   const woRec: any = await createRecord(T, WORK_ORDER_RECORD_TYPE_KEY, { title: "Compressor swap", subtypeKey: "repair", stageKey: "scheduled", appointmentAt: "2026-07-30T10:00", customFields: {} } as any);
@@ -101,8 +104,8 @@ async function main() {
   console.log("\n(4) catastrophics:");
   const TB = await mkTenant("iso");
   const bConvs: any[] = await listLinkConventions(TB);
-  check(bConvs.length === 3 && bConvs.every((c) => c.tenantId === TB), "CROSS-TENANT: conventions resolve tenant-isolated (B sees only its own rows)");
-  check((await db.linkConvention.count({ where: { tenantId: T } })) === 3, "\u2026and B's ensure never wrote into A");
+  check(bConvs.length === SEEDED_CONVENTIONS && bConvs.every((c) => c.tenantId === TB), `CROSS-TENANT: conventions resolve tenant-isolated (B sees only its own ${bConvs.length} rows)`);
+  check((await db.linkConvention.count({ where: { tenantId: T } })) === SEEDED_CONVENTIONS, "\u2026and B's ensure never wrote into A");
 
   for (const x of [T, TB]) { await db.tenant.delete({ where: { id: x } }).catch(() => { /* best-effort */ }); }
 

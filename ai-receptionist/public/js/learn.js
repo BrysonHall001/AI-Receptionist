@@ -740,6 +740,24 @@
       { visual: "related-tabs", note: "a customer record's Related tabs" },
     ],
   };
+  FS_GUIDES["fs-service-plans"] = {
+    id: "fs-service-plans", features: ["rt:service_plan"],
+    title: "Service Plans: memberships that book their own work",
+    blocks: [
+      { p: "A [[#/records/service_plan|Service Plan]] is a maintenance membership one of your customers bought \u2014 \u201ctwo tune-ups a year plus priority scheduling, \u00a329 a month.\u201d The plan records the agreement: what it covers, what it costs, how often it bills, and when it renews." },
+      { visual: "service-plan-page", note: "the plan's own fields, and the panels beside it" },
+      { p: "The plan OWNS its schedule. Set \u201ca visit every N months\u201d and a start date, and when a visit falls due the plan creates an ordinary work order for it \u2014 with no date on it, so it lands in your unscheduled tray to be dispatched like anything else. It carries the customer and a description across; it never carries the price, and it never becomes a repeating job in its own right." },
+      { steps: [
+        "Create the plan, link the customer, and fill in what it covers, the price, and the billing cadence.",
+        "Set a start date and a visit every N months \u2014 two visits a year is every 6.",
+        "Link the equipment it covers: the plan lists what it covers, and each piece of equipment shows which plan covers it.",
+        "Leave it ACTIVE. Pause it and it stops creating work; cancel or expire it and the same.",
+        "When a period comes round, press Create invoice for this period on the plan.",
+      ] },
+      { p: "Renewals look after themselves: once a renewal date passes, it rolls forward on the billing cadence and the plan stays active \u2014 a plan is a record of an agreement, not a bill waiting to be paid. There is an opt-in automation in the library that reminds you a fortnight before a renewal, switched off until you turn it on." },
+      { p: "Invoicing a period creates an ordinary unpaid Invoice with the plan's price as a line item, linked back to the plan. Pressing it twice in the same period opens the invoice you already made rather than making a second one. Clarity tracks the agreement and writes the invoice \u2014 it does not take payment, and there is no card processing anywhere in it. Collect however you already do." },
+    ],
+  };
   FS_GUIDES["fs-work-orders"] = {
     id: "fs-work-orders", features: ["rt:work_order"],
     title: "Work Orders: the jobs themselves",

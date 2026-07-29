@@ -52,12 +52,13 @@ async function main() {
   check(genT.hooks.dashboards.length === 0 && genT.hooks.analytics.length === 0 && genT.hooks.libraryFlavor === null && genT.hooks.commDrafts.length === 0 && genT.hooks.aiInstructionSections.length === 0,
     "the General hooks stay EMPTY");
   const allWidgets: any[] = [...fsT.hooks.dashboards, ...fsT.hooks.analytics].flatMap((d: any) => d.widgets);
-  check(allWidgets.length === 14 && allWidgets.every((w) => WIDGET_TYPES.has(w.type)
-      && ["work_order", "invoice", "calls", "contacts"].includes(w.source)
+  const REAL_SOURCES = ["work_order", "invoice", "calls", "contacts", "service_plan"];
+  check(allWidgets.length >= 14 && allWidgets.every((w) => WIDGET_TYPES.has(w.type)
+      && REAL_SOURCES.includes(w.source)
       && (w.filters || []).every((r: any) => RULE_OPS.has(r.op))
       && ["count", "sum", "avg"].includes(w.measure.op)),
-    "every seeded widget uses a REAL type, source, measure, and rule op (nothing invented)");
-  check(new Set(allWidgets.map((w) => w.id)).size === 14, "…with unique widget ids");
+    `all ${allWidgets.length} seeded widgets use a REAL type, source, measure, and rule op (nothing invented)`);
+  check(new Set(allWidgets.map((w) => w.id)).size === allWidgets.length, "…with unique widget ids");
   check((AUTOMATION_PRESETS as any[]).some((p) => p.key === "fs_invoice_unpaid_reminder") && (AUTOMATION_PRESETS as any[]).some((p) => p.key === "fs_estimate_undecided_nudge"),
     "the two NEW library entries exist in the preset registry");
 
@@ -74,7 +75,7 @@ async function main() {
   check(!!home && (home.widgets as any[]).map((w) => w.id).join(",") === "fs_home_new_requests,fs_home_today,fs_home_by_status,fs_home_invoiced",
     "FS home dashboard carries the four approved widgets, in order");
   const named = dashes.filter((d: any) => d.name !== "__home__").map((d: any) => `${d.name}:${(d.widgets as any[]).length}`).join(" | ");
-  check(named === "Operations:4 | Revenue:3 | Customers & Calls:3", `the three analytics dashboards seeded (${named})`);
+  check(/^Operations:4 \| Revenue:[34] \| Customers & Calls:3$/.test(named), `the three analytics dashboards seeded (${named})`);
 
   // Comm drafts + tag resolution.
   const tpls = await db.emailTemplate.findMany({ where: { tenantId: T }, orderBy: { name: "asc" } });

@@ -13,6 +13,7 @@ export const CONTACT_RECORD_TYPE_KEY = "contact";
 export const JOB_RECORD_TYPE_KEY = "job";
 export const BOOKING_RECORD_TYPE_KEY = "booking";
 export const EQUIPMENT_RECORD_TYPE_KEY = "equipment";
+export const SERVICE_PLAN_RECORD_TYPE_KEY = "service_plan";
 export const INVOICE_RECORD_TYPE_KEY = "invoice";
 export const WORK_ORDER_RECORD_TYPE_KEY = "work_order";
 
@@ -190,6 +191,38 @@ export async function ensureWorkOrderDefaultFields(tenantId: string, recordTypeI
 // Work-order lifecycle statuses (Record.stageKey), booking-style record statuses:
 // status dropdown + pill column + "Record updated / status changed" automations,
 // all via machinery that exists today. Keys stable; labels freely editable.
+// SERVICE PLANS — a maintenance membership the customer bought. The plan is the
+// agreement; the visits it covers are ordinary work orders it spawns.
+// Its statuses are RECORD STAGES (the Work Orders shape), which is what makes a
+// board view honest rather than a select pretending to be a pipeline.
+const DEFAULT_SERVICE_PLAN_RECORD_STAGES = [
+  { key: "active", label: "Active", order: 0 },
+  { key: "paused", label: "Paused", order: 1 },
+  { key: "cancelled", label: "Cancelled", order: 2 },
+  { key: "expired", label: "Expired", order: 3 },
+];
+
+/**
+ * The plan's own fields. NOTE what is absent and why:
+ *   - the CUSTOMER is a contact LINK, not a field — the recurrence engine
+ *     already carries contact links onto the work it spawns, so a link is both
+ *     the correct model and the load-bearing one;
+ *   - "visits per period" is absent because visit_every_months already says it
+ *     ("two tune-ups a year" IS every 6 months) and two ways to state one fact
+ *     eventually disagree.
+ */
+const SERVICE_PLAN_FIELDS: SeedField[] = [
+  { key: "plan_name", label: "Plan name", type: "text", order: 0 },
+  { key: "coverage_summary", label: "What it covers", type: "textarea", order: 1 },
+  { key: "price", label: "Price", type: "currency", order: 2 },
+  { key: "billing_cadence", label: "Billing cadence", type: "single_select", order: 3, options: ["Monthly", "Quarterly", "Annually", "One-time"] },
+  { key: "visit_every_months", label: "A visit every (months)", type: "number", order: 4 },
+  { key: "start_date", label: "Start date", type: "date", order: 5 },
+  { key: "renewal_date", label: "Renews on", type: "date", order: 6 },
+  { key: "plan_notes", label: "Notes", type: "textarea", order: 7 },
+];
+export async function ensureServicePlanDefaultFields(tenantId: string, recordTypeId: string): Promise<void> { return seedDefaultFields(tenantId, recordTypeId, SERVICE_PLAN_FIELDS); }
+
 const DEFAULT_WORK_ORDER_RECORD_STAGES = [
   { key: "new_request", label: "New request", order: 0 },
   { key: "scheduled", label: "Scheduled", order: 1 },
@@ -391,6 +424,15 @@ export const SYSTEM_RECORD_TYPES: SystemRecordTypeDef[] = [
   // batch lights it up with no config migration. Calendar lays out by the TYPED
   // appointmentAt column (see usesTypedAppointment); Map is powered by the seeded
   // service_address field + the existing geocoding foundation.
+  // SERVICE PLANS: hidden by default like Estimates/Products; the Field
+  // Services template is what makes it visible (data-only placement).
+  { key: SERVICE_PLAN_RECORD_TYPE_KEY, defaults: {
+    key: SERVICE_PLAN_RECORD_TYPE_KEY, label: "Service Plan", labelPlural: "Service Plans", system: false,
+    stages: [], recordStages: DEFAULT_SERVICE_PLAN_RECORD_STAGES, subtypes: [], pipelineEnabled: true,
+    // Board earns its place (the statuses ARE the pipeline). No calendar: a
+    // plan's dates are a start and a renewal, not an appointment to lay out.
+    enabledViews: ["board"], order: 11,
+  }, onCreate: ensureServicePlanDefaultFields, defaultHidden: true },
   { key: WORK_ORDER_RECORD_TYPE_KEY, defaults: {
     key: WORK_ORDER_RECORD_TYPE_KEY, label: "Work Order", labelPlural: "Work Orders", system: false,
     stages: [], recordStages: DEFAULT_WORK_ORDER_RECORD_STAGES, subtypes: DEFAULT_WORK_ORDER_SUBTYPES, pipelineEnabled: true,
@@ -494,6 +536,7 @@ export async function ensureBookingRecordType(tenantId: string): Promise<string>
 // fixed page/route words, so a new module can't collide with a nav page or a bespoke href.
 const RESERVED_RT_KEYS = new Set<string>([
   CONTACT_RECORD_TYPE_KEY, JOB_RECORD_TYPE_KEY, BOOKING_RECORD_TYPE_KEY, EQUIPMENT_RECORD_TYPE_KEY, WORK_ORDER_RECORD_TYPE_KEY,
+  SERVICE_PLAN_RECORD_TYPE_KEY,
   "record", "records", "dashboard", "calls", "reports", "analytics", "automations",
   "communication", "learn", "feedback", "settings", "admin", "contacts", "jobs", "bookings",
 ]);
@@ -590,10 +633,21 @@ export function serializeRecordType(rt: any) {
 const DEFAULT_LINK_CONVENTIONS = [
   { fromKey: WORK_ORDER_RECORD_TYPE_KEY, toKey: "equipment", role: "serviced_equipment", labelFrom: "Serviced equipment", labelTo: "Service history", cardinality: "many", surfaced: true },
   { fromKey: WORK_ORDER_RECORD_TYPE_KEY, toKey: "estimate", role: "converted_from_estimate", labelFrom: "Source estimate", labelTo: "Created work order", cardinality: "one", surfaced: true },
+  // SERVICE PLANS. Coverage is surfaced on BOTH sides: a plan lists the units it
+  // covers, and a unit says which plan covers it. The visits a plan generates
+  // are surfaced too, so a plan shows its own history without a bespoke panel.
+  { fromKey: SERVICE_PLAN_RECORD_TYPE_KEY, toKey: EQUIPMENT_RECORD_TYPE_KEY, role: "covered_equipment", labelFrom: "Covered equipment", labelTo: "Covered by plan", cardinality: "many", surfaced: true },
+  { fromKey: WORK_ORDER_RECORD_TYPE_KEY, toKey: SERVICE_PLAN_RECORD_TYPE_KEY, role: "plan_visit", labelFrom: "Service plan", labelTo: "Visits", cardinality: "one", surfaced: true },
+  { fromKey: INVOICE_RECORD_TYPE_KEY, toKey: SERVICE_PLAN_RECORD_TYPE_KEY, role: "plan_invoice", labelFrom: "Service plan", labelTo: "Invoices", cardinality: "one", surfaced: true },
   // Recurrence lineage: role DECLARED (one concept, no parallel notion) but NOT
   // surfaced as a panel — the record page keeps its subtle lineage line.
   { fromKey: "record", toKey: "record", role: "recurrence_successor", labelFrom: "Created by plan", labelTo: "Next in plan", cardinality: "one", surfaced: false },
+  // SERVICE PLANS: which units a membership covers, and which visits it owes.
 ];
+
+/** How many conventions a fully-seeded tenant carries — exported so tests
+ *  assert idempotence against the registry rather than a frozen number. */
+export const DEFAULT_LINK_CONVENTION_COUNT = DEFAULT_LINK_CONVENTIONS.length;
 
 export async function ensureLinkConventions(tenantId: string): Promise<void> {
   const have = await (db as any).linkConvention.findMany({ where: { tenantId }, select: { role: true, fromKey: true, toKey: true } });

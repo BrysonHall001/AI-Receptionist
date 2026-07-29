@@ -83,6 +83,21 @@
     ],
   });
 
+  register("service-plan-page", {
+    sourceFn: "fields.js#renderGroupedEditor",
+    regions: ["plan fields", "covered equipment panel", "visits panel"],
+    frames: [
+      {
+        caption: "A plan records what the customer bought: what it covers, what it costs, and when it renews.",
+        html: `<div class="card scene-drawer">${fieldRow("Plan name", input("Comfort Club"))}${fieldRow("What it covers", input("Two tune-ups a year plus priority scheduling"))}${fieldRow("Price", input("$29"))}${fieldRow("Billing cadence", select("Monthly"))}${focus(fieldRow("A visit every (months)", input("6")))}${fieldRow("Renews on", input("2026-08-19"))}</div>`,
+      },
+      {
+        caption: "The equipment it covers and the visits it has generated sit beside it, both ordinary related panels.",
+        html: `<div class="card scene-drawer"><div class="eyebrow">Covered equipment</div><div class="scene-trayitem">Carrier 24ACC6 \u2014 garage</div><div class="eyebrow">Plan visits</div><div class="scene-trayitem">${focus("Comfort Club \u2014 scheduled visit")}</div><div class="scene-trayitem">Comfort Club \u2014 scheduled visit</div></div>`,
+      },
+    ],
+  });
+
   register("record-drawer", {
     sourceFn: "fields.js#renderGroupedEditor",
     regions: ["section heading", "its fields", "next section heading", "its fields"],

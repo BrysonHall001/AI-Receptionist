@@ -80,7 +80,7 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
     // beyond stamping the key: creating with General (or touching nothing)
     // produces the exact same tenant state as before this batch.
     pagesOffPrefill: [],
-    modulesHiddenPrefill: [],
+    modulesHiddenPrefill: ["service_plan"],   // a maintenance membership is a trade concept, not a general one
     aiVoiceMode: null,
     aiSchedulingTarget: null,
     aiIntake: null,
@@ -138,6 +138,7 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
           widgets: [
             { id: "fs_rev_invoiced_month", title: "Invoiced over time", type: "line", source: "invoice", measure: { op: "sum", field: "total" }, groupBy: [{ key: "invoice_date", date: "month" }], series: [], filters: [] },
             { id: "fs_rev_paid_vs_out", title: "Paid vs outstanding", type: "pie", source: "invoice", measure: { op: "count" }, groupBy: [{ key: "status" }], series: [], filters: [] },
+            { id: "fs_plan_renewals", title: "Plan renewals by month", type: "bar", source: "service_plan", measure: { op: "count" }, groupBy: [{ key: "renewal_date", date: "month" }], series: [], filters: [{ field: "stageKey", op: "is", value: "active", conj: "AND" }] },
             { id: "fs_rev_by_method", title: "Invoices by payment method", type: "pie", source: "invoice", measure: { op: "count" }, groupBy: [{ key: "payment_method" }], series: [], filters: [] },
           ],
         },
@@ -194,7 +195,7 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
     // resolveSchedulingTarget — so the AI's interview book needs the module in
     // the nav; the relabel makes it read right).
     pagesOffPrefill: [],
-    modulesHiddenPrefill: ["work_order", "equipment", "estimate", "invoice", "vehicle", "property", "product", "task"],
+    modulesHiddenPrefill: ["work_order", "equipment", "estimate", "invoice", "vehicle", "property", "product", "task", "service_plan"],
     aiVoiceMode: null, // the hub segmented control decides, as always
     aiSchedulingTarget: "booking", // = Interviews after the R3 relabel
     aiIntake: false, // service-request intake is an FS concept

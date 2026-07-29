@@ -807,6 +807,28 @@ export const AUTOMATION_PRESETS: FlowPreset[] = [
   // trigger field lives on the record (not the contact) it is not flagged as a
   // missing contact field; the Equipment default fields exist for every portal.
   {
+    key: "plan_renewal_reminder",
+    name: "Plan renewal coming up",
+    description: "Two weeks before a service plan renews, remind yourself so nothing lapses quietly.",
+    category: "stay_in_touch",
+    vertical: "home_services",
+    summary: {
+      trigger: "14 days before a service plan's 'Renews on' date",
+      conditions: ["Runs for every service plan with a renewal date set"],
+      actions: ["Add a 'renewal coming up' note on the plan"],
+    },
+    shape: { trigger: "14 days before renewal", actions: ["Add note"] },
+    definition: {
+      name: "Plan renewal coming up",
+      triggerType: "RecordDateReached:service_plan:renewal_date:14:days:before",
+      conditions: [],
+      actions: [
+        { type: "create_note", config: { text: "{{record_title}} renews on {{renewal_date}} — check in with the customer if anything should change." } },
+      ],
+    },
+    note: "Needs the Service Plans module. Notifies you rather than the customer: a renewal is your commercial moment to handle however you prefer.",
+  },
+  {
     key: "equipment_service_reminder",
     name: "Equipment service reminder",
     description: "A week before a piece of equipment is due for service, email the linked contact to schedule it.",

@@ -2055,6 +2055,20 @@ apiRouter.post("/suggestions/prefs/:detectorId/unmute", async (req: Request, res
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
+// SERVICE PLANS: create (or open) this period's unpaid invoice. A record-page
+// action, deliberately not an automation: creating money-shaped records on a
+// timer without a human is exactly what should stay a considered click.
+apiRouter.post("/records/:id/plan-invoice", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.status(400).json({ error: "Open a portal first" }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { createInvoiceForPlanPeriod } = require("../services/servicePlanInvoicing");
+  try {
+    const out = await createInvoiceForPlanPeriod(tenantId, String(req.params.id || ""));
+    res.json(out);
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 apiRouter.get("/suggestions/prefs", async (req: Request, res: Response) => {
   const tenantId = req.user!.tenantId as string;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -2107,7 +2121,6 @@ apiRouter.patch("/notifications/prefs", async (req: Request, res: Response) => {
   try { res.json({ prefs: await svc.setUserNotificationPrefs(req.user!.id, (req.body ?? {}).prefs) }); }
   catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
-
 apiRouter.get("/records/:id/visits", async (req: Request, res: Response) => {
   const tenantId = req.user!.tenantId as string;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
