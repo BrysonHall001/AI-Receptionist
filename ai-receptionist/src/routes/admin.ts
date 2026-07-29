@@ -803,7 +803,8 @@ adminRouter.post("/portals/:id/demo-data/seed", async (req: Request, res: Respon
     // The acting hub admin answers the demo feedback ticket (the app's own
     // canReply rule), so the reply producer runs without hunting the database.
     actingUserId: req.user?.id ?? null,
-    volume: String(b2.volume || "small"),
+    // Continuous now: a number is a multiplier, a legacy name still works.
+    volume: (b2.volume === undefined || b2.volume === null) ? "small" : (isFinite(Number(b2.volume)) ? Number(b2.volume) : String(b2.volume)),
     windowDays: Number(b2.windowDays || 90),
     allowTemplateMismatch: b2.allowTemplateMismatch === true,
   };

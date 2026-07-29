@@ -31,9 +31,9 @@ export interface SeedOptions {
   seed?: string;
   runSweep?: boolean;
   actingUserId?: string | null;
-  /** "small" | "medium" | "large" — see VOLUMES. */
-  volume?: string;
-  /** 30 | 90 | 365 — how far back the seeded history spreads. */
+  /** A multiplier (0.5–4.0) or a legacy name ("small" | "medium" | "large"). */
+  volume?: string | number;
+  /** 14–365 — how far back the seeded history spreads. */
   windowDays?: number;
   /** Seed a template that ISN'T this tenant's own (the escape hatch). */
   allowTemplateMismatch?: boolean;
@@ -97,8 +97,89 @@ export const VOLUMES: Record<string, { label: string; mult: number; async: boole
   medium: { label: "Medium", mult: 2, async: false },
   large: { label: "Large", mult: 4, async: true },
 };
+
+/**
+ * CONTINUOUS VOLUME. The multiplier was always the real mechanism (the three
+ * named volumes were just x1/x2/x4 of one base profile), so a slider needs no
+ * new machinery — only a range and honest rounding.
+ *
+ * The ceiling is x4 deliberately: a x4 run creates ~950 rows and peaks around
+ * 330MB of process memory, which is where a small instance starts to be at
+ * risk. The floor is x0.5, below which a portal looks empty rather than quiet.
+ */
+export const VOLUME_RANGE = { min: 0.5, max: 4, step: 0.1, default: 1 };
+
+/** A label for any point on the range, for the ledger and the result block. */
+export function volumeLabel(mult: number): string {
+  const m = clampVolume(mult);
+  if (Math.abs(m - 1) < 0.05) return "Small";
+  if (Math.abs(m - 2) < 0.05) return "Medium";
+  if (Math.abs(m - 4) < 0.05) return "Large";
+  return `\u00d7${m.toFixed(1)}`;
+}
+
+export function clampVolume(v: any): number {
+  const n = Number(v);
+  if (!isFinite(n)) return VOLUME_RANGE.default;
+  const stepped = Math.round(n / VOLUME_RANGE.step) * VOLUME_RANGE.step;
+  return Math.min(VOLUME_RANGE.max, Math.max(VOLUME_RANGE.min, Number(stepped.toFixed(2))));
+}
+
+/** Accepts a legacy name ("small") OR a number; always returns a multiplier. */
+export function resolveVolume(v: any): number {
+  if (typeof v === "string" && VOLUMES[v]) return VOLUMES[v].mult;
+  return clampVolume(v);
+}
 /** TIME WINDOW: how far back the seeded history is spread. */
 export const WINDOWS = [30, 90, 365];
+
+/**
+ * CONTINUOUS WINDOW. 14 days is the floor because below it the seeded history
+ * is thinner than every detector's shortest lookback; 365 is the ceiling
+ * because a year is already "all of it" for a demo.
+ */
+export const WINDOW_RANGE = { min: 14, max: 365, step: 1, default: 90 };
+
+export function clampWindow(v: any): number {
+  const n = Math.round(Number(v));
+  if (!isFinite(n)) return WINDOW_RANGE.default;
+  return Math.min(WINDOW_RANGE.max, Math.max(WINDOW_RANGE.min, n));
+}
+
+/**
+ * DETECTOR PATTERNS vs THE WINDOW — the honest relationship.
+ *
+ * The window controls how far the ORDINARY history spreads. The detector
+ * patterns are planted at the ages their own floors need, measured from today
+ * and INDEPENDENT of the window (the repeated wording sits 1-6 days back, the
+ * message habit 5-19, the stalling batch 45-52). That is why all four
+ * detectors fire at 30, 90 and 365 days alike — verified by
+ * selfTest_demoTenantSafety.
+ *
+ * So a short window never starves a detector. What it DOES do, below ~52 days,
+ * is make the dataset reach further back than the window you asked for,
+ * because the stalling pattern still has to sit where its detector can see it.
+ * The modal says so rather than quietly ignoring the number you chose.
+ */
+export const DETECTOR_LOOKBACKS: Array<{ key: string; label: string; lookbackDays: number }> = [
+  { key: "repeated_phrase_field", label: "Repeated wording", lookbackDays: 30 },
+  { key: "manual_message_pattern", label: "Message-after-completion habit", lookbackDays: 45 },
+  { key: "stage_stall", label: "Stalling status", lookbackDays: 60 },
+  { key: "unused_module", label: "Unused module", lookbackDays: 90 },
+];
+
+/** The oldest age any planted pattern occupies, whatever the window. */
+export const PLANTED_PATTERN_OLDEST_DAYS = 52;
+
+/**
+ * What to tell someone about the window they picked. Empty string = nothing
+ * worth saying.
+ */
+export function windowCaveat(windowDays: number): string {
+  const w = clampWindow(windowDays);
+  if (w >= PLANTED_PATTERN_OLDEST_DAYS) return "";
+  return `The stalling-status pattern is planted about ${PLANTED_PATTERN_OLDEST_DAYS} days back so its detector can see it, so this dataset will reach a little further than ${w} days. Everything else spreads across your window.`;
+}
 /** VERIFIED at all three windows: every detector still fires. The window sets
  *  how far the ordinary HISTORY spreads; the detector patterns are planted at
  *  the ages their own floors require (the stalled batch sits ~45-50 days back
@@ -402,6 +483,15 @@ export async function failDemoRun(runId: string, reason: string): Promise<void> 
  * not from the start, so a legitimately long Large seed is never killed by its
  * own cleanup — only a run that has written nothing for the window is reaped.
  */
+export async function reapOrphanedDemoRuns(): Promise<number> {
+  const orphans = await db.demoSeedRun.findMany({ where: { status: "running" }, select: { id: true } });
+  for (const r of orphans) {
+    await failDemoRun(r.id, "Interrupted \u2014 the server restarted while this run was in progress. Anything it created can still be wiped.");
+  }
+  if (orphans.length) logger.info(`[seeder] ${orphans.length} run(s) were still marked running at startup and have been closed as failed`);
+  return orphans.length;
+}
+
 export async function reapStaleDemoRuns(staleMinutes = 10): Promise<number> {
   const cutoff = new Date(Date.now() - staleMinutes * 60_000);
   const stuck = await db.demoSeedRun.findMany({
@@ -435,16 +525,22 @@ export async function seedDemoData(tenantId: string, opts: SeedOptions): Promise
   const ev = require("./demoSeederEvents");
   const users = await ev.seedTenantUsers(tenantId, led);
   notes.push(`${users.length} demo users created (no invitations sent; these accounts cannot log in)`);
-  const vol = VOLUMES[String(opts.volume || "small")] || VOLUMES.small;
-  const windowDays = WINDOWS.includes(Number(opts.windowDays)) ? Number(opts.windowDays) : 90;
-  notes.push(`volume ${vol.label} (\u00d7${vol.mult}) over a ${windowDays}-day window`);
+  // A named volume still works; anything numeric is taken as the multiplier.
+  const mult = resolveVolume(opts.volume == null ? "small" : opts.volume);
+  const windowDays = clampWindow(opts.windowDays);
+  notes.push(`volume ${volumeLabel(mult)} (\u00d7${mult}) over a ${windowDays}-day window`);
+  const caveat = windowCaveat(windowDays);
+  if (caveat) notes.push(caveat);
   const onProgress = async (done: number, total: number, stepName: string) => {
     // Each progress write is also a HEARTBEAT: an advancing run can never be
     // reaped by the stale sweep, however long it legitimately takes.
+    // Ids are written with the ledger below and on the terminal row; a progress
+    // tick only needs the heartbeat and the counter, which keeps a long run's
+    // memory flat instead of re-serialising the whole id list each phase.
     try { await db.demoSeedRun.update({ where: { id: runId }, data: { ids: led.ids, heartbeatAt: new Date(), counts: { ...led.counts, __progress: { done, total, step: stepName } } } }); }
     catch { /* progress is a courtesy, never a failure mode */ }
   };
-  if (opts.profile === "field_services") await seedFieldServices(tenantId, r, led, notes, { mult: vol.mult, windowDays, onProgress, skipHidden: true });
+  if (opts.profile === "field_services") await seedFieldServices(tenantId, r, led, notes, { mult, windowDays, onProgress, skipHidden: true });
   else {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     await require("./demoSeederRm").seedRecruitmentMarketing(tenantId, r, led, notes);
@@ -452,7 +548,7 @@ export async function seedDemoData(tenantId: string, opts: SeedOptions): Promise
   // REAL EVENTS: drive genuine producer paths so the bell fills organically.
   const fired = await ev.seedRealEvents(tenantId, users, led, notes, opts.actingUserId || null);
   const run = await db.demoSeedRun.update({ where: { id: runId }, data: {
-    counts: { ...led.counts, __deterministic: led.deterministic, __producers: fired, __volume: vol.label, __windowDays: windowDays },
+    counts: { ...led.counts, __deterministic: led.deterministic, __producers: fired, __volume: volumeLabel(mult), __mult: mult, __windowDays: windowDays },
     ids: led.ids, status: "complete", completedAt: new Date(), heartbeatAt: new Date(), error: null,
   } });
   // Age the tenant past the unused-module floor — ONLY because this run's

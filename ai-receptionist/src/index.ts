@@ -210,11 +210,16 @@ async function main(): Promise<void> {
   // boot, then hourly. The threshold is measured from the run's heartbeat, so an
   // actively-advancing seed is never killed by its own cleanup.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { reapStaleDemoRuns } = require("./services/demoSeeder");
-  void reapStaleDemoRuns().catch((e: Error) => logger.error(`[seeder] boot reap failed: ${e.message}`));
+  const { reapStaleDemoRuns, reapOrphanedDemoRuns } = require("./services/demoSeeder");
+  // AT BOOT: any run still "running" belongs to a process that no longer
+  // exists, whatever its heartbeat says — close it now rather than leaving the
+  // panel watching a row that can never move.
+  void reapOrphanedDemoRuns().catch((e: Error) => logger.error(`[seeder] boot reap failed: ${e.message}`));
+  // WHILE RUNNING: a heartbeat that has gone quiet for 10 minutes, checked
+  // every two minutes so a mid-life crash surfaces in minutes, not an hour.
   const demoRunTimer = setInterval(() => {
     void reapStaleDemoRuns().catch((e: Error) => logger.error(`[seeder] reap tick failed: ${e.message}`));
-  }, 60 * 60_000);
+  }, 2 * 60_000);
   const searchIndexTimer = setInterval(() => {
     void reconcileSearchIndex().catch((e: Error) => logger.error(`[search-index] reconcile tick failed: ${e.message}`));
   }, 60 * 60_000);

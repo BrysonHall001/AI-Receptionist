@@ -159,8 +159,8 @@ async function main() {
   await sleep(300);
   const toolTitles = $$2(".tool-card .tool-h").map((h: any) => h.textContent);
   const hpSubs = $$2(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
-  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]) && hpSubs.indexOf("Demo Data") === 0,
-    `\u2026Tools opens on Demo Data (${toolTitles.join(", ")}; sub-tabs ${hpSubs.join(" \u00b7 ")})`);
+  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]) && hpSubs.length === 0,
+    `\u2026Tools IS the demo-data tool, with no sub-tab strip (${toolTitles.join(", ")})`);
   freeze(w2); await sleep(150);
 
   // ---------- (4) SUSPENSION, enforced ----------

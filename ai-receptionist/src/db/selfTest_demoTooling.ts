@@ -62,8 +62,8 @@ async function main() {
   check(!!cl && cl.id === "cl_demo_tooling_20260727", "the changelog row landed (idempotent migration)");
   const adminJs = readFileSync(join(PUB, "js", "admin.js"), "utf8");
   const routeSrc = readFileSync(resolve(__dirname, "..", "routes", "admin.ts"), "utf8");
-  check(!/key: "demodata", label: "Demo Data", render:/.test(adminJs) && /TOOLS_SUBTABS/.test(adminJs),
-    "Demo Data is no longer a top-level tab \u2014 it is a sub-tab of Tools");
+  check(!/key: "demodata", label: "Demo Data", render:/.test(adminJs) && /function renderToolsSection/.test(adminJs) && !/TOOLS_SUBTABS/.test(adminJs),
+    "Demo Data is not a top-level tab \u2014 it IS the Tools tab's content (the one-item sub-tab strip went with the sweep tool)");
   check(!/res\.json\(await seedDemoData/.test(routeSrc) && /void seedDemoData/.test(routeSrc),
     "THE ROOT CAUSE: no seed runs inside the HTTP request any more \u2014 every volume is a background run");
 
@@ -155,20 +155,23 @@ async function main() {
   await until(() => $(".settings-tile"), 9000);
   const tiles = $$(".settings-tile").map((t: any) => t.textContent.trim());
   check(JSON.stringify(tiles) === JSON.stringify(["History", "System Health", "Tools"]), `top-level tabs: ${tiles.join(" \u00b7 ")}`);
-  await until(() => $(".settings-tabs .settings-tab"), 9000);
+  await until(() => $(".dd-table-host"), 9000);
   const subs = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
-  const activeSub = $(".settings-tabs .settings-tab.active");
-  check(JSON.stringify(subs) === JSON.stringify(["Demo Data", "Detector Sweep"]) && !!activeSub && /Demo Data/.test(activeSub.textContent),
-    `\u2026with History's own sub-tab classes beneath Tools: ${subs.join(" \u00b7 ")} (active: ${activeSub ? activeSub.textContent : "\u2014"})`);
+  check(subs.length === 0 && !/Detector sweep/i.test(w.document.body.textContent || ""),
+    "\u2026with no sub-tab strip and no standalone detector-sweep tool");
+  const idxSrc = readFileSync(resolve(__dirname, "..", "index.ts"), "utf8");
+  const seedSrc = readFileSync(resolve(__dirname, "..", "services", "demoSeeder.ts"), "utf8");
+  check(/runDetectorSweep/.test(idxSrc) && /opts\.runSweep !== false/.test(seedSrc),
+    "\u2026while BOTH real sweep paths survive: the nightly timer and the seed modal's post-seed option");
   report.push(`  tabs: .settings-tile \u00d7${tiles.length} (top level) \u00b7 .settings-tabs > .settings-tab \u00d7${subs.length} (sub-tabs, History's classes verbatim)`);
   await until(() => $(".dd-table-host table tbody tr"), 9000);
   const heads = $$(".dd-table-host thead th").map((h: any) => h.textContent.replace(/[\u25be\u25bc\u25b4]/g, "").trim()).filter(Boolean);
-  check(JSON.stringify(heads) === JSON.stringify(["Tenant", "Template", "Seeded?", "Records seeded", "Last seeded", "Actions"]),
+  check(JSON.stringify(heads) === JSON.stringify(["Actions", "Tenant", "Template", "Seeded?", "Records seeded", "Last seeded"]),
     `the demo tenants TABLE renders all six columns: ${heads.join(" | ")}`);
   check(!$(".tool-form select") && !$(".tool-setup"), "the standalone tenant dropdown and its form are gone");
   const myRow = $$(".dd-table-host tbody tr").find((tr: any) => tr.dataset.tenantId === demoA.id);
   check(!!myRow, "the seeded fixture has its own row");
-  const rowBtns = Array.from(myRow.querySelectorAll(".adm-actions-cell .btn")).map((b: any) => b.className.trim());
+  const rowBtns = Array.from(myRow.querySelector("td:first-child").querySelectorAll(".btn")).map((b: any) => b.className.trim());
   check(rowBtns.some((c: string) => /btn btn-primary btn-sm/.test(c)) && rowBtns.some((c: string) => /btn btn-danger btn-sm/.test(c)),
     `per-row actions are house buttons at house sizes: ${rowBtns.join(" | ")}`);
   report.push(`  row actions: ${rowBtns.join(" \u00b7 ")} (house siblings: the tenant list's .adm-actions-cell pair)`);
@@ -189,8 +192,9 @@ async function main() {
   await until(() => $(".dd-modal"));
   const modal = $(".dd-modal");
   const selects = Array.from(modal.querySelectorAll("select")) as any[];
-  check(selects.length === 3 && !!modal.querySelector(".dd-sweep input") && !!modal.querySelector(".dd-estimate"),
-    "the seed modal carries template, volume, window, the sweep toggle and the estimate");
+  const scrubbers = Array.from(modal.querySelectorAll(".dd-scrub")) as any[];
+  check(selects.length === 1 && scrubbers.length === 2 && !!modal.querySelector(".dd-sweep input") && !!modal.querySelector(".dd-estimate"),
+    "the seed modal carries template (a select), volume + window (scrubbers), the sweep toggle and the estimate");
   check(selects[0].disabled === true && selects[0].value === "field_services", "\u2026with the template LOCKED to the tenant's own (batch 35)");
   (modal.querySelector(".adm-uhelp input") as any).click();
   check(selects[0].disabled === false && !modal.querySelector(".dd-warn").classList.contains("hidden"),

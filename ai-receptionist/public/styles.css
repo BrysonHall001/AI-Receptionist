@@ -1770,7 +1770,13 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .adm-demo-row .adm-ai-desc { font-size: var(--text-xs); }
 @media (max-width: 860px) { .adm-step2 { grid-template-columns: 1fr; } }
 /* Demo data: the tenants table is the interface; the options live in a modal. */
-.dd-table-host { margin-top: var(--sp-3); }
+.dd-table-host { margin-top: var(--sp-3); min-width: 0; }
+/* The demo tenants table fits its panel — the action controls can never be
+   the thing that scrolls out of view. */
+.dd-table-host table { width: 100%; table-layout: auto; }
+.dd-table-host th, .dd-table-host td { white-space: normal; }
+.dd-table-host .adm-actions-cell { display: inline-flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: var(--sp-2); }
+.dd-table-host .adm-actions-cell .btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dd-progress { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-xs); }
 .dd-row-clickable { cursor: pointer; }
 .dd-detail-row td { padding: 0 var(--sp-3) var(--sp-3); }
@@ -1780,6 +1786,12 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .dd-modal .adm-frow { margin-bottom: var(--sp-3); }
 .dd-sweep { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .dd-estimate { margin: 0; }
+/* The seed modal borrows Appearance's scrubber; these only place it. */
+.dd-scrub { min-width: 220px; }
+.dd-scrub-host { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; }
+.dd-scrub-host .fun-seg { flex: 1 1 140px; min-width: 0; }
+.dd-scrub-val { flex: 0 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dd-caveat { margin: var(--sp-2) 0 0; }
 .dd-warn { color: var(--warn, var(--ink-faint)); }
 /* GLOBAL SEARCH — the top-bar input and its anchored results panel. Built from
    house tokens: the shared .search-input, .card elevation, .field-label section
@@ -1815,7 +1827,8 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 /* Developer Tools -> Tools: one card per tool, each a capped-width form so it
    doesn't read as unfinished across a wide screen, with the destructive control
    fenced off in its own zone. */
-.tools-wrap { display: flex; flex-direction: column; gap: var(--sp-5); max-width: 720px; }
+.tools-wrap { display: flex; flex-direction: column; gap: var(--sp-5); min-width: 0; }
+.tools-wrap--narrow { max-width: 720px; }   /* prose-width tools keep the old cap */
 .tool-card { padding: var(--sp-4); }
 .tool-h { margin: 0 0 var(--sp-2); font-size: var(--text-md); }
 .tool-hint { margin: 0 0 var(--sp-4); font-size: var(--text-sm); }

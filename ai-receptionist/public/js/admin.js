@@ -1801,38 +1801,15 @@
   // A tab that holds tools, not one tool: Demo data is the first, the detector
   // sweep is its own sibling (it is not demo-data functionality), and there is
   // room for the next one without another tab.
-  // Sub-tabs beneath Tools, built with History's own pattern (see
-  // renderHistorySection): the same .settings-tabs bar, the same
-  // .settings-tab/.active classes, the same paintBar/paintBody shape.
-  const TOOLS_SUBTABS = [
-    { key: "demodata", label: "Demo Data", mount: (host) => { const wrap = el("div", "tools-wrap"); host.appendChild(wrap); renderDemoDataTool(wrap); } },
-    { key: "sweep", label: "Detector Sweep", mount: (host) => { const wrap = el("div", "tools-wrap"); host.appendChild(wrap); renderSweepTool(wrap); } },
-  ];
-
+  // Tools holds ONE tool, so it holds it directly: a single-item tab strip is
+  // furniture that explains nothing. (The standalone detector-sweep runner was
+  // removed here; the NIGHTLY sweep and the seed modal's "run the sweep when
+  // seeding finishes" option are elsewhere and untouched.)
   function renderToolsSection(panel) {
-    const bar = el("div", "settings-tabs");
-    const body = el("div");
-    const hint = App.state._devtoolsHint || null;
-    let active = (hint && hint.subtab) || (TOOLS_SUBTABS[0] && TOOLS_SUBTABS[0].key);
-    function paintBar() {
-      bar.innerHTML = "";
-      TOOLS_SUBTABS.forEach((t) => {
-        const b = el("button", null, t.label);
-        b.className = "settings-tab" + (active === t.key ? " active" : "");
-        b.onclick = () => { if (active !== t.key) { active = t.key; paintBar(); paintBody(); } };
-        bar.appendChild(b);
-      });
-    }
-    function paintBody() {
-      body.innerHTML = "";
-      const t = TOOLS_SUBTABS.find((x) => x.key === active);
-      if (t) t.mount(body);
-    }
     panel.innerHTML = "";
-    panel.appendChild(bar);
-    panel.appendChild(body);
-    paintBar();
-    paintBody();
+    const wrap = el("div", "tools-wrap");
+    panel.appendChild(wrap);
+    renderDemoDataTool(wrap);
   }
 
   /** Tool 1 — Demo data. Only DEMO-flagged tenants can be chosen; the endpoint
@@ -1894,13 +1871,13 @@
         return tb - ta || String(a.name).localeCompare(String(b.name));
       });
       const columns = [
+        { key: "actions", label: "Actions", sortable: false, render: () => "" },
         { key: "name", label: "Tenant", get: (r) => r.name, render: (r) => `<span class="adm-rowname">${esc(r.name)}</span>` },
         { key: "template", label: "Template", get: (r) => templateLabel(r.template), render: (r) => `<span class="cell-muted">${esc(templateLabel(r.template))}</span>` },
         { key: "seeded", label: "Seeded?", get: (r) => (r.seeded ? "Seeded" : "Empty"),
           render: (r) => `<span class="pill${r.seeded ? " success" : ""}">${r.seeded ? "Seeded" : "Empty"}</span>` },
         { key: "rowsSeeded", label: "Records seeded", get: (r) => r.rowsSeeded || 0, render: (r) => (r.rowsSeeded ? String(r.rowsSeeded) : '<span class="cell-muted">\u2014</span>') },
         { key: "lastSeededAt", label: "Last seeded", get: (r) => r.lastSeededAt || "", render: (r) => `<span class="cell-muted">${esc(fmtWhen(r.lastSeededAt))}</span>` },
-        { key: "actions", label: "Actions", sortable: false, render: () => "" },
       ];
       const handle = App.table.mount({
         container: host, columns, rows: ordered, rowId: (r) => r.id,
@@ -1913,7 +1890,7 @@
         const r = ordered[i];
         if (!r) return;
         tr.dataset.tenantId = r.id;
-        const cell = tr.lastElementChild;
+        const cell = tr.firstElementChild;   // Actions leads the row
         if (!cell) return;
         cell.innerHTML = "";
         const box = el("div", "adm-actions-cell");
@@ -1987,17 +1964,31 @@
       unlockCb.onchange = () => { pSel.disabled = !unlockCb.checked; warn.classList.toggle("hidden", !unlockCb.checked); if (!unlockCb.checked) pSel.value = ownTemplate; paintEstimate(); };
       row1.appendChild(colP);
 
-      const colV = mkField("Volume");
-      const vSel = el("select", "input");
-      vSel.innerHTML = '<option value="small">Small (\u00d71)</option><option value="medium">Medium (\u00d72)</option><option value="large">Large (\u00d74)</option>';
-      colV.appendChild(vSel);
-      row1.appendChild(colV);
+      // VOLUME + TIME WINDOW use the SAME segmented scrubber as Settings →
+      // Appearance → Component style (App.theme.segSlider), borrowed with its
+      // own range rather than forked. Each carries the Appearance readout
+      // treatment: a label, the bar, and a live value beside it.
+      const scrubRow = (labelText, cfg, readout) => {
+        const col = el("div", "adm-fcol dd-scrub");
+        col.appendChild(el("label", "field-label", labelText));
+        const host = el("div", "fun-slider-controls dd-scrub-host");
+        const val = el("span", "fun-range-val dd-scrub-val", readout(cfg.value));
+        const slider = App.theme.segSlider({
+          ariaLabel: labelText, min: cfg.min, max: cfg.max, step: cfg.step, value: cfg.value,
+          onInput: (v) => { cfg.onInput(v); val.textContent = readout(v); paintEstimate(); },
+        });
+        host.appendChild(slider.el);
+        host.appendChild(val);
+        col.appendChild(host);
+        return col;
+      };
 
-      const colW = mkField("Time window");
-      const wSel = el("select", "input");
-      wSel.innerHTML = '<option value="30">Last 30 days</option><option value="90" selected>Last 90 days</option><option value="365">Last 365 days</option>';
-      colW.appendChild(wSel);
-      row1.appendChild(colW);
+      let volume = 1;
+      let windowDays = 90;
+      row1.appendChild(scrubRow("Volume", { min: 0.5, max: 4, step: 0.1, value: volume, onInput: (v) => { volume = v; } },
+        (v) => (Math.abs(v - 1) < 0.05 ? "Small \u00d71.0" : Math.abs(v - 2) < 0.05 ? "Medium \u00d72.0" : Math.abs(v - 4) < 0.05 ? "Large \u00d74.0" : `\u00d7${Number(v).toFixed(1)}`)));
+      row1.appendChild(scrubRow("Time window", { min: 14, max: 365, step: 1, value: windowDays, onInput: (v) => { windowDays = v; } },
+        (v) => `${Math.round(v)} days`));
       body.appendChild(row1);
 
       const sweepRow = el("label", "adm-uhelp cell-muted dd-sweep");
@@ -2008,14 +1999,25 @@
 
       const estimate = el("p", "cell-muted dd-estimate");
       body.appendChild(estimate);
+      const caveat = el("p", "cell-muted dd-caveat hidden");
+      body.appendChild(caveat);
+      // Live from BOTH scrubbers. Fixed entities (a technician, the price book)
+      // do not scale — you cannot have 0.4 of a technician.
+      const FIXED_ENTITIES = ["resources", "products", "multiVisit", "recurring"];
+      const PLANTED_OLDEST_DAYS = 52;   // demoSeeder.PLANTED_PATTERN_OLDEST_DAYS
       function paintEstimate() {
         if (!caps) { estimate.textContent = ""; return; }
         const c = caps[pSel.value] || {};
-        const mult = vSel.value === "large" ? 4 : vSel.value === "medium" ? 2 : 1;
-        const fixed = ["resources", "products", "multiVisit", "recurring"];
-        estimate.textContent = "This will create about: " + Object.keys(c).map((k) => `${fixed.indexOf(k) === -1 ? Math.round(c[k] * mult) : c[k]} ${k.replace(/([A-Z])/g, " $1").toLowerCase()}`).join(" \u00b7 ") + `, spread across ${wSel.value} days.`;
+        const parts = Object.keys(c).map((k) => `${FIXED_ENTITIES.indexOf(k) === -1 ? Math.round(c[k] * volume) : c[k]} ${k.replace(/([A-Z])/g, " $1").toLowerCase()}`);
+        estimate.textContent = "About " + parts.join(" \u00b7 ") + `, spread across ${Math.round(windowDays)} days.`;
+        // The honest caveat: below ~52 days the stalling pattern still sits where
+        // its detector can see it, so the data reaches further than the window.
+        caveat.textContent = windowDays < PLANTED_OLDEST_DAYS
+          ? `The stalling-status pattern is planted about ${PLANTED_OLDEST_DAYS} days back so its detector can see it, so this dataset will reach a little further than ${Math.round(windowDays)} days. Everything else spreads across your window.`
+          : "";
+        caveat.classList.toggle("hidden", !caveat.textContent);
       }
-      vSel.onchange = paintEstimate; wSel.onchange = paintEstimate; pSel.onchange = paintEstimate;
+      pSel.onchange = paintEstimate;
       paintEstimate();
 
       modal.appendChild(body);
@@ -2037,7 +2039,7 @@
             method: "POST",
             body: JSON.stringify({
               profile: pSel.value, confirm: t.name, runSweep: sweepCb.checked,
-              volume: vSel.value, windowDays: Number(wSel.value), allowTemplateMismatch: unlockCb.checked,
+              volume, windowDays: Math.round(windowDays), allowTemplateMismatch: unlockCb.checked,
             }),
           });
           close();
@@ -2161,43 +2163,10 @@
     load();
   }
 
-  function renderSweepTool(parent) {
-    const sec = el("section", "tool-card card");
-    sec.appendChild(el("h3", "tool-h", "Detector sweep"));
-    sec.appendChild(el("p", "cell-muted tool-hint", "Runs the suggestion detectors over one tenant now, instead of waiting for tonight's pass. Reads only \u2014 it proposes, it never changes anything."));
-    parent.appendChild(sec);
-    const form = el("div", "tool-form");
-    sec.appendChild(form);
-    const setup = el("div", "tool-setup");
-    const col = el("div", "tool-field");
-    col.appendChild(el("label", "field-label", "Tenant"));
-    const tSel = el("select", "input");
-    col.appendChild(tSel);
-    setup.appendChild(col);
-    form.appendChild(setup);
-    const row = el("div", "tool-actions");
-    const runBtn = el("button", "btn btn-ghost btn-sm", "Run detector sweep");
-    row.appendChild(runBtn);
-    form.appendChild(row);
-    const status = el("div", "tool-status");
-    status.style.setProperty("display", "none");
-    form.appendChild(status);
-    App.api("/api/admin/portals").then((r) => {
-      const all = (r && (r.portals || r)) || [];
-      tSel.innerHTML = all.map((p) => `<option value="${p.id}">${esc(p.name)}${p.isDemo ? " (demo)" : ""}</option>`).join("");
-    }).catch(() => { tSel.innerHTML = "<option>(couldn't load tenants)</option>"; });
-    runBtn.onclick = async () => {
-      runBtn.disabled = true;
-      status.className = "tool-status tool-status--working";
-      status.textContent = "Running\u2026"; status.style.setProperty("display", "");
-      try {
-        const r = await App.api("/api/admin/portals/" + encodeURIComponent(tSel.value) + "/suggestions/run", { method: "POST" });
-        status.className = "tool-status tool-status--ok";
-        status.textContent = `Sweep done: ${r.counters.findings} finding(s), ${r.counters.created} new suggestion(s). Open the tenant's bell to read them.`;
-      } catch (e) { status.className = "tool-status tool-status--bad"; status.textContent = e.message || "Sweep failed."; }
-      runBtn.disabled = false;
-    };
-  }
+  // The standalone "Detector sweep" runner lived here and was removed with its
+  // sub-tab (nobody used it). The nightly scheduled sweep and the seed modal's
+  // post-seed sweep option are the two paths that actually run detectors, and
+  // both are elsewhere: src/index.ts (timer) and demoSeeder.ts (runSweep).
   const HISTORY_SUBTABS = [
     { key: "changelog", label: "Change Log", mount: (host) => renderChangelog(host) },
     { key: "auditlog", label: "Audit Log", mount: (host) => renderAuditLog(host) }, // devtools batch 3

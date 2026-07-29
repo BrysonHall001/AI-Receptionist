@@ -273,8 +273,8 @@ async function main() {
   await until(() => w.document.querySelector(".dd-table-host table tbody tr"), 9000);
   const toolTitles = $$(".tool-card .tool-h").map((h: any) => h.textContent);
   const subTabs = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
-  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]) && subTabs.indexOf("Demo Data") === 0 && subTabs.indexOf("Detector Sweep") === 1,
-    `the TOOLS tab opens on its Demo Data sub-tab (${toolTitles.join(" \u00b7 ")}), with Detector Sweep beside it (${subTabs.join(" \u00b7 ")})`);
+  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]) && subTabs.length === 0,
+    `the TOOLS tab IS the demo-data tool (${toolTitles.join(" \u00b7 ")}); the one-item sub-tab strip and the standalone sweep runner were removed`);
   // LAYER 1 moved from a dropdown to the TABLE: only demo tenants get a row.
   const tenantCells = $$(".dd-table-host tbody tr .adm-rowname").map((c: any) => c.textContent);
   check(tenantCells.every((n: string) => n.indexOf("dts-live") === -1 && n.indexOf("dts-real") === -1) && tenantCells.some((n: string) => n.indexOf("dts-banner") !== -1),
@@ -310,11 +310,11 @@ async function main() {
   } else {
     check(false, "fixture: no seeded row to open the wipe flow from");
   }
-  const sweepSubTab = $$(".settings-tabs .settings-tab").find((b: any) => /Detector Sweep/.test(b.textContent));
-  if (sweepSubTab) (sweepSubTab as any).click();
-  await until(() => $$(".tool-card").some((c: any) => /Detector sweep/.test(c.textContent)), 9000);
-  const sweepCard = $$(".tool-card").find((c: any) => /Detector sweep/.test(c.textContent));
-  check(!!sweepCard && !!sweepCard.querySelector(".btn-ghost"), "\u2026and under Tools, the sweep's button is the house ghost");
+  // The standalone sweep runner is gone; the two REAL sweep paths must remain.
+  const idxSrc2 = readFileSync(resolve(__dirname, "..", "index.ts"), "utf8");
+  const seedSrc2 = readFileSync(resolve(__dirname, "..", "services", "demoSeeder.ts"), "utf8");
+  check(/runDetectorSweep/.test(idxSrc2) && /opts\.runSweep !== false/.test(seedSrc2),
+    "\u2026and both real sweep paths survive its removal: the nightly timer and the post-seed option");
   report.push(`  tools panel: .tools-wrap max-width 720px \u00b7 .tool-form max-width 560px \u00b7 setup grid 2\u00d7minmax(0,1fr) \u00b7 danger zone --red hairline over --red-soft`);
   freeze(w); await sleep(150);
   // creation step 2

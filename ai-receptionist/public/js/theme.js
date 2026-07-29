@@ -266,48 +266,70 @@
   // fork. They are pure given their arguments: selection is reported through
   // onPick, so each host decides what selecting MEANS (the portal saves
   // immediately; the hub only records the choice into its draft).
+    /**
+     * The segmented scrubber used by Component style, EXTENDED (not forked) so
+     * other surfaces can borrow it with their own range and units.
+     *
+     * Optional: { min, max, step }. Omit them and every number below is
+     * identical to the original 0-100 behaviour, which is what Appearance
+     * still passes.
+     */
     function segSlider(opts) {
       const { el } = App.util;
+      const min = typeof opts.min === "number" ? opts.min : 0;
+      const max = typeof opts.max === "number" ? opts.max : 100;
+      const span = Math.max(1e-9, max - min);
+      const hasStep = typeof opts.step === "number" && opts.step > 0;
+      const step = hasStep ? opts.step : Math.round(100 / FUN_SEGS);   // keyboard step either way
+      const snap = (v) => {
+        const n = Number(v);
+        if (!isFinite(n)) return min;
+        // Only a caller that ASKED for a step gets its values snapped to it —
+        // the original clamped without snapping, and Appearance still does.
+        const out = hasStep ? min + Math.round((n - min) / step) * step : n;
+        return Math.min(max, Math.max(min, Number(out.toFixed(6))));
+      };
       const seg = el("div", "fun-seg");
       seg.tabIndex = 0;
       seg.setAttribute("role", "slider");
-      seg.setAttribute("aria-valuemin", "0");
-      seg.setAttribute("aria-valuemax", "100");
+      seg.setAttribute("aria-valuemin", String(min));
+      seg.setAttribute("aria-valuemax", String(max));
       seg.setAttribute("aria-label", opts.ariaLabel || "");
       let html = "";
       for (let i = 0; i < FUN_SEGS; i++) html += `<span class="fun-seg-i" data-i="${i}"></span>`;
       seg.innerHTML = html;
       const cells = Array.from(seg.querySelectorAll(".fun-seg-i"));
-      let value = clampFun(opts.value);
+      let value = snap(opts.value);
       function paint() {
-        const filled = Math.round((value / 100) * FUN_SEGS);
+        const filled = Math.round(((value - min) / span) * FUN_SEGS);
         cells.forEach((c, i) => c.classList.toggle("fun-seg-i--on", i < filled));
         seg.setAttribute("aria-valuenow", String(value));
       }
       function setValue(v, commit) {
-        value = clampFun(v);
+        value = snap(v);
         paint();
         if (opts.onInput) opts.onInput(value);
         if (commit && opts.onCommit) opts.onCommit(value);
       }
-      const idxToLevel = (i) => Math.round(((i + 1) / FUN_SEGS) * 100);
+      const idxToLevel = (i) => snap(min + ((i + 1) / FUN_SEGS) * span);
       const fromEvent = (e) => {
         const cell = e.target.closest ? e.target.closest(".fun-seg-i") : null;
         if (cell) return idxToLevel(Number(cell.dataset.i));
         const r = seg.getBoundingClientRect();
-        return clampFun(Math.round(((e.clientX - r.left) / Math.max(1, r.width)) * 100));
+        return snap(min + ((e.clientX - r.left) / Math.max(1, r.width)) * span);
       };
       let dragging = false;
       seg.onpointerdown = (e) => { dragging = true; seg.setPointerCapture(e.pointerId); setValue(fromEvent(e)); };
       seg.onpointermove = (e) => { if (dragging) setValue(fromEvent(e)); };
       seg.onpointerup = (e) => { dragging = false; setValue(fromEvent(e), true); };
       seg.onkeydown = (e) => {
-        const step = Math.round(100 / FUN_SEGS);
-        if (e.key === "ArrowLeft") { e.preventDefault(); setValue(value - step, true); }
-        else if (e.key === "ArrowRight") { e.preventDefault(); setValue(value + step, true); }
+        if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); setValue(value - step, true); }
+        else if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); setValue(value + step, true); }
+        else if (e.key === "Home") { e.preventDefault(); setValue(min, true); }
+        else if (e.key === "End") { e.preventDefault(); setValue(max, true); }
       };
       paint();
-      return { el: seg, set: (v) => { value = clampFun(v); paint(); }, get value() { return value; } };
+      return { el: seg, set: (v) => { value = snap(v); paint(); }, get value() { return value; } };
     }
 
     function themePreviewCard(p, vars) {
@@ -844,5 +866,5 @@
     render();
   }
 
-  App.theme = { applyResolved, applyUserTheme, applyFun, resetToDefault, loadAndApply, mountSettings, mountThemePicker, loadThemeVars, getLogo: function () { return App.portalLogo || null; } };
+  App.theme = { applyResolved, applyUserTheme, applyFun, resetToDefault, loadAndApply, mountSettings, mountThemePicker, loadThemeVars, segSlider, getLogo: function () { return App.portalLogo || null; } };
 })(typeof window !== "undefined" ? window : globalThis);
