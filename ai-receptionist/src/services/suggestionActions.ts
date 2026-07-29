@@ -100,6 +100,35 @@ const ACTIONS: ActionDef[] = [
     },
   },
   {
+    type: "open_ai_instructions",
+    verb: "Open instructions",
+    // CALLS, not settings: this card exists because of what was said on the
+    // phone, so whoever cannot read calls must never see it. The instructions
+    // page applies its own gate on arrival.
+    requiredArea: "calls",
+    requiredRight: "view",
+    validate: () => null,
+    // NAVIGATE-ONLY. It writes nothing: without a model there is no honest way
+    // to draft knowledge-base text, and stitching caller phrasing into a
+    // tenant's instructions would read badly and change their words for them.
+    // The person lands on the instructions with the phrase in hand.
+    run: async (_ctx: any, params: any) => ({
+      ok: true,
+      outcome: `Opening your receptionist's instructions \u2014 add what to say about \u201c${String((params && params.phrase) || "").slice(0, 40)}\u201d`,
+      link: `#/settings/aireceptionist?topic=${encodeURIComponent(String((params && params.phrase) || "").slice(0, 40))}`,
+    }),
+  },
+  {
+    // The informational sibling of "none" for anything derived from call
+    // recordings: identical behaviour, but gated on call access.
+    type: "none_calls",
+    verb: "Got it",
+    requiredArea: "calls",
+    requiredRight: "view",
+    validate: () => null,
+    run: async () => ({ ok: true, outcome: "Noted", link: null }),
+  },
+  {
     type: "none",
     verb: "Got it",
     requiredArea: null,

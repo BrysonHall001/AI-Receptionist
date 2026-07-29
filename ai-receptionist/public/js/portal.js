@@ -333,6 +333,15 @@
 
     const sec = el("div", "card ai-instructions-card");
     sec.classList.add("pt-sec");
+    // Arriving from an accepted call-topic suggestion (#/settings/aireceptionist?topic=…).
+    // The phrase is shown, never inserted: what the receptionist says should be
+    // the owner's wording, not a caller's phrasing stitched in automatically.
+    const arrivedTopic = (App.routeQuery && App.routeQuery.topic) ? String(App.routeQuery.topic).slice(0, 40) : "";
+    if (arrivedTopic) {
+      const note = el("div", "demo-banner ai-topic-note");
+      note.textContent = `Callers have been asking about \u201c${arrivedTopic}\u201d. Add what you\u2019d like your receptionist to say about it below \u2014 in your own words.`;
+      sec.appendChild(note);
+    }
     const head = el("div");
     head.classList.add("pt-head");
 
@@ -5901,7 +5910,7 @@
       const sec = el("div", "notif-prefs");
       sec.appendChild(el("h2", "settings-h", "Suggestions"));
       sec.appendChild(el("p", "cell-muted notif-prefs-hint", "Clarity watches for patterns in your own data and proposes changes here. It never changes anything without you clicking."));
-      const card = el("div", "card notif-prefs-card");
+      const card = el("div", "card notif-prefs-card sug-prefs-card");
       sec.appendChild(card);
       panel.appendChild(sec);
       let data;

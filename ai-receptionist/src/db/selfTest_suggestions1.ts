@@ -70,15 +70,26 @@ async function main() {
   console.log("\n(1) builds:");
   const cl = await db.changeLogEntry.findFirst({ where: { commitSha: "batch-suggestions-1-20260727" } });
   check(!!cl && cl.id === "cl_suggestions_1_20260727", "the changelog row landed (idempotent migration)");
-  check(DETECTORS.length === 4 && DETECTORS.every((d: any) => d.id && d.label && d.description && d.floor && typeof d.run === "function"),
-    `four detectors, each declaring its floor (${DETECTORS.map((d: any) => d.id).join(", ")})`);
-  check(SUGGESTION_ACTIONS.length === 4 && SUGGESTION_ACTIONS.every((a: any) => a.verb && typeof a.validate === "function" && typeof a.run === "function"),
-    "the action registry declares verb + validation + runner for every action");
+  const BATCH31_FOUR = ["repeated_phrase_field", "manual_message_pattern", "unused_module", "stage_stall"];
+  check(DETECTORS.length === 7 && BATCH31_FOUR.every((id) => DETECTORS.some((d: any) => d.id === id))
+    && DETECTORS.every((d: any) => d.id && d.label && d.description && d.floor && typeof d.run === "function"),
+    `seven detectors, each declaring its floor \u2014 the original four still present (${DETECTORS.map((d: any) => d.id).join(", ")})`);
+  check(SUGGESTION_ACTIONS.length === 6 && SUGGESTION_ACTIONS.every((a: any) => a.verb && typeof a.validate === "function" && typeof a.run === "function"),
+    `the action registry declares verb + validation + runner for every action (${SUGGESTION_ACTIONS.length})`);
   // NO LLM, and NO direct config writes in the suggestion layer
-  const layer = ["src/services/suggestionService.ts", "src/services/suggestionActions.ts", "src/detectors/index.ts"].map((f) => readFileSync(resolve(__dirname, "..", "..", f), "utf8")).join("\n");
+  const FILES = ["src/services/suggestionService.ts", "src/services/suggestionActions.ts", "src/detectors/index.ts",
+    "src/detectors/transcriptInsights.ts", "src/services/transcriptPhrases.ts"];
+  const layer = FILES.map((f) => readFileSync(resolve(__dirname, "..", "..", f), "utf8")).join("\n");
   const codeOnly = layer.split("\n").filter((l: string) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
-  check(!/openai|anthropic|\bllm\b|chat\.completions|transcript|callSession/i.test(codeOnly),
-    "NO LLM calls and no transcript mining anywhere in the suggestion layer (code, excluding the comments that say so)");
+  check(!/openai|anthropic|\bllm\b|chat\.completions/i.test(codeOnly),
+    "NO LLM calls anywhere in the suggestion layer, including the transcript detectors (code, excluding the comments that say so)");
+  // Transcript access is CONFINED: the two suggestion services still never read
+  // a transcript themselves, so every phrase passes the one privacy gate.
+  const suggestionServicesOnly = ["src/services/suggestionService.ts", "src/services/suggestionActions.ts"]
+    .map((f) => readFileSync(resolve(__dirname, "..", "..", f), "utf8"))
+    .join("\n").split("\n").filter((l: string) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+  check(!/transcript|callSession/i.test(suggestionServicesOnly),
+    "\u2026and the suggestion services never touch a transcript directly \u2014 mining lives behind transcriptPhrases' privacy gate");
   const writeCalls = layer.match(/(?:db|prisma)\.(\w+)\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
   const nonSuggestionWrites = writeCalls.filter((m) => !/\.suggestion\./.test(m));
   check(nonSuggestionWrites.length === 0,
@@ -247,8 +258,11 @@ async function main() {
     "CARD anatomy: type label \u00b7 finding \u00b7 transparency line \u00b7 action row (primary verb + Dismiss)");
   check(card.querySelector(".btn-primary").textContent === "Add the field", `\u2026the primary button carries the concrete verb (“${card.querySelector(".btn-primary").textContent}”)`);
   card.querySelector(".btn-primary").click();
-  await until(async () => !!(await db.fieldDef.findFirst({ where: { tenantId: t1.id, key: "ui_field" } })), 8000).catch(() => null);
-  await sleep(600);
+  // until() does not await an async predicate, so poll explicitly.
+  for (let i = 0; i < 40; i++) {
+    if (await db.fieldDef.findFirst({ where: { tenantId: t1.id, key: "ui_field" } })) break;
+    await sleep(200);
+  }
   check(!!(await db.fieldDef.findFirst({ where: { tenantId: t1.id, key: "ui_field" } })),
     "ACCEPT: the service call still happens and the field really exists (the panel now navigates to it \u2014 notif-polish batch)");
   // The panel closed on navigation (notif-polish) — reopen it for the next leg.
@@ -288,8 +302,14 @@ async function main() {
   w.location.hash = "#/settings/account"; w.dispatchEvent(new w.Event("hashchange"));
   await until(() => /Show suggestions/.test(w.document.body.textContent || ""));
   await sleep(500);
-  const prefRows = $$(".notif-pref-row").filter((r: any) => /Show suggestions|Repeated wording|Repeated manual step|Unused module|Pipeline insight/.test(r.textContent));
-  check(prefRows.length === DETECTORS.length + 1, `PREFERENCES: a master switch + one per detector (${prefRows.length} rows)`);
+  // Scope to the SUGGESTION prefs card: the notification prefs use the same row
+  // class, so counting every row on the page counted both lists.
+  const prefRows = $$(".sug-prefs-card .notif-pref-row");
+  check(prefRows.length === DETECTORS.length + 1,
+    `PREFERENCES: a master switch + one per detector, including the transcript ones (${prefRows.length} rows for ${DETECTORS.length} detectors)`);
+  const prefText = prefRows.map((r: any) => r.textContent).join(" | ");
+  check(/Frequent call topic/.test(prefText) && /Rising call topic/.test(prefText) && /Calls that led nowhere/.test(prefText),
+    "\u2026and each transcript detector can be switched off on its own");
   check(prefRows.slice(1).every((r: any) => /Needs /.test(r.textContent)), "\u2026each detector states the evidence it needs before it will speak");
   check(!!$(".sug-dismissed") && /dismissed/i.test($(".sug-dismissed").textContent) && $$(".sug-dismissed .btn").length > 0,   // normalized to the house button in the bell-organic batch
     "\u2026and every dismissed suggestion stays listed, with a way to bring it back (nothing is silently suppressed)");

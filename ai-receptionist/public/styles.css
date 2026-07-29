@@ -1824,6 +1824,9 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 /* The in-portal demo banner: house amber-soft notice, dismissible per person. */
 .demo-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); background: var(--amber-soft); color: var(--amber); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); margin: 0 0 var(--sp-3); font-size: var(--text-sm); }
 .demo-banner-text { font-weight: 500; }
+/* Arriving from an accepted call-topic suggestion: the same banner shape, in
+   the accent tone — this is information, not a warning. */
+.ai-topic-note { background: var(--accent-soft); color: var(--accent); }
 /* Developer Tools -> Tools: one card per tool, each a capped-width form so it
    doesn't read as unfinished across a wide screen, with the destructive control
    fenced off in its own zone. */

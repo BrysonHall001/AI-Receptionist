@@ -253,7 +253,13 @@ const stageStall: DetectorDef = {
   },
 };
 
-export const DETECTORS: DetectorDef[] = [repeatedPhraseField, manualMessagePattern, unusedModule, stageStall];
+// The transcript detectors live in their own module (they share the phrase
+// machinery) but are ORDINARY members of this list: same interface, same sweep,
+// same isolation, same Health counters.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { TRANSCRIPT_DETECTORS } = require("./transcriptInsights");
+
+export const DETECTORS: DetectorDef[] = [repeatedPhraseField, manualMessagePattern, unusedModule, stageStall, ...TRANSCRIPT_DETECTORS];
 export function getDetector(id: string): DetectorDef | null { return DETECTORS.find((d) => d.id === id) || null; }
 
 // ------------------------------------------------------------------ the sweep
