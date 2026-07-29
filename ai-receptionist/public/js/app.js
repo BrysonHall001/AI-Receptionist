@@ -223,6 +223,40 @@
     if (href === "#/dashboard") return false; // otherwise Home Dashboard is never hidden
     return App.navConfig().hidden.indexOf(href) !== -1;
   };
+  /**
+   * Is this MODULE switched off for this tenant? Distinct from a page LOCK:
+   * a lock is an owner forbidding a page, a hide is the tenant not using the
+   * module at all. Both mean "don't offer it".
+   */
+  App.isModuleHidden = function (key) {
+    if (!key) return false;
+    var href = App.recordTypeHref ? App.recordTypeHref(key) : null;
+    return !!href && App.isNavHidden(href);
+  };
+
+  /**
+   * THE modules a person should be offered, anywhere in the portal.
+   *
+   * Every picker, builder, filter, tab strip and enumeration calls this — never
+   * App.state.recordTypes directly — so a module a tenant has switched off can
+   * never reappear in one surface because that surface forgot to filter.
+   *
+   * NOT for stored data. Historical rows that reference a now-hidden module
+   * (a saved filter, an old export, a live automation) still resolve and still
+   * run: this filters what we OFFER, never what already exists.
+   *
+   * The ONE legitimate exception is Settings -> Modules & Fields, which must
+   * list hidden modules so an owner can switch them back on.
+   */
+  App.visibleRecordTypes = function (types) {
+    var all = Array.isArray(types) ? types : ((App.state && App.state.recordTypes) || []);
+    return all.filter(function (t) {
+      if (!t || !t.key) return false;
+      if (App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)) return false;
+      return !App.isModuleHidden(t.key);
+    });
+  };
+
   // Display text for a nav item: record-type items (kind set) keep flowing through
   // the labels system; the fixed items use the per-portal override, falling back to
   // the built-in literal when there's no override.

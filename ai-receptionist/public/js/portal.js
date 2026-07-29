@@ -243,7 +243,7 @@
       // the Work Orders module is live (same visibility rule as the settings
       // toggle). Runs the scripted problem call end-to-end: extract -> finalize
       // -> dateless work order in the dispatch tray.
-      if ((App.state.recordTypes || []).some((t) => t.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order"))) {
+      if ((App.state.recordTypes || []).some((t) => t.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order")) && !App.isModuleHidden("work_order")) {
         const simWo = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#128736;</span> Simulate service request`);
         simWo.id = "simulate-wo-btn";
         simWo.onclick = () => simulate("service_request");
@@ -428,6 +428,7 @@
 
     const ta = el("textarea", "input");
     ta.classList.add("pt-ta");
+    ta.rows = 12;                 // ~a full section without scrolling on arrival
     ta.spellcheck = true;
     ta.placeholder = "## Overview\n\nWe're a plumbing company serving the metro area…";
     // Seed: existing content is preserved (parse handles no-marker + preamble); empty -> defaults.
@@ -1096,12 +1097,12 @@
     grid.className = "fields-chip-row";
     // Owner page-lock: don't offer import for a locked page's type.
     if (!App.isPageLocked("#/contacts")) {
-      const cBtn = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(App.label("contact", "many"))}`);
+      const cBtn = el("button", "btn btn-ghost btn-sm da-modbtn", `<span class="btn-icon">${App.icons.forModuleKey("contact")}</span> ${esc(App.label("contact", "many"))}`);
       cBtn.onclick = () => openImport();
       grid.appendChild(cBtn);
     }
-    (types || []).filter((t) => t.key !== "contact" && !App.isRecordTypeLocked(t.key)).forEach((t) => {
-      const b = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(t.labelPlural || t.label)}`);
+    App.visibleRecordTypes(types).filter((t) => t.key !== "contact").forEach((t) => {
+      const b = el("button", "btn btn-ghost btn-sm da-modbtn", `<span class="btn-icon">${App.icons.forModuleKey(t.key)}</span> ${esc(t.labelPlural || t.label)}`);
       b.onclick = async () => {
         let fields = [];
         try { fields = await App.portalApi("/api/fields?recordType=" + encodeURIComponent(t.key)); } catch (e) { /* empty */ }
@@ -1146,7 +1147,7 @@
     // Owner page-lock: a locked page's export target must not appear. Events has no nav
     // page, so it always stays (and keeps this tab non-empty).
     const options = App.isPageLocked("#/contacts") ? [] : [{ value: "contact", label: App.label("contact", "many") }];
-    (types || []).filter((t) => t.key !== "contact" && !App.isRecordTypeLocked(t.key)).forEach((t) => options.push({ value: "rt:" + t.key, label: t.labelPlural || t.label }));
+    App.visibleRecordTypes(types).filter((t) => t.key !== "contact").forEach((t) => options.push({ value: "rt:" + t.key, label: t.labelPlural || t.label }));
     if (!App.isPageLocked("#/calls")) options.push({ value: "call", label: "Calls" });
     options.push({ value: "event", label: "Events" });
     if (App.canViewArea("billing")) options.push({ value: "charge", label: "Charges" }); // billing-gated
@@ -1172,7 +1173,9 @@
     }
 
     options.forEach((o) => {
-      const b = el("button", "btn btn-ghost", `<span class="btn-icon">&#8681;</span> ${esc(o.label)}`);
+      const modKey = String(o.value || "").indexOf("rt:") === 0 ? String(o.value).slice(3) : (o.value === "contacts" ? "contact" : null);
+      const glyph = modKey ? App.icons.forModuleKey(modKey) : "&#8681;";
+      const b = el("button", "btn btn-ghost btn-sm da-modbtn", `<span class="btn-icon">${glyph}</span> ${esc(o.label)}`);
       b.onclick = () => select(o.value, b);
       grid.appendChild(b);
     });
@@ -1497,7 +1500,7 @@
     rows = Array.isArray(rows) ? rows : [];
     recordTypes = Array.isArray(recordTypes) ? recordTypes : [];
     // Owner page-lock: don't offer reporting on a locked page's type.
-    recordTypes = recordTypes.filter((t) => !App.isRecordTypeLocked(t.key));
+    recordTypes = App.visibleRecordTypes(recordTypes);
     const portalTz = (settings && settings.timezone) || "America/New_York";
 
     const nextRunText = (r) => (r.mode !== "recurring" ? "—" : (!r.active ? "Paused" : (r.nextRunAt ? fmtDate(r.nextRunAt) : "—")));
@@ -2488,7 +2491,7 @@
     // Group deleted records by record type, keep types in their display order.
     const recsByType = {};
     (delRecords || []).forEach((r) => { (recsByType[r.recordTypeId] = recsByType[r.recordTypeId] || []).push(r); });
-    const typesWithDeleted = (types || []).filter((t) => !App.isRecordTypeLocked(t.key) && (recsByType[t.id] || []).length);
+    const typesWithDeleted = App.visibleRecordTypes(types).filter((t) => (recsByType[t.id] || []).length);
 
     // Each such type's fields drive its columns (same as the live list). Parallel.
     const fieldsByType = {};
@@ -2497,7 +2500,7 @@
     }));
 
     host.innerHTML = "";
-    const container = el("div", "fade-in");
+    const container = el("div", "fade-in rb-root");   // stable hook: the bin finished rendering
     const head = el("div", "rb-head");
     head.innerHTML = `<div><h1 class="rb-title">&#128465; Recycle Bin</h1><p class="cell-muted">Deleted items are kept for 30 days, then permanently removed. They don't appear anywhere else.</p></div>`;
     const backBtn = el("a", "btn btn-ghost btn-sm", (rbContactsLocked ? "← Back" : ("← Back to " + App.label("contact", "many"))));
@@ -2513,6 +2516,10 @@
 
     // One restorable, paginated table section (reuses App.table + the Restore
     // control). pageSize 5 paginates — nothing is hidden; Prev/Next reach it all.
+    // Is anything at all in the bin? Drives whether a section's own empty table
+    // speaks, or defers to the page-level "Recycle Bin is empty".
+    const binHasAnything = !!((delContacts || []).length || (delRecords || []).length);
+
     function section(title, columns, rows, restoreUrl, previewBase) {
       const sec = el("div", "rb-section");
       sec.appendChild(el("h2", "rb-section-title", `${title} (${rows.length})`));
@@ -2526,7 +2533,10 @@
         container: tableHost, columns, rows, selectable: true, rowId: (r) => r.id, pageSize: 5,
         onRowClick: (r) => App.go(previewBase + r.id), // read-only preview, stays in the bin
         onSelectionChange: (ids) => { rc.textContent = ids.length ? `${ids.length} selected` : ""; },
-        emptyHtml: `<div class="empty"><div class="empty-emoji">&#128465;</div><h3>Nothing here</h3><p>These will appear here for 30 days after deletion.</p></div>`,
+        // A section says "nothing here" only when ANOTHER section has something.
+        // With the whole bin empty the page-level state speaks instead, so this
+        // stays silent rather than duplicating it.
+        emptyHtml: binHasAnything ? `<div class="empty"><div class="empty-emoji">&#128465;</div><h3>Nothing here</h3><p>These will appear here for 30 days after deletion.</p></div>` : "",
       });
       const restoreBtn = el("button", "btn btn-primary btn-sm", "Restore selected");
       restoreBtn.onclick = async () => {
@@ -3531,7 +3541,7 @@
     (function buildModuleOptions() {
       liModule.innerHTML = "";
       const none = document.createElement("option"); none.value = ""; none.textContent = "None — free entry only"; liModule.appendChild(none);
-      (App.state.recordTypes || [])
+      App.visibleRecordTypes()
         .filter((t) => t.key !== (recordTypeKey || "contact")) // cycle-safe: never its own module
         .forEach((t) => { const o = document.createElement("option"); o.value = t.key; o.textContent = t.labelPlural || t.label || t.key; liModule.appendChild(o); });
       if (liCfg && liCfg.module) liModule.value = liCfg.module;
@@ -4007,10 +4017,20 @@
       // The portal-wide word editor now lives here, beside the other naming controls. Its own
       // titled group with its own Save — the editor logic (labels, descriptions, singular/
       // plural, auto-pluralize, PATCH /api/labels {generic} with server merge) is unchanged.
-      const termsDivider = el("div", "lbl-divider");
-      body.appendChild(termsDivider);
+      // TWO PANELS: the page list on the left, shared terms on the right, so
+      // neither runs the full width of a wide screen. The divider that separated
+      // them vertically is no longer needed — the columns do that work.
+      const duo = el("div", "panel-duo settings-capped lbl-duo");
+      const leftCol = el("div", "lbl-duo-col");
+      const rightCol = el("div", "lbl-duo-col");
+      // everything already in `body` becomes the left column's content
+      while (body.firstChild) leftCol.appendChild(body.firstChild);
       const termsHost = el("div", "lbl-terms-group");
-      body.appendChild(termsHost);
+      rightCol.appendChild(el("h3", "mf-col-title", "Shared terms"));
+      rightCol.appendChild(termsHost);
+      duo.appendChild(leftCol);
+      duo.appendChild(rightCol);
+      body.appendChild(duo);
       buildTermsSection(termsHost, (labelsData && labelsData.generic) || {});
     }
 
@@ -4981,12 +5001,18 @@
     async function secGeneral(panel) {
       const portal = await App.portalApi("/api/settings");
       panel.innerHTML = `<h2 class="settings-h">Business Profile</h2>
-        <div class="settings-grid">
-          <label class="field-label">Business name</label><input id="set-name" class="input" value="${esc(portal.name)}" />
-          <label class="field-label">Notify email</label><input id="set-email" class="input" value="${esc(portal.notifyEmail)}" />
+        <div class="form-row2 settings-capped">
+          <div class="adm-fcol">
+            <label class="field-label" for="set-name">Business name</label>
+            <input id="set-name" class="input" value="${esc(portal.name)}" />
+          </div>
+          <div class="adm-fcol">
+            <label class="field-label" for="set-email">Notify email</label>
+            <input id="set-email" class="input" value="${esc(portal.notifyEmail)}" />
+            <p class="cell-muted set-help">Where call summaries and business notifications are sent.</p>
+          </div>
         </div>
-        <p class="cell-muted settings-intro">Where call summaries and business notifications are sent.</p>
-        <button id="set-save" class="btn btn-primary btn-sm">Save changes</button>`;
+        <button id="set-save" class="btn btn-primary btn-sm u-mt-12">Save changes</button>`;
       App.util.$("#set-save").onclick = async () => {
         try {
           await App.portalApi("/api/settings", { method: "PATCH", body: JSON.stringify({
@@ -5054,7 +5080,7 @@
       } catch (e) {}
       let types = [];
       try { types = await App.portalApi("/api/record-types"); } catch (e) {}
-      const modules = (Array.isArray(types) ? types : []).filter((t) => t && t.key && t.key !== "contact" && !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)));
+      const modules = App.visibleRecordTypes(types).filter((t) => t.key !== "contact");
       const chosenModules = new Set(savedModules);
       const chosenPages = new Set(savedPages);
       status.innerHTML = "";
@@ -5093,7 +5119,7 @@
       // Work Orders module is live for this portal; OFF removes the prompt block
       // AND finalization skips (both ends server-side).
       const woType = (Array.isArray(types) ? types : []).find((t) => t && t.key === "work_order");
-      const woLive = !!woType && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order"));
+      const woLive = !!woType && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order")) && !App.isModuleHidden("work_order");
       const createCard = el("div", "card"); createCard.classList.add("pt-card3", "ai-create-card");
       createCard.innerHTML = `<h4 class="pt-t11">AI can create</h4><p class="cell-muted pt-t12">What the receptionist may create from a call. Everything is captured during the call and created only when it ends.</p>`;
       const bkRow = el("label", "adm-row-click u-cursor-default");
@@ -5103,7 +5129,7 @@
       // ---- SCHEDULES INTO (AI scheduling target) — which module gets timed
       // visits. Options: every VISIBLE resource-capable module + "Nothing".
       // The degrade warning shows when the STORED target resolves to none.
-      const capable = (Array.isArray(types) ? types : []).filter((t) => t && (t.key === "booking" || t.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)));
+      const capable = App.visibleRecordTypes(types).filter((t) => (t.key === "booking" || t.key === "work_order"));
       const tgtRow = el("div", "ai-target-row");
       tgtRow.appendChild(el("label", "field-label", "Schedules into"));
       const tgtSel = el("select", "input"); tgtSel.id = "ai-schedule-target";
@@ -5500,7 +5526,7 @@
       panel.innerHTML = `<h2 class="settings-h">${esc(wMany)}</h2>
         <p class="cell-muted pt-t36">Create the ${esc(wMany.toLowerCase())} a booking can be assigned to. Rename this word any time on the Labels page. Colors are saved now for upcoming calendar coloring.</p>
         <div id="res-host"><div class="cell-muted u-pad-8">Loading…</div></div>`;
-      const host = App.util.$("#res-host");
+      const host = panel.querySelector("#res-host") || App.util.$("#res-host");
       let items = [];
       let bizHours = {};
       let bizServices = [];     // [{ key, label }]
@@ -5725,20 +5751,33 @@
       // container so their innerHTML writes and #sched-host/#res-host lookups never
       // collide. Both builders keep their own Save wiring — no save logic is merged.
       panel.innerHTML = "";
+      // Containers are placed BEFORE the builders run and never move afterwards:
+      // each panel keeps loading asynchronously and re-queries its own host
+      // through the document, so a container that moves mid-flight breaks it.
       const schedWrap = el("div");
-      const resWrap = el("div");
-      resWrap.classList.add("u-mt-32");
+      const duo = el("div", "panel-duo settings-capped sched-duo");
+      const lengthsCol = el("div", "sched-duo-col");
+      const resWrap = el("div", "sched-duo-col");
       panel.appendChild(schedWrap);
-      panel.appendChild(resWrap);
+      panel.appendChild(duo);
+      duo.appendChild(lengthsCol);
+      duo.appendChild(resWrap);
       await secScheduling(schedWrap);
       await secResources(resWrap);
+      // Weekly hours keeps the full width above; only the LENGTHS card moves,
+      // and it is inert markup with no async load of its own.
+      try {
+        const durCard = schedWrap.querySelector(".sched-durcard");
+        if (durCard) lengthsCol.appendChild(durCard);
+      } catch { /* layout is a courtesy: the card simply stays where it was */ }
+
     }
 
     async function secScheduling(panel) {
       panel.innerHTML = `<h2 class="settings-h">Scheduling</h2>
         <p class="cell-muted pt-t36">Set your open hours, how long each service takes, and a buffer between appointments. These drive the Availability Preview on the Bookings page. Services themselves are managed on the Fields page.</p>
         <div id="sched-host"><div class="cell-muted u-pad-8">Loading…</div></div>`;
-      const host = App.util.$("#sched-host");
+      const host = panel.querySelector("#sched-host") || App.util.$("#sched-host");
 
       let data;
       try { data = await App.portalApi("/api/booking-config"); }
@@ -5755,7 +5794,7 @@
       hoursCard.appendChild(hoursEd.root);
 
       // ---- Durations + buffer ----
-      const durCard = el("div", "settings-card card");
+      const durCard = el("div", "settings-card card sched-durcard");
       durCard.classList.add("u-mt-16");
       durCard.appendChild(el("div", "settings-h", "Appointment lengths"));
 
@@ -5808,7 +5847,7 @@
       // AI SCHEDULING TARGET: the receptionist's default visit length when it
       // schedules into a non-booking module (no service-duration table there).
       // Shown only when such a module exists + is visible; saved with this card.
-      const capableNonBooking = (App.state.recordTypes || []).some((t) => t.key === "work_order" && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order")));
+      const capableNonBooking = App.visibleRecordTypes().some((t) => t.key === "work_order");   // the helper already excludes locked and hidden
       if (capableNonBooking) {
         const aiWrap = el("div"); aiWrap.classList.add("pt-dblwrap");
         aiWrap.appendChild(el("div", "pt-nm2", "AI visit length (minutes)"));
@@ -5883,20 +5922,36 @@
         text.appendChild(el("div", "cell-muted notif-pref-desc", esc(c.description)));
         row.appendChild(text);
         const ctrls = el("div", "notif-pref-ctrls");
-        const mkSwitch = (labelText, checked, onChange, disabledNote) => {
-          const box = el("label", "notif-pref-switch");
-          const sw = el("span", "switch");
-          const cb = el("input"); cb.type = "checkbox"; cb.checked = !!checked; cb.disabled = !!disabledNote;
-          cb.onchange = () => onChange(cb.checked);
-          sw.appendChild(cb); sw.appendChild(el("span", "switch-track"));
-          box.appendChild(sw);
-          box.appendChild(el("span", "notif-pref-swlabel cell-muted", esc(disabledNote || labelText)));
-          return box;
+        // The stored shape stays {on, toast}; these are the three states it can
+        // meaningfully hold. "on:false, toast:true" is unreachable here and reads
+        // as Off, exactly as it behaved before.
+        const stateOf = (p2) => (!p2 || !p2.on) ? "off" : (p2.toast ? "toast" : "badge");
+        const prefFor = (st) => st === "off" ? { on: false, toast: false }
+          : st === "badge" ? { on: true, toast: false }
+          : { on: true, toast: true };
+        const mkSeg = (key, urgency) => {
+          const bar = el("div", "seg-toggle notif-pref-seg");   // the house segmented wrapper
+          // A badge-only category has no toast to offer, so it offers two states.
+          const opts = urgency === "toast"
+            ? [["off", "Off"], ["badge", "Badge only"], ["toast", "Toast"]]
+            : [["off", "Off"], ["badge", "Badge only"]];
+          let current = stateOf(prefs[key]);
+          const paint = () => Array.from(bar.children).forEach((b2) => {
+            b2.classList.toggle("seg-on", b2.dataset.state === current);
+            b2.setAttribute("aria-pressed", String(b2.dataset.state === current));
+          });
+          opts.forEach(([st, label]) => {
+            const b2 = el("button", "seg-btn", esc(label));
+            b2.type = "button";
+            b2.dataset.state = st;
+            b2.onclick = () => { current = st; prefs[key] = prefFor(st); paint(); save(); };
+            bar.appendChild(b2);
+          });
+          paint();
+          return bar;
         };
-        ctrls.appendChild(mkSwitch("Notify me at all", prefs[c.key] && prefs[c.key].on, (v) => { prefs[c.key] = { ...(prefs[c.key] || {}), on: v }; save(); }));
-        ctrls.appendChild(c.urgency === "toast"
-          ? mkSwitch("Show as toast", prefs[c.key] && prefs[c.key].toast, (v) => { prefs[c.key] = { ...(prefs[c.key] || {}), toast: v }; save(); })
-          : mkSwitch("", false, () => { /* */ }, "Badge only"));
+        ctrls.appendChild(mkSeg(c.key, c.urgency));
+
         row.appendChild(ctrls);
         card.appendChild(row);
       });

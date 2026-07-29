@@ -476,8 +476,8 @@
 
         const sources = { contacts: buildContactSource(contacts, contactFields) };
         // Every record type except the built-in "contact" one becomes a source — minus any
-        // whose page is locked for this tenant (owner page-lock).
-        const types = (Array.isArray(recordTypes) ? recordTypes : []).filter((rt) => rt && rt.key && rt.key !== "contact" && !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
+        // whose page is locked OR whose module this tenant has switched off.
+        const types = App.visibleRecordTypes(recordTypes).filter((rt) => rt.key !== "contact");
         const loaded = await Promise.all(types.map(async (rt) => {
           const [rows, fields] = await Promise.all([
             App.portalApi("/api/records?type=" + encodeURIComponent(rt.key)).catch(() => []),
@@ -509,7 +509,7 @@
       if (k === "contacts") return App.isPageLocked("#/contacts");
       if (k === "calls") return App.isPageLocked("#/calls");
       if (k === "pipeline") return App.isPageLocked("#/contacts") || (App.isAreaLocked && App.isAreaLocked("records"));
-      return App.isRecordTypeLocked ? App.isRecordTypeLocked(k) : false;
+      return (App.isRecordTypeLocked ? App.isRecordTypeLocked(k) : false) || (App.isModuleHidden ? App.isModuleHidden(k) : false);
     }
     function sourceOptions() {
       const keys = Object.keys(state.sources).filter((k) => !sourceLocked(k));

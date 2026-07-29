@@ -248,8 +248,11 @@ async function main() {
   const badgeRow = prefRows.find((r: any) => /Booking made/.test(r.textContent));
   check(prefRows.length === svc.NOTIFICATION_CATEGORIES.length && prefRows.every((r: any) => !!r.querySelector(".notif-pref-title") && !!r.querySelector(".notif-pref-desc")),
     `PREFERENCES: ${prefRows.length} notification rows, each with label + description (the Suggestions switches live in their own section since emergent layer 2)`);
-  check(leadRow.querySelectorAll(".switch input").length === 2 && /Badge only/.test(badgeRow.textContent) && (badgeRow.querySelectorAll(".switch input")[1] as any).disabled === true,
-    "\u2026toast-eligible rows carry BOTH switches; badge-only rows say \"Badge only\" and can't be toasted");
+  const segStates = (r: any) => Array.from(r.querySelectorAll(".notif-pref-seg .seg-btn")).map((b2: any) => b2.dataset.state);
+  check(JSON.stringify(segStates(leadRow)) === JSON.stringify(["off", "badge", "toast"]),
+    `\u2026a toast-eligible row offers all three states (${segStates(leadRow).join("/")})`);
+  check(JSON.stringify(segStates(badgeRow)) === JSON.stringify(["off", "badge"]) && /Badge only/.test(badgeRow.textContent),
+    `\u2026and a badge-only row offers no toast at all (${segStates(badgeRow).join("/")})`);
   // DOM smoke: nothing clipped over text
   const cssSrc = readFileSync(join(PUB, "styles.css"), "utf8");
   check(/\.notif-row-title \{[^}]*-webkit-line-clamp: 2/.test(cssSrc) && /\.notif-row-body \{[^}]*-webkit-line-clamp: 2/.test(cssSrc) && /\.notif-body \{[^}]*overflow-y: auto/.test(cssSrc),

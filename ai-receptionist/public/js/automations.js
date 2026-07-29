@@ -1095,7 +1095,7 @@
       } else if (w.baseTrigger === "RecordDateReached") {
         // Record type (locking-respected) → its date field → offset. The date
         // field list is fetched for the chosen type so only real fields appear.
-        const types = (meta.recordTypes || []).filter((rt) => !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
+        const types = App.visibleRecordTypes(meta.recordTypes);
         if (!types.length) { extra.appendChild(small("No record types are available to you. (A locked type won't appear here.)")); }
         extra.appendChild(small("Which record type, which date field, and how far before/after:"));
         const rowType = el("div", "wiz-cond-row");
@@ -1142,7 +1142,7 @@
         // byte-identically) and Work Orders. Mirrors the RecordDateReached
         // type-picker pattern: lock filter + live relabel.
         const modSel = el("select", "input");
-        const apptTypes = (meta.recordTypes || []).filter((rt) => (rt.key === "booking" || rt.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
+        const apptTypes = App.visibleRecordTypes(meta.recordTypes).filter((rt) => (rt.key === "booking" || rt.key === "work_order"));
         apptTypes.forEach((rt) => { const o = el("option", null, esc(App.relabelText(rt.label || rt.key, { all: true }))); o.value = rt.key; if (rt.key === (w.remind.recordType || "booking")) o.selected = true; modSel.appendChild(o); });
         modSel.onchange = () => { w.remind.recordType = modSel.value; };
         rowEl.appendChild(amt); rowEl.appendChild(unit); rowEl.appendChild(beforeLbl); rowEl.appendChild(modSel);
@@ -1711,7 +1711,7 @@
         note2.textContent = "Evaluated by the daily sweep / “Process due jobs now”, not instantly.";
         trigExtra.appendChild(note2);
       } else if (baseTrigger === "RecordDateReached") {
-        const types = (meta.recordTypes || []).filter((rt) => !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
+        const types = App.visibleRecordTypes(meta.recordTypes);
         if (!types.length) trigExtra.appendChild(small("No record types are available to you. (A locked type won't appear here.)"));
         trigExtra.appendChild(small("Which record type, which date field, and how far before/after:"));
         const typeRow = el("div"); typeRow.classList.add("au-typerow");
@@ -1765,7 +1765,7 @@
         // stored WITHOUT a module segment so existing triggers round-trip
         // byte-identically) and Work Orders. Same filter as the canvas editor.
         const modSel = el("select", "input"); modSel.classList.add("u-mb-0");
-        const apptTypes = (meta.recordTypes || []).filter((rt) => (rt.key === "booking" || rt.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked(rt.key)));
+        const apptTypes = App.visibleRecordTypes(meta.recordTypes).filter((rt) => (rt.key === "booking" || rt.key === "work_order"));
         apptTypes.forEach((rt) => { const o = el("option", null, esc(App.relabelText(rt.label || rt.key, { all: true }))); o.value = rt.key; if (rt.key === (remind.recordType || "booking")) o.selected = true; modSel.appendChild(o); });
         modSel.onchange = () => { remind.recordType = modSel.value; syncTrigger(); };
         rowEl.appendChild(amt); rowEl.appendChild(unitSel); rowEl.appendChild(lbl); rowEl.appendChild(modSel);
@@ -2218,7 +2218,7 @@
       cfg.appendChild(small("Record type to create:"));
       const typeSel = el("select", "input");
       const tb = el("option", null, "— choose —"); tb.value = ""; typeSel.appendChild(tb);
-      (meta.recordTypes || []).filter((t) => !App.isRecordTypeLocked(t.key)).forEach((t) => { const o = el("option", null, esc(t.label)); o.value = t.key; if (c.recordType === t.key) o.selected = true; typeSel.appendChild(o); });
+      App.visibleRecordTypes(meta.recordTypes).forEach((t) => { const o = el("option", null, esc(t.label)); o.value = t.key; if (c.recordType === t.key) o.selected = true; typeSel.appendChild(o); });
       cfg.appendChild(typeSel);
       cfg.appendChild(small("Title (supports {{field}}):"));
       cfg.appendChild(text("title", App.relabelText("New record title", { all: true })));
@@ -2240,7 +2240,7 @@
       cfg.appendChild(small("An automated change does not set off other automations (loop-safe)."));
     } else if (act.type === "find_record_items") {
       cfg.appendChild(small("Find records of this type:"));
-      cfg.appendChild(selectOf("recordType", (meta.recordTypes || []).filter((t) => !App.isRecordTypeLocked(t.key)).map((t) => ({ value: t.key, label: t.label }))));
+      cfg.appendChild(selectOf("recordType", App.visibleRecordTypes(meta.recordTypes).map((t) => ({ value: t.key, label: t.label }))));
       cfg.appendChild(small("…matching these conditions (leave empty to match all of that type). A later Delete records action will act on the matches:"));
       if (!Array.isArray(c.conditions)) c.conditions = [];
       const w = el("div", "cond-wrap");

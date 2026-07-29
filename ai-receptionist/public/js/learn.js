@@ -111,7 +111,7 @@
             ] },
             { p: "Read state is yours alone: marking something read never marks it read for anybody else on your team." },
             { p: "A few things are urgent enough to pop up a small message as well as the badge \u2014 a new lead, a cancellation, a problem with an automation, a missed call. Everything else waits quietly on the bell." },
-            { p: "You decide all of it in [[#/settings/account|Settings \u2192 Your account]]: each kind of notification has a switch for whether you're told at all, and the urgent ones have a second switch for whether they pop up." },
+            { p: "You decide all of it in [[#/settings/account|Settings \u2192 Your account]]: each kind of notification has one control with three settings \u2014 OFF (never tell me), BADGE ONLY (add it to the bell, quietly), or TOAST (pop it up as well). Kinds that are never urgent offer the first two." },
             { tip: "Notifications never carry the contents of a message or a call \u2014 just enough to say what happened. The link takes you to the real thing, where your usual permissions apply." },
           ],
         },
@@ -1230,21 +1230,21 @@
   // boot state); everything else reads what the SPA already loaded.
   let _googleConnected = null; // per page view only — reset on every render()
   const pageAvailable = (href) => !(App.isPageLocked && App.isPageLocked(href)) && !(App.navConfig && App.navConfig().hidden.indexOf(href) !== -1);
-  const viewOnAnyModule = (v) => ((App.state && App.state.recordTypes) || []).some((t) => !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)) && Array.isArray(t.enabledViews) && t.enabledViews.indexOf(v) !== -1);
+  const viewOnAnyModule = (v) => App.visibleRecordTypes().some((t) => Array.isArray(t.enabledViews) && t.enabledViews.indexOf(v) !== -1);
   function featureOn(tag) {
     if (tag === "always") return true;
     if (tag === "receptionist") return !!(App.state && App.state.receptionistEnabled);
     if (tag === "sms") return !!(App.state && App.state.features && App.state.features.smsEnabled);
     if (tag === "google") return _googleConnected === true;
     if (tag.indexOf("page:") === 0) return pageAvailable(tag.slice(5));
-    if (tag.indexOf("rt:") === 0) return !(App.isRecordTypeLocked && App.isRecordTypeLocked(tag.slice(3)));
+    if (tag.indexOf("rt:") === 0) return !App.isModuleHidden(tag.slice(3)) && !(App.isRecordTypeLocked && App.isRecordTypeLocked(tag.slice(3)));
     if (tag.indexOf("view:") === 0) return viewOnAnyModule(tag.slice(5));
     // Scheduling-calendar options (Scheduling Calendar batch): "calopt:scheduling"
     // is on when ANY non-locked module has lanes or the tray turned on — so the
     // dispatch guide appears once a tenant portal actually uses the capability.
     if (tag === "calopt:scheduling") {
       return ((App.state && App.state.recordTypes) || []).some((t) =>
-        !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)) && (t.calendarLanes === true || t.calendarTray === true));
+        !App.isModuleHidden(t.key) && !(App.isRecordTypeLocked && App.isRecordTypeLocked(t.key)) && (t.calendarLanes === true || t.calendarTray === true));
     }
     if (tag.indexOf("calopt:") === 0) return false; // unknown calopt values stay hidden
     return false; // unknown tags NEVER silently show (the validator catches them in tests)
