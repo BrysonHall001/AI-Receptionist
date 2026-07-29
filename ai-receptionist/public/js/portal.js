@@ -6836,6 +6836,27 @@
           if (!c.color) nm.classList.add("is-unassigned");
           h.appendChild(nm);
           if (colClosed) h.appendChild(el("div", "cal-closed-tag", "Closed"));
+          // ROUTE AWARENESS: this lane's estimated driving, if any of it could
+          // be estimated at all.
+          if (App.travel) {
+            const stops = (c.items || [])
+              .filter((b) => b.lat != null && b.lng != null)
+              .map((b) => {
+                const endMin = startMin(b.start) + (b.durationMin || 60);
+                return { start: b.start, end: String(b.start).slice(0, 11) + pad(Math.floor(endMin / 60) % 24) + ":" + pad(endMin % 60), lat: b.lat, lng: b.lng };
+              });
+            const sum = App.travel.summariseDay(stops);
+            if (sum.estimatedLegs > 0) {
+              const line = el("div", "cell-muted cal-res-travel"
+                + (sum.implausibleLegs ? " cal-res-travel--warn" : ""));
+              const longest = sum.longestMinutes ? ` \u00b7 longest hop ~${App.travel.formatTravel(sum.longestMinutes)}` : "";
+              line.textContent = `~${App.travel.formatTravel(sum.totalMinutes)} driving (est.)${longest}`;
+              line.title = sum.unknownLegs
+                ? `${line.textContent} \u2014 ${sum.unknownLegs} leg${sum.unknownLegs === 1 ? "" : "s"} couldn't be estimated (no address located)`
+                : line.textContent;
+              h.appendChild(line);
+            }
+          }
           head.appendChild(h);
         }
       });
@@ -6869,6 +6890,40 @@
       //   payload: { kind: "tray"|"block", id, title, stageKey, resourceId, priorAt }
       //   at: wall-clock "YYYY-MM-DDTHH:MM" (already 15-min snapped)
       //   lane: { apply: bool, resourceId } — whether the drop position carries a lane
+      /**
+       * Look at the dropped job's new neighbours in its own column and say so
+       * when the sequence cannot happen. Purely advisory: by the time this runs
+       * the change is already saved, and the dispatcher can ignore it.
+       */
+      function warnIfImplausible(payload, at, lane) {
+        if (!App.travel) return;
+        const laneId = lane && lane.apply ? (lane.resourceId || null) : (payload.resourceId || null);
+        const day = String(at).slice(0, 10);
+        const moved = (data.bookings || []).find((b) => (payload.visitId ? b.visitId === payload.visitId : b.id === payload.id));
+        const lat = moved ? moved.lat : null;
+        const lng = moved ? moved.lng : null;
+        if (lat == null || lng == null) return;            // ungeocoded: nothing honest to say
+        const durationMin = moved && moved.durationMin ? moved.durationMin : 60;
+        const endMin = startMin(at) + durationMin;
+        const endAt = day + "T" + pad(Math.floor(endMin / 60) % 24) + ":" + pad(endMin % 60);
+        const mine = { start: at, end: endAt, lat, lng, title: payload.title || "This job" };
+        const others = (data.bookings || [])
+          .filter((b) => String(b.start).slice(0, 10) === day)
+          .filter((b) => (payload.visitId ? b.visitId !== payload.visitId : b.id !== payload.id))
+          .filter((b) => (b.resourceId || null) === laneId)
+          .filter((b) => b.lat != null && b.lng != null)
+          .map((b) => ({ start: b.start, end: b.end || b.start, lat: b.lat, lng: b.lng, title: b.title, s: startMin(b.start) }))
+          .sort((a2, b2) => a2.s - b2.s);
+        const mineStart = startMin(at);
+        const before = others.filter((o) => o.s <= mineStart).pop() || null;
+        const after = others.find((o) => o.s > mineStart) || null;
+        const problems = [];
+        if (before) { const v = App.travel.legVerdict(before, mine); if (v.implausible) problems.push(`${before.title} \u2192 this job needs ~${App.travel.formatTravel(v.minutes)}, but there are only ${v.gapMinutes} min`); }
+        if (after) { const v = App.travel.legVerdict(mine, after); if (v.implausible) problems.push(`this job \u2192 ${after.title} needs ~${App.travel.formatTravel(v.minutes)}, but there are only ${v.gapMinutes} min`); }
+        if (!problems.length) return;
+        toast(`Tight on travel (estimated): ${problems[0]}. Saved anyway \u2014 you know the round better than we do.`, true);
+      }
+
       async function doDragSchedule(payload, at, lane) {
         const body = { appointmentAt: at };
         const prior = { appointmentAt: payload.priorAt || null };
@@ -6920,6 +6975,9 @@
         } catch (e) { toast((e && e.message) || "Could not schedule", true); load(); return; }
         const laneRes = lane.apply && lane.resourceId ? (calResById[lane.resourceId] || null) : null;
         const whenLbl = fmtUTC(at.slice(0, 10), { weekday: "short", month: "short", day: "numeric" }) + " " + label12(startMin(at));
+        // ROUTE AWARENESS: warn if this drop made a day physically implausible.
+        // Deliberately AFTER the write — advisory only, never a gate.
+        try { warnIfImplausible(payload, at, lane); } catch { /* a warning must never cost a save */ }
         toast(`Scheduled — ${whenLbl}${laneRes ? " · " + laneRes.name : (lane.apply && laneChanged ? " · Unassigned" : "")}`, false, {
           label: "Undo",
           onClick: async () => {
@@ -7004,6 +7062,34 @@
         const laneEnd = [];
         dayB.forEach((it) => { let lane = laneEnd.findIndex((en) => en <= it.s); if (lane === -1) { lane = laneEnd.length; laneEnd.push(it.e); } else laneEnd[lane] = it.e; it.lane = lane; });
         const laneCount = Math.max(1, laneEnd.length);
+
+        // ---- TRAVEL INDICATORS (route awareness) -------------------------
+        // Between CONSECUTIVE stops only: same column, non-overlapping, both
+        // ends geocoded. Anything else renders nothing at all.
+        if (App.travel && dayB.length > 1) {
+          for (let i = 1; i < dayB.length; i++) {
+            const prev = dayB[i - 1];
+            const next = dayB[i];
+            if (next.s < prev.e) continue;                 // overlapping: no meaningful travel
+            const endWall = (b, mins) => String(b.start).slice(0, 11) + pad(Math.floor(mins / 60) % 24) + ":" + pad(mins % 60);
+            const v = App.travel.legVerdict(
+              { start: prev.b.start, end: endWall(prev.b, prev.e), lat: prev.b.lat, lng: prev.b.lng },
+              { start: next.b.start, end: endWall(next.b, next.e), lat: next.b.lat, lng: next.b.lng },
+            );
+            if (v.minutes === null) continue;              // ungeocoded: silence, not a placeholder
+            const strip = el("div", "cal-travel" + (v.implausible ? " cal-travel--warn" : ""));
+            // Positioned through a CSS variable, the house pattern for dynamic
+            // geometry (see .cal-block-tinted and .cal-res-head-dyn).
+            strip.style.setProperty("--travel-top", (prev.e / 60) * HOUR_H + "px");
+            const label = v.implausible
+              ? `\u26a0 ~${App.travel.formatTravel(v.minutes)} drive \u2014 only ${v.gapMinutes} min here (est.)`
+              : `~${App.travel.formatTravel(v.minutes)} drive (est.)`;
+            strip.textContent = label;
+            strip.title = label;
+            lines.appendChild(strip);
+          }
+        }
+
         dayB.forEach((it) => {
           const blk = el("div", "cal-block");
           blk.style.top = ((it.s - rangeStart) / 60 * HOUR_H) + "px";

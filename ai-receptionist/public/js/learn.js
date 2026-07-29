@@ -740,6 +740,22 @@
       { visual: "related-tabs", note: "a customer record's Related tabs" },
     ],
   };
+  FS_GUIDES["fs-travel-estimates"] = {
+    id: "fs-travel-estimates", features: ["rt:work_order"],
+    title: "Travel time: what the board knows about driving",
+    blocks: [
+      { p: "When your jobs have addresses that Clarity has been able to locate on a map, the dispatch board shows roughly how long the drive is between one job and the next in a tech\u2019s day, and adds up their driving for the day beside their name." },
+      { visual: "travel-indicators", note: "the strip between two jobs, and the warning state" },
+      { p: "These are ROUGH ESTIMATES, not directions. Clarity measures the straight-line distance between two places, adds a bit because roads bend, and assumes an ordinary mixed-driving speed. It does not look at traffic, roadworks, one-way systems or river crossings, and it never asks a mapping service for a route. Treat the numbers as a sanity check \u2014 they are good at spotting a day that simply cannot happen, and poor at telling anyone when they will arrive." },
+      { steps: [
+        "A quiet grey line between two jobs is the estimated drive.",
+        "An amber line means the next job starts sooner than the drive allows.",
+        "Drag a job anywhere you like \u2014 a warning never stops the move. You know things the software doesn\u2019t.",
+        "No line at all means one of the two addresses hasn\u2019t been located yet, so there is nothing honest to show.",
+      ] },
+      { p: "Nothing here reschedules anything, reorders anyone\u2019s day, or suggests a better route. It only tells you what it thinks the driving looks like, and leaves the decisions to you." },
+    ],
+  };
   FS_GUIDES["fs-service-plans"] = {
     id: "fs-service-plans", features: ["rt:service_plan"],
     title: "Service Plans: memberships that book their own work",

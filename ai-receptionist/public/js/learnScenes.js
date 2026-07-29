@@ -83,6 +83,21 @@
     ],
   });
 
+  register("travel-indicators", {
+    sourceFn: "portal.js#renderBookingCalendar",
+    regions: ["per-tech lane head with its driving summary", "two scheduled blocks", "the travel strip between them"],
+    frames: [
+      {
+        caption: "Between two of a tech's jobs, Clarity shows roughly how long the drive is.",
+        html: `<div class="card scene-callanes"><div class="scene-lanehead"><span class="cal-dayhead cal-reshead"><span class="cal-resname">Sam</span><span class="cell-muted cal-res-travel">~48 min driving (est.)</span></span></div><div class="scene-lanegrid"><div class="scene-trayitem">9:00 Boiler service</div><div class="cell-muted">~22 min drive (est.)</div><div class="scene-trayitem">11:00 Radiator leak</div></div></div>`,
+      },
+      {
+        caption: "When the next job starts sooner than the drive allows, the strip says so \u2014 and the schedule still saves.",
+        html: `<div class="card scene-callanes"><div class="scene-lanehead"><span class="cal-dayhead cal-reshead"><span class="cal-resname">Riley</span><span class="cell-muted cal-res-travel">~1 hr 10 min driving (est.)</span></span></div><div class="scene-lanegrid"><div class="scene-trayitem">9:00 Downtown call</div>${focus('<div class="cal-travel--warn">\u26a0 ~54 min drive \u2014 only 5 min here (est.)</div>')}<div class="scene-trayitem">10:05 Out-of-town call</div></div></div>`,
+      },
+    ],
+  });
+
   register("service-plan-page", {
     sourceFn: "fields.js#renderGroupedEditor",
     regions: ["plan fields", "covered equipment panel", "visits panel"],

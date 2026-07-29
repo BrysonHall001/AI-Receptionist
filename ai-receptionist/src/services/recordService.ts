@@ -250,6 +250,19 @@ export async function getModuleCalendarData(
     orderBy: { createdAt: "asc" },
   });
 
+  // ROUTE AWARENESS: coordinates for these records, in ONE indexed query.
+  // Only "ok" geocodes count — pending, failed and empty are all "we don't
+  // know", and the board renders nothing rather than guessing.
+  const geoByRecord: Record<string, { lat: number | null; lng: number | null }> = {};
+  try {
+    const geos = await db.recordGeo.findMany({
+      where: { tenantId, recordId: { in: rows.map((r: any) => r.id) }, status: "ok" },
+      select: { recordId: true, lat: true, lng: true },
+    });
+    for (const g of geos) if (!geoByRecord[g.recordId]) geoByRecord[g.recordId] = { lat: g.lat, lng: g.lng };
+  } catch { /* coordinates are a courtesy: the calendar renders exactly as before without them */ }
+  const coordsOf = (id: string) => geoByRecord[id] || { lat: null, lng: null };
+
   // MULTI-VISIT (multivisit-cardfix): for the work-order module on its typed
   // field, a job with 2+ visits renders ONE BLOCK PER SCHEDULED VISIT (each
   // carrying visitId/visitOrdinal/visitCount — additive keys on multi-visit
@@ -283,6 +296,7 @@ export async function getModuleCalendarData(
         resourceId: lanesOn ? (v.resourceId || null) : null,
         externalSource: null,
         visitId: v.id, visitOrdinal: v.ordinal, visitCount: vlist.length,
+        lat: coordsOf(r.id).lat, lng: coordsOf(r.id).lng,
       };
     })
     .filter((x: any) => x != null);
@@ -320,6 +334,7 @@ export async function getModuleCalendarData(
         // With lanes OFF this stays null — the pre-batch shape, byte-for-byte.
         resourceId: lanesOn ? (r.resourceId || null) : null,
         externalSource: null,
+        lat: coordsOf(r.id).lat, lng: coordsOf(r.id).lng,
       };
     })
     .filter((b: any): b is any => b != null);
