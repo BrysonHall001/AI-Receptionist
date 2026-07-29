@@ -5922,13 +5922,28 @@
         try { await App.portalApi("/api/suggestions/prefs", { method: "PATCH", body: JSON.stringify({ enabled: state.enabled, detectors: state.detectors }) }); toast("Saved"); }
         catch (e) { toast(e.message || "Couldn't save", true); }
       };
-      const mkRow = (title, desc, checked, onChange) => {
+      const mkRow = (title, desc, checked, onChange, status, onReenable) => {
         const row = el("div", "notif-pref-row");
         const text = el("div", "notif-pref-text");
         text.appendChild(el("div", "notif-pref-title", esc(title)));
         if (desc) text.appendChild(el("div", "cell-muted notif-pref-desc", esc(desc)));
+        // STATE + REASON, always legible. A detector is never merely quiet.
+        if (status && status.state && status.state !== "active") {
+          const line = el("div", "sug-pref-state");
+          // .skipped is the house pill for "deliberately not running"; .report for a
+          // choice the owner made. No new pill variant is invented here.
+          const pill = el("span", "pill " + (status.state === "manual_off" ? "report" : "skipped"), esc(status.label));
+          line.appendChild(pill);
+          if (status.reason) line.appendChild(el("span", "cell-muted sug-pref-reason", esc(status.reason)));
+          text.appendChild(line);
+        }
         row.appendChild(text);
         const ctrls = el("div", "notif-pref-ctrls");
+        if (status && status.canReenable && status.state === "indefinite" && typeof onReenable === "function") {
+          const back = el("button", "btn btn-ghost btn-sm", "Turn back on");
+          back.onclick = onReenable;
+          ctrls.appendChild(back);
+        }
         const box = el("label", "notif-pref-switch");
         const sw = el("span", "switch");
         const cb = el("input"); cb.type = "checkbox"; cb.checked = !!checked;
@@ -5941,11 +5956,34 @@
       };
       card.appendChild(mkRow("Show suggestions", "Turn this off and Clarity stops proposing anything at all.", state.enabled, (v) => { state.enabled = v; save(); }));
       (data.detectors || []).forEach((d) => {
-        card.appendChild(mkRow(d.label, d.description + (d.floor ? ` Needs ${d.floor}.` : ""), state.detectors[d.id], (v) => { state.detectors[d.id] = v; save(); }));
+        card.appendChild(mkRow(
+          d.label,
+          d.description + (d.floor ? ` Needs ${d.floor}.` : ""),
+          state.detectors[d.id],
+          (v) => { state.detectors[d.id] = v; save(); },
+          d.status,
+          async () => {
+            try { await App.portalApi(`/api/suggestions/prefs/${encodeURIComponent(d.id)}/unmute`, { method: "POST" }); toast(`${d.label} is back on`); suggestionPrefsSection(panel); }
+            catch (e) { toast(e.message || "Couldn't turn it back on", true); }
+          },
+        ));
       });
       const dismissed = data.dismissed || [];
       const dwrap = el("div", "sug-dismissed");
-      dwrap.appendChild(el("div", "field-label", "Suggestions you've dismissed"));
+      // DETECTOR-LEVEL first, because it explains more: a whole kind gone quiet.
+      const quieted = (data.detectors || []).filter((d) => d.status && (d.status.state === "muted" || d.status.state === "indefinite"));
+      if (quieted.length) {
+        const qwrap = el("div", "sug-dismissed sug-quieted");
+        qwrap.appendChild(el("div", "field-label", "Kinds of suggestion that have gone quiet"));
+        quieted.forEach((d) => {
+          const row = el("div", "notif-sug-hist");
+          row.appendChild(el("span", null, esc(d.label)));
+          row.appendChild(el("span", "cell-muted", esc(d.status.reason || d.status.label)));
+          qwrap.appendChild(row);
+        });
+        dwrap.appendChild(qwrap);
+      }
+      dwrap.appendChild(el("div", "field-label", "Single suggestions you've dismissed"));
       if (!dismissed.length) dwrap.appendChild(el("div", "cell-muted sug-dismissed-empty", "None yet — anything you dismiss will be listed here, never silently hidden."));
       dismissed.forEach((d) => {
         const row = el("div", "notif-sug-hist");

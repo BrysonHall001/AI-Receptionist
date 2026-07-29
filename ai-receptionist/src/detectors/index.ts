@@ -282,7 +282,13 @@ export async function runDetectorSweep(now: Date = new Date(), onlyTenantId?: st
       const prefs = (t.suggestionPrefs && typeof t.suggestionPrefs === "object" ? t.suggestionPrefs : {}) as any;
       if (prefs.enabled === false) continue; // master switch, per tenant
       for (const d of DETECTORS) {
-        if (prefs[d.id] === false) continue; // per-detector switch
+        if (prefs[d.id] === false) continue; // per-detector switch (the owner's own)
+        // ADAPTATION: a detector the tenant keeps dismissing goes quiet for a
+        // while. Checked HERE, before it runs, so a muted detector cannot post;
+        // and this same call clears an expired mute as it passes, which is why
+        // resumption needs no separate scheduler.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        if (await require("../services/suggestionAdaptation").shouldSkipDetector(t.id, prefs, d.id, now)) continue;
         try {
           const findings = await d.run(t.id, now);
           c.findings += findings.length;

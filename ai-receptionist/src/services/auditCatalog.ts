@@ -55,6 +55,10 @@ export const AUDIT_ACTIONS = {
   // service's own audit event (field.create etc); these two record the DECISION.
   SUGGESTION_ACCEPTED: "suggestion.accepted",
   SUGGESTION_DISMISSED: "suggestion.dismissed",
+  // Adaptation: a detector went quiet because it kept being dismissed, or came
+  // back because someone used it, the clock ran out, or they switched it on.
+  SUGGESTION_MUTED: "suggestion.muted",
+  SUGGESTION_UNMUTED: "suggestion.unmuted",
   // master hub (tenantId null or the target tenant, as appropriate)
   HUB_TENANT_CREATE: "hub.tenant.create",
   HUB_TENANT_SUSPEND: "hub.tenant.suspend",

@@ -2041,6 +2041,20 @@ apiRouter.post("/demo-banner/dismiss", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// "Turn this back on" for a detector the ladder muted indefinitely. Separate
+// from the manual toggle: this clears the LADDER, it does not change the
+// owner's own switch.
+apiRouter.post("/suggestions/prefs/:detectorId/unmute", async (req: Request, res: Response) => {
+  const tenantId = resolveTenantScope(req);
+  if (!tenantId) { res.status(400).json({ error: "Open a portal first" }); return; }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { clearMute } = require("../services/suggestionAdaptation");
+  try {
+    await clearMute(tenantId, String(req.params.detectorId || ""), req.user);
+    res.json({ ok: true });
+  } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+});
+
 apiRouter.get("/suggestions/prefs", async (req: Request, res: Response) => {
   const tenantId = req.user!.tenantId as string;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -2055,7 +2069,13 @@ apiRouter.get("/suggestions/prefs", async (req: Request, res: Response) => {
   });
   res.json({
     enabled: prefs.enabled !== false,
-    detectors: (DETECTORS as any[]).map((d: any) => ({ id: d.id, label: d.label, description: d.description, floor: d.floor, on: prefs[d.id] !== false })),
+    // Each row carries its STATUS as well as its switch, so the surface can
+    // always answer "why am I not seeing this?" without a second request.
+    detectors: (DETECTORS as any[]).map((d: any) => ({
+      id: d.id, label: d.label, description: d.description, floor: d.floor, on: prefs[d.id] !== false,
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      status: require("../services/suggestionAdaptation").statusFor(prefs, d.id),
+    })),
     dismissed: dismissed.map((d: any) => ({ id: d.id, type: d.type, title: (d.finding || {}).title || d.type, actedAt: d.actedAt })),
   });
 });

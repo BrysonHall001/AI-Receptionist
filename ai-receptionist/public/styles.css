@@ -1917,6 +1917,10 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .notif-prefs { margin-top: var(--sp-6); }
 .notif-prefs-hint { margin: 0 0 var(--sp-3); font-size: var(--text-sm); }
 .notif-prefs-card { display: flex; flex-direction: column; }
+/* Suggestion preferences: a row that is quiet says so, and why. */
+.sug-pref-state { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+.sug-pref-reason { font-size: var(--text-xs); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sug-quieted { margin-bottom: var(--sp-3); }
 .notif-pref-row { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; justify-content: space-between; padding: var(--list-row-pad) 0; border-bottom: 1px solid var(--line); }
 .notif-pref-row:last-child { border-bottom: none; }
 .notif-pref-text { min-width: 0; flex: 1 1 240px; }

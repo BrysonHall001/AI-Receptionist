@@ -92,10 +92,12 @@ async function main() {
 
   // ---------- (4) audit actor names ----------
   console.log("\n(4) audit actors:");
-  const s1 = await sug.upsertSuggestion({ tenantId: t.id, type: "stage_stall", dedupeKey: `hh-a-${stamp}`, finding: {}, proposedAction: { type: "none", params: {} }, title: "Worth a look", transparency: "Based on recent activity" });
-  await sug.acceptSuggestion({ id: member.id, tenantId: t.id, role: member.role, customRoleId: null, name: member.name, email: member.email } as any, s1.id);
-  const s2 = await sug.upsertSuggestion({ tenantId: t.id, type: "unused_module", dedupeKey: `hh-d-${stamp}`, finding: {}, proposedAction: { type: "none", params: {} }, title: "Also worth a look", transparency: "Based on recent activity" });
-  await sug.dismissSuggestion({ id: member.id, tenantId: t.id, role: member.role, customRoleId: null, name: member.name, email: member.email } as any, s2.id);
+  const actor = { id: member.id, tenantId: t.id, role: member.role, customRoleId: null, name: member.name, email: member.email } as any;
+  const rowFor = async (key: string) => db.suggestion.findFirst({ where: { tenantId: t.id, dedupeKey: key } });
+  await sug.upsertSuggestion({ tenantId: t.id, type: "stage_stall", dedupeKey: `hh-a-${stamp}`, finding: {}, proposedAction: { type: "none", params: {} }, title: "Worth a look", transparency: "Based on recent activity" });
+  await sug.acceptSuggestion(actor, (await rowFor(`hh-a-${stamp}`)).id);
+  await sug.upsertSuggestion({ tenantId: t.id, type: "unused_module", dedupeKey: `hh-d-${stamp}`, finding: {}, proposedAction: { type: "none", params: {} }, title: "Also worth a look", transparency: "Based on recent activity" });
+  await sug.dismissSuggestion(actor, (await rowFor(`hh-d-${stamp}`)).id);
   await sleep(800);
   const accepted = await db.auditEvent.findFirst({ where: { tenantId: t.id, action: "suggestion.accepted" }, orderBy: { createdAt: "desc" } });
   const dismissed = await db.auditEvent.findFirst({ where: { tenantId: t.id, action: { contains: "dismiss" } }, orderBy: { createdAt: "desc" } });

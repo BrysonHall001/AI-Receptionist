@@ -151,6 +151,9 @@ async function actorNameFor(user: { id: string; name?: string | null; email?: st
 }
 
 export async function acceptSuggestion(user: PermUserLike, id: string): Promise<{ ok: true; outcome: string; link?: string | null }> {
+  // An absent id must NOT fall through to "no filter" and hit whatever comes
+  // first — Prisma ignores an undefined where value.
+  if (!id || typeof id !== "string") throw new Error("Suggestion not found.");
   const row = await db.suggestion.findFirst({ where: { id, tenantId: user.tenantId as string } });
   if (!row) throw new Error("Suggestion not found.");
   if (row.status !== "pending") throw new Error("That suggestion has already been dealt with.");
@@ -166,6 +169,9 @@ export async function acceptSuggestion(user: PermUserLike, id: string): Promise<
   // was written by this layer.
   const res = await action.run({ tenantId: user.tenantId as string, userId: user.id, role: user.role, customRoleId: user.customRoleId ?? null }, params);
   await db.suggestion.update({ where: { id: row.id }, data: { status: "accepted", outcome: res.outcome, actedAt: new Date(), actedByUserId: user.id } });
+  // ADAPTATION: an accept resets this detector's ladder and clears any mute.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./suggestionAdaptation").noteAccept(user.tenantId as string, row.type, user);
   audit({
     tenantId: user.tenantId as string, actorType: "user", actorId: user.id, actorLabel: await actorNameFor(user), actorRole: user.role,
     action: AUDIT_ACTIONS.SUGGESTION_ACCEPTED, subjectType: "settings", subjectId: row.id, subjectLabel: row.type,
@@ -175,9 +181,15 @@ export async function acceptSuggestion(user: PermUserLike, id: string): Promise<
 }
 
 export async function dismissSuggestion(user: PermUserLike, id: string): Promise<{ ok: true }> {
+  // An absent id must NOT fall through to "no filter" and hit whatever comes
+  // first — Prisma ignores an undefined where value.
+  if (!id || typeof id !== "string") throw new Error("Suggestion not found.");
   const row = await db.suggestion.findFirst({ where: { id, tenantId: user.tenantId as string } });
   if (!row) throw new Error("Suggestion not found.");
   await db.suggestion.update({ where: { id: row.id }, data: { status: "dismissed", actedAt: new Date(), actedByUserId: user.id } });
+  // ADAPTATION: three dismissals with nothing accepted quiets this detector.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  void require("./suggestionAdaptation").noteDismissal(user.tenantId as string, row.type, user);
   audit({
     tenantId: user.tenantId as string, actorType: "user", actorId: user.id, actorLabel: await actorNameFor(user), actorRole: user.role,
     action: AUDIT_ACTIONS.SUGGESTION_DISMISSED, subjectType: "settings", subjectId: row.id, subjectLabel: row.type,
