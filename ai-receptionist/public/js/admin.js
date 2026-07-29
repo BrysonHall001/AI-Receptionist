@@ -332,22 +332,24 @@
       const card = el("div", "card tenants-panel-card");
       card.classList.add("adm-card");
 
-      // Header: prominent NAME (no initials badge) + the Open-tenant arrow (same markup).
-      const head = el("div");
-      head.classList.add("adm-head");
+      // HUB POLISH 3 — the name is a DIRECT child of the card and the three actions are a
+      // HORIZONTAL ROW immediately beneath it, above the status pill. The old .adm-head
+      // wrapper sat the name opposite a vertical button column; with the column gone it had
+      // no job, and every card lost the tall dead gutter it created. Same buttons, same
+      // order, same variants, same data-act values as the table view — the delegated
+      // handler on tableHost keeps working untouched.
       const title = el("div");
       title.classList.add("adm-title");
       if (shows("name")) title.textContent = p.name;
-      head.appendChild(title);
+      card.appendChild(title);
       if (shows("actions")) {
-        const openWrap = el("div");
         const suspendedP = p.status !== "ACTIVE";
-        openWrap.innerHTML = `<span class="adm-actions-stack"><button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button>`
+        const actions = el("span", "adm-actions-stack");
+        actions.innerHTML = `<button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(p.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button>`
           + `<button class="btn btn-ghost btn-sm t-suspbtn adm-t2" data-act="suspend" data-id="${esc(p.id)}" title="${suspendedP ? "Resume tenant" : "Suspend tenant"}" aria-label="${suspendedP ? "Resume tenant" : "Suspend tenant"}">${suspendedP ? "\u25b6" : "\u23f8"}</button>`
-          + `<button class="btn btn-danger btn-sm t-delbtn adm-t2" data-act="delete" data-id="${esc(p.id)}" title="Delete tenant" aria-label="Delete tenant">\u2715</button></span>`;
-        head.appendChild(openWrap);
+          + `<button class="btn btn-danger btn-sm t-delbtn adm-t2" data-act="delete" data-id="${esc(p.id)}" title="Delete tenant" aria-label="Delete tenant">\u2715</button>`;
+        card.appendChild(actions);
       }
-      card.appendChild(head);
 
       if (shows("status")) { const s = el("div"); s.innerHTML = statusBadge(p.status); card.appendChild(s); }
 
@@ -804,15 +806,19 @@
     // columns' headings, descriptions and content all begin at the same height.
     const hint = el("p", "cell-muted"); hint.classList.add("adm-hint");
     hint.textContent = "Checked = the module is on for this tenant and appears in its portal. Uncheck a module to switch it OFF — it disappears from Settings → Modules & Fields for everyone in the tenant, including its Portal Admin, though nothing is deleted and switching it back on restores it exactly. (A module's fields, layout and stages are managed inside the portal, not here.)";
-    panel.appendChild(hint);
     const card = el("div", "card adm-card2 adm-mp-card");
+    // HUB POLISH 3: the description lives INSIDE the card. The two hints are near the
+    // same length but sit in a 4fr and a 6fr column, so they wrap to DIFFERENT line
+    // counts — which pushed the two cards to different starting heights. With only the
+    // single-line h3 above it, each card now begins at the same y.
+    card.appendChild(hint);
     const listHost = el("div", "adm-mp-list");
     listHost.innerHTML = `<div class="cell-muted">Loading modules…</div>`;
     card.appendChild(listHost);
     const foot = el("p", "cell-muted adm-mp-foot", "Switch a module on or off for this tenant here. Its fields, layout and stages are managed inside the portal, under Settings → Modules & Fields.");
     card.appendChild(foot);
     // BATCHED like Pages: toggling marks a module dirty, Save commits them all.
-    const save = el("button", "btn btn-primary btn-sm u-mt-12", "Save module access");
+    const save = el("button", "btn btn-primary btn-sm u-mt-12 adm-mp-save", "Save module access");
     save.disabled = true;
     card.appendChild(save);
     panel.appendChild(card);
@@ -908,22 +914,38 @@
     const sec = el("div", "adm-mp-panel");
     const h = el("h3", "settings-h adm-mp-h", "Pages");
     sec.appendChild(h);
+    // HUB POLISH 3: same anatomy as Modules — the card carries .adm-mp-card so both
+    // columns fill their panel to the same height, and the description sits INSIDE the
+    // card so the two cards start at the same y despite wrapping to different line counts.
+    const card = el("div", "card"); card.classList.add("adm-card2"); card.classList.add("adm-mp-card");
     const hint = el("p", "cell-muted"); hint.classList.add("adm-hint");
     hint.textContent = "Checked = the page is on and available for this tenant. Uncheck a page to LOCK it — a locked page is hidden from everyone in the tenant, including its Portal Admin, and can't be reached by direct link or API until an admin unlocks it here. (Record-type sections are managed as Modules, chosen when the tenant is created and toggled under Settings → Modules & Fields.)";
-    sec.appendChild(hint);
-    const card = el("div", "card"); card.classList.add("adm-card2");
+    card.appendChild(hint);
     const listHost = el("div");
     listHost.classList.add("adm-mp-list");
-    const getLocked = lockChecklist(listHost, portal.lockedPages || [], null, true); // withDescriptions = the create page's row anatomy
+    const save = el("button", "btn btn-primary btn-sm u-mt-12 adm-mp-save", "Save page access");
+    // HUB POLISH 3 — DISABLED UNTIL DIRTY, the same shape Modules uses (baseline +
+    // compare + refresh). lockChecklist ALREADY takes an onChange callback; this passes
+    // one where it used to pass null, so the checklist itself is untouched. Comparison is
+    // order-insensitive on a set, so toggling a page off and back on is NOT dirty.
+    const norm = (a) => Array.from(new Set(a || [])).sort().join("\u0000");
+    let baseline = norm(portal.lockedPages || []);
+    const refreshSave = (locked) => { save.disabled = norm(locked) === baseline; };
+    const getLocked = lockChecklist(listHost, portal.lockedPages || [], refreshSave, true); // withDescriptions = the create page's row anatomy
+    save.disabled = true; // nothing is dirty on first render
     card.appendChild(listHost);
-    const save = el("button", "btn btn-primary btn-sm u-mt-12", "Save page access");
     save.onclick = async () => {
       save.disabled = true;
       try {
+        // UNCHANGED write path — byte-identical to before this batch: the same endpoint,
+        // the same { lockedPages: getLocked() } payload, the same server side.
         await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ lockedPages: getLocked() }) });
-        portal.lockedPages = getLocked();
-        toast("Pages updated"); save.disabled = false;
-      } catch (e) { toast(e.message, true); save.disabled = false; }
+        const saved = getLocked();
+        portal.lockedPages = saved;
+        baseline = norm(saved); // what was just saved becomes the new clean state
+        toast("Pages updated");
+        save.disabled = true;  // back to disabled-until-dirty
+      } catch (e) { toast(e.message, true); refreshSave(getLocked()); }
     };
     card.appendChild(save);
     sec.appendChild(card);
