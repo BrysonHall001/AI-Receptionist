@@ -58,7 +58,17 @@ for (const frag of ['tableId: "admin-changelog"', 'defaultSort: "date", defaultS
 console.log("\n(3) data-driven shell (patterns (a) + (b)):");
 check(adminJs.includes("const DEVTOOL_SECTIONS = [") && adminJs.includes('{ key: "history", label: "History", render: renderHistorySection }'), "the section grid is a registry (DEVTOOL_SECTIONS)");
 check(adminJs.includes("DEVTOOL_SECTIONS.forEach((s) => {") && adminJs.includes('el("a", "settings-tile" + (s.key === active ? " active" : ""), esc(s.label))'), "…rendered by iteration with the shared settings-tile classes (pattern (a))");
-check(adminJs.includes("const HISTORY_SUBTABS = [") && adminJs.includes("HISTORY_SUBTABS.forEach((t) => {") && adminJs.includes('b.className = "settings-tab" + (active === t.key ? " active" : "");'), "the sub-tab row is a registry (HISTORY_SUBTABS) on the shared settings-tab classes (pattern (b))");
+// DEVTOOLS TABS (authorised): the iteration moved OUT of renderHistorySection into the one
+// shared renderSubTabs that History, System Health and Tools now all use. Every fact this
+// assertion was protecting still holds - a registry, rendered by iteration, on the shared
+// settings-tab classes - so it is RE-PINNED to where they now live, with a fourth clause
+// proving the registry is actually handed to the shared renderer. Same strictness, one more
+// fact than before.
+check(adminJs.includes("const HISTORY_SUBTABS = [")
+  && adminJs.includes("renderSubTabs(panel, HISTORY_SUBTABS, hint && hint.subtab)")
+  && adminJs.includes("tabs.forEach((t) => {")
+  && adminJs.includes('b.className = "settings-tab" + (active === t.key ? " active" : "");'),
+  "the sub-tab row is a registry (HISTORY_SUBTABS) rendered by the SHARED renderer on the shared settings-tab classes (pattern (b))");
 check(adminJs.includes("// future sections register here") && adminJs.includes("Audit Log sub-tab"), "future sections/sub-tabs are documented one-line additions (the Audit Log slot is reserved)");
 check(css.includes(".settings-tiles {") && css.includes(".settings-tab {") === css.includes(".settings-tab {"), "no new CSS was forked for the shell (shared classes only)");
 

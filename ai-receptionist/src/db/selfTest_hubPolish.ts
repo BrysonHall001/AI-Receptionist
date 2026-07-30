@@ -159,8 +159,11 @@ async function main() {
   await sleep(300);
   const toolTitles = $$2(".tool-card .tool-h").map((h: any) => h.textContent);
   const hpSubs = $$2(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
-  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]) && hpSubs.length === 0,
-    `\u2026Tools IS the demo-data tool, with no sub-tab strip (${toolTitles.join(", ")})`);
+  // DEVTOOLS TABS (authorised): Tools now carries a sub-tab strip like its two siblings, and
+  // the tool is retitled. RE-PINNED at the same strictness - still an exact list comparison
+  // and an exact count, now of the strip rather than of its absence.
+  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo Data"]) && hpSubs.length === 1,
+    `\u2026Tools carries a one-tab strip over the demo-data tool (${toolTitles.join(", ")} \u00b7 ${hpSubs.join(", ")})`);
   freeze(w2); await sleep(150);
 
   // ---------- (4) SUSPENSION, enforced ----------

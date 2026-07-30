@@ -1863,15 +1863,23 @@
   // A tab that holds tools, not one tool: Demo data is the first, the detector
   // sweep is its own sibling (it is not demo-data functionality), and there is
   // room for the next one without another tab.
-  // Tools holds ONE tool, so it holds it directly: a single-item tab strip is
-  // furniture that explains nothing. (The standalone detector-sweep runner was
-  // removed here; the NIGHTLY sweep and the seed modal's "run the sweep when
-  // seeding finishes" option are elsewhere and untouched.)
+  // DECISION REVERSED, deliberately and on the record. This used to read: "Tools holds ONE
+  // tool, so it holds it directly: a single-item tab strip is furniture that explains
+  // nothing." That was right while Tools held one tool. Create a Template is a planned
+  // sibling, and the strip is what makes the second tool a ONE-LINE addition to the registry
+  // below rather than another hand-built section. History and System Health already work
+  // this way; Tools now matches them, through the same renderer all three share.
+  // (The standalone detector-sweep runner is still gone; the NIGHTLY sweep and the seed
+  // modal's "run the sweep when seeding finishes" option are elsewhere and untouched.)
+  const TOOL_SUBTABS = [
+    { key: "demodata", label: "Demo Data", mount: (host) => renderDemoDataTool(host) },
+    // future tools register here - one line each
+  ];
   function renderToolsSection(panel) {
     panel.innerHTML = "";
     const wrap = el("div", "tools-wrap");
     panel.appendChild(wrap);
-    renderDemoDataTool(wrap);
+    renderSubTabs(wrap, TOOL_SUBTABS);
   }
 
   /** Tool 1 — Demo data. Only DEMO-flagged tenants can be chosen; the endpoint
@@ -1884,7 +1892,7 @@
   // ---------------------------------------------------------------------------
   function renderDemoDataTool(parent) {
     const sec = el("section", "tool-card card");
-    sec.appendChild(el("h3", "tool-h", "Demo data"));
+    sec.appendChild(el("h3", "tool-h", "Demo Data"));
     sec.appendChild(el("p", "cell-muted tool-hint", "Fills a demo tenant with obviously-fake, backdated data (names like Avery Lane, @example.invalid emails, 555 numbers) so every screen has something to show. It never sends anything."));
     parent.appendChild(sec);
 
@@ -1946,6 +1954,13 @@
         tableId: "hub-demo-tenants",
         emptyHtml: "<h3>No demo tenants yet</h3>",
       });
+      // CREATE lands in the table's own toolbarLeft, which is to the LEFT of the search box
+      // (search lives in toolbarRight) - so it needs no new markup and no new layout rule.
+      if (handle.toolbarLeft) {
+        const create = el("button", "btn btn-primary btn-sm", "+ Create Demo Tenant");
+        create.onclick = () => openCreateDemoModal();
+        handle.toolbarLeft.appendChild(create);
+      }
       // Actions are real buttons, so they are attached after mount rather than
       // injected as markup.
       App.util.$$("tbody tr", host).forEach((tr, i) => {
@@ -1958,7 +1973,7 @@
         const box = el("div", "adm-actions-cell");
         const active = r.activeRun;
         if (active) {
-          // Honest progress: the numbers come from the RUN's own ledger.
+          // Honest progress: the numbers come from the RUN's own ledger. UNCHANGED.
           const prog = (active.counts && active.counts.__progress) || null;
           const label = prog ? `Seeding\u2026 ${prog.done} of ~${prog.total}` : "Seeding\u2026";
           const busy = el("span", "cell-muted dd-progress", label);
@@ -1966,16 +1981,32 @@
           const disabled = el("button", "btn btn-primary btn-sm", "Seed");
           disabled.disabled = true;
           box.appendChild(disabled);
+        } else if (r.seeded) {
+          // NO SEED BUTTON ON A SEEDED TENANT. Seeding is ADDITIVE, not idempotent: each run
+          // is its own ledger entry, so a second press stacked a second dataset on top of the
+          // first and roughly doubled the data with no warning. Re-seeding is reached the
+          // honest way - wipe, then seed - which is reversible and reads the same way round.
+          // Wipe is GHOST, not danger: its guard is the typed-name confirmation in its own
+          // modal, and the tenants list's precedent is one danger button per row.
+          const wipe = el("button", "btn btn-ghost btn-sm", "Wipe");
+          wipe.onclick = (e) => { e.stopPropagation(); openWipeModal(r); };
+          box.appendChild(wipe);
         } else {
           const seed = el("button", "btn btn-primary btn-sm", "Seed");
           seed.onclick = (e) => { e.stopPropagation(); openSeedModal(r); };
           box.appendChild(seed);
-          if (r.seeded) {
-            const wipe = el("button", "btn btn-danger btn-sm", "Wipe");
-            wipe.onclick = (e) => { e.stopPropagation(); openWipeModal(r); };
-            box.appendChild(wipe);
-          }
         }
+        // DELETE is on EVERY row, seeded or empty, because wiping DATA and deleting the
+        // TENANT are different things and this screen only had the first. It reuses the
+        // tenants list's confirmDeleteTenant with its typed-name confirmation - no new modal,
+        // no weaker guard. isDemo is passed at the call site because it is true BY
+        // CONSTRUCTION: GET /api/admin/demo-tenants filters where { isDemo: true }, and the
+        // row payload simply does not carry the flag. Without it confirmDeleteTenant's
+        // blocked rule (!p.isDemo && status !== "SUSPENDED") would disable the confirm on
+        // every ACTIVE demo tenant - i.e. on exactly the rows this button exists for.
+        const del = el("button", "btn btn-danger btn-sm", "Delete");
+        del.onclick = (e) => { e.stopPropagation(); confirmDeleteTenant({ ...r, isDemo: true }, load); };
+        box.appendChild(del);
         cell.appendChild(box);
         // EXPANDABLE DETAIL: the last run in plain words, opened from the row.
         if (r.lastRun && !active) {
@@ -2113,6 +2144,69 @@
       };
     }
 
+    /** CREATE A DEMO TENANT, then hand straight to the seed flow.
+     *
+     *  This is a REAL creation with real consequences, so it says so. It calls the EXISTING
+     *  endpoint and nothing else: POST /api/admin/portals with
+     *      { name, billingStatus: "trial", template, isDemo: true }
+     *  billingStatus is required by that route and has no default; "trial" is fixed at the
+     *  call site rather than asked, because a billing question about a throwaway tenant is
+     *  noise. isDemo is hardcoded true here, so this path CANNOT produce a non-demo tenant.
+     *  On success the new tenant goes straight into openSeedModal - creating and seeding in
+     *  one place, which is the whole point of the button. */
+    function openCreateDemoModal() {
+      const overlay = el("div", "modal-overlay");
+      const modal = el("div", "modal dd-modal");
+      modal.innerHTML = `<div class="modal-head"><h2>Create a demo tenant</h2><button class="icon-btn" id="dd-cx">&times;</button></div>`;
+      const body = el("div", "modal-body");
+      body.appendChild(el("p", "cell-muted", "This creates a real tenant, flagged as a demo tenant, on a trial billing status. You can seed it with fake data straight after."));
+
+      const nameCol = el("div", "adm-fcol");
+      nameCol.appendChild(el("label", "field-label", "Tenant name"));
+      const nameInp = el("input", "input");
+      nameInp.setAttribute("placeholder", "Demo \u2014 Field Services");
+      nameCol.appendChild(nameInp);
+      body.appendChild(nameCol);
+
+      const tplCol = el("div", "adm-fcol u-mt-12");
+      tplCol.appendChild(el("label", "field-label", "Template"));
+      const tplSel = el("select", "input");
+      tplSel.innerHTML = '<option value="field_services">Field Services</option><option value="recruitment_marketing">Recruitment Marketing</option><option value="general">General</option>';
+      tplCol.appendChild(tplSel);
+      body.appendChild(tplCol);
+
+      const row = el("div", "modal-actions adm-del-actions");
+      const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+      const go = el("button", "btn btn-primary btn-sm", "Create and seed");
+      go.disabled = true;
+      nameInp.oninput = () => { go.disabled = nameInp.value.trim().length === 0; };
+      row.appendChild(cancel); row.appendChild(go);
+
+      modal.appendChild(body); modal.appendChild(row);
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+      modal.querySelector("#dd-cx").onclick = close;
+      cancel.onclick = close;
+      go.onclick = async () => {
+        go.disabled = true; cancel.disabled = true;
+        try {
+          const created = await App.api("/api/admin/portals", {
+            method: "POST",
+            body: JSON.stringify({ name: nameInp.value.trim(), billingStatus: "trial", template: tplSel.value, isDemo: true }),
+          });
+          close();
+          await load();
+          const fresh = rows.find((x) => x.id === created.id) || { id: created.id, name: created.name, template: tplSel.value, seeded: false };
+          openSeedModal(fresh);
+        } catch (e) {
+          go.disabled = false; cancel.disabled = false;
+          toast(e.message || "Could not create the tenant", true);
+        }
+      };
+    }
+
     // ---- WIPE: the batch-35 danger zone, scoped to this row ----
     function openWipeModal(t) {
       const overlay = el("div", "modal-overlay");
@@ -2235,6 +2329,40 @@
     { key: "email", label: "Email History", mount: (host) => renderEmail(host) }, // devtools-data: the hub Email tab, relocated verbatim
   ];
 
+  /** THE sub-tab strip for Developer Tools. History, System Health and Tools all render
+   *  through this one function; there were two near-identical copies and Tools was about to
+   *  make a third.
+   *
+   *  THE HINT IS READ HERE AND DELIBERATELY NOT CLEARED. App.state._devtoolsHint is a
+   *  one-shot deep link ({ section, subtab, auditFilter }) that a health panel sets to jump
+   *  into the Audit Log pre-filtered. renderAuditLog owns the clearing (admin.js, "consume a
+   *  one-shot deep-link prefilter") because it needs auditFilter AFTER this strip has already
+   *  used subtab. Clearing it here would silently drop the filter half of every deep link.
+   *  Callers that have no hint simply pass nothing and never learn hints exist. */
+  function renderSubTabs(panel, tabs, initialKey) {
+    const bar = el("div", "settings-tabs");
+    const body = el("div");
+    let active = initialKey || (tabs[0] && tabs[0].key);
+    function paintBar() {
+      bar.innerHTML = "";
+      tabs.forEach((t) => {
+        const b = el("button", null, t.label);
+        b.className = "settings-tab" + (active === t.key ? " active" : "");
+        b.onclick = () => { if (active !== t.key) { active = t.key; paintBar(); paintBody(); } };
+        bar.appendChild(b);
+      });
+    }
+    function paintBody() {
+      body.innerHTML = "";
+      const t = tabs.find((x) => x.key === active);
+      if (t) t.mount(body);
+    }
+    panel.appendChild(bar);
+    panel.appendChild(body);
+    paintBar();
+    paintBody();
+  }
+
   function renderDevTools() {
     view().innerHTML = "";
     const wrap = el("div", "fade-in settings-tiles-shell");
@@ -2265,28 +2393,10 @@
   }
 
   function renderHistorySection(panel) {
-    const bar = el("div", "settings-tabs");
-    const body = el("div");
+    // The ONLY section that reads the deep-link hint: a health panel can point at a
+    // particular History sub-tab. Read, never cleared - see renderSubTabs.
     const hint = App.state._devtoolsHint || null;
-    let active = (hint && hint.subtab) || (HISTORY_SUBTABS[0] && HISTORY_SUBTABS[0].key);
-    function paintBar() {
-      bar.innerHTML = "";
-      HISTORY_SUBTABS.forEach((t) => {
-        const b = el("button", null, t.label);
-        b.className = "settings-tab" + (active === t.key ? " active" : "");
-        b.onclick = () => { if (active !== t.key) { active = t.key; paintBar(); paintBody(); } };
-        bar.appendChild(b);
-      });
-    }
-    function paintBody() {
-      body.innerHTML = "";
-      const t = HISTORY_SUBTABS.find((x) => x.key === active);
-      if (t) t.mount(body);
-    }
-    panel.appendChild(bar);
-    panel.appendChild(body);
-    paintBar();
-    paintBody();
+    renderSubTabs(panel, HISTORY_SUBTABS, hint && hint.subtab);
   }
 
   // ---------------- System Health (audit-fixes-health batch) ----------------
@@ -2299,23 +2409,7 @@
     // future health sub-tabs register here
   ];
   function renderHealthSection(panel) {
-    const bar = el("div", "settings-tabs");
-    const body = el("div");
-    let active = HEALTH_SUBTABS[0] && HEALTH_SUBTABS[0].key;
-    function paintBar() {
-      bar.innerHTML = "";
-      HEALTH_SUBTABS.forEach((t) => {
-        const b = el("button", null, t.label);
-        b.className = "settings-tab" + (active === t.key ? " active" : "");
-        b.onclick = () => { if (active !== t.key) { active = t.key; paintBar(); paintBody(); } };
-        bar.appendChild(b);
-      });
-    }
-    function paintBody() { body.innerHTML = ""; const t = HEALTH_SUBTABS.find((x) => x.key === active); if (t) t.mount(body); }
-    panel.appendChild(bar);
-    panel.appendChild(body);
-    paintBar();
-    paintBody();
+    renderSubTabs(panel, HEALTH_SUBTABS);
   }
 
   const HEALTH_GROUP_LABELS = { external: "External services", internal: "Internal", background: "Background work", pulse: "Last 24 hours" };

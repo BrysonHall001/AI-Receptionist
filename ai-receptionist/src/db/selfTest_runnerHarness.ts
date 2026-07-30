@@ -40,7 +40,7 @@ async function main() {
   let parsed = false;
   try { gate = JSON.parse(readFileSync(GATE_PATH, "utf8")); parsed = Array.isArray(gate); } catch { parsed = false; }
   check(parsed, "scripts/selftest.gate.json parses as a list");
-  check(gate.length === 48, `it names ${gate.length} suites (47 inherited from the hand-maintained block, plus this one)`);
+  check(gate.length === 49, `it names ${gate.length} suites (47 inherited from the hand-maintained block, plus this runner harness and selfTest_devToolsTabs)`);
   const missing = gate.filter((n) => !existsSync(join(SUITE_DIR, n.endsWith(".ts") ? n : n + ".ts")));
   check(missing.length === 0,
     missing.length === 0
@@ -49,8 +49,14 @@ async function main() {
   const dupes = gate.filter((n, i) => gate.indexOf(n) !== i);
   check(dupes.length === 0, dupes.length === 0 ? "no duplicates" : `DUPLICATED IN THE GATE: ${Array.from(new Set(dupes)).join(", ")}`);
   check(gate.includes("selfTest_runnerHarness"), "this suite is itself in the gate \u2014 the runner cannot rot unnoticed");
-  check(gate[0] === "selfTest_tenantIdentity" && gate[46] === "selfTest_learningCenter3",
-    "the inherited order is preserved end to end (first and last of the original 47 are where they were)");
+  // Pinned by NAME and SPAN rather than by absolute index: the inherited 47 must still sit
+  // together, in their original order, wherever later additions are placed around them. That
+  // is what "the order is preserved" actually means, and unlike two hard-coded indices it
+  // does not need re-pinning every time a suite joins the gate.
+  const iFirst = gate.indexOf("selfTest_tenantIdentity");
+  const iLast = gate.indexOf("selfTest_learningCenter3");
+  check(iFirst > -1 && iLast - iFirst === 46,
+    `the inherited block of 47 is intact and contiguous, in its original order (positions ${iFirst}\u2013${iLast})`);
 
   // ---------- (2) the bucket classifier ----------
   console.log("\n(2) the bucket classifier, on three named real suites:");

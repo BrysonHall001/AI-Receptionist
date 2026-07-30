@@ -1807,7 +1807,12 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
    the thing that scrolls out of view. */
 .dd-table-host table { width: 100%; table-layout: auto; }
 .dd-table-host th, .dd-table-host td { white-space: normal; }
-.dd-table-host .adm-actions-cell { display: inline-flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: var(--sp-2); }
+/* DEVTOOLS TABS: nowrap -> wrap. A third control now lands in this cell (Seed or Wipe, plus
+   Delete, plus the seeding-progress label), and the standing rule is that a surface's action
+   controls may never be the thing that wraps or scrolls out of view. With nowrap the buttons
+   below would ellipsize their OWN labels at a narrow width; wrapping to a second line keeps
+   every control readable and reachable. Matches the base .adm-actions-cell, which wraps. */
+.dd-table-host .adm-actions-cell { display: inline-flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .dd-table-host .adm-actions-cell .btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dd-progress { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-xs); }
 .dd-row-clickable { cursor: pointer; }

@@ -174,37 +174,48 @@ async function main() {
   const picker = capturePicker(wp);
   check(!!picker.keys && !!picker.apply && picker.keys.length === 9, `the Manage panels picker offers ${picker.keys ? picker.keys.length : 0} fields (read from its own argument list, not a regex)`);
   const snapshot = () => { const c = cardFor(demoT.name); return c ? c.innerHTML : ""; };
-  picker.apply({ order: [], hidden: [] });
-  await sleep(80);
-  const baseline = snapshot();
+  // Wait for the grid to actually re-render rather than sleeping a fixed 60ms. renderCards
+  // returns early when panelGrid is null, so under load a re-render mid-loop could leave every
+  // snapshot identical - which reads as "the card ignores all nine fields" when in truth the
+  // grid simply never repainted. The guard below turns that into an honest, separate failure.
+  // Applying a field change fires an ASYNCHRONOUS layout save, and when that resolves the
+  // grid can repaint from the persisted layout. Sampling the card once after it exists
+  // therefore races that repaint - under gate load the repaint lands first and every sample
+  // comes back equal to the baseline, which reads as "the card ignores all nine fields" when
+  // the truth is the test looked too early. So: poll until the card actually DIFFERS, and
+  // only conclude "ignored" once it has had a full second to change and hasn't.
+  const applyAndSettle = async (hidden: string[], expectChange = true) => {
+    picker.apply({ order: [], hidden });
+    await until(() => cardFor(demoT.name), 5000);
+    if (expectChange) await until(() => { const c = cardFor(demoT.name); return c && c.innerHTML !== baselineRef.v; }, 4000);
+    else await sleep(120);
+    return snapshot();
+  };
+  const baselineRef: { v: string } = { v: "" };
+  const baseline = await applyAndSettle([], false);
+  baselineRef.v = baseline;
+  check(baseline.length > 0, "the fixture's card is on screen and re-renders when the picker is applied (the lock-step check below is only meaningful if it does)");
   const ignored: string[] = [];
   for (const k of picker.keys) {
-    picker.apply({ order: [], hidden: [k] });
-    await sleep(60);
-    if (snapshot() === baseline) ignored.push(k);
+    if (await applyAndSettle([k]) === baseline) ignored.push(k);
   }
   check(ignored.length === 0,
     ignored.length === 0
       ? `LOCK-STEP: every one of the ${picker.keys.length} offered fields changes the card when hidden \u2014 the picker can no longer offer a field the card ignores`
       : `PICKER OFFERS FIELDS THE CARD IGNORES: ${ignored.join(", ")} \u2014 add them to buildCard or remove them from the picker`);
-  picker.apply({ order: [], hidden: ["synthetic_tenth_field"] });
-  await sleep(60);
-  check(snapshot() === baseline,
+  check(await applyAndSettle(["synthetic_tenth_field"], false) === baseline,
     "NEGATIVE: a synthetic tenth field leaves the card byte-identical \u2014 which is exactly the failure signature above, so the method is proven to detect an ignored key");
-  picker.apply({ order: [], hidden: ["demo"] });
-  await sleep(60);
+  await applyAndSettle(["demo"]);
   check(!cardFor(demoT.name).querySelector(".adm-demo-pill") && !!cardFor(demoT.name).querySelector(".adm-pillrow .badge"),
     "unchecking Demo removes the pill and leaves status \u2014 the checkbox finally does what it says");
-  picker.apply({ order: [], hidden: ["status"] });
-  await sleep(60);
+  await applyAndSettle(["status"]);
   check(!cardFor(demoT.name).querySelector(".badge") && !!cardFor(demoT.name).querySelector(".adm-demo-pill"),
     "\u2026and unchecking Status leaves Demo rendered (each is independently hideable)");
   picker.apply({ order: [], hidden: ["status", "demo"] });
-  await sleep(60);
+  await until(() => cardFor(demoT.name), 5000); await sleep(40);
   check(!cardFor(demoT.name).querySelector(".adm-pillrow"),
     "\u2026with both off the wrapper is not emitted at all, so nothing leaves a hole");
-  picker.apply({ order: [], hidden: [] });
-  await sleep(60);
+  await applyAndSettle([], false);
 
   // ---------- (5) DOM: the detail header ----------
   console.log("\n(5) DOM \u2014 the tenant detail header:");

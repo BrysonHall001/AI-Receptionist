@@ -157,8 +157,10 @@ async function main() {
   check(JSON.stringify(tiles) === JSON.stringify(["History", "System Health", "Tools"]), `top-level tabs: ${tiles.join(" \u00b7 ")}`);
   await until(() => $(".dd-table-host"), 9000);
   const subs = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
-  check(subs.length === 0 && !/Detector sweep/i.test(w.document.body.textContent || ""),
-    "\u2026with no sub-tab strip and no standalone detector-sweep tool");
+  // DEVTOOLS TABS (authorised): the one-tab strip is back on purpose; the detector-sweep tool
+  // is still gone, which is the half this assertion exists to protect.
+  check(subs.length === 1 && subs[0] === "Demo Data" && !/Detector sweep/i.test(w.document.body.textContent || ""),
+    `\u2026with a one-tab strip (${subs.join(", ")}) and no standalone detector-sweep tool`);
   const idxSrc = readFileSync(resolve(__dirname, "..", "index.ts"), "utf8");
   const seedSrc = readFileSync(resolve(__dirname, "..", "services", "demoSeeder.ts"), "utf8");
   check(/runDetectorSweep/.test(idxSrc) && /opts\.runSweep !== false/.test(seedSrc),
@@ -172,7 +174,11 @@ async function main() {
   const myRow = $$(".dd-table-host tbody tr").find((tr: any) => tr.dataset.tenantId === demoA.id);
   check(!!myRow, "the seeded fixture has its own row");
   const rowBtns = Array.from(myRow.querySelector("td:first-child").querySelectorAll(".btn")).map((b: any) => b.className.trim());
-  check(rowBtns.some((c: string) => /btn btn-primary btn-sm/.test(c)) && rowBtns.some((c: string) => /btn btn-danger btn-sm/.test(c)),
+  // DEVTOOLS TABS (authorised): a SEEDED row no longer offers Seed - re-seeding stacked a
+  // second dataset on the first - so its pair is now Wipe (ghost) + Delete (danger). Still
+  // house buttons at house sizes, which is what this asserts.
+  check(rowBtns.some((c: string) => /btn btn-ghost btn-sm/.test(c)) && rowBtns.some((c: string) => /btn btn-danger btn-sm/.test(c))
+    && rowBtns.every((c: string) => /btn-sm/.test(c)),
     `per-row actions are house buttons at house sizes: ${rowBtns.join(" | ")}`);
   report.push(`  row actions: ${rowBtns.join(" \u00b7 ")} (house siblings: the tenant list's .adm-actions-cell pair)`);
   const pill = myRow.querySelector(".pill");
@@ -187,7 +193,13 @@ async function main() {
   check(!/emailLog|callSession|workOrderVisit|feedbackTicket/.test(detailText), "\u2026with no internal entity names and no raw dump line");
   report.push(`  result block: .card.dd-result inside a .dd-detail-row \u2014 headline + --text-sm counts, opened from the row`);
   // the seed modal at three viewports
-  const seedBtn = Array.from(myRow.querySelectorAll(".btn-primary"))[0] as any;
+  // DEVTOOLS TABS (authorised): the Seed button is no longer rendered on a row that is
+  // already seeded, because a second run STACKED a second dataset on the first. The seed
+  // modal is therefore opened from a row that actually offers Seed. Every assertion about
+  // the modal below is unchanged - only the row it is opened from.
+  const seedableRow = $$(".dd-table-host tbody tr").find((tr: any) => (Array.from(tr.querySelectorAll(".btn")) as any[]).some((b: any) => b.textContent.trim() === "Seed" && !b.disabled));
+  check(!!seedableRow, "at least one demo row still offers Seed (an unseeded one)");
+  const seedBtn = (Array.from(seedableRow.querySelectorAll(".btn")) as any[]).find((b: any) => b.textContent.trim() === "Seed") as any;
   seedBtn.click();
   await until(() => $(".dd-modal"));
   const modal = $(".dd-modal");

@@ -275,15 +275,26 @@ async function main() {
   await until(() => w.document.querySelector(".dd-table-host table tbody tr"), 9000);
   const toolTitles = $$(".tool-card .tool-h").map((h: any) => h.textContent);
   const subTabs = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
-  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo data"]) && subTabs.length === 0,
-    `the TOOLS tab IS the demo-data tool (${toolTitles.join(" \u00b7 ")}); the one-item sub-tab strip and the standalone sweep runner were removed`);
+  // DEVTOOLS TABS (authorised): the one-item strip is back, deliberately, because a second
+  // tool is planned and the strip makes it a one-line registry entry. RE-PINNED at the same
+  // strictness - exact title list, exact tab count.
+  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo Data"]) && subTabs.length === 1,
+    `the TOOLS tab holds the demo-data tool behind a sub-tab strip (${toolTitles.join(" \u00b7 ")} \u00b7 ${subTabs.join(" \u00b7 ")}); the standalone sweep runner is still gone`);
   // LAYER 1 moved from a dropdown to the TABLE: only demo tenants get a row.
   const tenantCells = $$(".dd-table-host tbody tr .adm-rowname").map((c: any) => c.textContent);
   check(tenantCells.every((n: string) => n.indexOf("dts-live") === -1 && n.indexOf("dts-real") === -1) && tenantCells.some((n: string) => n.indexOf("dts-banner") !== -1),
     `LAYER 1: the TABLE lists ONLY demo tenants (${tenantCells.length} rows, no real ones)`);
   // The options moved into the per-row seed modal; the labels moved with them.
+  // DEVTOOLS TABS (authorised): the Seed button is no longer rendered on a row that is
+  // already seeded, because a second run STACKED a second dataset on the first. The seed
+  // modal is therefore opened from a row that actually offers Seed. Every assertion about
+  // the modal below is unchanged - only the row it is opened from.
+  const seedBtnIn = (tr: any) => (Array.from(tr.querySelectorAll(".btn")) as any[]).find((b: any) => b.textContent.trim() === "Seed" && !b.disabled);
   const bannerRow = $$(".dd-table-host tbody tr").find((tr: any) => /dts-banner/.test(tr.textContent));
-  (bannerRow.querySelector(".btn-primary") as any).click();
+  check(!!bannerRow, "the banner demo tenant has a row");
+  const seedableRow = $$(".dd-table-host tbody tr").find((tr: any) => !!seedBtnIn(tr));
+  check(!!seedableRow, "at least one demo row still offers Seed (an unseeded one)");
+  (seedBtnIn(seedableRow) as any).click();
   await until(() => w.document.querySelector(".dd-modal"));
   const ddModal = w.document.querySelector(".dd-modal") as any;
   const labels = Array.from(ddModal.querySelectorAll(".field-label")).map((l: any) => l.textContent);
@@ -300,9 +311,13 @@ async function main() {
   (ddModal.querySelector("#dd-x") as any).click();
   await sleep(150);
   // DANGER ZONE moved into the per-row wipe modal, treatment intact.
-  const seededRow = $$(".dd-table-host tbody tr").find((tr: any) => !!tr.querySelector(".btn-danger"));
+  // DEVTOOLS TABS (authorised): .btn-danger used to identify Wipe, because it was the only
+  // danger button on a row. Every row now carries Delete in that variant, so the wipe flow is
+  // selected BY ITS LABEL instead. Same flow, same assertions below, unambiguous selector.
+  const wipeBtnIn = (tr: any) => (Array.from(tr.querySelectorAll(".btn")) as any[]).find((b: any) => b.textContent.trim() === "Wipe");
+  const seededRow = $$(".dd-table-host tbody tr").find((tr: any) => !!wipeBtnIn(tr));
   if (seededRow) {
-    (seededRow.querySelector(".btn-danger") as any).click();
+    (wipeBtnIn(seededRow) as any).click();
     await until(() => w.document.querySelector(".adm-del-modal"));
     const wipeModal = w.document.querySelector(".adm-del-modal") as any;
     check(!!wipeModal.querySelector(".adm-del-warn") && !!wipeModal.querySelector(".adm-del-input") && !!wipeModal.querySelector(".btn-danger"),

@@ -193,8 +193,12 @@ async function main() {
   w.App.state._devtoolsHint = { section: "tools" };
   w.location.hash = "#/admin/devtools"; w.dispatchEvent(new w.Event("hashchange"));
   await until(() => $(".dd-table-host tbody tr"), 12000);
-  check($$(".settings-tabs .settings-tab").length === 0 && !/Detector sweep/i.test(w.document.body.textContent || ""),
-    "the Detector Sweep sub-tab and its tool are absent from the rendered page");
+  // DEVTOOLS TABS (authorised): Tools carries a one-tab strip again, deliberately, because a
+  // second tool is planned. The thing this assertion actually guards - that the DETECTOR
+  // SWEEP tool and its tab are gone - is unchanged and still asserted exactly.
+  const dpSubs = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
+  check(dpSubs.length === 1 && dpSubs[0] === "Demo Data" && !/Detector sweep/i.test(w.document.body.textContent || ""),
+    `the strip holds Demo Data only \u2014 the Detector Sweep sub-tab and its tool are still absent (${dpSubs.join(", ")})`);
   const heads = $$(".dd-table-host thead th").map((h: any) => h.textContent.replace(/[\u25be\u25bc\u25b4]/g, "").trim()).filter(Boolean);
   check(heads[0] === "Actions", `ACTIONS IS THE FIRST COLUMN \u2014 the controls can never be what scrolls away (${heads.join(" | ")})`);
   const firstCell = $(".dd-table-host tbody tr td:first-child");
@@ -202,7 +206,11 @@ async function main() {
   check(actionBtns.length >= 1 && actionBtns.every((b: any) => /btn-sm/.test(b.className)),
     `\u2026carrying house small buttons (${actionBtns.map((b: any) => b.className.trim()).join(" \u00b7 ")})`);
   const cellCss = (cssSrc.match(/\.dd-table-host \.adm-actions-cell \{[^}]*\}/) || [""])[0];
-  check(/flex-direction: row/.test(cellCss) && /nowrap/.test(cellCss), `\u2026side by side, not stacked: ${cellCss.trim()}`);
+  // DEVTOOLS TABS (authorised): nowrap -> wrap. A third control now lands in this cell, and
+  // with nowrap the BUTTON LABELS ellipsized instead of the row wrapping - which the standing
+  // rule forbids for action controls. "Side by side, not stacked" is still asserted by
+  // flex-direction: row; wrapping is what happens only when there is genuinely no room.
+  check(/flex-direction: row/.test(cellCss) && /flex-wrap: wrap/.test(cellCss), `\u2026side by side, not stacked, wrapping only when there is no room: ${cellCss.trim()}`);
   report.push(`  actions cell: ${cellCss.trim()}`);
   // zero horizontal overflow at three widths (JSDOM has no layout, so this is
   // asserted from the rules that guarantee it, stated plainly)
@@ -217,7 +225,13 @@ async function main() {
   }
   report.push(`  panel: .tools-wrap { min-width: 0 } (720px cap removed) \u00b7 .dd-table-host table { width: 100%; table-layout: auto }`);
   // the modal's two scrubbers
-  ($(".dd-table-host .btn-primary") as any).click();
+  // DEVTOOLS TABS (authorised): the Seed button is no longer rendered on a row that is
+  // already seeded, because a second run STACKED a second dataset on the first. The seed
+  // modal is therefore opened from a row that actually offers Seed. Every assertion about
+  // the modal below is unchanged - only the row it is opened from.
+  const scrubSeedRow = $$(".dd-table-host tbody tr").find((tr: any) => (Array.from(tr.querySelectorAll(".btn")) as any[]).some((b: any) => b.textContent.trim() === "Seed" && !b.disabled));
+  check(!!scrubSeedRow, "at least one demo row still offers Seed (an unseeded one)");
+  ((Array.from(scrubSeedRow.querySelectorAll(".btn")) as any[]).find((b: any) => b.textContent.trim() === "Seed") as any).click();
   await until(() => $(".dd-modal"));
   const modal = $(".dd-modal");
   const scrubs = Array.from(modal.querySelectorAll(".dd-scrub")) as any[];
