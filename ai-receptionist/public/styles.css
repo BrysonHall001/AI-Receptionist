@@ -190,7 +190,7 @@ body {
 .app { display: flex; min-height: 100vh; }
 
 .sidebar {
-  width: 248px;
+  width: var(--sidebar-w);
   flex-shrink: 0;
   background: var(--sidebar-bg, var(--panel));
   border-right: none; box-shadow: inset calc(0px - var(--border-w)) 0 0 var(--border-c); /* revisions 1: the right edge is a ring */
@@ -239,7 +239,11 @@ body {
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 24px 32px;
+  /* padding-left CLEARS THE TOGGLE, derived from the button's own position and size.
+     It was a flat 32px, which is LESS than the toggle's right edge (10 + 32 = 42) - so
+     the hamburger sat on top of the first few pixels of the page title in the normal
+     state. One derived value fixes that and removes the collapsed state's 56px guess. */
+  padding: 24px 32px 24px calc(var(--chrome-toggle-x) + var(--chrome-toggle-size) + var(--sp-2));
   border-bottom: none; box-shadow: inset 0 calc(0px - var(--border-w)) 0 var(--border-c); /* revisions 1: the bottom edge is a ring */
   background: var(--topbar-bg, var(--panel));
   backdrop-filter: blur(6px);
@@ -273,22 +277,41 @@ body {
 .portal-pages-row .nav-item { white-space: nowrap; flex: 0 0 auto; }
 /* Small corner toggle at the pages-row / modules-column intersection. Solid
    background + border so it stays legible on every theme, in both states. */
+/* The toggle's own geometry, published as variables so the topbar can clear it by
+   DERIVATION instead of a guess. Move or resize the button and the clearance follows. */
+.main { --chrome-toggle-x: 10px; --chrome-toggle-size: 32px; }
 .chrome-toggle {
-  position: absolute; top: 11px; left: 10px; z-index: 20;
-  width: 32px; height: 32px; display: grid; place-items: center;
+  position: absolute; top: 11px; left: var(--chrome-toggle-x); z-index: 20;
+  width: var(--chrome-toggle-size); height: var(--chrome-toggle-size); display: grid; place-items: center;
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 8px; color: var(--ink-soft); cursor: pointer;
   font-size: var(--text-base); line-height: 1; padding: 0;
 }
 .chrome-toggle:hover { background: var(--gray-soft); color: var(--ink); }
-/* Collapsed: hide BOTH the modules column and the pages row; content goes full width.
-   Keep the topbar clear of the (still-visible) corner toggle. */
+/* Collapsed: hide the modules column and the pages row, and hold the content still.
+   This used to also set topbar padding-left: 56px and content padding 36px/64px. Those
+   three numbers were the bug: against the sidebar's reclaimed width they re-padded the
+   content by ~24px, so its left edge jumped ~224px leftward and its top edge upward. It
+   slid instead of growing.
+   Removing them alone is NOT the fix - it would slide the content the full sidebar width
+   instead. The rule below is what makes it grow. The content keeps its own
+   padding: 28px 40px and its max-width: 1600px in both states, and nothing here
+   references the pages row's height or repeats the sidebar's width as a literal. */
 .app-shell.chrome-collapsed .sidebar { display: none; }
-.app-shell.chrome-collapsed .portal-pages-row { display: none; }
-.app-shell.chrome-collapsed .topbar { padding-left: 56px; }
-/* Portal full-screen (collapsed): give the content breathing room so the page/module
-   title isn't cramped against the top-left edge or under the corner toggle. */
-.app-shell.chrome-collapsed .content { padding-top: 36px; padding-left: 64px; }
+/* Full-screen hides the TAB STRIP, not the whole row. Hiding the row outright also
+   deleted its right-hand cluster - the presence dots, the notification bell and the
+   Settings gear - which is why the dots vanished the moment you went full-screen. The
+   row now collapses to just that cluster, right-aligned, so the reclaimed space is the
+   tabs' and the sidebar's, and nothing the user needs disappears with them. */
+.app-shell.chrome-collapsed .pages-scroll { display: none; }
+.app-shell.chrome-collapsed .portal-pages-row { justify-content: flex-end; }
+/* THE CONTENT GROWS, IT DOES NOT SLIDE. Hiding the sidebar frees its width; without this
+   the whole main column would slide that far left, which is exactly the "it slid" report.
+   Padding the main column by the sidebar's own width holds the page title, the content
+   and the corner toggle at the SAME horizontal position they had, and hands the freed
+   space to the right edge instead. One derived declaration, and it follows the sidebar
+   if that width ever changes. */
+.app-shell.chrome-collapsed .main { padding-left: var(--sidebar-w); }
 /* Sign out + Impersonate side by side (admin-tier, bottom-left): equal-width, each
    a little under half thanks to the gap between them. */
 .user-actions { display: flex; gap: var(--sp-2); align-items: stretch; flex-wrap: wrap; min-width: 0; } /* hardening: the Sign out + Impersonate row wraps instead of cramping the sidebar (acceptance case 2) */
@@ -518,7 +541,9 @@ tbody tr:hover { background-color: var(--row-hover); background-size: 100% 2px; 
    ====================================================================== */
 
 /* ---------- App shell ---------- */
-.app-shell { display: flex; min-height: 100vh; }
+/* The sidebar's width is published so the collapsed state can hold the content still by
+   DERIVATION rather than by a number that would drift if the sidebar ever changed. */
+.app-shell { --sidebar-w: 248px; display: flex; min-height: 100vh; }
 .sidebar-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 4px 8px 24px; }
 /* Logo on the left. When the admin "← All tenants" + portal-name context is present
    the row becomes a 2×2 grid: the logo occupies the LEFT column (both rows) and the
@@ -1709,6 +1734,9 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .bill-summary-value { font-size: var(--text-xl); font-weight: 700; color: var(--green); }
 .bill-summary-value.due { color: var(--amber); }
 .acct-dot-row { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+/* The preview IS a .pres-dot; this only relaxes what the strip needs and it does not:
+   no overlap ring against the topbar, and it never shrinks in the flex row. */
+.acct-dot-preview { border-color: transparent; flex: 0 0 auto; }
 .acct-color-input { width: 44px; height: 32px; padding: 0; border: 1px solid var(--control-border); border-radius: 8px; background: var(--control-bg); cursor: pointer; }
 .nu-role-select { flex: 0 0 160px; }
 .role-select-compact { padding: 4px 6px; font-size: var(--text-sm); }

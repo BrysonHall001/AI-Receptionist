@@ -30,13 +30,25 @@
     return L > 0.55 ? "#14140f" : "#ffffff";
   }
 
+  /** THE dot. Settings -> Your account paints its preview through paintDot() below, so the
+   *  two surfaces cannot drift apart. (The stray d.className = "presence-dot" that used to
+   *  open this function was dead - it was overwritten two lines later, and neither
+   *  .presence-dot nor .presence-more has ever had any CSS. Same for the overflow chip.) */
   function dotEl(p, overlap) {
     const d = document.createElement("div");
-    d.className = "presence-dot";
     d.title = p.name || "Member";
-    d.textContent = p.initial || "?";
-    d.className = "pres-dot" + (overlap ? " overlap" : ""); d.style.setProperty("--swatch", p.color || PRES_FALLBACK); d.style.setProperty("--dot-ink", textOn(p.color));
+    d.className = "pres-dot" + (overlap ? " overlap" : "");
+    paintDot(d, p.color, p.initial);
     return d;
+  }
+
+  /** Paint any element as a presence dot: the initial, its swatch, and readable ink on it.
+   *  Exposed so Settings -> Your account renders the SAME component the strip does rather
+   *  than a second copy of this logic. */
+  function paintDot(elm, color, initial) {
+    elm.textContent = initial || "?";
+    elm.style.setProperty("--swatch", color || PRES_FALLBACK);
+    elm.style.setProperty("--dot-ink", textOn(color));
   }
 
   function render() {
@@ -47,10 +59,10 @@
     shown.forEach((p, i) => container.appendChild(dotEl(p, i > 0)));
     if (present.length > MAX_SHOWN) {
       const more = document.createElement("div");
-      more.className = "presence-dot presence-more";
+      more.className = "pres-dot pres-more overlap";
+      // House precedent for an overflow list is a title attribute, not a popover.
       more.title = present.slice(MAX_SHOWN).map((p) => p.name).join(", ");
       more.textContent = "+" + (present.length - MAX_SHOWN);
-      more.className = "pres-dot pres-more overlap";
       container.appendChild(more);
     }
   }
@@ -108,5 +120,5 @@
   // After changing your own dot color, refresh immediately so it updates live.
   function refresh() { if (running) poll(); }
 
-  App.presence = { mount, stop, refresh };
+  App.presence = { mount, stop, refresh, paintDot };
 })(typeof window !== "undefined" ? window : globalThis);

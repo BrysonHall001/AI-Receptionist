@@ -1,4 +1,6 @@
 [
+  "selfTest_appShell",
+  "selfTest_presence",
   "selfTest_aiReceptionistTemplate",
   "selfTest_widgetChrome",
   "selfTest_devToolsTabs",

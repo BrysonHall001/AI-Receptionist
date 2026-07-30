@@ -6072,7 +6072,7 @@
           <div class="field">
             <span class="field-label">Dot color</span>
             <div class="acct-dot-row">
-              <div id="dot-preview" class="acct-dot-preview">?</div>
+              <div id="dot-preview" class="pres-dot acct-dot-preview">?</div>
               <input id="dot-color" type="color" value="#888888" class="acct-color-input" />
               <span id="dot-note" class="cell-muted u-meta"></span>
             </div>
@@ -6089,13 +6089,15 @@
       (function () {
         const initial = ((me.name || me.email || "?").trim()[0] || "?").toUpperCase();
         const preview = App.util.$("#dot-preview"), input = App.util.$("#dot-color"), note = App.util.$("#dot-note");
-        const textOn = (hex) => {
-          const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return "#fff";
-          const n = parseInt(m[1], 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-          const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-          return (0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)) > 0.55 ? "#14140f" : "#ffffff";
+        // THE SAME DOT THE STRIP USES. This used to be an unstyled div painted with its own
+        // copy of the readable-ink maths - which is why it rendered as a highlighted letter
+        // rather than a dot: .acct-dot-preview had no CSS rule at all. It now carries
+        // .pres-dot and is painted by App.presence.paintDot, so the two surfaces cannot
+        // drift apart. Falls back to the old local paint if presence.js has not loaded.
+        const paint = (hex) => {
+          if (App.presence && App.presence.paintDot) { App.presence.paintDot(preview, hex, initial); return; }
+          preview.textContent = initial;
         };
-        const paint = (hex) => { preview.textContent = initial; preview.style.background = hex; preview.style.color = textOn(hex); };
         paint("#888888");
         App.portalApi("/api/account/dot-color").then((r) => {
           const c = (r && r.color) || "#888888"; input.value = c; paint(c);

@@ -6,6 +6,40 @@ import { Role } from "../middleware/auth";
 // tenantId), so an admin — even while impersonating a member — never produces a
 // dot, because heartbeat/queries key off the REAL identity's row.
 export const PRESENCE_WINDOW_MS = 90_000;
+/**
+ * WHO COUNTS AS PRESENT — and why admin-tier staff are absent, deliberately.
+ *
+ * This list is the whole privacy rule. Super admins, owners and auditors are NOT in it, so
+ * they are never returned to anyone: not to portal members, and not to each other. That is
+ * stronger than "hidden in the UI" - the data never leaves the server.
+ *
+ * ASKED FOR AND DEFERRED (app-shell batch): showing admin-tier staff to OTHER admin-tier
+ * staff as a square, still invisible to portal members. It was deferred on the owner's call
+ * after this analysis, so the next person to consider it does not have to redo it:
+ *
+ *   The blocker is that admin-tier presence is not REPRESENTABLE today. Presence answers
+ *   "who is in tenant X" from User.tenantId plus lastSeenAt. An admin-tier user has
+ *   tenantId = null - they belong to no tenant - and lastSeenAt is one global timestamp
+ *   with no record of which tenant they were looking at. resolveTenantScope takes the
+ *   tenant from the REQUEST, not from anything stored. So nothing anywhere says
+ *   "auditor Jane is currently viewing Northfield HVAC".
+ *
+ *   THE RIGHT ANSWER WHEN IT IS WANTED: a nullable presenceTenantId on User, stamped by the
+ *   heartbeat that already runs every 45 seconds. One column, no new endpoint, and it makes
+ *   presence honest for impersonating admins too. It needs a schema change, which is why it
+ *   was out of scope.
+ *
+ *   REJECTED: inferring presence from an impersonation session. It would miss an admin
+ *   browsing a tenant without impersonating, and a presence indicator that is trusted and
+ *   wrong is worse than none.
+ *
+ *   The deferral was a cost call, not a design one: with a single person on the hub today,
+ *   the square would only ever show him himself. It earns its column when there is a second.
+ *
+ *   The tooltip the square would carry, drafted and kept here so it is not lost:
+ *     "You're shown as a square because you're staff. People in this tenant can't see you
+ *      here - only other staff can."
+ */
 export const PRESENCE_MEMBER_ROLES: Role[] = ["PORTAL_ADMIN", "CLIENT_USER"];
 export const DOT_COLOR_RE = /^#[0-9a-f]{6}$/;
 

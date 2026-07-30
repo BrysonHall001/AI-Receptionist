@@ -85,8 +85,15 @@ check(/def\.type === "address" \|\| def\.type === "line_items" \|\| def\.type ==
 console.log("\n(4) layout fixes (source + CSS):");
 // Item 2: collapse toggle centered.
 check(/\.chrome-toggle \{[^}]*top: 11px/.test(css) && /\.portal-pages-row \{[^}]*min-height: 54px/.test(css), "collapse toggle centered in a fixed-height pages row");
-// Item 3: collapsed content padding.
-check(/\.app-shell\.chrome-collapsed \.content \{ padding-top: 36px; padding-left: 64px; \}/.test(css), "collapsed full-screen gives the content padding");
+// Item 3: collapsed content position.
+// APP SHELL (authorised): the collapsed state no longer re-pads the content. Those two
+// numbers were the bug - they compensated for the sidebar's 248px with ~24px, so the content
+// jumped left instead of growing. The intent behind this assertion (full-screen must not
+// leave the content jammed into the corner) is now met by holding the main column in place,
+// so it is asserted on the rule that actually does that - and on the ABSENCE of the old one.
+check(/\.app-shell\.chrome-collapsed \.main \{ padding-left: var\(--sidebar-w\); \}/.test(css)
+  && !/\.app-shell\.chrome-collapsed \.content \{/.test(css),
+  "collapsed full-screen holds the content in place (the main column is padded by the sidebar's own width) instead of re-padding it with fixed numbers");
 // Item 4: JS-sized independent scroll.
 check(!/sizeMfFieldsScroll/.test(portal) && /\.mf-fields-wrap \{ position: absolute; inset: 0;/.test(css), "Fields column height derives from the layout (fills its grid row) — the JS viewport sizer is retired (space pass)");
 check(/\.mf-grid \{[^}]*align-items: stretch/.test(css), "the grid stretches both columns to the same row height (no resize listener needed)");

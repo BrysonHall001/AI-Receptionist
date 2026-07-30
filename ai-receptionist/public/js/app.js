@@ -813,6 +813,10 @@
       // flex: 0 0 auto and collapses to icon width on narrow screens.
       const searchSlot = App.globalSearch ? App.globalSearch.mount() : null;
       const pagesRight = el("div", "pages-row-right");
+      // Presence, the notification bell and the Settings gear all live in this right-hand
+      // cluster. Full-screen used to hide the WHOLE pages row, which deleted all three.
+      // The stylesheet now hides only the tab strip when collapsed, so this cluster - and
+      // the dots with it - survives in both states. One strip, never duplicated.
       const presenceStrip = el("div", "presence-strip");
       presenceStrip.classList.add("app-presence-strip");
       pagesRight.appendChild(presenceStrip);
