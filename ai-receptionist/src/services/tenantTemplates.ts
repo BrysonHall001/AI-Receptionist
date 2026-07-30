@@ -94,6 +94,45 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
     hooks: { ...EMPTY_HOOKS },
   },
   {
+    // AI RECEPTIONIST ONLY - a business that wants nothing but the phone answered.
+    // Pure DATA: no new creation path, no branch in createPortal. The wizard prefills
+    // from the arrays below and the operator's checkboxes still win at submit.
+    key: "ai_receptionist",
+    label: "AI Receptionist Only",
+    description: "Just the phone answered \u2014 calls, contacts and a dashboard, nothing else.",
+    // Analytics, Automations and Communication are off: nothing feeds them. Learning
+    // Center stays ON because this template ships its own custom one and a locked page
+    // would mean there is none. Billing stays ON - a tenant that cannot see its own
+    // plan raises a support call the first time it wants to upgrade. Feedback stays ON
+    // because it is a SUPPORT TICKET channel, not a module surface: it posts
+    // { problem, description, attachments } and has no relationship to record types.
+    // This is the least hand-held customer on the platform; leaving it no way to report
+    // a problem would be the wrong trade.
+    pagesOffPrefill: ["#/reports", "#/automations", "#/communication"],
+    // Contacts is core and its checkbox is disabled in the wizard, so it can never be
+    // switched off. Every other system module goes.
+    modulesHiddenPrefill: ["job", "booking", "equipment", "invoice", "vehicle", "property", "product", "estimate", "task", "service_plan", "work_order"],
+    aiVoiceMode: null, // the hub picker still decides
+    // With booking and work_order both hidden the AI has nothing to schedule into, so
+    // naming a target would be a lie. Safe either way: callOrchestrator resolves a
+    // hidden/locked/non-capable target to "none" at READ time (and counts nav-hidden as
+    // hidden), so this cannot produce a broken receptionist.
+    aiSchedulingTarget: null,
+    aiIntake: null,
+    // The whole job of a receptionist-only business: who called, what about, and how and
+    // when to get back to them. Four fields, each a real fieldService.createField input.
+    fieldTweaks: [
+      { moduleKey: "contact", field: { label: "Best time to call", type: "single_select", options: ["Morning", "Afternoon", "Evening", "Any"] } },
+      { moduleKey: "contact", field: { label: "Preferred contact method", type: "single_select", options: ["Phone", "Text", "Email"] } },
+      { moduleKey: "contact", field: { label: "Reason for calling", type: "text" } },
+      { moduleKey: "contact", field: { label: "Callback promised by", type: "datetime" } },
+    ],
+    pageLabelOverrides: {},
+    customLcOffer: true,
+    moduleRelabels: {},
+    hooks: { ...EMPTY_HOOKS },
+  },
+  {
     key: "field_services",
     label: "Field Services",
     description: "For trades: calls become work orders, scheduled to techs, flowing to estimates and invoices.",

@@ -135,7 +135,10 @@ async function main() {
   check(!bkBtns.some((b: any) => hiddenLabels.test(b.textContent)), `DATA ADMIN \u2192 Data Backup: none hidden (${bkBtns.length} buttons)`);
   // report/widget source picker + automation builders + LC gating, from source
   check(/App\.visibleRecordTypes\(recordTypes\)/.test(reportsJs), "REPORTS/WIDGETS: the source picker enumerates through the helper");
-  check(/isModuleHidden/.test(reportsJs), "\u2026and its per-key source check tests hidden too");
+  // AI RECEPTIONIST TEMPLATE (authorised): reports.js no longer combines the visibility
+  // primitives itself - every surface now routes through App.visibleRecordTypes, which tests
+  // locked AND hidden. Same intent, asserted on the helper the rule now lives in.
+  check(/App\.visibleRecordTypes\(\[\{ key: k \}\]\)/.test(reportsJs), "\u2026and its per-key source check goes through the helper, which tests hidden too");
   check((autoJs.match(/App\.visibleRecordTypes\(/g) || []).length >= 6,
     `AUTOMATIONS: all ${(autoJs.match(/App\.visibleRecordTypes\(/g) || []).length} builder pickers enumerate through the helper`);
   check(/isModuleHidden\(tag\.slice\(3\)\)/.test(learnJs), "LEARNING CENTER: rt: feature tags gate on hidden as well as locked");
@@ -143,8 +146,13 @@ async function main() {
   check(lcIds.length > 0 && !lcIds.some((id: string) => /estimate|invoice|product/i.test(id)),
     `\u2026so a hidden module's guide is gone, and its neighbours are not (${lcIds.length} guides)`);
   check(/App\.visibleRecordTypes\(types\)/.test(portalJs), "RECYCLE BIN + pickers: enumerate through the helper");
-  check(/const visibleTypes = types\.filter\(\(t\) => !App\.isRecordTypeLocked\(t\.key\) && !isModuleHidden\(t\.key\)\)/.test(portalJs),
-    "MODULES & FIELDS keeps its own check \u2014 the one legitimate exception, so a module can be switched back on");
+  // AI RECEPTIONIST TEMPLATE (authorised): this pinned a hand-rolled gate whose LABEL
+  // described a "legitimate exception" that the code never implemented - Modules & Fields
+  // excludes hidden modules and always has; re-enabling lives in the hub. The gate is now
+  // the shared helper (behaviourally identical: the local check read the same nav-hidden
+  // list, and the lock half was already there). Same intent, asserted on the real rule.
+  check(/const visibleTypes = App\.visibleRecordTypes\(types\)/.test(portalJs),
+    "MODULES & FIELDS enumerates through the helper \u2014 a hidden module is not managed there, it is re-enabled from the hub");
 
   // ---------- (5) stored data is never filtered ----------
   console.log("\n(5) history still resolves:");

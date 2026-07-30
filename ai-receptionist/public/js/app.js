@@ -203,6 +203,24 @@
     for (var i = 0; i < hrefs.length; i++) if (App.isPageLocked(hrefs[i])) return true;
     return false;
   };
+  /**
+   * Is this permission AREA unavailable to this tenant - for ANY reason?
+   *
+   * A LOCK (the owner forbidding a page) and a HIDE (the tenant not using the module)
+   * are stored as different facts, and asking only about locks was letting switched-off
+   * modules reappear: the permissions matrix offered "records" as a grantable area to a
+   * tenant with no record modules, and notification preferences offered "Booking made"
+   * to a tenant with no bookings. Every area gate should ask THIS, not isAreaLocked.
+   *
+   * An area with no hrefs left at all counts as unavailable - that is what "records"
+   * becomes once every non-contact module is switched off.
+   */
+  App.isAreaUnavailable = function (areaKey) {
+    var hrefs = App.AREA_HREFS[areaKey]; if (!hrefs) return false;
+    if (!hrefs.length) return true;
+    for (var i = 0; i < hrefs.length; i++) if (!App.isNavHidden(hrefs[i])) return false;
+    return true; // every page in the area is locked or hidden
+  };
   // Map a record-type kind to its nav href. System kinds have a bespoke href
   // (contact→#/contacts, job→#/jobs, booking→#/bookings); custom kinds return null
   // so isRecordTypeLocked falls back to the records area (they live under records).
@@ -245,8 +263,13 @@
    * (a saved filter, an old export, a live automation) still resolve and still
    * run: this filters what we OFFER, never what already exists.
    *
-   * The ONE legitimate exception is Settings -> Modules & Fields, which must
-   * list hidden modules so an owner can switch them back on.
+   * NO EXCEPTIONS. This docblock used to claim Settings -> Modules & Fields was one,
+   * "which must list hidden modules so an owner can switch them back on" - but that
+   * screen has never done that. Its own comment reads: a module hidden from this
+   * tenant's nav is not managed there at all, and re-enabling lives in the hub's
+   * tenant-detail Modules panel. The doc was describing an intention the code never
+   * implemented, which is exactly the kind of gap a surface goes and re-invents a
+   * private rule to fill.
    */
   App.visibleRecordTypes = function (types) {
     var all = Array.isArray(types) ? types : ((App.state && App.state.recordTypes) || []);

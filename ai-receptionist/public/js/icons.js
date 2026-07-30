@@ -84,6 +84,14 @@
     // closed shape + three short strokes = unambiguous at the crest's ~30px
     // and still clean at 20px.
     recruitment_marketing: S(`<path d="M2.2 6.2v3.6l2.6.4 5.6 2.6V3.2L4.8 5.8l-2.6.4Z"${K}/><path d="M5.6 10.5v2.3a.9.9 0 0 0 .9.9h.7"${K}/><path d="M12.6 6.2c.7.9.7 2.7 0 3.6"${K}/><path d="M14.2 4.8c1.3 1.7 1.3 4.7 0 6.4"${K}/>`),
+    // AI RECEPTIONIST ONLY: the classic bent-handset silhouette, drawn as ONE
+    // stroked path rather than a filled shape - at 20px a filled handset blobs
+    // into an unreadable smear, while a single stroke at the shared 1.4 weight
+    // still reads as a phone. Two short arcs at the mouthpiece say "ringing"
+    // without adding a second closed shape. (Rejected: a speech bubble with a
+    // handset inside - it reads as messaging, not calls, and its inner detail
+    // disappears below about 24px.)
+    ai_receptionist: S(`<path d="M5.6 2.9 3.2 3.7a1.4 1.4 0 0 0-.9 1.6c.5 2.6 1.9 4.9 3.8 6.5a1.4 1.4 0 0 0 1.8.1l1.9-1.5-1.6-2.1-1.3.6a8.4 8.4 0 0 1-1.6-2.7l1.1-.9-.8-2.4Z"${K}/><path d="M10.8 5.1c.9.6 1.4 1.6 1.5 2.7"${K}/><path d="M11.4 2.7c1.9.9 3.1 2.8 3.1 4.9"${K}/>`),
     __default: CUSTOM_DEFAULT,
   };
   // UI-fidelity v3 (owner's mockup): power / telephone / diamond.

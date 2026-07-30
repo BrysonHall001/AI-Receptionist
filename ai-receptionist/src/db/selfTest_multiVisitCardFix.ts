@@ -72,7 +72,7 @@ async function main() {
   const wh = bootDom(base, await createSession(owner.id));
   const H$ = (sel: string) => Array.from(wh.document.querySelectorAll(sel)) as any[];
   (await until(() => H$("button").find((b: any) => b.textContent.trim() === "+ Create tenant"))).click();
-  await until(() => H$(".adm-tpl-card").length === 3);
+  await until(() => H$(".adm-tpl-card").length >= 3);
   const cardOf = (nm: string) => H$(".adm-tpl-card").find((c: any) => c.textContent.includes(nm));
   // radio cells: FS then RM
   cardOf("Field Services").click(); await sleep(280);

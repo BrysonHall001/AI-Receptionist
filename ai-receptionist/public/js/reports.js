@@ -539,8 +539,8 @@
       if (!App.isPageLocked) return false;
       if (k === "contacts") return App.isPageLocked("#/contacts");
       if (k === "calls") return App.isPageLocked("#/calls");
-      if (k === "pipeline") return App.isPageLocked("#/contacts") || (App.isAreaLocked && App.isAreaLocked("records"));
-      return (App.isRecordTypeLocked ? App.isRecordTypeLocked(k) : false) || (App.isModuleHidden ? App.isModuleHidden(k) : false);
+      if (k === "pipeline") return App.isPageLocked("#/contacts") || (App.isAreaUnavailable && App.isAreaUnavailable("records"));   // CONVERGED
+      return App.visibleRecordTypes([{ key: k }]).length === 0;   // CONVERGED: one helper, one rule
     }
     function sourceOptions() {
       const keys = Object.keys(state.sources).filter((k) => !sourceLocked(k));

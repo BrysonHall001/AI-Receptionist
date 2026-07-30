@@ -243,7 +243,7 @@
       // the Work Orders module is live (same visibility rule as the settings
       // toggle). Runs the scripted problem call end-to-end: extract -> finalize
       // -> dateless work order in the dispatch tray.
-      if ((App.state.recordTypes || []).some((t) => t.key === "work_order") && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order")) && !App.isModuleHidden("work_order")) {
+      if (App.visibleRecordTypes().some((t) => t.key === "work_order")) {   // CONVERGED: one helper, one rule
         const simWo = el("button", "btn btn-ghost btn-sm", `<span class="btn-icon">&#128736;</span> Simulate service request`);
         simWo.id = "simulate-wo-btn";
         simWo.onclick = () => simulate("service_request");
@@ -1338,7 +1338,7 @@
     // is also blocked server-side, so their sheets come back empty regardless).
     const bkTypes = [];
     if (!App.isPageLocked("#/contacts")) bkTypes.push(esc(App.label("contact", "many")));
-    if (!App.isAreaLocked("records")) bkTypes.push("every record type");
+    if (!App.isAreaUnavailable("records")) bkTypes.push("every record type");   // CONVERGED
     if (!App.isPageLocked("#/calls")) bkTypes.push("Calls");
     bkTypes.push("Events", "Resources");
     if (App.canViewArea("billing")) bkTypes.push("Charges");
@@ -2981,7 +2981,7 @@
       // Owner page-lock: hide a settings tab that exists only to serve a locked page.
       .filter((s) => {
         if (s.key === "scheduling") return !App.isPageLocked("#/bookings");
-        if (s.key === "fields") return !(App.isPageLocked("#/contacts") && App.isAreaLocked("records"));
+        if (s.key === "fields") return !(App.isPageLocked("#/contacts") && App.isAreaUnavailable("records"));   // CONVERGED
         if (s.key === "billing") return !App.isPageLocked("#/billing") && App.canViewArea("billing");
         return true;
       });
@@ -2996,12 +2996,9 @@
     // A module hidden from this tenant's nav is not managed here at all: it is
     // absent for EVERY role (owner decision — not greyed, not struck through).
     // Re-enabling lives in the hub's tenant-detail Modules panel.
-    const navHidden = ((App.navConfig && App.navConfig().hidden) || []);
-    const isModuleHidden = (key) => {
-      const href = App.recordTypeHref ? App.recordTypeHref(key) : null;
-      return !!href && navHidden.indexOf(href) !== -1;
-    };
-    const visibleTypes = types.filter((t) => !App.isRecordTypeLocked(t.key) && !isModuleHidden(t.key));
+    // CONVERGED: was a hand-rolled gate using a LOCAL isModuleHidden that shadowed the
+    // global one. One helper, one rule, everywhere.
+    const visibleTypes = App.visibleRecordTypes(types);
     // A deep link wins over the remembered module — accepting a suggestion must
     // land on the module the field was actually added to.
     const dl = (App.routeQuery && App.routeQuery.module) ? String(App.routeQuery.module) : "";
@@ -4281,7 +4278,7 @@
       .filter(function (t) {
         if (t.key === anchor.typeKey) return false;               // no tab for the anchor's own type
         if (t.key === "contact") return anchor.kind !== "contact"; // Contacts tab: record anchors only
-        return !App.isRecordTypeLocked(t.key) && !App.isNavHidden(App.recordTypeHref(t.key));
+        return App.visibleRecordTypes([t]).length === 1;   // CONVERGED: one helper, one rule
       })
       .sort(function (a, b) {
         // Conventioned tabs order FIRST (the revision's rule), then the old
@@ -4672,7 +4669,9 @@
   // byte-for-byte unchanged. ----
   function termUsedInPortal(key) {
     if (key === "record") return true; // the generic noun appears on shared surfaces everywhere
-    const all = (App.state && App.state.recordTypes) || [];
+    // LEAK FIX: this read every record type including switched-off ones, so a tenant was
+    // offered terminology for modules it does not have. The helper is the only correct route.
+    const all = App.visibleRecordTypes();
     if (key === "stage") return all.some(function (t) { return moduleHasStages(t); });
     if (key === "resource") return all.some(function (t) { return termAppliesToModule("resource", t); });
     return true;
@@ -5119,7 +5118,7 @@
       // Work Orders module is live for this portal; OFF removes the prompt block
       // AND finalization skips (both ends server-side).
       const woType = (Array.isArray(types) ? types : []).find((t) => t && t.key === "work_order");
-      const woLive = !!woType && !(App.isRecordTypeLocked && App.isRecordTypeLocked("work_order")) && !App.isModuleHidden("work_order");
+      const woLive = App.visibleRecordTypes().some((t) => t.key === "work_order");   // CONVERGED: one helper, one rule
       const createCard = el("div", "card"); createCard.classList.add("pt-card3", "ai-create-card");
       createCard.innerHTML = `<h4 class="pt-t11">AI can create</h4><p class="cell-muted pt-t12">What the receptionist may create from a call. Everything is captured during the call and created only when it ends.</p>`;
       const bkRow = el("label", "adm-row-click u-cursor-default");
@@ -5292,7 +5291,10 @@
       // it must not appear as a grantable area in this tenant's permissions table. Drop
       // locked areas from the catalog (me.lockedPages is empty on the master hub, so this
       // is a no-op there). Settings/Users/Integrations aren't lockable pages -> unaffected.
-      if (Array.isArray(data.catalog)) data.catalog = data.catalog.filter((a) => !App.isAreaLocked(a.key));
+      // LEAK FIX: this asked isAreaLocked, which only knows about owner page-LOCKS. A module
+      // switched off by a template is stored as nav-HIDDEN, a different fact, so "records" was
+      // still offered as a grantable area to a tenant with no record modules at all.
+      if (Array.isArray(data.catalog)) data.catalog = data.catalog.filter((a) => !App.isAreaUnavailable(a.key));
 
       // selection: { kind:"system", role } | { kind:"custom", id } | { kind:"new" }
       let sel = { kind: "system", role: data.systemRoles[0].role };
@@ -5910,7 +5912,12 @@
       try { data = await App.portalApi("/api/notifications/prefs"); }
       catch (e) { card.appendChild(el("div", "cell-muted", "Couldn't load your notification preferences.")); return; }
       const prefs = (data && data.prefs) || {};
-      const cats = (data && data.categories) || [];
+      // LEAK FIX: the endpoint returns the whole static category table, so a tenant with no
+      // booking module was still offered "Booking made" and "Booking cancelled" as
+      // preferences that could never fire. Each category declares the permission AREA it
+      // belongs to; drop the ones whose area this tenant cannot reach. requiredArea null
+      // means "everyone in the tenant", so those always stay.
+      const cats = ((data && data.categories) || []).filter((c) => !c.requiredArea || !App.isAreaUnavailable(c.requiredArea));
       const save = async () => {
         try { await App.portalApi("/api/notifications/prefs", { method: "PATCH", body: JSON.stringify({ prefs }) }); toast("Saved"); }
         catch (e) { toast(e.message || "Couldn't save", true); }
@@ -6131,7 +6138,7 @@
       // for every role, owners included (owner decision). It stays in the data
       // untouched, and is switched back on from the tenant's page in the hub.
       const visible = (types || [])
-        .filter((t) => !App.isRecordTypeLocked(t.key) && !App.isNavHidden(App.recordTypeHref(t.key)))
+        .filter((t) => App.visibleRecordTypes([t]).length === 1)   // CONVERGED: one helper, one rule
         .slice().sort((a, b) => (a.order || 0) - (b.order || 0));
       if (!App.state.fieldsType || !visible.some((t) => t.key === App.state.fieldsType)) {
         App.state.fieldsType = (visible[0] && visible[0].key) || "contact";

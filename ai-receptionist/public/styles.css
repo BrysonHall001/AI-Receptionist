@@ -2002,9 +2002,10 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .adm-step2-right { min-width: 0; }
 .adm-uform .input { max-width: 260px; }   /* the house input width (.search-input) — the email box was running the full card */
 .adm-demo-zone { min-width: 0; }
-.adm-demo-row { align-items: stretch; }
-.adm-demo-row .adm-ai-div { margin-top: 20px; }
-.adm-demo-row .adm-ai-right { padding-top: 20px; flex: 1 1 200px; min-width: 180px; }
+/* The demo row needed 20px rather than 26px only because its control renders at scale
+   "sm" - a second magic number compensating for the first. Centring needs neither, so
+   both overrides are gone and only its smaller type remains. */
+.adm-demo-row .adm-ai-right { flex: 1 1 200px; min-width: 180px; }
 .adm-demo-row .adm-ai-desc { font-size: var(--text-xs); }
 @media (max-width: 860px) { .adm-step2 { grid-template-columns: 1fr; } }
 /* Demo data: the tenants table is the interface; the options live in a modal. */
@@ -4083,10 +4084,21 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .adm-seg--sm .adm-seg-btn { font-size: var(--text-xs); padding: 8px 14px 7px; min-width: 64px; gap: 4px; }
 .adm-seg--sm .adm-seg-ic { width: 13px; height: 13px; }
 @media (prefers-reduced-motion: reduce) { .adm-seg-fill { transition: none; } }
-.adm-ai-row { display: flex; align-items: stretch; gap: var(--sp-4); flex-wrap: wrap; }
+/* ALIGNMENT, BY LAYOUT RATHER THAN COMPENSATION. The left column is a segmented
+   control (icon stacked over label, so it is tall); the right column is a one-line
+   description. They used to be centred and then shoved apart again by hardcoded
+   padding - 26px on the AI row, 20px on the demo row because its control renders at
+   scale "sm". Two numbers compensating for one thing, and both drift the moment a
+   font, a scale or the description's line count changes.
+   The row now simply CENTRES its columns against each other, and the control's stray
+   8px top margin is zeroed inside this row so there is nothing left to compensate for.
+   The description lines up with the control because they are centred siblings - not
+   because of a number - and it holds at any scale and any number of lines. */
+.adm-ai-row { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
+.adm-ai-row .adm-seg { margin-top: 0; }
 .adm-ai-left { flex: 0 0 auto; }
-.adm-ai-div { width: 1px; background: var(--line-strong); align-self: stretch; margin-top: 26px; } /* the REQUIRED vertical divider, control-height */
-.adm-ai-right { flex: 1 1 260px; min-width: 240px; display: flex; align-items: center; padding-top: 26px; }
+.adm-ai-div { width: 1px; background: var(--line-strong); align-self: stretch; } /* the REQUIRED vertical divider, control-height */
+.adm-ai-right { flex: 1 1 260px; min-width: 240px; display: flex; align-items: center; }
 .adm-ai-desc { margin: 0; font-size: var(--text-sm); line-height: 1.45; }
 /* ---- the card composition ---- */
 .adm-tpl-zone { position: relative; }

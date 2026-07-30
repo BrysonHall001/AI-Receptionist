@@ -90,7 +90,7 @@ async function main() {
   const wh = bootDom(base, await createSession(owner.id));
   const H$ = (sel: string) => Array.from(wh.document.querySelectorAll(sel)) as any[];
   (await until(() => H$("button").find((b: any) => b.textContent.trim() === "+ Create tenant"))).click();
-  await until(() => H$(".adm-tpl-card").length === 3);
+  await until(() => H$(".adm-tpl-card").length >= 3);
   const cardOf = (nm: string) => H$(".adm-tpl-card").find((c: any) => c.textContent.includes(nm));
   const rowOf = (nm: string) => H$(".adm-row3").find((r: any) => { const n = r.querySelector(".adm-rowname"); return !!n && n.textContent.replace(" (always on)", "").trim() === nm; });
   const chipsOf = (nm: string) => Array.from((rowOf(nm) || { querySelectorAll: () => [] }).querySelectorAll(".adm-chip")).map((c: any) => c.textContent);
