@@ -26,6 +26,32 @@ function weighted(r: () => number, table: Array<[string, number]>): string {
   return table[0][0];
 }
 
+/** Turn a weight table into EXACT counts for n items (largest-remainder), so the shape is a
+ *  guarantee instead of a likelihood.
+ *
+ *  Why this exists: the candidate stages used to be n independent weighted() draws. Over 60
+ *  candidates the adjacent, similarly-weighted middle stages (Contacted .20, Prescreened .14,
+ *  Interview scheduled .12) reorder often enough that roughly 1 seed in 125 produced demo
+ *  data where "Interview scheduled" outnumbered "New lead" - which is not a funnel, and is
+ *  not what this file's own summary line promises the owner. The weights were always the
+ *  intent; allocating them as counts makes the intent true every time, for every demo
+ *  tenant, not just in the test. At n = 60 this yields 20 / 12 / 8 / 7 / 6 / 4 / 2 / 1. */
+function quotaBag(table: Array<[string, number]>, n: number): string[] {
+  const rows = table.map(([value, w]) => ({ value, exact: w * n, count: Math.floor(w * n) }));
+  let short = n - rows.reduce((sum, x) => sum + x.count, 0);
+  const byRemainder = rows.slice().sort((a, b) => (b.exact - b.count) - (a.exact - a.count));
+  for (let i = 0; short > 0; i++, short--) byRemainder[i % byRemainder.length].count++;
+  const bag: string[] = [];
+  for (const x of rows) for (let i = 0; i < x.count; i++) bag.push(x.value);
+  return bag;
+}
+/** Draw one item out of a quota bag, consuming EXACTLY ONE random value - the same budget
+ *  weighted() spent - so every downstream value in this seeder's sequence is unchanged. */
+function takeOne(r: () => number, bag: string[], fallback: Array<[string, number]>): string {
+  if (!bag.length) return weighted(r, fallback);
+  return bag.splice(Math.floor(r() * bag.length), 1)[0];
+}
+
 const ROLES = ["Warehouse operative", "Class 2 driver", "Forklift operator", "Picker/packer", "Night-shift loader", "Production assistant", "Cleaning supervisor", "Delivery driver"];
 const DEPTS = ["Logistics", "Production", "Facilities", "Transport"];
 const CLIENTS = ["Northgate Foods", "Halloway Logistics", "Brightline Manufacturing", "Cedarworks Ltd"];
@@ -75,10 +101,15 @@ export async function seedRecruitmentMarketing(tenantId: string, r: () => number
   }
 
   // --- candidates, spread over 90 days, funnel-shaped ---
+  // The stages are allocated as exact quotas up front and then drawn at random from that
+  // bag, so WHICH candidate lands in which stage still varies with the seed, but the SHAPE
+  // does not. Sources stay independently weighted: their assertion has a wide margin
+  // (paid .78 vs referral+organic .11) and a bit of jitter there reads as more lifelike.
+  const stageBag = quotaBag(STAGE_WEIGHTS, RM_CAPS.candidates);
   const candidates: any[] = [];
   for (let i = 0; i < RM_CAPS.candidates; i++) {
     const name = `${FIRST[Math.floor(r() * FIRST.length)]} ${LAST[Math.floor(r() * LAST.length)]}`;
-    const stage = weighted(r, STAGE_WEIGHTS);
+    const stage = takeOne(r, stageBag, STAGE_WEIGHTS);
     const source = weighted(r, SOURCE_WEIGHTS);
     const c = await createContact(tenantId, {
       name,

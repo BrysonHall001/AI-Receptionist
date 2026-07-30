@@ -124,7 +124,7 @@ async function main() {
   const clAll = await db.changeLogEntry.findMany({ where: { commitSha: "batch-hub-polish-3-20260729" } });
   check(clAll.length === 1, "…exactly once, so re-running the migration cannot duplicate it");
   // VOCABULARY LAW. The term is assembled from fragments and never spelled out, because
-  // selfTest_demoTenantSafety greps every src/**/*.ts for it and exempts only ITSELF - a
+  // selfTest_demoTenantSafety greps every src/**/*.ts for it and exempts only ITSELF — a
   // suite that named the banned word would become an offender. Worth asserting here anyway:
   // that scan covers .ts and public/js only, so changelog SQL copy is otherwise unchecked.
   const BANNED_TERM = "work" + "space";
@@ -145,7 +145,12 @@ async function main() {
     "the LIST is the flexing child, so spare height becomes scroll area instead of dead space");
   check(!/max-height/.test(listRule),
     "\u2026and the 420px ceiling has MOVED OFF the list \u2014 on the list it also capped the shorter panel, so Pages could never grow to absorb Modules' extra foot line");
-  check(cssSrc.includes("--btn-w-mp-save: 22ch;") && cssSrc.includes(".adm-mp-save { min-width: var(--btn-w-mp-save); }"),
+  // Assert the two FACTS, not the rule's whole text: the original matched the entire
+  // declaration block, so any later batch that added a declaration to this rule broke it
+  // even though the floor was still correct. Same intent, now also proving the min-width
+  // lives in THIS rule and that no fixed px width crept in.
+  const saveRule = ruleBody(cssSrc, ".adm-mp-save");
+  check(cssSrc.includes("--btn-w-mp-save: 22ch;") && /min-width:\s*var\(--btn-w-mp-save\)/.test(saveRule) && !/min-width:\s*\d+px/.test(saveRule),
     "the shared save-button FLOOR exists as a token + one rule (content-sized ch, not a fixed px width)");
   const stackRule = ruleBody(cssSrc, ".adm-actions-stack");
   check(/flex-direction:\s*row/.test(stackRule) && /flex-wrap:\s*wrap/.test(stackRule),

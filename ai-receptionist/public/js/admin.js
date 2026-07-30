@@ -115,6 +115,12 @@
                  fs: "Hidden to keep the nav focused; turn it on if you track a fleet." },
     property:  { neutral: "Locations and sites you work at, one record each.",
                  fs: "Hidden to keep the nav focused; Equipment + service addresses usually cover it." },
+    // ROW ANATOMY: the twelfth system module finally has its record. Without it
+    // moduleDescFor() returned "" (so the description cell was empty, which is what
+    // promoted the chips span into it) and the Modules panel fell through to the
+    // "A module this tenant added" copy meant for a tenant's OWN custom modules.
+    service_plan: { neutral: "Recurring service memberships \u2014 each plan creates its own visits on schedule.",
+                 fs: "Your maintenance plans \u2014 each one books its next visit automatically, so nothing lapses." },
   };
   function voiceModeOf(p) {
     return (p && p.voiceMode) || (p && p.receptionistEnabled === true ? "WALKIE" : "OFF");
@@ -923,6 +929,10 @@
     card.appendChild(hint);
     const listHost = el("div");
     listHost.classList.add("adm-mp-list");
+    // ROW ANATOMY: this host - and ONLY this host - retargets the checklist row's tracks.
+    // The same lockChecklist code also renders the create page's wide checklist, which must
+    // not move; tagging the narrow caller's own host is what keeps the two apart.
+    listHost.classList.add("adm-pglist");
     const save = el("button", "btn btn-primary btn-sm u-mt-12 adm-mp-save", "Save page access");
     // HUB POLISH 3 — DISABLED UNTIL DIRTY, the same shape Modules uses (baseline +
     // compare + refresh). lockChecklist ALREADY takes an onChange callback; this passes
@@ -1496,7 +1506,7 @@
     App.api("/api/admin/tenant-templates").then((r) => {
       templatesMeta = (r && r.templates) || [];
       paintTemplateCards();
-    }).catch(() => { templatesMeta = [{ key: "general", label: "General", description: "A blank, everything-on tenant portal.", modulesHiddenPrefill: [] }]; paintTemplateCards(); });
+    }).catch(() => { templatesMeta = [{ key: "general", label: "General", description: "A plain starting point \u2014 no industry setup, with every module on except Service Plans.", modulesHiddenPrefill: [] }]; paintTemplateCards(); });
 
     App.api("/api/admin/portals/record-type-options").then((r) => {
       const options = (r && r.options) || [];
@@ -3524,12 +3534,15 @@
     // Recipients (add/remove).
     bodyWrap.appendChild(el("label", "field-label adm-lbl-m6", "Recipients"));
     let recipients = (cfg.recipients || []).slice();
-    const chips = el("div"); chips.classList.add("adm-chips");
+    // ROW ANATOMY: was .adm-chips/.adm-chip, which resolved to the FIELD-CHIP rules -
+    // max-width 170px with ellipsis - so a long recipient address was truncated and its
+    // remove button was clipped away with it. These are the removable-token classes.
+    const chips = el("div"); chips.classList.add("adm-tokens");
     function paintChips() {
       chips.innerHTML = "";
       if (!recipients.length) { const e = el("span", "cell-muted u-meta", "No recipients — the owner won’t be emailed."); chips.appendChild(e); }
       recipients.forEach((r, i) => {
-        const chip = el("span"); chip.classList.add("adm-chip");
+        const chip = el("span"); chip.classList.add("adm-token");
         chip.appendChild(document.createTextNode(r));
         const x = el("button", "icon-btn", "×"); x.classList.add("adm-x"); x.onclick = () => { recipients.splice(i, 1); paintChips(); };
         chip.appendChild(x); chips.appendChild(chip);
@@ -3850,7 +3863,11 @@
     row2.appendChild(flatCell); row2.appendChild(passCell);
     card.appendChild(row2);
 
-    const row3 = el("div"); row3.classList.add("adm-row3");
+    // ROW ANATOMY: was .adm-row3, which had become a THREE-COLUMN CHECKLIST grid - so this
+    // two-field row rendered "Contract start" into a 200px track and carried a phantom
+    // 300px third track. It now uses .adm-row1, the exact class its two sibling rows in
+    // this same card use, including their margin-bottom.
+    const row3 = el("div"); row3.classList.add("adm-row1");
     row3.appendChild(field("Contract start", cStart)); row3.appendChild(field("Contract end", cEnd));
     card.appendChild(row3);
 

@@ -75,7 +75,10 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
   {
     key: "general",
     label: "General",
-    description: "A blank, everything-on tenant portal \u2014 exactly what Create has always made.",
+    // ROW ANATOMY: the old copy claimed "everything-on" while this same template carries a
+    // Service Plans exception three lines below. The LABEL was the thing that was wrong -
+    // the prefill is deliberate and stays.
+    description: "A plain starting point \u2014 no industry setup, with every module on except Service Plans.",
     // PRIME DIRECTIVE: byte-identical to today. No prefill, no server phase
     // beyond stamping the key: creating with General (or touching nothing)
     // produces the exact same tenant state as before this batch.
