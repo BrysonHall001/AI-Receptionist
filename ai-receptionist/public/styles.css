@@ -1775,6 +1775,13 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
    narrow card wraps rather than squeezing), and the class name is retained deliberately so
    nothing else has to be renamed. align-self keeps the row tight to the content edge
    instead of stretching across the card. */
+/* TENANT IDENTITY: a top-aligned row of IDENTITY PILLS (status, demo). Separate from
+   .adm-actions-stack, which is an action row and carries align-self: flex-start - wrong for
+   a pill row that spans the card's content width. Each pill is gated independently by the
+   "Manage panels" picker, so this wrapper is only appended when at least one of them is
+   showing: an unchecked field leaves no hole and shifts nothing. flex-wrap is declared even
+   though the name sits outside the actions|foot|toolbar counter. */
+.adm-pillrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-2); }
 .adm-actions-stack { display: inline-flex; flex-direction: row; flex-wrap: wrap; align-items: center; align-self: flex-start; gap: var(--sp-2); }
 /* width: 100% was only ever "equal" because the parent was a column — in a row it would
    make each button fill the row. The three labels are single glyphs of DIFFERENT widths, so
@@ -2022,7 +2029,7 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
    directly below - the same class its two sibling rows in that card already use. */
 .adm-sep { border-top: 1px solid var(--line); margin: 16px 0 12px; }
 .adm-sh { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.adm-statusline { font-size: var(--text-xs); margin-bottom: 10px; }
+.adm-statusline { font-size: var(--text-xs); margin-bottom: var(--sp-2); }
 .adm-emailwrap { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
 .adm-emailinp { margin: 0; max-width: 260px; }
 .adm-card10 { padding: 18px; }

@@ -38,10 +38,21 @@ function main() {
   check(has(table, 'closest("button, a, input, select, label'), "App.table onRowClick ignores clicks on inline controls (select/button/input)");
   const detail = slice(admin, "async function renderTenantDetail", "async function ");
   check(has(admin, "async function renderTenantDetail"), "renderTenantDetail exists");
-  check(has(admin, "renderTenantDetail") && !/renderTenantDetail[\s\S]*enterPortal/.test(slice(admin, "async function renderTenantDetail(portalRow)", "view().innerHTML")), "detail panel never enters the portal (no enterPortal/currentPortalId)");
+  // TENANT IDENTITY (authorised): the detail header now OFFERS the portal as one of the same
+  // three actions both list views carry. Inverted at the same strictness - the header must
+  // wire an open button to enterPortal, and the assertion below still holds the page to
+  // never taking portal CONTEXT.
+  const detailHead = slice(admin, "async function renderTenantDetail(portalRow)", "view().innerHTML");
+  check(has(admin, "renderTenantDetail") && /\[data-act="open"\]'\)\.onclick = \(\) => enterPortal\(portal\)/.test(detailHead), "detail header wires its open button to enterPortal");
   const detailBody = slice(admin, "async function renderTenantDetail(portalRow)", "function renderSetupScreen()");
-  check(!has(detailBody, "enterPortal") && !has(detailBody, "currentPortalId"), "detail panel body has no enterPortal / currentPortalId");
-  check(has(detailBody, "pageAccessSection(portal)"), "detail panel includes Page access");
+  check(!has(detailBody, "currentPortalId"), "detail panel body never holds portal context (no currentPortalId)");
+  // STALE-TEST FIX (verified failing on the untouched baseline): Page access is still on the
+  // detail page, but it moved one hop - renderTenantDetail mounts modulesAndPagesSection,
+  // which mounts pageAccessSection beside the Modules panel. Re-pinned to the whole chain,
+  // so this now asserts MORE than the single call it replaced.
+  check(has(detailBody, "modulesAndPagesSection(portal)")
+      && has(slice(admin, "function modulesAndPagesSection(portal)", "function lockChecklist"), "pageAccessSection(portal)"),
+    "detail panel includes Page access (via modulesAndPagesSection)");
   check(has(detailBody, "usersSectionInto(usersHost"), "detail panel includes Users");
   check(has(detailBody, "Suspend tenant") || has(detailBody, "Activate tenant"), "detail panel includes Suspend/Activate");
   // Loading-hang fix: status goes through innerHTML (statusBadge returns a string, not a
@@ -58,7 +69,12 @@ function main() {
   console.log("\n(5) removals + trimmed actions:");
   check(!has(admin, 'label: "Manage"'), "Manage column removed");
   check(has(portals, "App.table.openColumnManager(columns, tenantsLayout"), "Manage button opens the shared column manager (table view)");
-  check(has(portals, 'label: "Open tenant"'), "Actions column header renamed to 'Open tenant'");
+  // STALE-TEST FIX (verified failing on the untouched baseline): the actions column grew from
+  // a single Open arrow to the three-button set, and its header reads "Tenant actions".
+  // Re-pinned to the header AND all three buttons, so this asserts more than the label alone.
+  check(has(portals, 'label: "Tenant actions"')
+      && ['open', 'suspend', 'delete'].every((a) => has(slice(portals, 'key: "actions"', "];"), `data-act="${a}"`)),
+    "Tenant actions column header + its three action buttons");
   check(has(portals, "data-act=\"open\"") && has(portals, "t-openbtn"), "Open-tenant arrow button present (compact, single action)");
   check(!has(portals, 'data-act="toggle"'), "Suspend removed from the actions column (moved to detail panel)");
   check(!has(admin, "function renderPortalUsers") && !has(admin, "function renderTenantConfig"), "old standalone Users/Page-access views folded into the detail panel");
@@ -71,7 +87,9 @@ function main() {
   check(!has(portals, "const mark =") && !has(portals, "border-radius:50%") && !has(portals, "charAt(0).toUpperCase()"), "initials badge helper + markup removed from tenant name cells");
   // STALE-TEST FIX (design Phase 8; verified failing on the untouched baseline): the mop-up
   // replaced the inline font-weight with the .adm-t1 class (font-weight 600 in styles.css).
-  check(has(portals, 'render: (p) => `<span class="adm-t1">${esc(p.name)}</span>`') && /\.adm-t1 \{[^}]*font-weight: 600/.test(css), "name cell renders just the name (weight via .adm-t1, no badge wrapper)");
+  check(has(portals, '<span class="adm-t1">${esc(p.name)}</span>') && /\.adm-t1 \{[^}]*font-weight: 600/.test(css)
+      && !has(portals, "charAt(0)"),
+    "name cell renders the name via .adm-t1 (weight from the class, no badge wrapper)");
 
   console.log("\n(7) Panel (card) view + Table/Panel toggle:");
   // onRender hook is backwards-compatible (opt-in) and fires with the filtered rows.

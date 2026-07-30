@@ -97,7 +97,10 @@ check(viewerSrc.includes('const defaultKeys = opts.defaultKeys || ["createdAt", 
   check(viewerSrc.includes('localStorage.getItem(AUDIT_COLS_KEY)') && viewerSrc.includes("saveLayout(layout)"), "column prefs persist per-browser (the tenants-table localStorage pattern)");
   check(tableJs.includes("const { container, rows, onRowClick, emptyHtml, rowClass } = opts;") && viewerSrc.includes('rowClass: (r) => (r.status === "pending_deletion" ? "adm-audit-pending" : "")') && !read("public/js/portal.js").includes("rowClass:"), "the rowClass hook is ADDITIVE shared machinery (audit uses it; no sibling passes it \u2014 their behavior is untouched)");
   check(css.includes("tbody tr.adm-audit-pending td { opacity: 0.55; }") && viewerSrc.includes('<span class="pill skipped">pending deletion</span>'), "pending_deletion rows render muted with a status pill");
-  check(viewerSrc.includes('emptyHtml: `<div class="card cell-muted adm-t14">No audit events match.</div>`'), "the shared empty-state block");
+  // TENANT IDENTITY (authorised): the ad-hoc card-in-a-card empty state became the house
+  // .empty component. RE-PINNED to the new markup at the same strictness - the literal is
+  // still exact, it is just the literal that now ships.
+  check(viewerSrc.includes('emptyHtml: `<div class="empty"><div class="empty-emoji">&#128220;</div><h3>No audit events match</h3><p>Try widening the date range or clearing a filter.</p></div>`'), "the shared empty-state block");
   check(viewerSrc.includes('mkSel([["active", "Active"], ["pending_deletion", "Pending deletion"], ["all", "All"]]') && viewerSrc.includes('["", "All tenants"]') && viewerSrc.includes('meta.groups.map((g) => [g.key, g.label])') && viewerSrc.includes('["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["14", "Last 14 days"]'), "the filter set: tenant roster, actor type, grouped actions (from the catalog), status (Active default), the four-option Date-range preset select");
 
   // ---------- (3) diff rendering, headless ----------

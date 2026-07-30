@@ -357,7 +357,18 @@
         card.appendChild(actions);
       }
 
-      if (shows("status")) { const s = el("div"); s.innerHTML = statusBadge(p.status); card.appendChild(s); }
+      // TENANT IDENTITY - the Demo pill finally renders on a card. "Manage panels" has always
+      // offered a Demo checkbox (the picker is generated from the TABLE columns, all nine of
+      // them, all on by default) while buildCard read only eight and ignored it, so that
+      // checkbox did nothing and the lock-step comment above was false. Status and demo are
+      // separate children of one .adm-pillrow so each stays independently hideable; the
+      // wrapper is only appended when at least one is showing, so an unchecked field leaves
+      // no hole. A REAL tenant renders no demo node at all - the table's em dash is a column
+      // alignment affordance and means nothing on a card.
+      const pillRow = el("div", "adm-pillrow");
+      if (shows("status")) { const s = el("span"); s.innerHTML = statusBadge(p.status); pillRow.appendChild(s); }
+      if (shows("demo") && p.isDemo) pillRow.appendChild(el("span", "pill adm-demo-pill", "Demo"));
+      if (pillRow.children.length) card.appendChild(pillRow);
 
       if (shows("ai")) {
         const aiWrap = el("div");
@@ -982,19 +993,38 @@
       // statusBadge() returns an HTML STRING (built for innerHTML / table cells), NOT a DOM
       // node — so it must go through innerHTML, not appendChild. (This mismatch was the
       // cause of the permanent "Loading…": appendChild(string) threw before the view swap.)
+      // TENANT IDENTITY - the header now carries the SAME identity and the SAME three actions
+      // the two list views carry, so a tenant reads identically wherever you meet it.
+      const pillRow = el("div", "adm-pillrow");
       const status = el("span"); status.innerHTML = statusBadge(portal.status);
-      const toggle = el("button", "btn btn-ghost btn-sm", portal.status === "ACTIVE" ? "Suspend tenant" : "Activate tenant");
-      toggle.onclick = async () => {
-        toggle.disabled = true;
-        const next = portal.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
-        try { await App.api("/api/admin/portals/" + encodeURIComponent(portal.id), { method: "PATCH", body: JSON.stringify({ status: next }) }); portal.status = next; toast("Tenant updated"); renderTenantDetail(portal); }
-        catch (e) { toast(e.message, true); toggle.disabled = false; }
-      };
-      bar.appendChild(back); bar.appendChild(title); bar.appendChild(status); bar.appendChild(toggle);
+      pillRow.appendChild(status);
+      if (portal.isDemo) pillRow.appendChild(el("span", "pill adm-demo-pill", "Demo"));
+
+      // The three buttons are byte-identical to the table view's and the panel card's - same
+      // order, variants, glyphs, titles, aria-labels and data-act values.
+      const suspendedT = portal.status !== "ACTIVE";
+      const actions = el("span", "adm-actions-stack");
+      actions.innerHTML = `<button class="btn btn-primary btn-sm t-openbtn adm-t2" data-act="open" data-id="${esc(portal.id)}" title="Open tenant" aria-label="Open tenant">\u2197</button>`
+        + `<button class="btn btn-ghost btn-sm t-suspbtn adm-t2" data-act="suspend" data-id="${esc(portal.id)}" title="${suspendedT ? "Resume tenant" : "Suspend tenant"}" aria-label="${suspendedT ? "Resume tenant" : "Suspend tenant"}">${suspendedT ? "\u25b6" : "\u23f8"}</button>`
+        + `<button class="btn btn-danger btn-sm t-delbtn adm-t2" data-act="delete" data-id="${esc(portal.id)}" title="Delete tenant" aria-label="Delete tenant">\u2715</button>`;
+      // THREE DIRECT HANDLERS, not a delegated one: the list views' delegated listener is
+      // bound to tableHost, which does not exist on this page, and a header-scoped delegate
+      // would have to re-derive the tenant from data-id against a portals array that is not
+      // in scope here. Each handler closes over `portal` instead.
+      //   open    -> enters the tenant portal, same as both lists
+      //   suspend -> the LIGHT confirm both lists use, then re-render THIS page so the pill
+      //              and the glyph flip. This ADDS a confirmation the page did not have:
+      //              the old toggle PATCHed status immediately on click, with no prompt.
+      //   delete  -> the typed-name confirm, then back to the LIST - after a deletion there
+      //              is no tenant left to render here.
+      actions.querySelector('[data-act="open"]').onclick = () => enterPortal(portal);
+      actions.querySelector('[data-act="suspend"]').onclick = () => confirmSuspendTenant(portal, () => renderTenantDetail(portal));
+      actions.querySelector('[data-act="delete"]').onclick = () => confirmDeleteTenant(portal, renderPortals);
+      bar.appendChild(back); bar.appendChild(title); bar.appendChild(pillRow); bar.appendChild(actions);
       wrap.appendChild(bar);
 
       const caption = el("p", "cell-muted"); caption.classList.add("adm-caption2");
-      caption.textContent = "Configure this tenant’s page access, users, and status. This does not enter the portal.";
+      caption.textContent = "Configure this tenant’s page access, users, and status — or open the tenant portal itself.";
       wrap.appendChild(caption);
 
       wrap.appendChild(modulesAndPagesSection(portal));
@@ -2512,7 +2542,7 @@
         container: tableHost, columns: App.table.applyColumnLayout(columns, {}, defaultKeys), rows,
         tableId: "admin-errors" + (opts.embedId ? "-" + opts.embedId : ""),
         pageSize: 25,
-        emptyHtml: `<div class="card cell-muted adm-t14">No errors captured. Quiet is good.</div>`,
+        emptyHtml: `<div class="empty"><div class="empty-emoji">&#9989;</div><h3>No errors captured</h3><p>Quiet is good — nothing has been thrown in this window.</p></div>`,
         onRowClick: (r) => openErrorDetail(r),
       });
       App.table.manageColumns(handle, columns, { defaultKeys });
@@ -2630,7 +2660,7 @@
         container: tableHost, columns: App.table.applyColumnLayout(columns, {}, defaultKeys), rows,
         tableId: "admin-webhooks" + (opts.embedId ? "-" + opts.embedId : ""),
         pageSize: 25,
-        emptyHtml: `<div class="card cell-muted adm-t14">No webhook deliveries recorded yet.</div>`,
+        emptyHtml: `<div class="empty"><div class="empty-emoji">&#128225;</div><h3>No webhook deliveries yet</h3><p>Deliveries appear here as soon as an endpoint is called.</p></div>`,
         onRowClick: (r) => openWebhookDetail(r),
       });
       App.table.manageColumns(handle, columns, { defaultKeys });
@@ -2775,7 +2805,7 @@
         rows: tenantFilter ? rows.filter((r) => r.tenant === tenantFilter) : rows,
         tableId: "admin-health-" + checkKey,
         pageSize: 25,
-        emptyHtml: `<div class="card cell-muted adm-t14">Nothing in the queue.</div>`,
+        emptyHtml: `<div class="empty"><div class="empty-emoji">&#128230;</div><h3>Nothing in the queue</h3><p>Queued work shows up here while it waits to run.</p></div>`,
       });
     }
     paint();
@@ -3190,7 +3220,7 @@
         container: tableHost, columns: initial, rows,
         tableId: opts.embedded ? "admin-auditlog-embed-" + (opts.embedId || "panel") : "admin-auditlog",
         defaultSort: "createdAt", defaultSortDir: "desc",
-        emptyHtml: `<div class="card cell-muted adm-t14">No audit events match.</div>`,
+        emptyHtml: `<div class="empty"><div class="empty-emoji">&#128220;</div><h3>No audit events match</h3><p>Try widening the date range or clearing a filter.</p></div>`,
         pageSize: 25,
         onRowClick: (r) => openAuditDetail(r, tenantName, userTypeOf),
         rowClass: (r) => (r.status === "pending_deletion" ? "adm-audit-pending" : ""),
@@ -3281,7 +3311,7 @@
       { key: "type", label: "Type", type: "text", get: (r) => r.type, cellClass: "cell-strong", render: (r) => esc(r.type || "—") },
       { key: "description", label: "Description", type: "text", get: (r) => r.description, render: (r) => esc(r.description || "—") },
     ];
-    const empty = `<div class="card cell-muted adm-t14">No changes logged yet.</div>`;
+    const empty = `<div class="empty"><div class="empty-emoji">&#128221;</div><h3>Nothing logged yet</h3><p>No changes logged yet.</p></div>`;
     App.table.mount({
       container: host, columns, rows,
       tableId: "admin-changelog",
@@ -3346,7 +3376,7 @@
       // Status at this level is a SIMPLE COUNT SUMMARY — per-recipient statuses live in the drill-in.
       { key: "status", label: "Status", type: "text", get: (r) => recipientsLabel(r.recipientCount), render: (r) => `<span class="cell-muted">${esc(recipientsLabel(r.recipientCount))}</span>` },
     ];
-    const empty = `<div class="card cell-muted adm-t14">No emails sent yet.</div>`;
+    const empty = `<div class="empty"><div class="empty-emoji">&#9993;</div><h3>No emails sent yet</h3><p>Sends appear here once the first message goes out.</p></div>`;
     App.table.mount({
       container: host, columns, rows,
       rowId: (r) => r.groupKey,
@@ -3393,7 +3423,7 @@
       { key: "status", label: "Status", type: "status", get: (r) => emailStatusText(r), render: (r) => emailStatusBadge(r) },
       { key: "date", label: "Sent at", type: "date", get: (r) => r.createdAt, text: (r) => fmtDate(r.createdAt), render: (r) => `<span class="cell-muted">${esc(fmtDate(r.createdAt))}</span>` },
     ];
-    const empty = `<div class="card cell-muted adm-t14">No recipients recorded for this send.</div>`;
+    const empty = `<div class="empty"><div class="empty-emoji">&#128100;</div><h3>No recipients recorded</h3><p>This send has no recipient rows against it.</p></div>`;
     App.table.mount({
       container: host, columns, rows,
       rowId: (r) => r.id,
@@ -3897,7 +3927,7 @@
     const statusLine = el("div"); statusLine.classList.add("adm-statusline");
     function paintStatus(customerId) {
       if (!cfg.stripeConfigured) { statusLine.innerHTML = `<span class="txt-amber">● Stripe not configured</span> <span class="cell-muted">— add STRIPE_SECRET_KEY to enable.</span>`; return; }
-      if (customerId) statusLine.innerHTML = `<span class="txt-green">● Connected</span> <span class="cell-muted">${esc(short(customerId))}</span>`;
+      if (customerId) statusLine.innerHTML = `<span class="txt-green">● Connected</span> <span class="cell-muted">Stripe customer ${esc(short(customerId))} — created by Clarity; charges for this tenant post against it.</span>`;
       else statusLine.innerHTML = `<span class="txt-faint">○ Not connected</span>`;
     }
     paintStatus(cfg.stripeCustomerId);
@@ -3919,15 +3949,19 @@
     card.appendChild(emailWrap);
 
     // Connect button.
-    const connect = el("button", "btn btn-ghost btn-sm", "Connect Stripe customer");
+    // "Connect" implied linking to something that already exists. It CREATES a customer
+    // record inside Stripe for this tenant (name + billing email + the tenant id as
+    // metadata) and stores the id Stripe returns. Press it twice and nothing happens the
+    // second time - ensureStripeCustomer returns the existing id and calls Stripe not at all.
+    const connect = el("button", "btn btn-ghost btn-sm", "Create Stripe customer");
     if (!cfg.stripeConfigured) { connect.disabled = true; connect.title = "Stripe not configured"; }
-    if (cfg.stripeCustomerId) connect.textContent = "Re-check Stripe customer";
+    if (cfg.stripeCustomerId) connect.textContent = "Stripe customer active";
     connect.onclick = async () => {
       connect.disabled = true;
       try {
         const r = await App.api(`/api/admin/tenants/${encodeURIComponent(tenantId)}/stripe-customer`, { method: "POST" });
         cfg.stripeCustomerId = r.customerId; paintStatus(r.customerId);
-        connect.textContent = "Re-check Stripe customer";
+        connect.textContent = "Stripe customer active";
         toast(r.created ? "Stripe customer created" : "Already connected");
       } catch (e) { toast(e.message, true); }
       finally { connect.disabled = !cfg.stripeConfigured ? true : false; }
@@ -4070,7 +4104,7 @@
       tableId: "admin-tenant-charges",
       defaultSort: "period", defaultSortDir: "desc",
       onRowClick: (c) => openChargeDetail(tenantId, tenantName, c),
-      emptyHtml: `<div class="card cell-muted adm-t14">No charges yet. Click “+ Create charge”.</div>`,
+      emptyHtml: `<div class="empty"><div class="empty-emoji">&#128179;</div><h3>No charges yet</h3><p>Click “+ Create charge” to add the first one.</p></div>`,
       onRender: () => {
         App.util.$$("button[data-act]", tableHost).forEach((btn) => {
           btn.onclick = (e) => { e.stopPropagation(); const c = byId[btn.dataset.id]; if (!c) return; openPaymentModal(tenantId, tenantName, c); };
@@ -4377,7 +4411,7 @@
         tableId: "admin-central-charges",
         defaultSort: "created", defaultSortDir: "desc",
         onRowClick: (c) => openChargeDetail(c.tenantId, c.tenant, c, load),
-        emptyHtml: `<div class="card cell-muted adm-t14">No charges yet.</div>`,
+        emptyHtml: `<div class="empty"><div class="empty-emoji">&#128179;</div><h3>No charges yet</h3><p>Charges raised against this tenant will appear here.</p></div>`,
         onRender: () => {
           App.util.$$("button[data-act]", host).forEach((btn) => {
             btn.onclick = async (e) => {
