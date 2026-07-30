@@ -40,7 +40,7 @@ async function main() {
   let parsed = false;
   try { gate = JSON.parse(readFileSync(GATE_PATH, "utf8")); parsed = Array.isArray(gate); } catch { parsed = false; }
   check(parsed, "scripts/selftest.gate.json parses as a list");
-  check(gate.length === 49, `it names ${gate.length} suites (47 inherited from the hand-maintained block, plus this runner harness and selfTest_devToolsTabs)`);
+  check(gate.length === 50, `it names ${gate.length} suites (47 inherited from the hand-maintained block, plus the runner harness, selfTest_devToolsTabs and selfTest_widgetChrome)`);
   const missing = gate.filter((n) => !existsSync(join(SUITE_DIR, n.endsWith(".ts") ? n : n + ".ts")));
   check(missing.length === 0,
     missing.length === 0

@@ -52,7 +52,10 @@ function main() {
   check(hits(feedback) === 0, `feedback.js fully clean (found ${hits(feedback)})`);
   check(reports.includes('classList.toggle("u-hidden"'), "report wizard show/hide uses the u-hidden protocol");
   check(reports.includes('td.style.setProperty("--hm-a"'), "heatmap intensity uses the custom-property pattern");
-  check(css.includes("rgba(91,91,214,var(--hm-a, 0.08))"), "heatmap cell background reads --hm-a from the class");
+  // WIDGET CHROME (authorised): the heatmap cell no longer hardcodes the accent purple - it
+  // tints the theme's own first series colour. RE-PINNED at the same strictness: still an
+  // exact literal, and it still proves --hm-a is what carries the per-cell intensity.
+  check(css.includes("color-mix(in srgb, var(--chart-1) calc(var(--hm-a, 0.08) * 100%), transparent)"), "heatmap cell background reads --hm-a from the class");
 
   console.log("\n(3) shared components on admin surfaces:");
   check(admin.includes('"adm-badge"') && css.includes(".adm-badge {"), "unified admin status badge class exists and is used");

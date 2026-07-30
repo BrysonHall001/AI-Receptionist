@@ -107,7 +107,31 @@
     return { kind: "series", labels: entries.map((e) => e[0]), data: entries.map((e) => e[1]), measureLabel: measureLabel(measure, fields) };
   }
 
-  const PALETTE = ["#5b5bd6", "#3aa675", "#e0a23b", "#c2453f", "#3b82c4", "#8a4fc4", "#d2689a", "#4cae9e", "#9a8a3b", "#6b7280"];
+  // THEME-DRIVEN CHART RAMP. The ten series colours come from --chart-1..10, which every
+  // theme defines for itself, so switching theme changes the charts. Read at RENDER time
+  // with getComputedStyle - the same way theme.js already reads --panel and --line - so no
+  // theme-change plumbing is needed and nothing is written to any element's style.
+  // The old literals stay as the fallback, so a context with no tokens looks exactly as it
+  // did before this batch.
+  const PALETTE_FALLBACK = ["#5b5bd6", "#3aa675", "#e0a23b", "#c2453f", "#3b82c4", "#8a4fc4", "#d2689a", "#4cae9e", "#9a8a3b", "#6b7280"];
+  function chartPalette() {
+    let cs = null;
+    try { cs = getComputedStyle(document.body); } catch (e) { cs = null; }
+    return PALETTE_FALLBACK.map((fb, i) => {
+      const v = cs ? String(cs.getPropertyValue("--chart-" + (i + 1)) || "").trim() : "";
+      return v || fb;
+    });
+  }
+  /** series colour i, wrapping - the ramp is ten long. */
+  function seriesColor(i) { const p = chartPalette(); return p[i % p.length]; }
+  /** the same colour at a given alpha, for the line chart's fill under the stroke. */
+  function seriesFill(i, alpha) {
+    const c = seriesColor(i);
+    const m = /^#?([0-9a-f]{6})$/i.exec(c.replace("#", "").length === 3 ? "#" + c.replace("#", "").split("").map((x) => x + x).join("") : c);
+    if (!m) return c;
+    const n = parseInt(m[1], 16);
+    return "rgba(" + [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(",") + "," + alpha + ")";
+  }
   // feature-lc motion: named constants, ONE place. Entry-only (the dashboard's
   // first paint after entering the page), NEVER on data refresh/filter repaints;
   // prefers-reduced-motion disables everything (values/charts render final-state
@@ -134,8 +158,14 @@
   }
 
   function baseOpts(stacked, hideScales) {
-    const o = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: stacked || hideScales } } };
-    if (!hideScales) o.scales = { x: { stacked: !!stacked, ticks: { maxRotation: 60, minRotation: 0, autoSkip: true, callback: function (v) { const lab = this.getLabelForValue ? this.getLabelForValue(v) : v; return (typeof lab === "string" && lab.length > 18) ? lab.slice(0, 17) + "…" : lab; } } }, y: { stacked: !!stacked, beginAtZero: true } };
+    // VISUAL QUALITY: Chart.js defaults to dark grey axis text and grid lines, which is
+    // near-invisible on forest, midnight, dusk and dark. Axis chrome now follows the theme
+    // the same way the series colours do.
+    let ink = "", grid = "";
+    try { const cs = getComputedStyle(document.body); ink = String(cs.getPropertyValue("--ink-soft") || "").trim(); grid = String(cs.getPropertyValue("--line") || "").trim(); } catch (e) { /* unthemed context keeps Chart.js defaults */ }
+    const o = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: stacked || hideScales, labels: ink ? { color: ink } : {} } } };
+    if (ink) o.color = ink;
+    if (!hideScales) o.scales = { x: { stacked: !!stacked, ticks: { color: ink || undefined, maxRotation: 60, minRotation: 0, autoSkip: true, callback: function (v) { const lab = this.getLabelForValue ? this.getLabelForValue(v) : v; return (typeof lab === "string" && lab.length > 18) ? lab.slice(0, 17) + "…" : lab; } } }, y: { stacked: !!stacked, beginAtZero: true, ticks: { color: ink || undefined }, grid: { color: grid || undefined } } };
     return o;
   }
   function defaultListColumns(src) { return (src.reportFields || []).slice(0, 4).map((f) => f.key); }
@@ -194,10 +224,11 @@
     if (typeof Chart === "undefined") { host.innerHTML = `<p class="cell-muted">Charts need an internet connection.</p>`; return; }
     const canvas = document.createElement("canvas"); host.appendChild(canvas);
     let config;
-    if (agg.kind === "stacked") config = { type: "bar", data: { labels: agg.labels, datasets: agg.series.map((s, i) => ({ label: s.name, data: s.data, backgroundColor: PALETTE[i % PALETTE.length] })) }, options: baseOpts(true) };
-    else if (w.type === "pie") config = { type: "pie", data: { labels: agg.labels, datasets: [{ data: agg.data, backgroundColor: agg.labels.map((_, i) => PALETTE[i % PALETTE.length]) }] }, options: baseOpts(false, true) };
-    else if (w.type === "line") config = { type: "line", data: { labels: agg.labels, datasets: [{ label: agg.measureLabel, data: agg.data, borderColor: PALETTE[0], backgroundColor: "rgba(91,91,214,0.15)", tension: 0.3, fill: true }] }, options: baseOpts(false) };
-    else config = { type: "bar", data: { labels: agg.labels, datasets: [{ label: agg.measureLabel, data: agg.data, backgroundColor: PALETTE[0] }] }, options: baseOpts(false) };
+    // Colour SOURCING changes; colour MEANING does not - series i is still series i.
+    if (agg.kind === "stacked") config = { type: "bar", data: { labels: agg.labels, datasets: agg.series.map((s, i) => ({ label: s.name, data: s.data, backgroundColor: seriesColor(i) })) }, options: baseOpts(true) };
+    else if (w.type === "pie") config = { type: "pie", data: { labels: agg.labels, datasets: [{ data: agg.data, backgroundColor: agg.labels.map((_, i) => seriesColor(i)) }] }, options: baseOpts(false, true) };
+    else if (w.type === "line") config = { type: "line", data: { labels: agg.labels, datasets: [{ label: agg.measureLabel, data: agg.data, borderColor: seriesColor(0), backgroundColor: seriesFill(0, 0.15), tension: 0.3, fill: true }] }, options: baseOpts(false) };
+    else config = { type: "bar", data: { labels: agg.labels, datasets: [{ label: agg.measureLabel, data: agg.data, backgroundColor: seriesColor(0) }] }, options: baseOpts(false) };
     config.options.animation = chartAnimation(animate); // entry-only draw-in; false on refresh + reduced motion
     const ch = new Chart(canvas, config); if (charts) charts.push(ch);
   }
@@ -635,8 +666,18 @@
       titleWrap.appendChild(handle);
       titleWrap.appendChild(el("div", "widget-title", esc(w.title || "Untitled")));
       head.appendChild(titleWrap);
+      // WIDGET CHROME: the head is the TITLE ALONE, so it gets the card's full width. The
+      // controls used to live here behind opacity: 0 - invisible, yet still consuming the
+      // width that was truncating titles to "Requ...".
+      card.appendChild(head);
+      const body = el("div", "widget-body");
+      card.appendChild(body);
       if (canEdit) {
-      const actions = el("div", "widget-actions");
+      // The SAME controls, the SAME order, the SAME handlers and values - only the container
+      // moved. The card also takes the class that grows it by the bar's exact footprint, so
+      // the chart body keeps the height it had before this batch.
+      card.classList.add("widget-has-chrome");
+      const actions = el("div", "widget-chrome");
       const wSel = el("select", "w-size-select"); wSel.title = "Width";
       [["1", "S"], ["2", "M"], ["3", "L"], ["4", "Full"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; if (v === String(sz.cw)) o.selected = true; wSel.appendChild(o); });
       wSel.onchange = () => setSize(w.id, { cw: parseInt(wSel.value, 10) });
@@ -648,11 +689,8 @@
       const edit = el("button", "icon-btn", "✎"); edit.title = "Edit"; edit.onclick = () => openEditor(w);
       const del = el("button", "icon-btn", "×"); del.title = "Delete"; del.onclick = () => removeWidget(w.id);
       actions.appendChild(dup); actions.appendChild(edit); actions.appendChild(del);
-      head.appendChild(actions);
+      card.appendChild(actions);
       }
-      card.appendChild(head);
-      const body = el("div", "widget-body");
-      card.appendChild(body);
       if (canEdit) attachDnD(card, handle, w.id); else handle.classList.add("u-hidden");
       return card;
     }
