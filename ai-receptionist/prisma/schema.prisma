@@ -206,6 +206,18 @@ model User {
   feedbackMessages FeedbackMessage[]
   ssoLinks         UserSsoLink[]
 
+  // TWO-FACTOR. mfaSecret is the LIVE secret and is null until a code has been verified;
+  // mfaPendingSecret holds an enrolment in progress. Keeping them apart is what stops an
+  // abandoned enrolment from locking someone out of their own account.
+  mfaSecret        String?
+  mfaPendingSecret String?
+  mfaEnabledAt     DateTime?
+  // The highest TOTP step already spent, so the same code cannot be replayed inside its
+  // own 90-second window.
+  mfaLastStep      Int?
+  recoveryCodes    UserRecoveryCode[]
+  trustedDevices   UserTrustedDevice[]
+
   @@index([tenantId])
   @@index([tenantId, lastSeenAt])
 }
@@ -226,6 +238,35 @@ model User {
 /// ID token's `sub`, Microsoft uses `tid:oid` because Microsoft's own guidance is to
 /// index on the tenant id plus the directory object id. Do NOT "simplify" Microsoft's
 /// to oid alone: oid is only unique within a tenant.
+/// One unused recovery code. HASHED, never stored in plain text, and DELETED when spent -
+/// so "how many are left" is simply a count, and a used code cannot come back.
+model UserRecoveryCode {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// A browser that has already satisfied the second factor, remembered for 30 days.
+///
+/// NOT A BEARER TOKEN. The row is DELETED on password change, on turning two-factor off,
+/// and on sign-out-everywhere - which is the whole difference between "this device is
+/// remembered" and "a second password the owner cannot revoke".
+model UserTrustedDevice {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+}
+
 model UserSsoLink {
   id        String   @id @default(cuid())
   userId    String

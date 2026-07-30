@@ -1,6 +1,24 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { audit } from "../services/auditService";
 import { AUDIT_ACTIONS } from "../services/auditCatalog";
+import { rateLimit } from "../middleware/rateLimit";
+import { verifyPassword } from "../auth/passwords";
+import {
+  mfaIsOn, satisfySecondFactor, beginEnrolment, confirmEnrolment, disableMfa,
+  regenerateRecoveryCodes, mfaStatus, forgetAllDevices,
+} from "../services/mfaService";
+
+// The same shape the sign-in limiters use, on the endpoints that mutate a credential or
+// change the second factor. Keyed by the SIGNED-IN user, since these routes need a session.
+const accountSensitiveLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10,
+  keyFn: (req: any) => `${req.ip}:${(req.user && req.user.id) || "anon"}`,
+  message: "Too many attempts. Please wait a few minutes and try again.",
+});
+const accountSensitiveIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 40,
+  message: "Too many attempts from this connection. Please wait and try again.",
+});
 import multer from "multer";
 import { extractDocuments, combineBlocks, MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "../services/docExtractService";
 import { organizeIntoSections, InstructionsParseError } from "../services/instructionsDocParseService";
@@ -3410,15 +3428,110 @@ apiRouter.post("/automations/:id/run", async (req: Request, res: Response) => {
 });
 
 // ---- Change own password ----
-apiRouter.post("/account/password", async (req: Request, res: Response) => {
-  const { password } = (req.body ?? {}) as { password?: string };
-  const pw = checkPassword(String(password ?? ""), { email: req.user?.email });
-  if (!pw.ok) {
-    res.status(400).json({ error: pw.message });
+/**
+ * CHANGE PASSWORD - now proves you are who you say you are first.
+ *
+ * This used to accept the NEW password alone. A live session was enough: an unlocked laptop
+ * or a stolen session cookie could change the password without knowing the old one and lock
+ * the real owner out. It also had no rate limiter and wrote no audit row, so it was a silent,
+ * unthrottled credential change. All three are fixed here.
+ *
+ * The precedent is POST /charges/:id/approve, which already re-verifies the acting user's
+ * password before approving a charge. Same idea, applied to the one endpoint that mutates a
+ * credential - and, once two-factor is on, a code as well, because the password alone is
+ * exactly what an attacker in this position already has.
+ */
+apiRouter.post("/account/password", accountSensitiveIpLimiter, accountSensitiveLimiter, async (req: Request, res: Response) => {
+  const { currentPassword, password, code } = (req.body ?? {}) as { currentPassword?: string; password?: string; code?: string };
+  const me = await prisma.user.findUnique({ where: { id: req.user!.id } });
+  if (!me) { res.status(401).json({ error: "Not signed in" }); return; }
+
+  // FAILS EXACTLY LIKE A FAILED LOGIN: same generic message, same audit action, same throttle.
+  if (!currentPassword || !(await verifyPassword(String(currentPassword), me.passwordHash))) {
+    audit({ tenantId: (me as any).tenantId ?? null, actorType: "user", actorId: me.id, actorLabel: me.email, action: AUDIT_ACTIONS.AUTH_LOGIN_FAILED, subjectType: "auth", meta: { ip: req.ip || null, at: "account/password" } });
+    res.status(401).json({ error: "Invalid email or password" });
     return;
   }
+  if (mfaIsOn(me as any)) {
+    const how = await satisfySecondFactor(me.id, String(code || ""));
+    if (!how) {
+      audit({ tenantId: (me as any).tenantId ?? null, actorType: "user", actorId: me.id, actorLabel: me.email, action: AUDIT_ACTIONS.MFA_CHALLENGE_FAILED, subjectType: "auth", meta: { ip: req.ip || null, at: "account/password" } });
+      res.status(401).json({ error: "That code wasn't right." });
+      return;
+    }
+  }
+  const pw = checkPassword(String(password ?? ""), { email: req.user?.email });
+  if (!pw.ok) { res.status(400).json({ error: pw.message }); return; }
   await setPassword(req.user!.id, password!);
+  // A password change forgets every remembered device: a device trusted under the old
+  // password must not survive it.
+  const forgotten = await forgetAllDevices(me.id);
+  audit({ tenantId: (me as any).tenantId ?? null, actorType: "user", actorId: me.id, actorLabel: me.name || me.email, action: AUDIT_ACTIONS.PASSWORD_CHANGED, subjectType: "auth", meta: { ip: req.ip || null, devicesForgotten: forgotten } });
   res.json({ ok: true });
+});
+
+// ---- Two-factor (Settings -> Your account) --------------------------------
+apiRouter.get("/account/mfa", async (req: Request, res: Response) => {
+  res.json(await mfaStatus(req.user!.id));
+});
+
+/** Begin enrolment. The secret is PENDING and inert until a code confirms it. */
+apiRouter.post("/account/mfa/begin", accountSensitiveIpLimiter, accountSensitiveLimiter, async (req: Request, res: Response) => {
+  const me = await prisma.user.findUnique({ where: { id: req.user!.id } });
+  if (!me) { res.status(401).json({ error: "Not signed in" }); return; }
+  if (mfaIsOn(me as any)) { res.status(409).json({ error: "Two-factor is already on for this account." }); return; }
+  const { uri, typable } = await beginEnrolment(me.id, me.email);
+  res.json({ uri, typable });
+});
+
+/** Confirm. MFA goes live here and NOT before, and the recovery codes are shown ONCE. */
+apiRouter.post("/account/mfa/confirm", accountSensitiveIpLimiter, accountSensitiveLimiter, async (req: Request, res: Response) => {
+  const { code } = (req.body ?? {}) as { code?: string };
+  const r = await confirmEnrolment(req.user!.id, String(code || ""));
+  if (!r.ok) {
+    audit({ tenantId: (req.user as any)?.tenantId ?? null, actorType: "user", actorId: req.user!.id, actorLabel: req.user!.email, action: AUDIT_ACTIONS.MFA_CHALLENGE_FAILED, subjectType: "auth", meta: { ip: req.ip || null, at: "enrolment" } });
+    res.status(401).json({ error: "That code wasn't right. Check the app and try again." });
+    return;
+  }
+  audit({ tenantId: (req.user as any)?.tenantId ?? null, actorType: "user", actorId: req.user!.id, actorLabel: req.user!.email, action: AUDIT_ACTIONS.MFA_ENABLED, subjectType: "auth", meta: { ip: req.ip || null } });
+  res.json({ ok: true, codes: r.codes });
+});
+
+/**
+ * TURN IT OFF. Requires the current password AND a second factor - a live session alone is
+ * never sufficient, because a live session is exactly what an attacker at an unlocked laptop
+ * already has.
+ */
+apiRouter.post("/account/mfa/disable", accountSensitiveIpLimiter, accountSensitiveLimiter, async (req: Request, res: Response) => {
+  const { currentPassword, code } = (req.body ?? {}) as { currentPassword?: string; code?: string };
+  const me = await prisma.user.findUnique({ where: { id: req.user!.id } });
+  if (!me) { res.status(401).json({ error: "Not signed in" }); return; }
+  if (!mfaIsOn(me as any)) { res.json({ ok: true, alreadyOff: true }); return; }
+  if (!currentPassword || !(await verifyPassword(String(currentPassword), me.passwordHash))) {
+    audit({ tenantId: (me as any).tenantId ?? null, actorType: "user", actorId: me.id, actorLabel: me.email, action: AUDIT_ACTIONS.AUTH_LOGIN_FAILED, subjectType: "auth", meta: { ip: req.ip || null, at: "mfa/disable" } });
+    res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+  if (!(await satisfySecondFactor(me.id, String(code || "")))) {
+    audit({ tenantId: (me as any).tenantId ?? null, actorType: "user", actorId: me.id, actorLabel: me.email, action: AUDIT_ACTIONS.MFA_CHALLENGE_FAILED, subjectType: "auth", meta: { ip: req.ip || null, at: "mfa/disable" } });
+    res.status(401).json({ error: "That code wasn't right." });
+    return;
+  }
+  await disableMfa(me.id);
+  audit({ tenantId: (me as any).tenantId ?? null, actorType: "user", actorId: me.id, actorLabel: me.name || me.email, action: AUDIT_ACTIONS.MFA_DISABLED, subjectType: "auth", meta: { ip: req.ip || null } });
+  res.json({ ok: true });
+});
+
+/** Fresh recovery codes. Same gates as turning it off. */
+apiRouter.post("/account/mfa/recovery-codes", accountSensitiveIpLimiter, accountSensitiveLimiter, async (req: Request, res: Response) => {
+  const { currentPassword, code } = (req.body ?? {}) as { currentPassword?: string; code?: string };
+  const me = await prisma.user.findUnique({ where: { id: req.user!.id } });
+  if (!me || !mfaIsOn(me as any)) { res.status(400).json({ error: "Two-factor isn't on for this account." }); return; }
+  if (!currentPassword || !(await verifyPassword(String(currentPassword), me.passwordHash))) { res.status(401).json({ error: "Invalid email or password" }); return; }
+  if (!(await satisfySecondFactor(me.id, String(code || "")))) { res.status(401).json({ error: "That code wasn't right." }); return; }
+  const codes = await regenerateRecoveryCodes(me.id);
+  audit({ tenantId: (me as any).tenantId ?? null, actorType: "user", actorId: me.id, actorLabel: me.name || me.email, action: AUDIT_ACTIONS.MFA_CODES_REGENERATED, subjectType: "auth", meta: { ip: req.ip || null } });
+  res.json({ ok: true, codes });
 });
 
 // ---- Feedback (per-portal / tenant-facing) ---------------------------------

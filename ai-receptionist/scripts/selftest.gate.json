@@ -1,4 +1,5 @@
 [
+  "selfTest_mfa",
   "selfTest_ssoSignIn",
   "selfTest_permissionsRegroup",
   "selfTest_appShell",

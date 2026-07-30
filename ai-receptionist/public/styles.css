@@ -702,6 +702,20 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 .settings-card .field-label { display: block; }
 .add-user { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
 .add-user .input { margin-bottom: 0; flex: 1; min-width: 120px; }
+/* THE ACCOUNT ROW IS SIZED TO ITS CONTENT, not stretched.
+   .add-user is SHARED - the Team members panel uses it for a name + email + role row where
+   flex: 1 is right, so the fix is scoped to this row rather than changing the component and
+   shrinking that panel. A password field spanning the whole card told the reader nothing
+   about how much to type; these are sized to what actually goes in them. */
+.acct-row .input { flex: 0 1 auto; width: 22ch; max-width: 100%; }
+.acct-row .acct-code { width: 10ch; }
+/* The enrolment block: the QR at a scannable size, the typable key grouped and legible,
+   and the one-time recovery codes in a block a person can read down and copy. */
+.mfa-qr svg { width: 168px; height: 168px; display: block; margin: var(--sp-3) 0; }
+.mfa-key { font-size: var(--text-base); letter-spacing: var(--tracking-caps); margin: 0 0 var(--sp-2); }
+.mfa-remember { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-sm); color: var(--ink-soft); margin: 0 0 var(--sp-3); }
+.mfa-remember input { width: auto; margin: 0; }
+.mfa-codes { font-family: var(--font-mono, monospace); font-size: var(--text-sm); line-height: 1.7; background: var(--gray-soft); border-radius: var(--radius-sm); padding: var(--sp-3); margin: var(--sp-2) 0; overflow-x: auto; }
 .mini-table { width: 100%; margin-bottom: 14px; }
 .mini-table thead th { padding: 8px 10px; }
 .mini-table tbody td { padding: 8px 10px; }

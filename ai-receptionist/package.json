@@ -2,7 +2,7 @@
   "name": "ai-receptionist-mvp",
   "version": "1.0.0",
   "private": true,
-  "description": "AI Phone Receptionist SaaS MVP — inbound call -> AI conversation -> structured extraction -> DB -> email.",
+  "description": "AI Phone Receptionist SaaS MVP \u2014 inbound call -> AI conversation -> structured extraction -> DB -> email.",
   "type": "commonjs",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -14,6 +14,7 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "seed": "tsx src/db/seed.ts",
     "set-admin-password": "tsx src/db/setAdminPassword.ts",
+    "clear-mfa": "tsx src/db/clearMfa.ts",
     "make-owner": "tsx src/db/makeOwner.ts",
     "expire-user": "tsx src/db/expireUser.ts",
     "simulate": "tsx scripts/simulate-call.ts",

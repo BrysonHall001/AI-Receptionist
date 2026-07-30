@@ -58,8 +58,10 @@
       if (!email || !password) { toast("Enter your email and password", true); return; }
       btn.disabled = true; btn.textContent = "Signing in…";
       try {
-        const { user } = await App.api("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-        App.state.me = user;
+        const r = await App.api("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+        // Two-factor: the password was right, but there is NO SESSION yet.
+        if (r && r.mfaRequired) { location.hash = "#/mfa"; return; }
+        App.state.me = r.user;
         App.afterLogin();
       } catch (err) {
         toast(err.message, true);
@@ -160,5 +162,35 @@
     App.util.$("#sso-pass").onkeydown = (e) => { if (e.key === "Enter") submit(); };
   }
 
-  App.auth = { renderLogin, renderForgot, renderReset, renderSsoLink };
+  /** THE SECOND FACTOR. Reached only after a correct password; no session exists yet. */
+  function renderMfa() {
+    const form = el("div", "auth-form");
+    form.innerHTML = `
+      <h1 class="auth-title">Enter your code</h1>
+      <p class="auth-sub">Open your authenticator app and enter the six-digit code. You can use a recovery code instead if you don't have your phone.</p>
+      <label class="field-label">Code</label>
+      <input id="mfa-code" class="input" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" />
+      <label class="mfa-remember"><input id="mfa-remember" type="checkbox" /> Remember this device for 30 days</label>
+      <button id="mfa-btn" class="btn btn-primary btn-block">Continue</button>
+      <a class="auth-link" href="#/">Back to sign in</a>`;
+    shell(form);
+    const submit = async () => {
+      const code = App.util.$("#mfa-code").value.trim();
+      const btn = App.util.$("#mfa-btn");
+      if (!code) { toast("Enter the code from your app", true); return; }
+      btn.disabled = true; btn.textContent = "Checking\u2026";
+      try {
+        const { user } = await App.api("/api/auth/login/mfa", { method: "POST", body: JSON.stringify({ code, remember: App.util.$("#mfa-remember").checked }) });
+        App.state.me = user;
+        App.afterLogin();
+      } catch (err) {
+        toast(err.message, true);
+        btn.disabled = false; btn.textContent = "Continue";
+      }
+    };
+    App.util.$("#mfa-btn").onclick = submit;
+    App.util.$("#mfa-code").onkeydown = (e) => { if (e.key === "Enter") submit(); };
+  }
+
+  App.auth = { renderLogin, renderForgot, renderReset, renderSsoLink, renderMfa };
 })(typeof window !== "undefined" ? window : globalThis);

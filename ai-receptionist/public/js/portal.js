@@ -6102,8 +6102,16 @@
           </div>
         </div>
         <label class="field-label u-mt-4">Change password</label>
-        <div class="add-user"><input id="acct-pass" class="input" type="password" placeholder="New password (8+)" />
+        <div class="add-user acct-row"><input id="acct-cur" class="input" type="password" autocomplete="current-password" placeholder="Current password" />
+          <input id="acct-pass" class="input" type="password" autocomplete="new-password" placeholder="New password (8+)" />
+          <input id="acct-pass-code" class="input acct-code u-hidden" inputmode="numeric" autocomplete="one-time-code" placeholder="Code" />
           <button id="acct-save" class="btn btn-ghost btn-sm">Update password</button></div>
+        <div class="mfa-block u-mt-8">
+          <label class="field-label">Two-factor authentication</label>
+          <p id="mfa-status" class="cell-muted u-m-0">Checking\u2026</p>
+          <div id="mfa-actions" class="add-user acct-row u-mt-8"></div>
+          <div id="mfa-enrol" class="u-hidden u-mt-8"></div>
+        </div>
         <label class="field-label u-mt-8">Email signature</label>
         <div id="sig-host"></div>
         <button id="sig-save" class="btn btn-ghost btn-sm u-mt-10">Save signature</button>`;
@@ -6137,10 +6145,90 @@
       })();
       App.util.$("#acct-save").onclick = async () => {
         const pass = App.util.$("#acct-pass").value;
+        const cur = App.util.$("#acct-cur").value;
+        const code = App.util.$("#acct-pass-code").value;
+        if (!cur) { toast("Enter your current password", true); return; }
         if (!pass || pass.length < 8) { toast("Password must be at least 8 characters", true); return; }
-        try { await App.portalApi("/api/account/password", { method: "POST", body: JSON.stringify({ password: pass }) }); toast("Password updated"); App.util.$("#acct-pass").value = ""; }
+        try { await App.portalApi("/api/account/password", { method: "POST", body: JSON.stringify({ currentPassword: cur, password: pass, code }) }); toast("Password updated"); App.util.$("#acct-pass").value = ""; App.util.$("#acct-cur").value = ""; App.util.$("#acct-pass-code").value = ""; }
         catch (err) { toast(err.message, true); }
       };
+      // ---- Two-factor, beside change-password ----
+      (async function mfaPanel() {
+        const statusEl = App.util.$("#mfa-status"), actions = App.util.$("#mfa-actions"), enrol = App.util.$("#mfa-enrol");
+        if (!statusEl) return;
+        const codeInput = App.util.$("#acct-pass-code");
+        async function refresh() {
+          let st;
+          try { st = await App.portalApi("/api/account/mfa"); }
+          catch (e) { statusEl.textContent = "Couldn't load your two-factor settings."; return; }
+          actions.innerHTML = ""; enrol.innerHTML = ""; enrol.classList.add("u-hidden");
+          // When two-factor is on, changing a password also needs a code.
+          if (codeInput) codeInput.classList.toggle("u-hidden", !st.enabled);
+          if (!st.enabled) {
+            statusEl.textContent = "Off. Add a code from an authenticator app for a second layer on sign-in.";
+            const on = el("button", "btn btn-ghost btn-sm", "Turn on two-factor");
+            on.onclick = startEnrol;
+            actions.appendChild(on);
+            return;
+          }
+          statusEl.textContent = "On. " + st.recoveryRemaining + " recovery code" + (st.recoveryRemaining === 1 ? "" : "s") + " left"
+            + (st.trustedDevices ? " \u00b7 " + st.trustedDevices + " remembered device" + (st.trustedDevices === 1 ? "" : "s") : "") + ".";
+          const regen = el("button", "btn btn-ghost btn-sm", "New recovery codes");
+          regen.onclick = () => confirmThen("/api/account/mfa/recovery-codes", "New recovery codes", showCodes);
+          const off = el("button", "btn btn-ghost btn-sm", "Turn off");
+          off.onclick = () => confirmThen("/api/account/mfa/disable", "Turn off two-factor", () => { toast("Two-factor turned off"); refresh(); });
+          actions.appendChild(regen); actions.appendChild(off);
+        }
+        /** Both of these need the password AND a code - a live session is never enough. */
+        function confirmThen(url, title, done) {
+          enrol.classList.remove("u-hidden");
+          enrol.innerHTML = `<p class="cell-muted u-m-0">${App.util.esc(title)}: enter your password and a code from your app (or a recovery code).</p>
+            <div class="add-user acct-row u-mt-8">
+              <input id="mfa-cp" class="input" type="password" autocomplete="current-password" placeholder="Current password" />
+              <input id="mfa-cc" class="input acct-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code" />
+              <button id="mfa-go" class="btn btn-ghost btn-sm">Confirm</button></div>`;
+          App.util.$("#mfa-go").onclick = async () => {
+            try {
+              const r = await App.portalApi(url, { method: "POST", body: JSON.stringify({ currentPassword: App.util.$("#mfa-cp").value, code: App.util.$("#mfa-cc").value }) });
+              enrol.classList.add("u-hidden"); done(r);
+            } catch (err) { toast(err.message, true); }
+          };
+        }
+        function showCodes(r) {
+          if (!r || !r.codes) { refresh(); return; }
+          enrol.classList.remove("u-hidden");
+          enrol.innerHTML = `<p class="u-m-0"><strong>Save these somewhere that isn't your phone.</strong> Each one works once, and you won't see them again.</p>
+            <pre class="mfa-codes">${r.codes.map(App.util.esc).join("\n")}</pre>
+            <button id="mfa-done" class="btn btn-ghost btn-sm">I've saved them</button>`;
+          App.util.$("#mfa-done").onclick = () => { enrol.classList.add("u-hidden"); refresh(); };
+        }
+        async function startEnrol() {
+          let r;
+          try { r = await App.portalApi("/api/account/mfa/begin", { method: "POST" }); }
+          catch (err) { toast(err.message, true); return; }
+          enrol.classList.remove("u-hidden");
+          enrol.innerHTML = `<p class="cell-muted u-m-0">Scan this with an authenticator app, or type the key in by hand. Then enter the six-digit code it shows.</p>
+            <div id="mfa-qr" class="mfa-qr"></div>
+            <p class="cell-mono mfa-key">${App.util.esc(r.typable)}</p>
+            <div class="add-user acct-row u-mt-8">
+              <input id="mfa-code" class="input acct-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" />
+              <button id="mfa-confirm" class="btn btn-ghost btn-sm">Confirm and turn on</button></div>`;
+          // The QR is drawn HERE, in the browser, from a secret already on this page - never
+          // fetched as an image from a remote service, which would send the seed away.
+          try {
+            const q = window.qrcode(0, "M"); q.addData(r.uri); q.make();
+            App.util.$("#mfa-qr").innerHTML = q.createSvgTag({ cellSize: 4, margin: 8, scalable: true });
+          } catch (e) { /* the typable key above is always enough on its own */ }
+          App.util.$("#mfa-confirm").onclick = async () => {
+            try {
+              const done = await App.portalApi("/api/account/mfa/confirm", { method: "POST", body: JSON.stringify({ code: App.util.$("#mfa-code").value }) });
+              toast("Two-factor is on");
+              showCodes(done);
+            } catch (err) { toast(err.message, true); }
+          };
+        }
+        refresh();
+      })();
       const sigApi = App.compose.mount(App.util.$("#sig-host"), { kind: "richtext" });
       App.portalApi("/api/account/signature").then((r) => { sigApi.setBody((r && r.signature) || ""); }).catch(() => {});
       App.util.$("#sig-save").onclick = async () => {

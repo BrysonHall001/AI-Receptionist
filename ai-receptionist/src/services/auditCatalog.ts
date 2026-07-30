@@ -43,6 +43,14 @@ export const AUDIT_ACTIONS = {
   AUTH_SSO_FAILED: "auth.sso.failed",
   AUTH_SSO_LINKED: "auth.sso.linked",
   AUTH_SSO_UNLINKED: "auth.sso.unlinked",
+  // Two-factor. Distinguishable from password and SSO events on purpose.
+  MFA_ENABLED: "auth.mfa.enabled",
+  MFA_DISABLED: "auth.mfa.disabled",
+  MFA_CHALLENGE_FAILED: "auth.mfa.failed",
+  MFA_RECOVERY_USED: "auth.mfa.recovery_used",
+  MFA_CODES_REGENERATED: "auth.mfa.codes_regenerated",
+  MFA_CLEARED_CLI: "auth.mfa.cleared_cli",
+  PASSWORD_CHANGED: "auth.password_changed",
   IMPERSONATION_START: "auth.impersonation.start",
   IMPERSONATION_END: "auth.impersonation.end",
   // data movement (counts in meta)

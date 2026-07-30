@@ -41,6 +41,9 @@ const FILES: [string, number, string, string][] = [
   ["xlsx/xlsx.full.min.js", 10240, "0.18.5", "SheetJS (Excel import/export)"],
   ["jszip/jszip.min.js", 10240, "3.10.1", "JSZip"],
   ["chartjs/chart.umd.js", 10240, "4.4.1", "Chart.js (already-minified UMD dist)"],
+  // MFA batch: the two-factor enrolment QR is drawn IN THE BROWSER from a secret already
+  // on the page, precisely so the TOTP seed is never sent to a remote QR service.
+  ["qrcode/qrcode.js", 10240, "2.0.4", "qrcode-generator (two-factor enrolment QR)"],
 ];
 for (const [rel, min, _v, label] of FILES) {
   let size = 0;
@@ -68,8 +71,9 @@ const iZ = html.indexOf('<script src="/js/vendor/jszip/jszip.min.js"></script>')
 const iQ = html.indexOf('<script src="/js/vendor/quill/quill.min.js"></script>');
 const iC = html.indexOf('<script src="/js/vendor/chartjs/chart.umd.js"></script>');
 const iApp = html.indexOf('<script src="/js/util.js"></script>');
-check(iX > 0 && iZ > iX && iQ > iZ && iC > iQ, "script order unchanged: xlsx, jszip, quill, chart (same as the CDN days)");
-check(iApp > iC, "all four load BEFORE the app's own scripts (globals exist first)");
+const iQR = html.indexOf('/js/vendor/qrcode/qrcode.js');
+check(iX > 0 && iZ > iX && iQ > iZ && iC > iQ && iQR > iC, "script order: xlsx, jszip, quill, chart, qrcode");
+check(iApp > iQR, "all five load BEFORE the app's own scripts (globals exist first)");
 
 // ---- (4) version pinning via embedded markers ----
 console.log("\n(4) pinned versions embedded in the dists:");
@@ -79,5 +83,5 @@ for (const [rel, _min, version, label] of FILES) {
   check(ok, `${label} embeds its pinned version ${version}`);
 }
 
-console.log(`\n${failures.length === 0 ? "ALL PASSED \u2705 (four libraries local + pinned; zero runtime CDN dependency)" : failures.length + " FAILED \u274c"}`);
+console.log(`\n${failures.length === 0 ? "ALL PASSED \u2705 (five libraries local + pinned; zero runtime CDN dependency)" : failures.length + " FAILED \u274c"}`);
 process.exit(failures.length ? 1 : 0);

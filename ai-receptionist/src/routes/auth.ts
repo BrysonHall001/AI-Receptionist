@@ -11,6 +11,7 @@ import {
   type SsoProvider,
 } from "../services/ssoProviders";
 import { resolveSsoSignIn, createSsoLink, removeSsoLink, listSsoLinks } from "../services/ssoSignInService";
+import { mfaIsOn, satisfySecondFactor, deviceIsTrusted, rememberDevice, TRUSTED_DEVICE_COOKIE, TRUSTED_DEVICE_DAYS } from "../services/mfaService";
 import { sendPlainEmail } from "../services/notificationService";
 import { env, smsEnabled } from "../config/env";
 import { storageMode } from "../services/fileStorage";
@@ -56,9 +57,78 @@ authRouter.post("/login", loginIpLimiter, loginLimiter, async (req: Request, res
     res.status(403).json({ error: "This account has expired." });
     return;
   }
+  // SECOND FACTOR. With MFA off this is a no-op and sign-in is exactly as it was. With MFA
+  // on, NO SESSION IS CREATED HERE - the browser gets a short-lived pending ticket instead,
+  // and only the code-entry route below can turn it into a session.
+  if (mfaIsOn(user as any) && !(await deviceIsTrusted(user.id, req.cookies?.[TRUSTED_DEVICE_COOKIE]))) {
+    setPendingMfa(res, user.id);
+    res.json({ mfaRequired: true });
+    return;
+  }
+  await finishSignIn(req, res, user, "password");
+  res.json({ user: publicUser(user) });
+});
+
+// ---------------------------- the second factor ----------------------------
+const MFA_PENDING_COOKIE = "air_mfa";
+const MFA_PENDING_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * THE INTERMEDIATE STATE. Not a session: it proves only that step one passed. It reuses the
+ * SSO state cookie's proven shape - HMAC-signed, httpOnly, single-use, short-lived - and is
+ * bound to this browser because it IS a cookie. getUserForToken never sees it, so nothing in
+ * the app treats it as authentication.
+ */
+function setPendingMfa(res: Response, userId: string): void {
+  const payload = `${userId}.${Date.now()}`;
+  res.cookie(MFA_PENDING_COOKIE, packSsoState(payload), {
+    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: MFA_PENDING_TTL_MS, path: "/",
+  });
+}
+function readPendingMfa(req: Request): string | null {
+  const payload = openSsoState(String(req.cookies?.[MFA_PENDING_COOKIE] || ""));
+  if (!payload) return null;
+  const i = payload.lastIndexOf(".");
+  const userId = payload.slice(0, i), ts = Number(payload.slice(i + 1));
+  if (!userId || !Number.isFinite(ts) || Date.now() - ts > MFA_PENDING_TTL_MS) return null;
+  return userId;
+}
+
+/** Mint the session and audit it. One place, so every path records the same thing. */
+async function finishSignIn(req: Request, res: Response, user: any, how: "password" | "sso" | "mfa" | "recovery"): Promise<void> {
   const token = await createSession(user.id);
   setSessionCookie(res, token);
-  audit({ tenantId: (user as any).tenantId ?? null, actorType: "user", actorId: user.id, actorLabel: user.name || user.email, actorRole: (user as any).customRoleId ? "CUSTOM:" + (user as any).customRoleId : (user as any).role || null, action: AUDIT_ACTIONS.AUTH_LOGIN, subjectType: "auth", meta: { ip: req.ip || null } });
+  audit({ tenantId: user.tenantId ?? null, actorType: "user", actorId: user.id, actorLabel: user.name || user.email, actorRole: user.customRoleId ? "CUSTOM:" + user.customRoleId : user.role || null, action: how === "sso" ? AUDIT_ACTIONS.AUTH_SSO_LOGIN : AUDIT_ACTIONS.AUTH_LOGIN, subjectType: "auth", meta: { ip: req.ip || null, how } });
+}
+
+/**
+ * CODE ENTRY. Both existing rate limiters apply - a six-digit code is the one place brute
+ * force is realistic, so this is the route that most needs them.
+ */
+authRouter.post("/login/mfa", loginIpLimiter, loginLimiter, async (req: Request, res: Response) => {
+  const userId = readPendingMfa(req);
+  res.clearCookie(MFA_PENDING_COOKIE, { path: "/" }); // SINGLE USE
+  if (!userId) { res.status(400).json({ error: "That sign-in attempt has expired. Please start again." }); return; }
+  const { code, remember } = (req.body ?? {}) as { code?: string; remember?: boolean };
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) { res.status(401).json({ error: "Invalid code" }); return; }
+  if (accountInactive(user)) { res.status(403).json({ error: "This account has expired." }); return; }
+
+  const how = await satisfySecondFactor(user.id, String(code || ""));
+  if (!how) {
+    audit({ tenantId: (user as any).tenantId ?? null, actorType: "user", actorId: user.id, actorLabel: user.email, action: AUDIT_ACTIONS.MFA_CHALLENGE_FAILED, subjectType: "auth", meta: { ip: req.ip || null } });
+    setPendingMfa(res, user.id); // let them try again within the same 5 minutes
+    res.status(401).json({ error: "That code wasn't right. Try again." });
+    return;
+  }
+  if (how === "recovery") {
+    audit({ tenantId: (user as any).tenantId ?? null, actorType: "user", actorId: user.id, actorLabel: user.email, action: AUDIT_ACTIONS.MFA_RECOVERY_USED, subjectType: "auth", meta: { ip: req.ip || null } });
+  }
+  if (remember === true) {
+    const dt = await rememberDevice(user.id, String(req.headers["user-agent"] || "").slice(0, 120));
+    res.cookie(TRUSTED_DEVICE_COOKIE, dt, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: TRUSTED_DEVICE_DAYS * 86400000, path: "/" });
+  }
+  await finishSignIn(req, res, user, how === "recovery" ? "recovery" : "mfa");
   res.json({ user: publicUser(user) });
 });
 
@@ -230,10 +300,17 @@ authRouter.get("/sso/:provider/callback", loginIpLimiter, loginLimiter, async (r
     res.redirect(`/#/sso-link?provider=${encodeURIComponent(provider)}&email=${encodeURIComponent(outcome.email)}`);
     return;
   }
-  const token = await createSession(outcome.userId);
-  setSessionCookie(res, token);
+  // SSO IS CHALLENGED FOR MFA TOO. Our second factor is OUR control: if someone's Google
+  // account is compromised, our MFA is exactly what should stand in the way, and it is worth
+  // nothing if the identity provider can wave it through. The 30-day remembered-device
+  // window keeps this to roughly once a month.
   const u: any = outcome.user;
-  audit({ tenantId: u.tenantId ?? null, actorType: "user", actorId: u.id, actorLabel: u.name || u.email, actorRole: u.customRoleId ? "CUSTOM:" + u.customRoleId : u.role || null, action: AUDIT_ACTIONS.AUTH_SSO_LOGIN, subjectType: "auth", meta: { ip: req.ip || null, provider } });
+  if (mfaIsOn(u) && !(await deviceIsTrusted(u.id, req.cookies?.[TRUSTED_DEVICE_COOKIE]))) {
+    setPendingMfa(res, u.id);
+    res.redirect("/#/mfa");
+    return;
+  }
+  await finishSignIn(req, res, u, "sso");
   res.redirect("/#/dashboard");
 });
 
@@ -276,9 +353,12 @@ authRouter.post("/sso/link", loginIpLimiter, loginLimiter, async (req: Request, 
   catch { res.status(409).json({ error: "That account is already linked. Sign in with your password and check Settings." }); return; }
   audit({ tenantId: (user as any).tenantId ?? null, actorType: "user", actorId: user.id, actorLabel: user.name || user.email, action: AUDIT_ACTIONS.AUTH_SSO_LINKED, subjectType: "auth", meta: { ip: req.ip || null, provider } });
 
-  const token = await createSession(user.id);
-  setSessionCookie(res, token);
-  audit({ tenantId: (user as any).tenantId ?? null, actorType: "user", actorId: user.id, actorLabel: user.name || user.email, actorRole: (user as any).customRoleId ? "CUSTOM:" + (user as any).customRoleId : (user as any).role || null, action: AUDIT_ACTIONS.AUTH_SSO_LOGIN, subjectType: "auth", meta: { ip: req.ip || null, provider } });
+  if (mfaIsOn(user as any) && !(await deviceIsTrusted(user.id, req.cookies?.[TRUSTED_DEVICE_COOKIE]))) {
+    setPendingMfa(res, user.id);
+    res.json({ mfaRequired: true });
+    return;
+  }
+  await finishSignIn(req, res, user, "sso");
   res.json({ user: publicUser(user) });
 });
 
