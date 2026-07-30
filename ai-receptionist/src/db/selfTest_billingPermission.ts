@@ -15,12 +15,12 @@ async function main() {
   console.log("billing permission\n==================");
   const ids: string[] = [];
   try {
-    console.log("(1) catalog: billing is a grantable view-only Operations area:");
+    console.log("(1) catalog: billing is a grantable view-only area under Pages:");
     const cat = getPermissionCatalog();
     const b = cat.find((a: any) => a.key === "billing");
     check(!!b, "billing area present in catalog");
     check(!!b && b.kind === "gated_view" && b.rights.join(",") === "view", "kind gated_view, rights = [view]");
-    check(!!b && b.section === "Operations" && !b.locked, "section Operations, not admin-locked (grantable)");
+    check(!!b && b.section === "Pages" && !b.locked, "section Pages, not admin-locked (grantable)");
 
     console.log("\n(2) system-role defaults (the leak fix):");
     check(permissionMatrixForRole("PORTAL_ADMIN").billing?.view === true, "PORTAL_ADMIN gets billing view by default");

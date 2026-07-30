@@ -5326,11 +5326,17 @@
         const my = data.myPermissions || {};
 
         // Each section shows ONLY the columns its areas actually support — no dead "—" cells.
-        const SECTION_COLS = {
-          Data: [["view", "View"], ["edit", "Edit"], ["delete", "Delete"]],
-          Operations: [["view", "Access"]], // genuinely view-only areas → one yes/no
-          Admin: [["view", "View"], ["edit", "Edit"], ["delete", "Delete"]],
-        };
+        // COLUMNS COME FROM THE AREA'S OWN RIGHTS, never from its section name. This used
+        // to be a map keyed by section - so renaming a section would have silently dropped
+        // a three-right area to a single column, hiding its Edit and Delete grants on screen
+        // while the grants themselves were untouched. A screen that lies about access is
+        // worse than one that renames a heading, so nothing here is keyed by name any more.
+        const RIGHT_LABEL = { view: "View", edit: "Edit", delete: "Delete", manage: "Manage" };
+        // An area exposing ONE right is an on/off switch, not a partial grant. Its column is
+        // headed "Access" and it is tabled separately from the view/edit/delete areas, so a
+        // lone tick can never read as "two of three".
+        const colsFor = (rights) => (rights.length === 1 ? [[rights[0], "Access"]] : rights.map((r) => [r, RIGHT_LABEL[r] || r]));
+        const sigOf = (a) => (a.rights || ["view"]).join(",");
 
         // One yes/no cell covering a set of area keys under a right (checkbox when editable
         // & within the creator's level; ✓/· reference otherwise). Multi-key = grant all together.
@@ -5370,12 +5376,29 @@
               <table class="mini-table"><colgroup><col/><col class="pt-t29"/></colgroup>${head}<tbody>${row}${lockNote}</tbody></table></details>`;
           }
 
-          // DATA / OPERATIONS / ADMIN — one row per area, only the real columns.
-          const cols = SECTION_COLS[section] || [["view", "View"]];
-          const head = `<thead><tr><th class="pt-t25">Area</th>${cols.map((c) => `<th>${c[1]}</th>`).join("")}</tr></thead>`;
-          const rows = areas.map((a) => `<tr><td>${esc(a.label)}</td>${cols.map((c) => cellFor([a.key], c[0])).join("")}</tr>`).join("");
+          // PAGES / MODULES / ADMIN — one row per area, grouped so that every table's
+          // columns are true for every row in it. Multi-right areas first, then the on/off
+          // ones, so a section holding both reads as two honest tables rather than one
+          // table with holes in it.
+          const sigs = [];
+          areas.forEach((a) => { const g = sigOf(a); if (sigs.indexOf(g) === -1) sigs.push(g); });
+          sigs.sort((x, y) => y.split(",").length - x.split(",").length);
+          const tables = sigs.map((sig) => {
+            const group = areas.filter((a) => sigOf(a) === sig);
+            const cols = colsFor(sig.split(","));
+            const head = `<thead><tr><th class="pt-t25">Area</th>${cols.map((c) => `<th>${c[1]}</th>`).join("")}</tr></thead>`;
+            const rows = group.map((a) => `<tr><td>${esc(a.label)}</td>${cols.map((c) => cellFor([a.key], c[0])).join("")}</tr>`).join("");
+            const note = cols.length === 1 && sigs.length > 1
+              ? `<p class="cell-muted pt-t26">These are on or off \u2014 there is nothing partial to grant.</p>`
+              : "";
+            return `${note}<table class="mini-table">${head}<tbody>${rows}</tbody></table>`;
+          }).join("");
+          // MODULES is one control on purpose, and a reader will expect per-module rows.
+          const sectionNote = section === "Modules"
+            ? `<p class="cell-muted pt-t26">One control for record data across every module. Whether a module exists at all, and whether it is switched on for this tenant, is governed by Fields under Settings.</p>`
+            : "";
           return `<details open class="u-mb-10"><summary class="pt-t28">${esc(section)}</summary>
-            <table class="mini-table">${head}<tbody>${rows}</tbody></table></details>`;
+            ${sectionNote}${tables}</details>`;
         }
 
         return (data.sections || []).map(sectionTable).join("");

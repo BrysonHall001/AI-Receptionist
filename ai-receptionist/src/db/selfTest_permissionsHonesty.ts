@@ -27,12 +27,35 @@ function main() {
 
   // ---------- (1) reclassification ----------
   console.log("(1) catalog reclassification:");
+  // CONVERTED (permissions-regroup batch): these three were regexes over the SERVICE'S SOURCE
+  // TEXT - they matched `key: "x", kind: "data", section: "Data"` and so broke on any edit to
+  // the file, including a pure relabelling. What they were protecting is a BEHAVIOURAL fact:
+  // these areas expose the rights their kind promises, and a role's effective access agrees.
+  // That is now asserted against the published catalog and the real matrix, so it survives a
+  // rename and still fails if a right or a grant actually moves.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getPermissionCatalog, permissionMatrixForRole } = require("../services/permissionService");
+  const catalog: any[] = getPermissionCatalog();
+  const areaOf = (k: string) => catalog.find((a) => a.key === k);
   for (const key of ["communication", "dashboard", "reports"]) {
-    const re = new RegExp(`key: "${key}",[^}]*kind: "data",[^}]*section: "Data"`);
-    check(re.test(svc), `${key} is now data-kind in the Data section`);
+    const a = areaOf(key);
+    check(!!a && a.rights.join(",") === "view,edit,delete",
+      `${key} exposes the full view/edit/delete set (${a ? a.rights.join(",") : "MISSING"})`);
   }
-  check(/key: "calls",[^}]*kind: "readonly",[^}]*section: "Operations"/.test(svc), "calls stays read-only in Operations");
-  check(/key: "learn",[^}]*kind: "readonly",[^}]*section: "Operations"/.test(svc), "learn stays read-only in Operations");
+  for (const key of ["calls", "learn"]) {
+    const a = areaOf(key);
+    check(!!a && a.rights.join(",") === "view",
+      `${key} stays read-only \u2014 one right, nothing to edit or delete (${a ? a.rights.join(",") : "MISSING"})`);
+  }
+  {
+    // and the rights are real, not just declared: an OWNER can do all three on a data area,
+    // and cannot edit or delete a read-only one, whatever section any of them sits in.
+    const m = permissionMatrixForRole("OWNER");
+    check(m.reports.view === true && m.reports.edit === true && m.reports.delete === true,
+      "\u2026and an OWNER really does get all three on a data area");
+    check(m.calls.view === true && m.calls.edit === undefined && m.calls.delete === undefined,
+      "\u2026while a read-only area has no edit or delete to grant at all");
+  }
   check(/key: "dashboard", label: "Home Dashboard"/.test(svc), "dashboard relabeled 'Home Dashboard'");
 
   // ---------- (2) communication gating (the real enforcement fix) ----------
@@ -53,8 +76,29 @@ function main() {
 
   // ---------- (4) table redesign: per-section columns + single Settings toggle ----------
   console.log("\n(4) permissions table redesign:");
-  check(/Operations: \[\["view", "Access"\]\]/.test(portal), "Operations section renders a single 'Access' column");
-  check(/Data: \[\["view", "View"\], \["edit", "Edit"\], \["delete", "Delete"\]\]/.test(portal), "Data section renders View/Edit/Delete only");
+  // CONVERTED (permissions-regroup batch): this matched the literal SECTION_COLS entry
+  // `Operations: [["view", "Access"]]`, which no longer exists - columns are derived from
+  // each area's own rights rather than from its section's name, precisely so a rename cannot
+  // silently drop a column. The INTENT (an area with one right shows one "Access" column,
+  // not a lone tick in column one of three) is asserted by rendering it.
+  let pagesHtml = "";
+  {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getPermissionCatalog: cat2 } = require("../services/permissionService");
+    const catalog2: any[] = cat2();
+    const body = portal.slice(portal.indexOf("        const RIGHT_LABEL = {"), portal.indexOf('        return (data.sections || []).map(sectionTable).join("");'));
+    const esc2 = (x: any) => String(x);
+    const full2 = Object.fromEntries(catalog2.map((a) => [a.key, Object.fromEntries(a.rights.map((r: string) => [r, true]))]));
+    // eslint-disable-next-line no-new-func
+    const st = new Function("data", "esc", "role", "my", "editing", "App", body + "\nreturn sectionTable;")(
+      { catalog: catalog2 }, esc2, { permissions: full2, editable: true }, full2, false, { util: {} });
+    pagesHtml = st("Pages");
+    check(/<th>Access<\/th>/.test(pagesHtml) && !/SECTION_COLS/.test(body),
+      "a single-right area renders one 'Access' column, and no column is chosen by section name");
+  }
+  // CONVERTED with the one above: the same SECTION_COLS literal, now derived from rights.
+  check(/<th>View<\/th><th>Edit<\/th><th>Delete<\/th>/.test(pagesHtml) && !/<th>Manage<\/th>/.test(pagesHtml),
+    "a three-right area renders View/Edit/Delete and nothing else");
   check(/Manage Settings \(all\)/.test(portal), "Settings collapses to one 'Manage Settings (all)' toggle");
   check(/grantableKeys = areas\.filter\(\(a\) => !a\.locked\)\.map/.test(portal), "settings toggle writes every grantable settings_* key");
   check(/are always admin-managed/.test(portal), "locked Integrations/Lead-capture noted under the toggle");

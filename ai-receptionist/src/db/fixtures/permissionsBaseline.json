@@ -1,0 +1,474 @@
+{
+  "generatedFor": "permissions-regroup",
+  "roles": [
+    "OWNER",
+    "SUPER_ADMIN",
+    "AUDITOR",
+    "PORTAL_ADMIN",
+    "CLIENT_USER"
+  ],
+  "matrix": {
+    "OWNER": {
+      "contacts": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "records": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "automations": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "communication": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "dashboard": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "reports": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "calls": {
+        "view": true
+      },
+      "learn": {
+        "view": true
+      },
+      "billing": {
+        "view": true
+      },
+      "settings_general": {
+        "manage": true
+      },
+      "settings_appearance": {
+        "manage": true
+      },
+      "settings_leadcapture": {
+        "manage": true
+      },
+      "settings_scheduling": {
+        "manage": true
+      },
+      "settings_resources": {
+        "manage": true
+      },
+      "settings_integrations": {
+        "manage": true
+      },
+      "settings_data": {
+        "manage": true
+      },
+      "settings_labels": {
+        "manage": true
+      },
+      "settings_fields": {
+        "manage": true
+      },
+      "users": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      }
+    },
+    "SUPER_ADMIN": {
+      "contacts": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "records": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "automations": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "communication": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "dashboard": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "reports": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "calls": {
+        "view": true
+      },
+      "learn": {
+        "view": true
+      },
+      "billing": {
+        "view": true
+      },
+      "settings_general": {
+        "manage": true
+      },
+      "settings_appearance": {
+        "manage": true
+      },
+      "settings_leadcapture": {
+        "manage": true
+      },
+      "settings_scheduling": {
+        "manage": true
+      },
+      "settings_resources": {
+        "manage": true
+      },
+      "settings_integrations": {
+        "manage": true
+      },
+      "settings_data": {
+        "manage": true
+      },
+      "settings_labels": {
+        "manage": true
+      },
+      "settings_fields": {
+        "manage": true
+      },
+      "users": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      }
+    },
+    "AUDITOR": {
+      "contacts": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "records": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "automations": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "communication": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "dashboard": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "reports": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "calls": {
+        "view": true
+      },
+      "learn": {
+        "view": true
+      },
+      "billing": {
+        "view": true
+      },
+      "settings_general": {
+        "manage": true
+      },
+      "settings_appearance": {
+        "manage": true
+      },
+      "settings_leadcapture": {
+        "manage": true
+      },
+      "settings_scheduling": {
+        "manage": true
+      },
+      "settings_resources": {
+        "manage": true
+      },
+      "settings_integrations": {
+        "manage": true
+      },
+      "settings_data": {
+        "manage": true
+      },
+      "settings_labels": {
+        "manage": true
+      },
+      "settings_fields": {
+        "manage": true
+      },
+      "users": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      }
+    },
+    "PORTAL_ADMIN": {
+      "contacts": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "records": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "automations": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "communication": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "dashboard": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "reports": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      },
+      "calls": {
+        "view": true
+      },
+      "learn": {
+        "view": true
+      },
+      "billing": {
+        "view": true
+      },
+      "settings_general": {
+        "manage": true
+      },
+      "settings_appearance": {
+        "manage": true
+      },
+      "settings_leadcapture": {
+        "manage": true
+      },
+      "settings_scheduling": {
+        "manage": true
+      },
+      "settings_resources": {
+        "manage": true
+      },
+      "settings_integrations": {
+        "manage": true
+      },
+      "settings_data": {
+        "manage": true
+      },
+      "settings_labels": {
+        "manage": true
+      },
+      "settings_fields": {
+        "manage": true
+      },
+      "users": {
+        "view": true,
+        "edit": true,
+        "delete": true
+      }
+    },
+    "CLIENT_USER": {
+      "contacts": {
+        "view": true,
+        "edit": false,
+        "delete": false
+      },
+      "records": {
+        "view": true,
+        "edit": false,
+        "delete": false
+      },
+      "automations": {
+        "view": true,
+        "edit": false,
+        "delete": false
+      },
+      "communication": {
+        "view": true,
+        "edit": false,
+        "delete": false
+      },
+      "dashboard": {
+        "view": true,
+        "edit": false,
+        "delete": false
+      },
+      "reports": {
+        "view": true,
+        "edit": false,
+        "delete": false
+      },
+      "calls": {
+        "view": true
+      },
+      "learn": {
+        "view": true
+      },
+      "billing": {
+        "view": false
+      },
+      "settings_general": {
+        "manage": false
+      },
+      "settings_appearance": {
+        "manage": false
+      },
+      "settings_leadcapture": {
+        "manage": false
+      },
+      "settings_scheduling": {
+        "manage": false
+      },
+      "settings_resources": {
+        "manage": false
+      },
+      "settings_integrations": {
+        "manage": false
+      },
+      "settings_data": {
+        "manage": false
+      },
+      "settings_labels": {
+        "manage": false
+      },
+      "settings_fields": {
+        "manage": false
+      },
+      "users": {
+        "view": false,
+        "edit": false,
+        "delete": false
+      }
+    }
+  },
+  "shape": {
+    "areaKeys": [
+      "automations",
+      "billing",
+      "calls",
+      "communication",
+      "contacts",
+      "dashboard",
+      "learn",
+      "records",
+      "reports",
+      "settings_appearance",
+      "settings_data",
+      "settings_fields",
+      "settings_general",
+      "settings_integrations",
+      "settings_labels",
+      "settings_leadcapture",
+      "settings_resources",
+      "settings_scheduling",
+      "users"
+    ],
+    "rightsByArea": {
+      "contacts": [
+        "delete",
+        "edit",
+        "view"
+      ],
+      "records": [
+        "delete",
+        "edit",
+        "view"
+      ],
+      "automations": [
+        "delete",
+        "edit",
+        "view"
+      ],
+      "communication": [
+        "delete",
+        "edit",
+        "view"
+      ],
+      "dashboard": [
+        "delete",
+        "edit",
+        "view"
+      ],
+      "reports": [
+        "delete",
+        "edit",
+        "view"
+      ],
+      "calls": [
+        "view"
+      ],
+      "learn": [
+        "view"
+      ],
+      "billing": [
+        "view"
+      ],
+      "settings_general": [
+        "manage"
+      ],
+      "settings_appearance": [
+        "manage"
+      ],
+      "settings_leadcapture": [
+        "manage"
+      ],
+      "settings_scheduling": [
+        "manage"
+      ],
+      "settings_resources": [
+        "manage"
+      ],
+      "settings_integrations": [
+        "manage"
+      ],
+      "settings_data": [
+        "manage"
+      ],
+      "settings_labels": [
+        "manage"
+      ],
+      "settings_fields": [
+        "manage"
+      ],
+      "users": [
+        "delete",
+        "edit",
+        "view"
+      ]
+    },
+    "cellCount": 165
+  }
+}

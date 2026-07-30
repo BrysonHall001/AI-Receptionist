@@ -60,29 +60,29 @@ function rightsForKind(kind: AreaKind): Right[] {
 // (Record types are one "records" area for now; Batch 2 may split per type.)
 export const AREAS: AreaDef[] = [
   // ---- Data (view / edit / delete) ----
-  { key: "contacts", label: "Contacts", kind: "data", section: "Data" },
+  { key: "contacts", label: "Contacts", kind: "data", section: "Pages" },
   // LABEL is "Modules"; the KEY stays "records" so existing grants/enforcement are unchanged.
   // This governs View/Edit/Delete over record DATA across every record-type module (Jobs,
   // Bookings, Equipment, and the pre-built + custom modules). Creating/renaming/hiding modules
   // themselves stays governed by the Settings → Modules & Fields management permission.
-  { key: "records", label: "Modules", kind: "data", section: "Data" },
-  { key: "automations", label: "Automations", kind: "data", section: "Data" },
+  { key: "records", label: "Modules", kind: "data", section: "Modules" },
+  { key: "automations", label: "Automations", kind: "data", section: "Pages" },
   // Communication, Home Dashboard and Analytics are real CRUD surfaces (email templates,
   // surveys, dashboards + widgets), so they are DATA-kind, not read-only. NOTE: only
   // Communication's mutations are gated to its own area rights (templates/surveys closed
   // off in permissionGate). Dashboard/Analytics mutations (/dashboards POST/PATCH/DELETE)
   // are LEFT INTENTIONALLY OPEN by decision — the catalog is honest about edit/delete
   // existing, but no new gate rule restricts them (see permissionGate comment).
-  { key: "communication", label: "Communication", kind: "data", section: "Data" },
-  { key: "dashboard", label: "Home Dashboard", kind: "data", section: "Data" },
-  { key: "reports", label: "Analytics", kind: "data", section: "Data" },
+  { key: "communication", label: "Communication", kind: "data", section: "Pages" },
+  { key: "dashboard", label: "Home Dashboard", kind: "data", section: "Pages" },
+  { key: "reports", label: "Analytics", kind: "data", section: "Pages" },
   // ---- Read-only (view only) ----
-  { key: "calls", label: "Calls", kind: "readonly", section: "Operations" },
-  { key: "learn", label: "Learning Center", kind: "readonly", section: "Operations" },
+  { key: "calls", label: "Calls", kind: "readonly", section: "Pages" },
+  { key: "learn", label: "Learning Center", kind: "readonly", section: "Pages" },
   // Client billing view. gated_view => Portal Admins (and top tiers) get it by default,
   // Client Users do NOT, and it's grantable per custom role. Renders in the Operations
   // section as a single Access (view) toggle, alongside Calls / Learning Center.
-  { key: "billing", label: "Billing", kind: "gated_view", section: "Operations" },
+  { key: "billing", label: "Billing", kind: "gated_view", section: "Pages" },
   // ---- Settings sub-areas (single Manage right each) ----
   { key: "settings_general", label: "Business Profile", kind: "settings", section: "Settings" },
   { key: "settings_appearance", label: "Appearance", kind: "settings", section: "Settings" },
@@ -104,7 +104,14 @@ export const AREAS: AreaDef[] = [
 ];
 
 // The section order the Permissions UI renders (collapsible blocks).
-export const AREA_SECTIONS = ["Data", "Operations", "Settings", "Admin"];
+// PERMISSIONS REGROUP: these headings name how the product is actually organised. They were
+// "Data" and "Operations", which lumped nav pages, module records and dashboards together.
+// `section` IS A DISPLAY LABEL ONLY - it is never read by systemCan, can(), effectiveMatrix
+// or permissionMatrixForRole, all of which key off the area KEY plus the RIGHT. Renaming a
+// section therefore cannot move a single grant, and src/db/fixtures/permissionsBaseline.json
+// exists to PROVE that rather than assert it: every role x area x right was captured before
+// this change and is compared cell for cell after it.
+export const AREA_SECTIONS = ["Pages", "Modules", "Settings", "Admin"];
 
 const AREA_BY_KEY = new Map<string, AreaDef>(AREAS.map((a) => [a.key, a]));
 

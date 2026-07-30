@@ -1,0 +1,11 @@
+-- Changelog: permissions regroup (headings only)
+INSERT INTO "ChangeLogEntry" ("id","date","type","description","commitSha","createdAt")
+VALUES (
+  'cl_permissions_regroup_20260730',
+  '2026-07-30',
+  'Improvement',
+  'The Team and Permissions screen is grouped differently. The headings are now Pages, Modules, Settings and Admin, which match how the product is actually laid out. Before, a heading called Data lumped together things that are pages in the menu, the records inside your modules, and dashboards, which made it hard to find what you were looking for. Pages now holds everything that is a page someone can open: the home dashboard, calls, contacts, analytics, automations, communication, the learning centre and billing. Modules holds the one control that governs the records inside every module. Settings and Admin are exactly as they were. NOBODY GAINED OR LOST ANY ACCESS, and that is not a claim we are asking you to take on trust. Before changing anything we recorded every permission that every built-in role has - all one hundred and sixty-five combinations of role, area and right - and after the change we regenerated the same list from the same code the system enforces with, and compared it one by one. Every single one matched. We also deliberately broke one of them in a copy first, to make sure the comparison would actually notice a difference rather than passing regardless. Two other things improved on that screen. Some rows are a simple on or off rather than separate view, edit and delete permissions - calls, the learning centre and billing are like this. They used to show a single tick in the first of three columns, which looked like someone had been given only part of something. Those rows are now listed separately with a single Access column and a note saying there is nothing partial to grant. And the Modules heading now explains that its one control covers record data across every module, and that switching a module on or off is a Settings permission, so it is clear why there is one row rather than one per module. Creating and editing custom roles works exactly as before.',
+  'batch-permissions-regroup-20260730',
+  NOW()
+)
+ON CONFLICT ("commitSha") DO NOTHING;
