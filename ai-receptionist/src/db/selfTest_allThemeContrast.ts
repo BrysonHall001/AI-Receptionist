@@ -9,9 +9,14 @@
 //   - input-border (--line-strong) vs panel (non-text UI contrast)       >= 3:1
 //   - accent/focus indicator (--accent) vs panel                          >= 3:1
 //   - content surfaces are fully OPAQUE (alpha = 1) so scenery can't bleed under text
-// Limitation: colors that live only in component CSS rules (not theme tokens) can't
-// be read here; those cases (e.g. the aero button gradient, translucent hover
-// overlays, the ghost-button hover surface) were fixed by hand in styles.css.
+// PART 2 - THE DERIVED SCAN (contrast-hardening batch). The sentence that used to sit
+// here read: "colors that live only in component CSS rules can't be read here; those
+// cases were fixed by hand in styles.css." Fixed by hand meant nothing stopped them
+// returning, and they returned three times. They are no longer hand-fixed: Part 2 below
+// DERIVES every foreground/background pairing from the stylesheet itself and checks all
+// of them in all 18 themes. Anything it cannot resolve statically is COUNTED AND NAMED,
+// never silently skipped - a checker that quietly ignores what it cannot parse is how
+// this defect kept coming back.
 //
 //   npx tsx src/db/selfTest_allThemeContrast.ts
 import { readFileSync } from "fs";
@@ -155,6 +160,117 @@ for (const t of THEMES) {
   const chipRule = css.includes('body:is([data-theme="aero"],[data-theme="dusk"],[data-theme="vaporwave"],[data-theme="forest"],[data-theme="sunset"],[data-theme="dreamcore"],[data-theme="academia"])') && css.includes("/* scenic ON-BG backstop */");
   need(chipRule, "scenic backstop: the grouped backdrop-chip rule covers all seven scenic themes' ON-BG text");
 }
+
+// ===================== PART 2: the DERIVED scan =====================
+// Every rule outside the token blocks that declares a foreground colour is paired with the
+// background it actually sits on - its own, an ancestor's, or (for a colour-only rule) BOTH
+// surfaces text can sit on in this app, the page and a card. Ratios are checked per theme.
+
+/** Declared exceptions. Each entry is a DECISION ON THE RECORD, not a gap: low contrast
+ *  here is deliberate and the reason says why. Anything NOT on this list must pass. */
+const CONTRAST_EXCEPTIONS: Array<{ match: string; threshold: number; reason: string }> = [
+  { match: ".cell-stars", threshold: 3.0, reason: "star rating GLYPHS, not text - held to the WCAG 1.4.11 non-text floor of 3:1. They were 1.5:1 gold; every theme's --star was darkened until it cleared 3:1, which keeps them recognisably gold while making them visible." },
+  { match: ".form-star", threshold: 3.0, reason: "the interactive half of the same star rating - same glyph, same 3:1 non-text floor." },
+];
+
+const ruleAt: Array<{ sel: string; decl: Record<string, string>; i: number }> = [];
+{
+  const exRanges: Array<[number, number]> = [];
+  const ri = css.indexOf(":root {"); if (ri >= 0) exRanges.push([ri, css.indexOf("}", ri) + 1]);
+  const tre = /(^|\n)[^{}\n]*data-theme[^{}\n]*\{/g; let tm: RegExpExecArray | null;
+  while ((tm = tre.exec(css))) {
+    const o = css.indexOf("{", tm.index), c = css.indexOf("}", o);
+    const sel = css.slice(tm.index, o).trim();
+    if (/^body\[data-theme="[a-z0-9-]+"\](\s*,\s*body\[data-theme="[a-z0-9-]+"\])*$/.test(sel) && o >= 0 && c > o) exRanges.push([tm.index, c + 1]);
+  }
+  const inEx = (i: number) => exRanges.some(([a, b]) => i >= a && i < b);
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (inEx(m.index)) continue;
+    const sel = m[1].split("\n").pop()!.trim();
+    if (!sel || sel.startsWith("@") || sel.startsWith("/*")) continue;
+    const decl: Record<string, string> = {};
+    for (const d of m[2].split(";")) { const k = d.indexOf(":"); if (k < 0) continue; decl[d.slice(0, k).trim()] = d.slice(k + 1).trim(); }
+    ruleAt.push({ sel, decl, i: m.index });
+  }
+}
+const bgIndex = new Map<string, string>();
+for (const r of ruleAt) { const b = r.decl["background"] || r.decl["background-color"]; if (!b) continue; for (const one of r.sel.split(",").map((x) => x.trim())) bgIndex.set(one, b); }
+function ancestorBg(sel: string): { bg: string; via: string } | null {
+  const parts = sel.replace(/\s*>\s*/g, " ").split(/\s+/).filter(Boolean);
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const whole = parts.slice(0, i + 1).join(" ");
+    if (bgIndex.has(whole)) return { bg: bgIndex.get(whole)!, via: whole };
+    const bare = parts[i].split(":")[0];
+    const bits = bare.split(/(?=[.#[])/).filter(Boolean);
+    for (let k = bits.length; k > 0; k--) { const cand = bits.slice(0, k).join(""); if (bgIndex.has(cand)) return { bg: bgIndex.get(cand)!, via: cand }; }
+  }
+  return null;
+}
+function resolveVars(val: string, tk: Record<string, string>, depth: number): string {
+  if (depth > 8 || !val) return val;
+  const m = /var\((--[\w-]+)\s*(?:,\s*([^)]+))?\)/.exec(val);
+  if (!m) return val;
+  const got = tk[m[1]] !== undefined ? tk[m[1]] : (m[2] || "");
+  return resolveVars(val.slice(0, m.index) + got + val.slice(m.index + m[0].length), tk, depth + 1);
+}
+type Resolved = { rgb?: RGB; stops?: RGB[]; why?: string };
+function toColor(val: string): Resolved {
+  const s2 = String(val || "");
+  if (!s2) return { why: "empty" };
+  if (/url\(/.test(s2)) return { why: "image backdrop" };
+  if (/color-mix\(/.test(s2)) return { why: "color-mix (composited at paint time)" };
+  if (/gradient\(/.test(s2)) { const st = [...s2.matchAll(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/g)].map((x) => parseColor(x[1])).filter(Boolean) as RGB[]; return st.length ? { stops: st } : { why: "gradient with no literal stops" }; }
+  const one = s2.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/);
+  const c = one ? parseColor(one[1]) : null;
+  return c ? { rgb: c } : { why: "unparsable colour value" };
+}
+let dChecked = 0, dFailed = 0, dUnres = 0;
+const dFails: Array<{ t: string; sel: string; ratio: number; via: string }> = [];
+const dUnresNames = new Map<string, number>();
+for (const t of THEMES) {
+  const tk = eff(t);
+  const page = toColor(resolveVars("var(--bg)", tk, 0)).rgb || { r: 255, g: 255, b: 255, a: 1 };
+  for (const r of ruleAt) {
+    const dtm = /\[data-theme="([a-z0-9-]+)"\]/.exec(r.sel);
+    if (dtm && (t === "(root/light)" || dtm[1] !== t)) continue;
+    const fgRaw = r.decl["color"];
+    if (!fgRaw || /inherit|currentColor|transparent/i.test(fgRaw)) continue;
+
+    const fg = toColor(resolveVars(fgRaw, tk, 0));
+    if (!fg.rgb) { dUnres++; dUnresNames.set(`${r.sel} — foreground: ${fg.why || "gradient"}`, (dUnresNames.get(`${r.sel} — foreground: ${fg.why || "gradient"}`) || 0) + 1); continue; }
+    let bgRaw = r.decl["background"] || r.decl["background-color"]; let via = "its own rule";
+    if (!bgRaw) { const a = ancestorBg(r.sel.split(",")[0].trim()); if (a) { bgRaw = a.bg; via = a.via; } }
+    const cands = bgRaw ? [bgRaw] : ["var(--bg)", "var(--panel)"];
+    if (!bgRaw) via = "inherited (checked on page AND panel)";
+    let flagged = false;
+    for (const cand of cands) {
+      const bgv = toColor(resolveVars(cand, tk, 0));
+      if (!bgv.rgb && !bgv.stops) { if (!flagged) { flagged = true; dUnres++; dUnresNames.set(`${r.sel} — background: ${bgv.why}`, (dUnresNames.get(`${r.sel} — background: ${bgv.why}`) || 0) + 1); } continue; }
+      for (const b of (bgv.stops || [bgv.rgb!])) {
+        const solid = over(b, page); const f = over(fg.rgb!, solid);
+        const ratio = contrast(f, solid);
+        dChecked++;
+        // A declared exception LOWERS the floor to a documented level; it never skips the
+        // pairing. An exception that stopped checking would be the same gap in a new coat.
+        const exc = CONTRAST_EXCEPTIONS.find((e) => r.sel.includes(e.match));
+        const floor = exc ? exc.threshold : 4.5;
+        if (ratio < floor) { dFailed++; dFails.push({ t, sel: r.sel.split(",")[0].trim(), ratio: +ratio.toFixed(2), via }); }
+      }
+    }
+  }
+}
+console.log(`\n  DERIVED SCAN: ${dChecked} pairings checked across ${THEMES.length} themes \u00b7 ${dFailed} below 4.5:1 \u00b7 ${dUnres} could not be resolved statically`);
+console.log(`  declared exceptions: ${CONTRAST_EXCEPTIONS.length} (each LOWERS a floor, never skips a check)`);
+CONTRAST_EXCEPTIONS.forEach((e) => console.log(`    ${e.match} @ ${e.threshold}:1 \u2014 ${e.reason}`));
+if (dUnres) { const top = [...dUnresNames.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8); console.log("  unresolved (named, not skipped):"); top.forEach(([k, n]) => console.log(`    \u00d7${n} ${k.slice(0, 96)}`)); }
+{
+  const bySel = new Map<string, { worst: number; themes: Set<string>; via: string }>();
+  for (const f of dFails) { const e = bySel.get(f.sel) || { worst: 99, themes: new Set<string>(), via: f.via }; e.worst = Math.min(e.worst, f.ratio); e.themes.add(f.t); bySel.set(f.sel, e); }
+  for (const [sel, e] of [...bySel.entries()].sort((a, b) => a[1].worst - b[1].worst)) {
+    need(false, `derived: ${sel} = ${e.worst.toFixed(2)}:1 (< 4.5) in ${e.themes.size} theme(s) \u2014 background from ${e.via}`);
+  }
+}
+
 if (failures.length) {
   console.log(`\n${failures.length} CONTRAST-RULE FAILURE(S) \u274c`);
   failures.forEach((f) => console.log("  \u2717 " + f));

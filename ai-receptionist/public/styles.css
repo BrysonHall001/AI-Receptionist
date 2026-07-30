@@ -49,9 +49,9 @@
   --paper: #ffffff;
   --paper-ink: #1a1a1e;
   --paper-link: #2552c0;
-  --paper-placeholder: #9aa3b2;
+  --paper-placeholder: #687488;
   /* Rating-star gold (survey stars + table star cells). */
-  --star: #f5b301;
+  --star: #b88601;
   /* The impersonation safety banner — deliberately theme-INDEPENDENT so it is always
      loud no matter what a tenant's Appearance does. */
   --imp-bg: #7a3b00;
@@ -99,7 +99,7 @@
   --card-shadow: var(--shadow);
   --table-row-pad: 13px;
   /* Drip flow-canvas identity colors (Phase 6) */
-  --flow-yes: #ea580c;
+  --flow-yes: #c74b0a;
   --flow-no: #9ca3af; /* Phase 2: aligned to the measured tbody td vertical padding */
 
   /* ============ DESIGN PHASE 8 — polish tokens ============
@@ -1179,6 +1179,10 @@ body[data-theme="dark"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #d3d3ee; --chart-2: #a523f6; --chart-3: #ba4fa3; --chart-4: #f00a34; --chart-5: #9e663d; --chart-6: #f1f514; --chart-7: #39830b; --chart-8: #14f545; --chart-9: #31f6d2; --chart-10: #0a90f0;
+  --ext-ink: #7b8da6;
+  --paper-placeholder: #7d889b;
+  --flow-yes: #ea580c;
+  --ext-badge-bg: #6e7f97;
 }
 
 /* ---- Neutral / professional (basic) ---- */
@@ -1197,6 +1201,9 @@ body[data-theme="neutral"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #172f3b; --chart-2: #0a19f0; --chart-3: #a770d7; --chart-4: #f514d7; --chart-5: #f00a47; --chart-6: #692807; --chart-7: #988e06; --chart-8: #27480a; --chart-9: #0aa31f; --chart-10: #2d9f81;
+  --star: #b58401;
+  --paper-placeholder: #657185;
+  --flow-yes: #c1490a;
 }
 
 /* ---- Frutiger Aero (fun, flagship) ---- */
@@ -1206,8 +1213,8 @@ body[data-theme="aero"] {
   --panel: #f4fbff; --panel-2: #e8f5fd;
   --ink: #0c3a52; --ink-soft: #2b6480; --ink-faint: #1e4356;
   --line: #d3ebf7; --line-strong: #6692a7;
-  --accent: #0a729d; --accent-soft: #dcf0fb; --accent-strong: #0b6b94;
-  --green: #0b7e56; --green-soft: rgba(205,255,232,0.7); --amber: #9b630a; --amber-soft: rgba(255,244,210,0.8); --red: #af4035; --red-soft: rgba(255,220,216,0.8);
+  --accent: #0a709a; --accent-soft: #dcf0fb; --accent-strong: #0b6b94;
+  --green: #0a7650; --green-soft: rgba(205,255,232,0.7); --amber: #905c09; --amber-soft: rgba(255,244,210,0.8); --red: #af4035; --red-soft: rgba(255,220,216,0.8);
   --row-hover: #eaf6fe; --on-accent: #fff;
   --sidebar-bg: #eef8fe; --topbar-bg: #eaf6fe;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
@@ -1222,6 +1229,9 @@ body[data-theme="aero"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #17303b; --chart-2: #0a23f0; --chart-3: #a273d3; --chart-4: #f514e0; --chart-5: #f00a51; --chart-6: #692407; --chart-7: #988806; --chart-8: #29480a; --chart-9: #0ea01b; --chart-10: #119c71;
+  --star: #a97b01;
+  --paper-placeholder: #5d687a;
+  --flow-yes: #b34309;
 }
 /* solid surfaces (legibility): opaque panels with a soft aero shadow, no blur */
 body[data-theme="aero"] .card,
@@ -1270,6 +1280,10 @@ body[data-theme="dusk"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #eed3ec; --chart-2: #f00a54; --chart-3: #9e583d; --chart-4: #f5da14; --chart-5: #427808; --chart-6: #14f525; --chart-7: #7bf9d1; --chart-8: #187395; --chart-9: #4057f7; --chart-10: #a177cf;
+  --ext-ink: #7b8da6;
+  --paper-placeholder: #768296;
+  --flow-yes: #de540b;
+  --ext-badge-bg: #6e7f97;
 }
 body[data-theme="dusk"] .page-title,
 body[data-theme="dusk"] .settings-h,
@@ -1286,7 +1300,7 @@ body[data-theme="cottage"] {
   --bg: #f4ecdd; --panel: #fbf6ec; --panel-2: #f1e8d6;
   --ink: #4a3f33; --ink-soft: #736654; /* contrast system: ON-PANEL soft clears 4.5:1 on --panel-2 */ --ink-faint: #716555;
   --line: #e4d8c3; --line-strong: #958874;
-  --accent: #5f7059; --accent-soft: #eaf0e4; --accent-strong: #586953;
+  --accent: #5e6e58; --accent-soft: #eaf0e4; --accent-strong: #586953;
   --green: #537346; --green-soft: #e9f0e2; --amber: #905f2b; --amber-soft: #f6ead7; --red: #965548; --red-soft: #f3e3de;
   --row-hover: #f1e8d6; --on-accent: #fff;
   --font-ui: "Segoe UI", Candara, "Trebuchet MS", system-ui, sans-serif;
@@ -1300,6 +1314,9 @@ body[data-theme="cottage"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #203b17; --chart-2: #069838; --chart-3: #159991; --chart-4: #0a74f0; --chart-5: #2a0af0; --chart-6: #341240; --chart-7: #f514a9; --chart-8: #f00a18; --chart-9: #bc7b2f; --chart-10: #6a7817;
+  --star: #ac7e01;
+  --paper-placeholder: #606b7e;
+  --flow-yes: #b94509;
 }
 body[data-theme="cottage"] .page-title,
 body[data-theme="cottage"] .settings-h { font-family: var(--font-display); font-weight: 600; }
@@ -1365,6 +1382,9 @@ body[data-theme="warm"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #04034e; --chart-2: #9f14f5; --chart-3: #d364bb; --chart-4: #f00a34; --chart-5: #4f2b11; --chart-6: #8f910d; --chart-7: #214b07; --chart-8: #0aa32b; --chart-9: #1e9f87; --chart-10: #148fe6;
+  --star: #b88601;
+  --paper-placeholder: #667285;
+  --flow-yes: #c44a0a;
 }
 
 /* ---- Basic: Slate ---- */
@@ -1383,6 +1403,9 @@ body[data-theme="slate"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #15293c; --chart-2: #2b14f5; --chart-3: #b870d7; --chart-4: #67094b; --chart-5: #f00a21; --chart-6: #a97542; --chart-7: #879509; --chart-8: #1e430f; --chart-9: #0aa338; --chart-10: #0ea091;
+  --star: #af8001;
+  --paper-placeholder: #616d80;
+  --flow-yes: #bb460a;
 }
 
 /* ---- Basic: Steel Blue ---- */
@@ -1401,6 +1424,9 @@ body[data-theme="steel"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #05244d; --chart-2: #3914f5; --chart-3: #c06cda; --chart-4: #78084f; --chart-5: #f00a13; --chart-6: #a97c42; --chart-7: #809806; --chart-8: #1b430f; --chart-9: #2d9f56; --chart-10: #358885;
+  --star: #b58401;
+  --paper-placeholder: #657185;
+  --flow-yes: #c1490a;
 }
 
 /* ---- Basic: Sand ---- */
@@ -1410,7 +1436,7 @@ body[data-theme="sand"] {
   --line: #e6dcc8; --line-strong: #938873;
   --accent: #875f33; --accent-soft: #f1e6d5; --accent-strong: #825c33;
   --amber: #8b601d; --amber-soft: #f5e8d2; --gray-soft: #efe6d6; --row-hover: #f3ead9;
-  --green: #187c55; /* visual fixes 2: contrast audit — badge/label legibility in-theme */
+  --green: #187953; /* visual fixes 2: contrast audit — badge/label legibility in-theme */
   --ink-on-bg: #43392b; --ink-on-bg-soft: #716553; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
   --control-ink: #43392b; --control-placeholder: #716553; /* …and the control pair, same explicit rule */
 
@@ -1420,6 +1446,9 @@ body[data-theme="sand"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #3b2a17; --chart-2: #7f8e10; --chart-3: #194b07; --chart-4: #119c3e; --chart-5: #35978f; --chart-6: #0a77f0; --chart-7: #260af0; --chart-8: #39054d; --chart-9: #f514ac; --chart-10: #f00a1c;
+  --star: #ac7e01;
+  --paper-placeholder: #606b7e;
+  --flow-yes: #b94509;
 }
 
 /* ---- Basic: High Contrast (accessibility-friendly) ---- */
@@ -1439,6 +1468,9 @@ body[data-theme="contrast"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #03214e; --chart-2: #4114f5; --chart-3: #bd64d3; --chart-4: #78084b; --chart-5: #f00a0a; --chart-6: #a98042; --chart-7: #7b9806; --chart-8: #1e3b17; --chart-9: #3d9e64; --chart-10: #317d7d;
+  --star: #be8b01;
+  --paper-placeholder: #69768a;
+  --flow-yes: #ca4c0a;
 }
 body[data-theme="contrast"] .input:focus { box-shadow: 0 0 0 3px #0b5bd3; border-color: #0b5bd3; }
 body[data-theme="contrast"] .btn-primary:disabled { opacity: 0.55; }
@@ -1448,8 +1480,8 @@ body[data-theme="graphite"] {
   --bg: #2b2d31; --panel: #34373c; --panel-2: #3a3d43;
   --ink: #e7e8ea; --ink-soft: #b3b6bc; --ink-faint: #a8abb1;
   --line: #3f4248; --line-strong: #82858a;
-  --accent: #9b99f2; --accent-soft: #2f3140; --accent-strong: #a7a5f4;
-  --green: #46c98f; --green-soft: #1c2e26; --amber: #d6a23a; --amber-soft: #2a2414; --red: #df6f61; --red-soft: #2a1614;
+  --accent: #a09ef3; --accent-soft: #2f3140; --accent-strong: #a7a5f4;
+  --green: #46c98f; --green-soft: #1c2e26; --amber: #d6a23a; --amber-soft: #2a2414; --red: #e4867a; --red-soft: #2a1614;
   --gray-soft: #383b41; --row-hover: #393c42; --scrim: rgba(0,0,0,0.5); --on-accent: #14120e;
   --ink-on-bg: #e7e8ea; --ink-on-bg-soft: #a8abb1; /* heading-contrast fix: EXPLICIT on-bg ink (>= 4.5:1 vs this theme's --bg) */
   --control-ink: #e7e8ea; --control-placeholder: #a8abb1; /* …and the control pair, same explicit rule */
@@ -1460,6 +1492,10 @@ body[data-theme="graphite"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #d4d3ee; --chart-2: #be5df8; --chart-3: #cf77bc; --chart-4: #f74061; --chart-5: #f9b07b; --chart-6: #f0f514; --chart-7: #5a9735; --chart-8: #14f546; --chart-9: #5df8dd; --chart-10: #0a8ff0;
+  --ext-ink: #9aa7bb;
+  --flow-yes: #f58144;
+  --paper-placeholder: #98a1b0;
+  --ext-badge-bg: #6e7f97;
 }
 
 /* ---- Basic: Midnight (deep true-dark) ---- */
@@ -1479,6 +1515,10 @@ body[data-theme="midnight"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #d3d3ee; --chart-2: #980af0; --chart-3: #a94293; --chart-4: #f00a34; --chart-5: #935e39; --chart-6: #f2f514; --chart-7: #39830b; --chart-8: #14f545; --chart-9: #31f6d2; --chart-10: #086db5;
+  --ext-ink: #6d819c;
+  --paper-placeholder: #727f93;
+  --flow-yes: #d8520b;
+  --ext-badge-bg: #6e7f97;
 }
 
 /* ---- Fun: Vaporwave (bg: grid over gradient) ---- */
@@ -1506,6 +1546,10 @@ body[data-theme="vaporwave"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #eed3e6; --chart-2: #f00a25; --chart-3: #a76c35; --chart-4: #e3f514; --chart-5: #32830b; --chart-6: #abf8c0; --chart-7: #2d8076; --chart-8: #0a81f0; --chart-9: #6a5df8; --chart-10: #db98fb;
+  --ext-ink: #8092aa;
+  --flow-yes: #f05a0c;
+  --paper-placeholder: #828d9f;
+  --ext-badge-bg: #6e7f97;
 }
 body[data-theme="vaporwave"] .page-title, body[data-theme="vaporwave"] .settings-h { text-transform: lowercase; letter-spacing: 0.01em; text-shadow: 0 0 12px rgba(255,106,213,0.4); }
 body[data-theme="vaporwave"] .card, body[data-theme="vaporwave"] .settings-card { box-shadow: 0 0 0 1px rgba(255,106,213,0.22), 0 8px 26px rgba(0,0,0,0.45); }
@@ -1531,6 +1575,10 @@ body[data-theme="forest"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #d6fdc4; --chart-2: #0af04d; --chart-3: #099585; --chart-4: #1487f5; --chart-5: #d0cdf4; --chart-6: #c34ff8; --chart-7: #c760a9; --chart-8: #f74054; --chart-9: #f8a95d; --chart-10: #e1f514;
+  --ext-ink: #91a0b5;
+  --flow-yes: #f57d3e;
+  --paper-placeholder: #97a0af;
+  --ext-badge-bg: #6e7f97;
 }
 body[data-theme="forest"] .page-title, body[data-theme="forest"] .settings-h { font-family: var(--font-display); }
 
@@ -1541,8 +1589,8 @@ body[data-theme="sunset"] {
   --panel: #fff6ec; --panel-2: #fdeede;
   --ink: #3a2a33; --ink-soft: #6e5560; --ink-faint: #3e3238;
   --line: #f0d9c8; --line-strong: #9d8278;
-  --accent: #a2522d; --accent-soft: #fbe6d6; --accent-strong: #9a4f2c;
-  --amber: #915c15; --amber-soft: #fbe6cf; --green: #417458; --green-soft: #e2f0e8; --red: #af413c; --red-soft: #fbe0de;
+  --accent: #a0512c; --accent-soft: #fbe6d6; --accent-strong: #9a4f2c;
+  --amber: #915c15; --amber-soft: #fbe6cf; --green: #3f7055; --green-soft: #e2f0e8; --red: #af413c; --red-soft: #fbe0de;
   --gray-soft: #f7e6d8; --row-hover: #fdeedd; --on-accent: #fff;
   --sidebar-bg: #fff2e4; --topbar-bg: #fff2e4;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
@@ -1556,6 +1604,9 @@ body[data-theme="sunset"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #3b2217; --chart-2: #958909; --chart-3: #284b07; --chart-4: #0ea01f; --chart-5: #119c75; --chart-6: #0d91ce; --chart-7: #0a1df0; --chart-8: #3a0967; --chart-9: #f514db; --chart-10: #f00a4b;
+  --star: #a97b01;
+  --paper-placeholder: #5c6779;
+  --flow-yes: #b34309;
 }
 
 /* ---- Fun: Dreamcore (soft surreal pastel dreamscape) ---- */
@@ -1563,8 +1614,8 @@ body[data-theme="dreamcore"] {
   --bg: #efe4fb; --panel: #fdf7fb; --panel-2: #f5ecf7;
   --ink: #43384e; --ink-soft: #574c63; --ink-faint: #665a72;
   --line: #ecdcf2; --line-strong: #9686a1;
-  --accent: #96547e; --accent-soft: #fbe6f4; --accent-strong: #8c4f77;
-  --green: #457662; --green-soft: #e2f4ec; --amber: #886425; --amber-soft: #f8ecd6; --red: #9d5164; --red-soft: #fbe4ea;
+  --accent: #92527b; --accent-soft: #fbe6f4; --accent-strong: #8c4f77;
+  --green: #42705d; --green-soft: #e2f4ec; --amber: #836024; --amber-soft: #f8ecd6; --red: #9d5164; --red-soft: #fbe4ea;
   --gray-soft: #f3ecf7; --row-hover: #f6eef9; --on-accent: #fff;
   --sidebar-bg: #f7effb; --topbar-bg: #f7effb;
   --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
@@ -1579,6 +1630,9 @@ body[data-theme="dreamcore"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #3e142f; --chart-2: #f00a12; --chart-3: #ae7c3d; --chart-4: #353b17; --chart-5: #329c11; --chart-6: #358853; --chart-7: #286765; --chart-8: #1476f5; --chart-9: #300af0; --chart-10: #750698;
+  --star: #a97b01;
+  --paper-placeholder: #5d687a;
+  --flow-yes: #b34309;
 }
 
 /* ---- Fun: Dark Academia (moody candlelit library) ---- */
@@ -1602,6 +1656,10 @@ body[data-theme="academia"] {
      other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
      every theme on every run, so a new theme without a ramp fails loudly. */
   --chart-1: #fdecc4; --chart-2: #b2f514; --chart-3: #36802d; --chart-4: #14f584; --chart-5: #08a4b5; --chart-6: #2362f6; --chart-7: #c2acf6; --chart-8: #de14f5; --chart-9: #d3096e; --chart-10: #f0210a;
+  --ext-ink: #7487a1;
+  --paper-placeholder: #798599;
+  --flow-yes: #e4560b;
+  --ext-badge-bg: #6e7f97;
 }
 
 /* Phase 9b — Borders=strong themes: tables take the stronger rules too (header band + row rules). */
@@ -3005,7 +3063,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .kanban-card-title { font-weight: 700; font-size: var(--text-sm); }
 .kanban-card-x { position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; line-height: 16px; text-align: center; border: 0; border-radius: 5px; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: var(--text-base); opacity: 0; transition: opacity var(--transition); }
 .kanban-card:hover .kanban-card-x { opacity: 1; }
-.kanban-card-x:hover { background: var(--line); color: var(--ink); }
+.kanban-card-x:hover { background: var(--gray-soft); color: var(--ink); } /* was var(--line): a hairline colour used as a surface, 1.23:1 */
 /* Contact-side swimlane board: one lane per linked policy, each lane a sibling
    of the policy board (reuses .kanban / .kanban-col / .kanban-card). */
 .swimlanes { display: flex; flex-direction: column; gap: 18px; }
@@ -3309,7 +3367,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 /* External/Blocked bookings synced from Google: read-only look + small badge. */
 .cal-block-ext { box-shadow: none; }
 .cal-ext-badge { display:inline-block; font-size: var(--text-micro); font-weight:700; text-transform:uppercase; letter-spacing: var(--tracking-caps); padding:0 4px; margin-right:4px; border-radius:3px; background:var(--ext-badge-bg); color:var(--on-accent); vertical-align:middle; }
-.ext-badge { display:inline-block; font-size: var(--text-xs); font-weight:600; padding:1px 6px; margin-left:6px; border-radius:10px; background:var(--line); color:var(--ext-ink); vertical-align:middle; }
+.ext-badge { display:inline-block; font-size: var(--text-xs); font-weight:600; padding:1px 6px; margin-left:6px; border-radius:10px; background:var(--gray-soft); color:var(--ext-ink); vertical-align:middle; } /* was var(--line): a hairline used as a surface */
 .ext-readonly-banner { display:flex; gap: var(--sp-2); align-items:flex-start; padding:10px 12px; margin:0 0 12px; border-radius:8px; background:var(--gray-soft); border:1px solid var(--line); color:var(--ext-ink); font-size: var(--text-sm); line-height:1.4; }
 .cal-empty { padding: 20px; text-align: center; color: var(--ink-faint); }
 
@@ -3319,7 +3377,7 @@ tbody tr.row-selected { background: var(--accent-soft); }
 .map-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: var(--text-sm); }
 .map-status-count { font-weight: 700; color: var(--ink); }
 .map-status-note { color: var(--ink-faint); }
-.map-status-note::before { content: "•"; margin-right: 8px; color: var(--line-strong); }
+.map-status-note::before { content: "•"; margin-right: 8px; color: var(--ink-faint); } /* was --line-strong: a border token used as text colour */
 .map-canvas { height: 460px; width: 100%; background: var(--panel-2); }
 /* Keep Leaflet's own controls/tiles above the card; popup content uses app tokens. */
 .map-canvas .leaflet-container { font: inherit; background: var(--panel-2); }
