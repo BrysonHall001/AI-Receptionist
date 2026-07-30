@@ -5395,7 +5395,7 @@
           }).join("");
           // MODULES is one control on purpose, and a reader will expect per-module rows.
           const sectionNote = section === "Modules"
-            ? `<p class="cell-muted pt-t26">One control for record data across every module. Whether a module exists at all, and whether it is switched on for this tenant, is governed by Fields under Settings.</p>`
+            ? `<p class="cell-muted pt-t26">One row per module this tenant has, named the way you name it. Whether a module exists at all, and whether it is switched on, is governed by Fields under Settings.</p>`
             : "";
           return `<details open class="u-mb-10"><summary class="pt-t28">${esc(section)}</summary>
             ${sectionNote}${tables}</details>`;

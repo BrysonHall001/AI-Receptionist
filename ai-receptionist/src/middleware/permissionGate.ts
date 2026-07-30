@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import { can, Right } from "../services/permissionService";
+import { can, moduleAreaKey, Right } from "../services/permissionService";
 import { getLockedPages } from "../services/portalService";
+import { prisma } from "../db/client";
 
 // ===========================================================================
 // Batch 2 — server-side permission ENFORCEMENT (no UI).
@@ -32,7 +33,84 @@ import { getLockedPages } from "../services/portalService";
 // every role needs them to render; only the WRITES are gated to "manage".
 // ===========================================================================
 
-interface PermRule { m: string; re: RegExp; area: string; right: Right }
+/**
+ * PER-MODULE RESOLUTION.
+ *
+ * No record route carries its module in the path - /records/:id is a RECORD id, not a type -
+ * so a rule that needs the module says so with `modules`, and ONLY those rules pay for a
+ * lookup. The other ~200 rules are untouched and cost nothing.
+ *
+ * A resolver returns the record-type KEYS the request touches, or null when it cannot tell.
+ * NULL MEANS REFUSE. A request we cannot attribute to a module is never let through.
+ */
+type ModuleResolver = (req: Request) => Promise<string[] | null>;
+interface PermRule { m: string; re: RegExp; area: string; right: Right; modules?: ModuleResolver }
+
+const db = prisma as any;
+/** The type keys for a set of record ids, scoped to the caller's tenant. */
+async function keysForRecordIds(req: Request, ids: string[]): Promise<string[] | null> {
+  const clean = Array.from(new Set((ids || []).filter((x) => typeof x === "string" && x)));
+  if (!clean.length) return [];                       // nothing touched -> nothing to check
+  const tenantId = (req.user as any)?.tenantId ?? null;
+  const rows = await db.record.findMany({
+    where: { id: { in: clean }, ...(tenantId ? { tenantId } : {}) },
+    select: { id: true, recordType: { select: { key: true } } },
+  }).catch(() => null);
+  if (!rows) return null;
+  // A missing or cross-tenant id is unresolvable -> refuse, never silently narrow the set.
+  if (rows.length !== clean.length) return null;
+  return Array.from(new Set(rows.map((r: any) => r.recordType?.key).filter(Boolean)));
+}
+/** The record id sitting in a path segment, e.g. /records/<id>/visits. */
+const idAt = (path: string, i: number) => (path.split("/").filter(Boolean)[i] || "");
+const byPathRecord = (i: number): ModuleResolver => (req) => keysForRecordIds(req, [idAt(req.path, i)]);
+/** POST /records carries its type in the BODY - no query needed at all. */
+const byBodyType: ModuleResolver = async (req) => {
+  const b: any = req.body || {};
+  const key = b.type || b.recordTypeKey || b.kind;
+  if (typeof key === "string" && key) return [key];
+  if (typeof b.recordTypeId === "string" && b.recordTypeId) {
+    const rt = await db.recordType.findUnique({ where: { id: b.recordTypeId }, select: { key: true } }).catch(() => null);
+    return rt?.key ? [rt.key] : null;      // a named-but-unknown type is unresolvable -> refuse
+  }
+  return [];                               // names nothing -> base check, i.e. today's behaviour
+};
+/** GET /records?type=<key> names its module in the query; with none, it is a list of
+ *  everything and the HANDLER filters, so the gate lets it through. */
+const byQueryType: ModuleResolver = async (req) => {
+  const t = (req.query || {}).type;
+  return typeof t === "string" && t ? [t] : [];
+};
+/** A visit belongs to a record; the record's type is the module. */
+const byVisitId: ModuleResolver = async (req) => {
+  const parts = req.path.split("/").filter(Boolean);      // records/visits/<id>[/complete]
+  const v = await db.workOrderVisit.findUnique({ where: { id: parts[2] || "" }, select: { recordId: true } }).catch(() => null);
+  return v ? keysForRecordIds(req, [v.recordId]) : null;
+};
+/** Every module this tenant has. Used where an endpoint genuinely spans all of them. */
+const allModules: ModuleResolver = async (req) => {
+  const tenantId = (req.user as any)?.tenantId;
+  if (!tenantId) return [];
+  const rows = await db.recordType.findMany({ where: { tenantId }, select: { key: true } }).catch(() => null);
+  return rows ? rows.map((r: any) => r.key).filter((k: string) => k && k !== "contact") : null;
+};
+/** Bulk operations: one query over the id list, then EVERY type involved must be permitted. */
+const byBodyIds: ModuleResolver = (req) => keysForRecordIds(req, ((req.body || {}) as any).ids || []);
+/** A link joins two records that may be of different types - both ends must be permitted. */
+const byRecordLink: ModuleResolver = async (req) => {
+  const linkId = idAt(req.path, 1);
+  const link = await db.recordLink.findUnique({ where: { id: linkId }, select: { recordId: true, parentType: true, parentId: true } }).catch(() => null);
+  if (!link) return null;
+  const own = await keysForRecordIds(req, [link.recordId]);
+  if (own === null) return null;
+  // parentType "contact" is the contacts AREA, not a records: module, and is gated separately.
+  if (link.parentType && link.parentType !== "contact") {
+    const other = await keysForRecordIds(req, [link.parentId]);
+    if (other === null) return null;
+    return Array.from(new Set([...own, ...other]));
+  }
+  return own;
+};
 
 // First match wins — order specific (delete/sub-paths) before general.
 export const PERM_RULES: PermRule[] = [
@@ -76,28 +154,46 @@ export const PERM_RULES: PermRule[] = [
 
 
   // ---- Records: Jobs / Bookings / custom share one "records" area (Batch-1 catalog) ----
-  { m: "POST", re: /^\/records\/bulk-delete$/, area: "records", right: "delete" },
-  { m: "POST", re: /^\/records(\/(restore|bulk-update|dummy|import))?$/, area: "records", right: "edit" },
-  { m: "PATCH", re: /^\/records\/[^/]+$/, area: "records", right: "edit" },
-  { m: "POST", re: /^\/records\/[^/]+\/(notes|links)$/, area: "records", right: "edit" },
+  { m: "POST", re: /^\/records\/bulk-delete$/, area: "records", right: "delete", modules: byBodyIds },
+  { m: "POST", re: /^\/records\/bulk-update$/, area: "records", right: "edit", modules: byBodyIds },
+  { m: "POST", re: /^\/records$/, area: "records", right: "edit", modules: byBodyType },
+  { m: "POST", re: /^\/records\/restore$/, area: "records", right: "edit", modules: byBodyIds },
+  { m: "POST", re: /^\/records\/import$/, area: "records", right: "edit", modules: byBodyType },
+  // Seeding demo data is not a per-module action; it stays on the base records grant.
+  { m: "POST", re: /^\/records\/dummy$/, area: "records", right: "edit" },
+  { m: "PATCH", re: /^\/records\/[^/]+$/, area: "records", right: "edit", modules: byPathRecord(1) },
+  { m: "POST", re: /^\/records\/[^/]+\/(notes|links)$/, area: "records", right: "edit", modules: byPathRecord(1) },
   // On my way (Customer Comms batch): texting the customer about a record is an
   // edit-level act on that record — view-only roles get a clean 403.
-  { m: "POST", re: /^\/records\/[^/]+\/notify-on-my-way$/, area: "records", right: "edit" },
+  { m: "POST", re: /^\/records\/[^/]+\/notify-on-my-way$/, area: "records", right: "edit", modules: byPathRecord(1) },
   // Multi-visit work orders (multivisit-cardfix batch)
-  { m: "GET", re: /^\/records\/[^/]+\/visits$/, area: "records", right: "view" },
-  { m: "POST", re: /^\/records\/[^/]+\/visits$/, area: "records", right: "edit" },
-  { m: "PATCH", re: /^\/records\/visits\/[^/]+$/, area: "records", right: "edit" },
-  { m: "POST", re: /^\/records\/visits\/[^/]+\/(complete|cancel)$/, area: "records", right: "edit" },
+  { m: "GET", re: /^\/records\/[^/]+\/visits$/, area: "records", right: "view", modules: byPathRecord(1) },
+  { m: "POST", re: /^\/records\/[^/]+\/visits$/, area: "records", right: "edit", modules: byPathRecord(1) },
+  { m: "PATCH", re: /^\/records\/visits\/[^/]+$/, area: "records", right: "edit", modules: byVisitId },
+  { m: "POST", re: /^\/records\/visits\/[^/]+\/(complete|cancel)$/, area: "records", right: "edit", modules: byVisitId },
   // Estimates Lifecycle batch:
-  { m: "POST", re: /^\/records\/[^/]+\/estimate-link$/, area: "records", right: "edit" },
-  { m: "GET", re: /^\/records\/[^/]+\/estimate-status$/, area: "records", right: "view" },
-  { m: "POST", re: /^\/records\/[^/]+\/convert-estimate$/, area: "records", right: "edit" },
-  { m: "PATCH", re: /^\/record-links\/[^/]+$/, area: "records", right: "edit" },
-  { m: "DELETE", re: /^\/record-links\/[^/]+$/, area: "records", right: "edit" },
-  { m: "GET", re: /^\/records(\/|$)/, area: "records", right: "view" },
-  { m: "GET", re: /^\/pipeline$/, area: "records", right: "view" },
-  { m: "GET", re: /^\/bookings\/calendar$/, area: "records", right: "view" },
-  { m: "GET", re: /^\/availability$/, area: "records", right: "view" },
+  { m: "POST", re: /^\/records\/[^/]+\/estimate-link$/, area: "records", right: "edit", modules: byPathRecord(1) },
+  { m: "GET", re: /^\/records\/[^/]+\/estimate-status$/, area: "records", right: "view", modules: byPathRecord(1) },
+  { m: "POST", re: /^\/records\/[^/]+\/convert-estimate$/, area: "records", right: "edit", modules: byPathRecord(1) },
+  { m: "PATCH", re: /^\/record-links\/[^/]+$/, area: "records", right: "edit", modules: byRecordLink },
+  { m: "DELETE", re: /^\/record-links\/[^/]+$/, area: "records", right: "edit", modules: byRecordLink },
+  // The general record reads. /records/<id> resolves by that record; /records?type=<key>
+  // resolves by the requested type. /records with NO type would span every module at once -
+  // it is a LIST, so rather than refuse it we let it through here and the handler returns
+  // only the modules the caller may view (permittedRecordTypes in routes/api.ts).
+  { m: "GET", re: /^\/records\/[^/]+$/, area: "records", right: "view", modules: byPathRecord(1) },
+  { m: "GET", re: /^\/records$/, area: "records", right: "view", modules: byQueryType },
+  { m: "GET", re: /^\/records\/[^/]+\/.*$/, area: "records", right: "view", modules: byPathRecord(1) },
+  // The pipeline is a LINK GRAPH across modules rather than a list of one, so it takes the
+  // strictest-applicable rule: view on every module. Never more permissive than today.
+  { m: "GET", re: /^\/pipeline$/, area: "records", right: "view", modules: allModules },
+  // The booking calendar is gated on the BOOKING module; the work-order shading inside it is
+  // filtered by the handler, so Work Orders means "see the shading", not "lose the calendar".
+  { m: "GET", re: /^\/bookings\/calendar$/, area: "records", right: "view", modules: async () => ["booking"] },
+  // /availability returns FREE TIME, not records: work-order busy time contributes to what is
+  // not free, but anonymously - you cannot tell a work order from a booking from a lunch break.
+  // Nothing per-module is exposed, so it is gated on the booking module rather than filtered.
+  { m: "GET", re: /^\/availability$/, area: "records", right: "view", modules: async () => ["booking"] },
 
   // ---- Automations (data) — operational /automations/jobs* left ungated ----
   { m: "DELETE", re: /^\/automations\/[^/]+$/, area: "automations", right: "delete" },
@@ -169,6 +265,29 @@ export async function permissionGate(req: Request, res: Response, next: NextFunc
     const actor = imp && (imp.mode === "act-as-type" || imp.mode === "view-as-user")
       ? { id: u.id, role: imp.assumedRole || u.role, tenantId: imp.scopeTenantId ?? u.tenantId ?? null, customRoleId: null }
       : u;
+    // PER-MODULE ENFORCEMENT. A rule that names a module resolver is checked against EVERY
+    // module the request touches - strictest applicable, never most permissive. A bulk delete
+    // spanning two modules needs delete on both; a link joining two needs edit on both. That
+    // is deliberate for ACTIONS: partial success would silently delete some of what was
+    // selected, which is a bug rather than a permission.
+    if (rule.modules) {
+      const keys = await rule.modules(req).catch(() => null);
+      // TWO DIFFERENT ANSWERS, and conflating them would be a hole.
+      //   null -> we tried to resolve and COULD NOT (unknown id, wrong tenant, lookup
+      //           failed). Refuse. A request we cannot attribute is never waved through.
+      //   []   -> the request NAMES no module at all (an untyped list, an empty bulk).
+      //           Fall through to the base `records` check, which is exactly today's
+      //           behaviour - so this can never be more permissive than before. Where such
+      //           an endpoint returns a list, the handler additionally filters it.
+      if (keys === null) { res.status(403).json({ error: "Not authorized" }); return; }
+      if (keys.length) {
+        for (const key of keys) {
+          if (!(await can(actor, moduleAreaKey(key), rule.right))) { res.status(403).json({ error: "Not authorized" }); return; }
+        }
+        next();
+        return;
+      }
+    }
     if (await can(actor, rule.area, rule.right)) { next(); return; }
     res.status(403).json({ error: "Not authorized" });
   } catch {

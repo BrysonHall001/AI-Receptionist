@@ -61,7 +61,7 @@ import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE, isValidTimezone } from "../config/t
 import { PRESETS, FONTS } from "../theme/themes";
 import { createUser, listUsers, deleteUser, setPassword, publicUser, getContactColumns, setContactColumns, assignUserRole } from "../services/userService";
 import { checkPassword } from "../auth/passwords";
-import { can, getPermissionCatalog, permissionMatrixForRole, SYSTEM_ROLES, PER_PORTAL_SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign, effectiveMatrix } from "../services/permissionService";
+import { can, moduleAreaKey, getPermissionCatalog, getPermissionCatalogFor, permissionMatrixForRole, SYSTEM_ROLES, PER_PORTAL_SYSTEM_ROLES, AREA_SECTIONS, listPortalRoles, getPortalRole, createPortalRole, updatePortalRole, deletePortalRoleAndUnassign, effectiveMatrix } from "../services/permissionService";
 import { permissionGate, lockGate } from "../middleware/permissionGate";
 import { createInvite, inviteLink, sendInvite, sendCustomInvite, hasInviteLinkToken, listPendingInvitesAsUsers, revokeInvite } from "../services/inviteService";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, deleteAutomation, listRuns, listEvents, listManualAutomations } from "../services/automationService";
@@ -1647,7 +1647,18 @@ apiRouter.get("/records", async (req: Request, res: Response) => {
   const tenantId = tenantOr400(req, res);
   if (!tenantId) return;
   const type = req.query.type ? String(req.query.type) : null;
-  res.json(await listRecords(tenantId, type));
+  const rows = await listRecords(tenantId, type);
+  // FILTERED, NOT REFUSED. Asking for one type is gated per module at the door; asking for
+  // ALL of them spans every module, so this returns only the ones the caller may view.
+  if (!type) {
+    const permitted = await permittedRecordTypes(req);
+    if (permitted) {
+      const allowedIds = new Set((await listRecordTypes(tenantId).catch(() => [] as any[])).filter((t: any) => permitted.has(t.key)).map((t: any) => t.id));
+      res.json((rows as any[]).filter((r: any) => allowedIds.has(r.recordTypeId)));
+      return;
+    }
+  }
+  res.json(rows);
 });
 
 apiRouter.post("/records", async (req: Request, res: Response) => {
@@ -1904,7 +1915,11 @@ apiRouter.get("/bookings/calendar", async (req: Request, res: Response) => {
       res.status(400).json({ error: "from and to must be YYYY-MM-DD" });
       return;
     }
-    res.json(await getCalendarData(tenantId, from, to));
+    // FILTERED, NOT REFUSED. This is a list, so per-module permissions narrow what comes
+    // back rather than taking the whole calendar away: view on Bookings but not Work Orders
+    // returns the bookings with no work-order shading. Undefined = no filtering, which is
+    // what an admin gets, since can() answers true for them on every module.
+    res.json(await getCalendarData(tenantId, from, to, await permittedRecordTypes(req)));
   } catch (err) { res.status(400).json({ error: (err as Error).message }); }
 });
 
@@ -2674,7 +2689,9 @@ apiRouter.get("/portal-roles", async (req: Request, res: Response) => {
   const customWithCounts = customRoles.map((r: any) => ({ ...r, assignedCount: countMap.get(r.id) || 0 }));
   const systemRoles = SYSTEM_ROLES.filter((s) => PER_PORTAL_SYSTEM_ROLES.includes(s.role)).map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role) }));
   const myPermissions = await effectiveMatrix(req.user as any); // the creator's own level (the grant ceiling)
-  res.json({ catalog: getPermissionCatalog(), sections: AREA_SECTIONS, systemRoles, customRoles: customWithCounts, myPermissions });
+  // Tenant-aware: one row per module this tenant has, named the way it names them. With no
+  // tenant (the master hub) this returns the static catalog unchanged.
+  res.json({ catalog: await getPermissionCatalogFor(tenantId), sections: AREA_SECTIONS, systemRoles, customRoles: customWithCounts, myPermissions });
 });
 
 apiRouter.post("/portal-roles", async (req: Request, res: Response) => {
@@ -3469,6 +3486,26 @@ apiRouter.post("/account/password", accountSensitiveIpLimiter, accountSensitiveL
   audit({ tenantId: (me as any).tenantId ?? null, actorType: "user", actorId: me.id, actorLabel: me.name || me.email, action: AUDIT_ACTIONS.PASSWORD_CHANGED, subjectType: "auth", meta: { ip: req.ip || null, devicesForgotten: forgotten } });
   res.json({ ok: true });
 });
+
+/**
+ * The record-type keys this caller may VIEW, or undefined when they may view everything.
+ *
+ * Undefined rather than "all of them" on purpose: admins pass can() on every area, so
+ * computing a set for them would be work with no effect, and the services treat undefined as
+ * "do not filter".
+ */
+async function permittedRecordTypes(req: Request): Promise<Set<string> | undefined> {
+  const tenantId = (req.user as any)?.tenantId;
+  if (!tenantId) return undefined;
+  const types = await listRecordTypes(tenantId).catch(() => [] as any[]);
+  const out = new Set<string>();
+  let all = true;
+  for (const t of types as any[]) {
+    if (await can(req.user as any, moduleAreaKey(t.key), "view")) out.add(t.key);
+    else all = false;
+  }
+  return all ? undefined : out;
+}
 
 // ---- Two-factor (Settings -> Your account) --------------------------------
 apiRouter.get("/account/mfa", async (req: Request, res: Response) => {

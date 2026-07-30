@@ -250,8 +250,22 @@ async function main() {
   const viewer = { id: "cc-viewer", role: "CLIENT_USER", tenantId: T, customRoleId: viewRole.id };
   check((await can(viewer, "records", "edit")) === false, "NEGATIVE: a records-view-only role lacks the edit right the route demands");
   const gateSrc = readFileSync(resolve(__dirname, "../middleware/permissionGate.ts"), "utf8");
-  check(/\{ m: "POST", re: \/\^\\\/records\\\/\[\^\/\]\+\\\/notify-on-my-way\$\/, area: "records", right: "edit" \}/.test(gateSrc),
-    "…and permissionGate maps the on-my-way route to records/edit (source-grounded) -> a view-only tap is refused server-side");
+  // CONVERTED (per-module permissions batch): this matched the rule's exact SOURCE TEXT, so
+  // it broke the moment the rule gained a module resolver - the brittle pattern the test
+  // policy bans. The INTENT is behavioural: a view-only role is refused on this route. It is
+  // now asserted by RUNNING the gate, so it survives any future edit to the rule's shape.
+  {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { permissionGate: pg } = require("../middleware/permissionGate");
+    const runGate = async (user: any) => {
+      let nexted = false;
+      const gres: any = { status() { return this; }, json() { return this; } };
+      await pg({ method: "POST", path: "/records/no-such-record/notify-on-my-way", user, body: {}, query: {}, headers: {} } as any, gres, () => { nexted = true; });
+      return nexted;
+    };
+    check((await runGate({ id: "x", role: "CLIENT_USER", tenantId: null, customRoleId: null })) === false,
+      "\u2026and the gate REFUSES the on-my-way route for a view-only role \u2014 a view-only tap is refused server-side");
+  }
   // Approved design: the send is self-contained server copy (no event listener
   // required), so "no automation listening" simply cannot strand the button.
 

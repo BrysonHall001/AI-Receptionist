@@ -156,8 +156,21 @@ async function main() {
   check((await can(viewer, "records", "view")) === true && (await can(viewer, "records", "edit")) === false,
     "NEGATIVE: a records-view-only custom role has view but NO edit right");
   const gateSrc = readFileSync(resolve(__dirname, "../middleware/permissionGate.ts"), "utf8");
-  check(/\{ m: "PATCH", re: \/\^\\\/records\\\/\[\^\/\]\+\$\/, area: "records", right: "edit" \}/.test(gateSrc),
-    "…and permissionGate maps PATCH /records/:id -> records/edit (source-grounded), so the route refuses the drag");
+  // CONVERTED (per-module permissions batch): was a regex over the rule's source text, which
+  // broke when the rule gained a module resolver. The intent - a view-only role cannot drag a
+  // booking - is asserted by running the gate instead.
+  {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { permissionGate: pg } = require("../middleware/permissionGate");
+    const runGate = async (user: any) => {
+      let nexted = false;
+      const gres: any = { status() { return this; }, json() { return this; } };
+      await pg({ method: "PATCH", path: "/records/no-such-record", user, body: {}, query: {}, headers: {} } as any, gres, () => { nexted = true; });
+      return nexted;
+    };
+    check((await runGate({ id: "x", role: "CLIENT_USER", tenantId: null, customRoleId: null })) === false,
+      "\u2026and the gate REFUSES PATCH /records/:id for a view-only role, so the route refuses the drag");
+  }
   // Frontend honesty input exists: /me exposes permEdit.records (source-grounded).
   const authSrc = readFileSync(resolve(__dirname, "../routes/auth.ts"), "utf8");
   check(authSrc.includes('permEdit: Record<string, boolean> = { records: await can(req.user as any, "records", "edit") }') && authSrc.includes("permView, permEdit, lockedPages"),

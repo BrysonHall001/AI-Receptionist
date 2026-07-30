@@ -139,8 +139,32 @@ export const CEILING: Permissions = (() => {
   return c;
 })();
 
+/**
+ * PER-MODULE AREAS: "records:<RecordType.key>", e.g. "records:job".
+ *
+ * The key is built from RecordType.key, which is the stable internal identifier and is never
+ * renamed - so a tenant relabelling Jobs to Requisitions changes the row's WORDS and not one
+ * stored grant. No area key in AREAS contains a colon, so this namespace cannot collide with
+ * an existing one, now or later.
+ *
+ * CONTACTS IS NOT ONE OF THESE, deliberately. It has its own `contacts` area with its own
+ * ~18 gate rules living on /contacts/* routes - they are not records: routes at all - so
+ * changing its key would rewrite every stored grant AND orphan every one of those rules.
+ * Only its SECTION moves, from Pages to Modules. Its key stays `contacts` forever.
+ */
+export const RECORDS_AREA = "records";
+const MODULE_AREA_RE = /^records:([a-z0-9_]+)$/;
+export function isModuleArea(area: string): boolean { return MODULE_AREA_RE.test(area); }
+export function moduleAreaKey(recordTypeKey: string): string { return `${RECORDS_AREA}:${recordTypeKey}`; }
+export function recordTypeKeyOfArea(area: string): string | null {
+  const m = MODULE_AREA_RE.exec(area);
+  return m ? m[1] : null;
+}
+/** A per-module area answers to the SAME base area for locks, kinds and the ceiling. */
+function baseAreaOf(area: string): string { return isModuleArea(area) ? RECORDS_AREA : area; }
+
 function ceilingAllows(area: string, right: Right): boolean {
-  return CEILING[area]?.[right] === true;
+  return CEILING[baseAreaOf(area)]?.[right] === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +210,9 @@ export function capToCeiling(perms: any): Permissions {
   const out: Permissions = {};
   if (!perms || typeof perms !== "object" || Array.isArray(perms)) return out;
   for (const [area, rights] of Object.entries(perms)) {
-    const def = AREA_BY_KEY.get(area);
+    // A per-module area borrows the base `records` definition - same kind, same rights,
+    // same ceiling. Without this it would be dropped here as an unknown area.
+    const def = AREA_BY_KEY.get(baseAreaOf(area));
     if (!def || !rights || typeof rights !== "object") continue;
     const allowed = rightsForKind(def.kind);
     for (const [r, val] of Object.entries(rights as Record<string, unknown>)) {
@@ -221,9 +247,13 @@ export async function can(user: PermUser | null | undefined, area: string, right
   // see everything from the master hub.
   if (user.tenantId) {
     const locked = await lockedAreasForTenant(user.tenantId);
-    if (locked.has(area)) return false;
+    // A per-module area is locked exactly when its base area is - an owner locking the
+    // records pages locks every module inside them.
+    if (locked.has(baseAreaOf(area))) return false;
   }
-  if (!user.customRoleId) return systemCan(user.role, area, right);
+  // System roles answer on the BASE area: they have uniform access across every module, so
+  // splitting the catalog per module changes nothing for them by construction.
+  if (!user.customRoleId) return systemCan(user.role, baseAreaOf(area), right);
 
   const role = await prisma.portalRole.findUnique({ where: { id: user.customRoleId } } as any).catch(() => null);
   // Missing role, or assigned across tenants -> ignore it, fall back to base role.
@@ -231,6 +261,38 @@ export async function can(user: PermUser | null | undefined, area: string, right
     return systemCan(user.role, area, right);
   }
   const capped = capToCeiling((role as any).permissions);
+  /**
+   * THE LEGACY FALLBACK - and it is what makes this batch a change of GRANULARITY rather
+   * than of policy.
+   *
+   * A role stored before per-module permissions existed holds a single `records` grant. Asked
+   * about `records:job` it has no such key, so it falls through to that legacy grant: a role
+   * with view/edit/delete on records answers true for EVERY module, and a role with none
+   * answers false for every module. Exactly what it could do yesterday, with no rewrite of
+   * PortalRole.permissions and no migration to get wrong.
+   *
+   * The first time such a role is EDITED AND SAVED the editor posts the full grid, so
+   * explicit records:<key> entries are written and this fallback stops applying to it. That
+   * is deliberate and idempotent - the values written are precisely what the fallback was
+   * already returning.
+   *
+   * ONE CONSEQUENCE WORTH KNOWING, because it will look like a bug to whoever meets it
+   * first: a role saved AFTER this batch has explicit keys, so a module created LATER has no
+   * key and falls back to `records`, which such a role no longer holds - meaning no access
+   * until someone grants it. That is the safe direction. A new module must not silently
+   * become readable by every custom role that happened to exist before it.
+   */
+  if (isModuleArea(area)) {
+    // PRESENCE IS PER MODULE, NOT PER RIGHT, and it is read from the STORED blob rather than
+    // the capped one. Once a role names a module at all it is explicitly configured, and the
+    // legacy grant must not top it up - otherwise you could never REVOKE edit on one module
+    // while keeping it on the others, which is the entire feature. Reading the stored blob
+    // matters because capToCeiling drops rights that are false, so a module configured as
+    // "all three off" would otherwise look unconfigured and silently inherit the legacy grant.
+    const stored = ((role as any).permissions || {}) as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(stored, area)) return capped[area]?.[right] === true;
+    return capped[RECORDS_AREA]?.[right] === true;
+  }
   return capped[area]?.[right] === true;
 }
 
@@ -247,7 +309,7 @@ export function validateCustomRolePermissions(perms: any, ceiling?: Permissions)
     return { ok: false, error: "permissions must be an object" };
   }
   for (const [area, rights] of Object.entries(perms)) {
-    const def = AREA_BY_KEY.get(area);
+    const def = AREA_BY_KEY.get(baseAreaOf(area));
     if (!def) return { ok: false, error: `unknown area "${area}"` };
     if (!rights || typeof rights !== "object" || Array.isArray(rights)) {
       return { ok: false, error: `permissions for "${area}" must be an object` };
@@ -316,8 +378,69 @@ export async function effectiveMatrix(user: PermUser | null | undefined): Promis
 // only "manage", etc., so the UI greys the N/A cells. Because the super-admin ceiling
 // is the FULL catalog, an area's supported rights ARE its ceiling — the greyed N/A
 // cells are exactly the cells no role (custom or system) can ever be granted.
+/** The static catalog, exactly as it has always been. Used when there is no tenant. */
 export function getPermissionCatalog() {
   return AREAS.map((a) => ({ key: a.key, label: a.label, kind: a.kind, section: a.section, rights: rightsForKind(a.kind), group: a.group, groupLabel: a.groupLabel, locked: !!a.locked, lockedNote: a.lockedNote }));
+}
+
+/**
+ * THE TENANT-AWARE CATALOG. One row per module the tenant actually has, named the way that
+ * tenant names it - so a Recruitment Marketing tenant reads Candidates, Job Openings,
+ * Interviews without any code knowing those words.
+ *
+ * WITH NO TENANT (the master hub) this returns the static catalog above, untouched, single
+ * `records` row included. Nothing on the hub changes.
+ *
+ * Hidden modules produce NO ROW: whether a module exists for a tenant is a different question
+ * from who may see its data, and a permission row for a module nobody has would be a lie.
+ * Custom modules produce a row automatically, because this is built from the tenant's own
+ * record types rather than from anything in code.
+ */
+export async function getPermissionCatalogFor(tenantId: string | null | undefined) {
+  const base = getPermissionCatalog();
+  if (!tenantId) return base;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { listRecordTypes } = require("./recordTypeService");
+  const { getLockedPages: _lp } = require("./portalService");
+  let types: any[] = [];
+  try { types = await listRecordTypes(tenantId); } catch { return base; }
+  const hidden = await hiddenRecordHrefs(tenantId);
+  const visible = types.filter((t: any) => t && t.key && t.key !== "contact" && !hidden.has(recordTypeHrefFor(t.key)));
+  const recordsDef = AREA_BY_KEY.get(RECORDS_AREA)!;
+  const rows = visible.map((t: any) => ({
+    key: moduleAreaKey(t.key),
+    label: t.labelPlural || t.label || t.key,
+    kind: recordsDef.kind,
+    section: "Modules",
+    rights: rightsForKind(recordsDef.kind),
+    group: undefined as string | undefined,
+    groupLabel: undefined as string | undefined,
+    locked: false,
+    lockedNote: undefined as string | undefined,
+  }));
+  // Contacts keeps its own key and its own gate rules; only its SECTION moves, so it renders
+  // first among the module rows. The single legacy `records` row is replaced by the per-module
+  // rows it used to stand for.
+  const out = base
+    .filter((a: any) => a.key !== RECORDS_AREA)
+    .map((a: any) => (a.key === "contacts" ? { ...a, section: "Modules" } : a));
+  const at = out.findIndex((a: any) => a.key === "contacts");
+  out.splice(at + 1, 0, ...rows);
+  return out;
+}
+
+/** The nav-hidden hrefs for a tenant - the same fact the portal nav reads. */
+async function hiddenRecordHrefs(tenantId: string): Promise<Set<string>> {
+  const t: any = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { labels: true } }).catch(() => null);
+  const hidden = (((t?.labels || {}) as any).nav || {}).hidden;
+  return new Set(Array.isArray(hidden) ? hidden : []);
+}
+/** Mirrors recordTypeService's href convention; system kinds have bespoke hrefs. */
+function recordTypeHrefFor(key: string): string {
+  if (key === "contact") return "#/contacts";
+  if (key === "job") return "#/jobs";
+  if (key === "booking") return "#/bookings";
+  return "#/records/" + key;
 }
 
 // The full permission matrix for a SYSTEM role (for read-only reference display in

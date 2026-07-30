@@ -1,0 +1,11 @@
+-- Changelog: per-module permissions
+INSERT INTO "ChangeLogEntry" ("id","date","type","description","commitSha","createdAt")
+VALUES (
+  'cl_per_module_perms_20260730',
+  '2026-07-30',
+  'Improvement',
+  'Under Team and Permissions, the Modules heading used to have a single row called Modules that granted access to the records in every module at once. It now has one row per module, named the way that tenant names it. A recruitment business sees Candidates, Job Openings and Interviews. A field services business sees Work Orders, Estimates, Invoices and the rest. Whatever modules that particular CRM actually has, and whatever it calls them. So you can now give somebody the ability to see and edit work orders without also handing them the invoices. NOBODY GAINED OR LOST ANY ACCESS when this shipped, and that was proven rather than assumed. Every permission of every built-in role was recorded beforehand and compared one by one afterwards, and every single one matched. Custom roles were checked separately: a role that could see and edit records yesterday can see and edit every module today, and a role that could not still cannot. Nothing needed rewriting in the database, so there was no risky conversion to get wrong. Rename a module and its permissions follow it, because they are attached to the module itself rather than to its name. Add a brand-new module and it gets its own permission row automatically, with no work from us. One thing worth knowing about new modules: a custom role that you create or edit from now on will not automatically get access to a module added later. That is deliberate. A module you add next year should not quietly become readable by everybody just because their role happened to exist first; someone has to decide to grant it. Two screens behave slightly differently and it is worth saying why. The booking calendar shows work-order time as shaded busy blocks, so if somebody can see bookings but not work orders, they still get their calendar and simply do not see the shading. The same idea applies to the full list of records. But a bulk delete that spans two modules is refused outright unless the person can delete in both, because a bulk action that silently does part of what you selected is a bug rather than a permission.',
+  'batch-per-module-perms-20260730',
+  NOW()
+)
+ON CONFLICT ("commitSha") DO NOTHING;

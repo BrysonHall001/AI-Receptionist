@@ -114,8 +114,10 @@ function main() {
     if (want !== got) colsOk += ` ${sec}: expected ${want} headers, got ${got};`;
   }
   check(colsOk === "", `every table has one Area column plus exactly the rights its rows expose${colsOk}`);
-  check(/One control for record data across every module/.test(sectionTable("Modules")),
-    "Modules explains that its single control governs record data across every module");
+  // PER-MODULE PERMISSIONS (authorised): the single control is gone, so the note that
+  // described it is too. Same intent - the section explains itself - on the new truth.
+  check(/One row per module this tenant has/.test(sectionTable("Modules")),
+    "Modules explains that it now carries one row per module, named the way the tenant names it");
 
   // ---------- (5) custom roles and the ceiling ----------
   console.log("\n(5) custom roles:");

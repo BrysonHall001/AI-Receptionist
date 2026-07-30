@@ -444,7 +444,17 @@ export interface WeekCalendar {
 
 /** Bookings whose appointmentAt falls in [fromDate, toDate) (YYYY-MM-DD), plus
  *  the open-hours config. Read-only; no writes, no availability mutation. */
-export async function getCalendarData(tenantId: string, fromDate: string, toDate: string): Promise<WeekCalendar> {
+/**
+ * PERMITTED TYPES: the record-type keys the CALLER may view, or undefined for "no filtering"
+ * (admins, and any caller the gate has already cleared for everything).
+ *
+ * This endpoint is a LIST, so per-module permissions filter it rather than refusing it: a
+ * person who may see Bookings but not Work Orders gets a calendar with their bookings and no
+ * work-order shading. Refusing outright would make the Work Orders checkbox mean "and also
+ * takes your calendar away", which is not what it appears to say.
+ */
+export async function getCalendarData(tenantId: string, fromDate: string, toDate: string, permitted?: Set<string>): Promise<WeekCalendar> {
+  const maySee = (key: string) => !permitted || permitted.has(key);
   const config = await loadBookingConfig(tenantId);
   const recordTypeId = await resolveRecordTypeId(tenantId, BOOKING_RECORD_TYPE_KEY);
   const rt = await db.recordType.findFirst({ where: { tenantId, id: recordTypeId } });
@@ -455,7 +465,9 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
 
   const from = new Date(`${fromDate}T00:00:00Z`);
   const to = new Date(`${toDate}T00:00:00Z`);
-  const rows = await db.record.findMany({
+  // The bookings themselves. A caller without view on this module gets none of them - and
+  // still gets the grid, the hours and anything else they ARE allowed to see.
+  const rows = !maySee(BOOKING_RECORD_TYPE_KEY) ? [] : await db.record.findMany({
     where: { tenantId, recordTypeId, deletedAt: null, appointmentAt: { gte: from, lt: to } },
     orderBy: { appointmentAt: "asc" },
   });
@@ -524,7 +536,9 @@ export async function getCalendarData(tenantId: string, fromDate: string, toDate
   // Lanes ON → cross-module honesty: the tech's WORK-ORDER time renders as
   // read-only busy shading on the booking calendar. Sized endAt-or-60 (work
   // orders have no service durations); completed/cancelled free the time.
-  if (lanesOn) {
+  // The shading below carries WORK-ORDER record ids, so it only renders for a caller who may
+  // view that module. Without the right, the calendar simply has no shading - it is not refused.
+  if (lanesOn && maySee(WORK_ORDER_RECORD_TYPE_KEY)) {
     const woTypeId = await resolveRecordTypeId(tenantId, WORK_ORDER_RECORD_TYPE_KEY);
     const woRt = await db.recordType.findFirst({ where: { tenantId, id: woTypeId }, select: { label: true } });
     // MULTI-VISIT: one shading block per SCHEDULED VISIT (visit 1 == the
