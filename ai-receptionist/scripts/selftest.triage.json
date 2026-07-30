@@ -1,0 +1,6 @@
+{
+  "_comment": "Cause of each non-passing suite, as determined by a human or a build chat that actually read it. Anything absent from this map is reported as 'cause not yet determined' rather than guessed at. Values: pinned-string | genuinely-broken | could-not-run.",
+  "selfTest_pageLockWiring": "pinned-string",
+  "selfTest_tenantsTable": "pinned-string",
+  "selfTest_featureLcMotion": "genuinely-broken"
+}
