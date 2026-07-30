@@ -37,6 +37,12 @@ export const AUDIT_ACTIONS = {
   AUTH_LOGIN: "auth.login",
   AUTH_LOGOUT: "auth.logout",
   AUTH_LOGIN_FAILED: "auth.login_failed",
+  // SSO sign-in. Distinguishable from the password events above ON PURPOSE: reading the
+  // audit log, "how did this person get in" must be answerable without guessing.
+  AUTH_SSO_LOGIN: "auth.sso.login",
+  AUTH_SSO_FAILED: "auth.sso.failed",
+  AUTH_SSO_LINKED: "auth.sso.linked",
+  AUTH_SSO_UNLINKED: "auth.sso.unlinked",
   IMPERSONATION_START: "auth.impersonation.start",
   IMPERSONATION_END: "auth.impersonation.end",
   // data movement (counts in meta)

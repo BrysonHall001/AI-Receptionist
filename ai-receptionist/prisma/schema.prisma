@@ -204,9 +204,40 @@ model User {
   feedbackTickets  FeedbackTicket[]  @relation("FeedbackSubmitter")
   resolvedFeedback FeedbackTicket[]  @relation("FeedbackResolver")
   feedbackMessages FeedbackMessage[]
+  ssoLinks         UserSsoLink[]
 
   @@index([tenantId])
   @@index([tenantId, lastSeenAt])
+}
+
+/// A confirmed link between an existing user and one identity provider.
+///
+/// SIGN-IN ONLY. A row here NEVER creates a user and never grants anything: it records
+/// that a provider account has been proven, once, to belong to an account that already
+/// existed. Every gate the password path applies still applies.
+///
+/// WE DELIBERATELY STORE NO TOKENS. No access token, no refresh token, no scopes. SSO
+/// needs to RECOGNISE a returning person, not act on their behalf, and a login table
+/// holding refresh tokens is a credential store worth stealing.
+///
+/// `subject` IS THE IDENTITY. `email` is a label kept for display and can change at the
+/// provider at any time; it is never what a returning user is matched on. The composite
+/// rule per provider is written down in ssoProviders.ts subjectFor() - Google uses the
+/// ID token's `sub`, Microsoft uses `tid:oid` because Microsoft's own guidance is to
+/// index on the tenant id plus the directory object id. Do NOT "simplify" Microsoft's
+/// to oid alone: oid is only unique within a tenant.
+model UserSsoLink {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String   // "google" | "microsoft"
+  subject   String   // provider-scoped immutable identifier - see subjectFor()
+  email     String   // the address the provider reported AT LINK TIME; display only
+  linkedAt  DateTime @default(now())
+
+  @@unique([provider, subject])
+  @@unique([userId, provider])
+  @@index([userId])
 }
 
 // A per-portal custom user role (a "class"): a named permission set scoped to one

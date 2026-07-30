@@ -971,6 +971,7 @@
     if (!me) {
       if (path === "/forgot") return App.auth.renderForgot();
       if (path === "/reset") return App.auth.renderReset(query.token || "");
+      if (path === "/sso-link") return App.auth.renderSsoLink(query.provider || "google", query.email || "");
       return App.auth.renderLogin();
     }
 

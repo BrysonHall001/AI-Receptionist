@@ -627,6 +627,12 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 .auth-sub { color: var(--ink-faint); font-size: var(--text-sm); margin: 6px 0 20px; }
 .auth-form { display: flex; flex-direction: column; }
 .auth-form .field-label { display: block; margin-bottom: 6px; margin-top: 2px; }
+/* SSO sign-in: a labelled rule between the password form and the provider buttons, and the
+   buttons themselves on the house ghost variant so the password form stays the primary
+   action. Both render only when a provider is configured - with none, neither exists. */
+.auth-or { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-4) 0 var(--sp-3); color: var(--ink-faint); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.auth-or::before, .auth-or::after { content: ""; flex: 1 1 auto; height: var(--border-w); background: var(--line); }
+.auth-sso-btn { margin-bottom: var(--sp-2); text-decoration: none; }
 .auth-link { text-align: center; color: var(--accent); text-decoration: none; font-size: var(--text-sm); font-weight: 600; display: block; margin-top: 4px; }
 .auth-link:hover { text-decoration: underline; }
 
