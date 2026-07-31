@@ -3393,8 +3393,12 @@
     // now into its own FULL-WIDTH panel beneath the grid (space pass); same section, same
     // wiring, same permission gate. Fallback to the column keeps any mount-less caller whole.
     if (canEdit && selectedType) {
-      if (structureMount) { structureMount.innerHTML = ""; structureMount.appendChild(structureSection()); }
-      else scroll.appendChild(structureSection());
+      // The adapter is PASSED, never defaulted to. It closes over this render's canEdit and
+      // selectedType, so it cannot live at module scope where structureSection does - and a
+      // default reaching for it from there is a ReferenceError, which is what took this
+      // screen down. Passing it explicitly is the only arrangement that can work.
+      if (structureMount) { structureMount.innerHTML = ""; structureMount.appendChild(structureSection(STRUCTURE_TENANT_ADAPTER)); }
+      else scroll.appendChild(structureSection(STRUCTURE_TENANT_ADAPTER));
     } else if (structureMount) structureMount.innerHTML = "";
 
     fieldsView().innerHTML = "";
@@ -5030,7 +5034,11 @@
   }
 
   function structureSection(adapter) {
-    const _s = adapter || STRUCTURE_TENANT_ADAPTER;
+    // NO DEFAULT. This function is at module scope; every tenant adapter it could default to
+    // lives inside renderFields and is invisible from here. A missing adapter is a caller bug
+    // and says so, instead of throwing an unexplained ReferenceError from a scope away.
+    if (!adapter) throw new Error("structureSection(adapter) requires an adapter");
+    const _s = adapter;
     const sec = el("div", "mf-structure");
     const structTitle = el("div", "fields-section-name mf-structure-title", "Structure & behavior");
     if (App.tips) App.tips.attach(structTitle, "stages_vs_statuses");

@@ -62,6 +62,36 @@ function bootSpiedWindow() {
   return { w, el, calls };
 }
 
+/**
+ * SCOPE GUARD (added after the Modules & Fields outage).
+ *
+ * The screen went blank because a module-scope function defaulted to a name that lives inside
+ * ANOTHER function: `structureSection(adapter)` did `adapter || STRUCTURE_TENANT_ADAPTER`,
+ * and that adapter is declared inside renderFields. Reachable from nowhere, so the tenant call
+ * - which passed no adapter - threw a ReferenceError and the section never rendered.
+ *
+ * It survived review because every harness PASSED an adapter, so the short-circuit meant the
+ * unreachable name was never evaluated. This check does not care how it is called: it compares
+ * where a name is DECLARED against where it is USED, which is the thing that was actually wrong.
+ */
+function scopeViolations(src: string): string[] {
+  const lines = src.split("\n");
+  const indent = (i: number) => (/^(\s*)/.exec(lines[i]) as RegExpExecArray)[1].length;
+  const out: string[] = [];
+  lines.forEach((l, i) => {
+    const m = /\|\|\s*([A-Z][A-Z0-9_]{3,})\b/.exec(l);
+    if (!m) return;
+    const name = m[1];
+    const decl = lines.findIndex((x) => new RegExp("(?:const|let|var)\\s+" + name + "\\s*=").test(x));
+    if (decl < 0) { out.push(`line ${i + 1}: ${name} is declared nowhere`); return; }
+    const dI = indent(decl), uI = indent(i);
+    // module scope in these files is two spaces; anything deeper is inside a function and is
+    // only visible to code nested inside it.
+    if (dI > 2 && uI <= dI) out.push(`line ${i + 1}: ${name} declared at line ${decl + 1} (indent ${dI}) is out of scope here (indent ${uI})`);
+  });
+  return out;
+}
+
 async function main() {
   console.log("BUILDER MODULES & FIELDS — self-test");
   console.log("====================================");
@@ -211,6 +241,21 @@ async function main() {
     if (kind === "tenant") await db.tenant.delete({ where: { id } }).catch(() => { /* */ });
     else await db.tenantTemplateRow.delete({ where: { id } }).catch(() => { /* */ });
   }
+  console.log("\n(8) scope: a shared component can only default to a name it can SEE:");
+  for (const f of ["portal.js", "admin.js"]) {
+    const v = scopeViolations(readFileSync(resolvePath(R, "public", "js", f), "utf8"));
+    check(v.length === 0, v.length === 0
+      ? `${f}: no module-scope function defaults to an out-of-scope name`
+      : `${f}: OUT-OF-SCOPE DEFAULT \u2014 ${v.join("; ")}`);
+  }
+  // NEGATIVE: the check must actually catch the shape that took the screen down
+  const probe = ["  function widget(adapter) {", "    const a = adapter || THING_ADAPTER;", "  }",
+                 "  function other() {", "    const THING_ADAPTER = {};", "  }"].join("\n");
+  check(scopeViolations(probe).length === 1,
+    "NEGATIVE: the exact shape of the outage IS caught by this check");
+  check(scopeViolations(["  const THING_ADAPTER = {};", "  function widget(a) { const x = a || THING_ADAPTER; }"].join("\n")).length === 0,
+    "\u2026while a genuinely module-scope default passes, so it is not just rejecting everything");
+
   console.log("");
   if (failures.length) { console.log(`${failures.length} FAILED \u274c: ${failures[0]}`); await disconnectDb(); process.exit(1); }
   console.log("ALL PASSED \u2705 (one editor, two screens, and no path from the builder to a tenant)");
