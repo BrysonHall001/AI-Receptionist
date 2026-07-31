@@ -23,7 +23,10 @@ for (const file of process.argv.slice(2).filter((a) => !a.startsWith("--"))) {
       // ANY textual use before the declaration in the same body. Deliberately blunt: a
       // narrower rule missed the real bug, because `.map((s) => ... moduleAreas)` puts the
       // use past a closing paren the pattern was stopping at.
-      const before = code.slice(0, at);
+      const before = code.slice(0, at)
+        // a name used as an arrow/function PARAMETER is a different binding, not a use
+        .replace(/\(([^)]*)\)\s*=>/g, (m0, params) => "(" + params.replace(/\w+/g, "_p") + ")=>")
+        .replace(/function\s*\(([^)]*)\)/g, (m0, params) => "function(" + params.replace(/\w+/g, "_p") + ")");
       if (new RegExp("\\b" + name + "\\b").test(before)) {
         const line = src.slice(0, m.index + before.lastIndexOf(name)).split("\n").length;
         hits.push(`${file}  ${name}`);

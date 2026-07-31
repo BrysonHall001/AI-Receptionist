@@ -143,14 +143,39 @@ async function main() {
   const tilesTxt = $$(".settings-tile").map((t: any) => t.textContent.trim());
   check(JSON.stringify(tilesTxt) === JSON.stringify(["History", "System Health", "Tools"]),
     `Developer Tools still shows its three sections (${tilesTxt.join(" \u00b7 ")})`);
+  // WAIT FOR THE THING WE ARE ABOUT TO ASSERT ON.
+  //
+  // This used to wait for `.dd-table-host tbody tr` - rows in the demo-tenant TABLE - before
+  // reading the sub-tab strip. Those rows only exist if the database happens to hold demo
+  // tenants, so on a clean database the wait timed out and the strip was then read before the
+  // Tools panel had mounted, reporting it empty. That is why this assertion has failed with
+  // an empty list rather than a wrong one. The strip is what is being asserted, so the strip
+  // is what to wait for - which is what every other suite reading this selector already does.
   await until(() => w.document.querySelector(".dd-table-host"), 12000);
-  await until(() => $$(".dd-table-host tbody tr").length > 0, 12000);
+  await until(() => $$(".settings-tabs .settings-tab").length > 0, 12000);
   const strip = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
-  check(strip.length === 1 && strip[0] === "Demo Data", `Tools renders a strip of exactly one tab labelled "Demo Data" (${strip.join(", ")})`);
+  // TEMPLATE BUILDER (authorised): a second tool joined the strip, which is what the strip
+  // was built for. Demo Data stays first and stays the default.
+  check(strip[0] === "Demo Data" && strip.includes("Create a Template"),
+    `Tools renders a sub-tab strip led by "Demo Data" (${strip.join(", ")})`);
   check($$(".settings-tabs .settings-tab.active").length === 1, "\u2026and that tab is active");
   check(($$(".tool-card .tool-h")[0] || {}).textContent === "Demo Data", "the tool's heading reads \u201cDemo Data\u201d");
 
-  // GUARD: only demo tenants are listed
+  // GUARD: only demo tenants are listed.
+  //
+  // EACH WAIT GUARDS ITS OWN SUBJECT. The strip wait above lets the strip render; the table's
+  // rows arrive separately, after the tool mounts and fetches, so they need their own wait
+  // immediately before the assertions that read them. Collapsing these into one wait is what
+  // made this suite fail on whichever half lost the race.
+  // WAIT FOR THIS SUITE'S OWN FIXTURE, not for "any row at all".
+  //
+  // `length > 0` is satisfied by the FIRST row painting. A developer database accumulates
+  // demo tenants across runs - there were 69 on the machine where this failed - so the table
+  // renders a long list and the fixture, which sorts into the tail, was not in the DOM yet
+  // when the read happened. Waiting for the row we are about to assert on is correct at any
+  // table size, and is why this failed on a used database while passing on a fresh one.
+  await until(() => $$(".dd-table-host tbody tr .adm-rowname").some((c: any) => c.textContent === demoA.name), 12000);
+  await until(() => $$(".dd-table-host tbody tr .adm-rowname").some((c: any) => c.textContent === demoB.name), 12000);
   const names = $$(".dd-table-host tbody tr .adm-rowname").map((c: any) => c.textContent);
   check(names.includes(demoA.name) && names.includes(demoB.name) && !names.includes(realT.name),
     "GUARD: only isDemo tenants appear \u2014 the non-demo fixture is absent");

@@ -3190,9 +3190,9 @@ apiRouter.get("/automations/presets", async (req: Request, res: Response) => {
   let flavorKey: string | null = null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getTemplate } = require("../services/tenantTemplates");
+    const { resolveTemplate } = require("../services/tenantTemplates");
     const trow = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { templateKey: true } as any });
-    flavorKey = (getTemplate((trow as any)?.templateKey)?.hooks?.libraryFlavor) ?? null;
+    flavorKey = ((await resolveTemplate((trow as any)?.templateKey))?.hooks?.libraryFlavor) ?? null;
   } catch { flavorKey = null; }
   const internal = AUTOMATION_PRESETS.filter((p) => !(p as any).hidden);
   const flavored = applyLibraryFlavor(flavorKey, PRESET_CATEGORIES, internal as any);

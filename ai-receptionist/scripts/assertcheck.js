@@ -1,3 +1,15 @@
+/**
+ * ⚠️ ADVISORY ONLY — NOT PROVEN, DO NOT GATE A BUILD ON THIS.
+ *
+ * It evaluates suite assertions that are pure source-text checks against the files you name.
+ * The idea is sound and it has caught real breakage. But it has also produced a FALSE
+ * POSITIVE (a regex containing a quote split at the wrong comma) and, after that was fixed,
+ * I could not demonstrate it catching a deliberately broken literal - so it may also produce
+ * FALSE NEGATIVES. Both were found by testing the tool itself rather than trusting it.
+ *
+ * Use it to point at things worth looking at. Do not read a clean run as proof of anything.
+ * scripts/tdz-check.js, by contrast, IS proven in both directions.
+ */
 // For every suite that reads a file this batch CHANGED, extract its source-text assertions
 // and EVALUATE them against the new contents. No database needed - these are string checks,
 // which is exactly the class that has been reaching the owner broken.
@@ -45,11 +57,18 @@ for(const f of suites){
     const used=Object.keys(vars).filter(v=>new RegExp("\\b"+v+"\\b").test(call.text));
     if(!used.length) continue;
     // the condition is everything before the final top-level comma (the label)
-    let d=0,inS=null,cut=-1;
+    // REGEX LITERALS MUST BE SKIPPED HERE. A regex containing a quote or a comma - like
+    // /requireRole\("OWNER", "SUPER_ADMIN"\)/ - otherwise throws this scan off, the label
+    // comma is found in the wrong place, and the "condition" ends up evaluating to the label
+    // STRING. That is not false, so it was reported BROKEN: a false-positive machine, and a
+    // checker that cries wolf is worse than no checker.
+    let d=0,inS=null,inRe=false,cut=-1;
     for(let k=0;k<call.text.length;k++){
       const c=call.text[k],p=call.text[k-1];
       if(inS){ if(c===inS&&p!=="\\")inS=null; continue; }
+      if(inRe){ if((c==="/"&&p!=="\\")||c==="\n")inRe=false; continue; }
       if(c==='"'||c==="'"||c==="`"){inS=c;continue;}
+      if(c==="/"&&/[(,=&|!]\s*$/.test(call.text.slice(Math.max(0,k-3),k))){inRe=true;continue;}
       if(c==="("||c==="["||c==="{")d++;
       else if(c===")"||c==="]"||c==="}")d--;
       else if(c===","&&d===0)cut=k;

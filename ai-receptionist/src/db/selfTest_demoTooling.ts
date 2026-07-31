@@ -159,8 +159,10 @@ async function main() {
   const subs = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
   // DEVTOOLS TABS (authorised): the one-tab strip is back on purpose; the detector-sweep tool
   // is still gone, which is the half this assertion exists to protect.
-  check(subs.length === 1 && subs[0] === "Demo Data" && !/Detector sweep/i.test(w.document.body.textContent || ""),
-    `\u2026with a one-tab strip (${subs.join(", ")}) and no standalone detector-sweep tool`);
+  // TEMPLATE BUILDER (authorised): the strip gained its second tool. The half this assertion
+  // exists to protect - the detector-sweep tool is still gone - is unchanged.
+  check(subs[0] === "Demo Data" && !subs.some((t: string) => /sweep/i.test(t)) && !/Detector sweep/i.test(w.document.body.textContent || ""),
+    `\u2026with Demo Data leading the strip (${subs.join(", ")}) and no standalone detector-sweep tool`);
   const idxSrc = readFileSync(resolve(__dirname, "..", "index.ts"), "utf8");
   const seedSrc = readFileSync(resolve(__dirname, "..", "services", "demoSeeder.ts"), "utf8");
   check(/runDetectorSweep/.test(idxSrc) && /opts\.runSweep !== false/.test(seedSrc),

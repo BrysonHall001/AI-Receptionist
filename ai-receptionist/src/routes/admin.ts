@@ -58,10 +58,62 @@ adminRouter.get("/portals/record-type-options", async (_req: Request, res: Respo
   res.json({ options: systemRecordTypeOptions() });
 });
 
+// ============================ TEMPLATE BUILDER (part 1) ============================
+// Built templates are rows; the four built-ins stay in code. Everything here is gated by the
+// router-level requireRole("OWNER","SUPER_ADMIN","AUDITOR") at the top of this file - the
+// same gate Developer Tools already sits behind. No second gate is invented.
+
+/** The built templates, for the builder's own list. */
+adminRouter.get("/template-rows", async (_req: Request, res: Response) => {
+  const rows = await (prisma as any).tenantTemplateRow.findMany({ orderBy: { createdAt: "asc" } });
+  res.json({ rows });
+});
+
+/**
+ * Save a built template - create when there is no id, update when there is.
+ *
+ * THE KEY IS SET ONCE, at creation, and never changes: it is what a created tenant stores in
+ * templateKey, so renaming a template must not orphan the tenants made from it. Editing the
+ * label afterwards changes the words, not the identity.
+ */
+adminRouter.post("/template-rows", async (req: Request, res: Response) => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { reservedTemplateKeys, slugTemplateKey } = require("../services/tenantTemplates");
+  const { id, label, description, spec } = (req.body ?? {}) as Record<string, any>;
+  const clean = String(label || "").trim();
+  if (!clean) { res.status(400).json({ error: "Give the template a name." }); return; }
+  try {
+    if (id) {
+      const existing = await (prisma as any).tenantTemplateRow.findUnique({ where: { id: String(id) } });
+      if (!existing) { res.status(404).json({ error: "That template no longer exists." }); return; }
+      const updated = await (prisma as any).tenantTemplateRow.update({
+        where: { id: String(id) },
+        data: { label: clean, description: String(description || ""), spec: spec || {} },
+      });
+      res.json({ row: updated });
+      return;
+    }
+    const key = slugTemplateKey(clean);
+    if (reservedTemplateKeys().includes(key)) {
+      res.status(409).json({ error: `"${clean}" clashes with a built-in template. Pick a different name.` });
+      return;
+    }
+    if (await (prisma as any).tenantTemplateRow.findUnique({ where: { key } })) {
+      res.status(409).json({ error: `You already have a template called "${clean}". Pick a different name.` });
+      return;
+    }
+    const created = await (prisma as any).tenantTemplateRow.create({
+      data: { key, label: clean, description: String(description || ""), spec: spec || {}, createdById: (req.user as any)?.id ?? null },
+    });
+    res.json({ row: created });
+  } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+});
+
 // TENANT TEMPLATES: the wizard's template cards (one truth — the constants).
 adminRouter.get("/tenant-templates", async (_req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { TENANT_TEMPLATES } = require("../services/tenantTemplates");
+  const { listAllTemplates } = require("../services/tenantTemplates");
+  const TENANT_TEMPLATES = await listAllTemplates();
   // CREATE-UI-2: fieldTweaks (labels per module) + pageLabelOverrides ride the
   // payload so the wizard swaps chips + row titles LIVE on a card click.
   res.json({ templates: TENANT_TEMPLATES.map((t: any) => ({
@@ -127,8 +179,8 @@ adminRouter.post("/portals", async (req: Request, res: Response) => {
   // TENANT TEMPLATES: an unknown key is a client bug — reject loudly.
   if (template != null) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getTemplate } = require("../services/tenantTemplates");
-    if (!getTemplate(String(template))) { res.status(400).json({ error: "Unknown template." }); return; }
+    const { resolveTemplate } = require("../services/tenantTemplates");
+    if (!(await resolveTemplate(String(template)))) { res.status(400).json({ error: "Unknown template." }); return; }
   }
   if (!name) {
     res.status(400).json({ error: "name is required" });

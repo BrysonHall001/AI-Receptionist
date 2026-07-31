@@ -189,8 +189,11 @@ export async function createPortal(input: {
     : [];
   const hiddenHrefs = hideKeys.map(recordTypeHref).filter((h) => h !== NAV_HOME_HREF);
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { getTemplate, applyTemplateAtCreation } = require("./tenantTemplates");
-  const template = getTemplate(input.template);
+  const { resolveTemplate, applyTemplateAtCreation } = require("./tenantTemplates");
+  // THE SAME creation path for both kinds. resolveTemplate returns a built template in the
+  // identical shape a code template has, so nothing below this line can tell them apart -
+  // which is the whole point of the epic.
+  const template = await resolveTemplate(input.template);
   // CREATE-UI-2: a template's PAGE LABEL OVERRIDES ride the same labels JSON the
   // owner's Settings->Labels writes — no second mechanism, fully editable after.
   const navLabels: Record<string, string> = (template && template.pageLabelOverrides) ? { ...template.pageLabelOverrides } : {};

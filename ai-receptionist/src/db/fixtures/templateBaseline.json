@@ -1,0 +1,159 @@
+{
+  "note": "What each BUILT-IN template carries. The builder must not move one cell of this.",
+  "templates": {
+    "general": {
+      "label": "General",
+      "description": "A plain starting point — no industry setup, with every module on except Service Plans.",
+      "pagesOffPrefill": [],
+      "modulesHiddenPrefill": [
+        "service_plan"
+      ],
+      "aiVoiceMode": null,
+      "aiSchedulingTarget": null,
+      "aiIntake": null,
+      "customLcOffer": false,
+      "pageLabelOverrides": {},
+      "moduleRelabels": {},
+      "fieldTweaks": [],
+      "hooks": {
+        "dashboards": 0,
+        "analytics": 0,
+        "libraryFlavor": null,
+        "commDrafts": 0,
+        "aiInstructionSections": 0
+      }
+    },
+    "ai_receptionist": {
+      "label": "AI Receptionist Only",
+      "description": "Just the phone answered — calls, contacts and a dashboard, nothing else.",
+      "pagesOffPrefill": [
+        "#/automations",
+        "#/communication",
+        "#/reports"
+      ],
+      "modulesHiddenPrefill": [
+        "booking",
+        "equipment",
+        "estimate",
+        "invoice",
+        "job",
+        "product",
+        "property",
+        "service_plan",
+        "task",
+        "vehicle",
+        "work_order"
+      ],
+      "aiVoiceMode": null,
+      "aiSchedulingTarget": null,
+      "aiIntake": null,
+      "customLcOffer": true,
+      "pageLabelOverrides": {},
+      "moduleRelabels": {},
+      "fieldTweaks": [
+        "contact:Best time to call:single_select",
+        "contact:Callback promised by:datetime",
+        "contact:Preferred contact method:single_select",
+        "contact:Reason for calling:text"
+      ],
+      "hooks": {
+        "dashboards": 0,
+        "analytics": 0,
+        "libraryFlavor": null,
+        "commDrafts": 0,
+        "aiInstructionSections": 0
+      }
+    },
+    "field_services": {
+      "label": "Field Services",
+      "description": "For trades: calls become work orders, scheduled to techs, flowing to estimates and invoices.",
+      "pagesOffPrefill": [],
+      "modulesHiddenPrefill": [
+        "booking",
+        "job",
+        "property",
+        "vehicle"
+      ],
+      "aiVoiceMode": null,
+      "aiSchedulingTarget": "work_order",
+      "aiIntake": true,
+      "customLcOffer": true,
+      "pageLabelOverrides": {},
+      "moduleRelabels": {},
+      "fieldTweaks": [],
+      "hooks": {
+        "dashboards": 1,
+        "analytics": 3,
+        "libraryFlavor": "field_services",
+        "commDrafts": 4,
+        "aiInstructionSections": 1
+      }
+    },
+    "recruitment_marketing": {
+      "label": "Recruitment Marketing",
+      "description": "For recruiters: ad clicks become candidates, nurtured into booked interviews.",
+      "pagesOffPrefill": [],
+      "modulesHiddenPrefill": [
+        "equipment",
+        "estimate",
+        "invoice",
+        "product",
+        "property",
+        "service_plan",
+        "task",
+        "vehicle",
+        "work_order"
+      ],
+      "aiVoiceMode": null,
+      "aiSchedulingTarget": "booking",
+      "aiIntake": false,
+      "customLcOffer": true,
+      "pageLabelOverrides": {},
+      "moduleRelabels": {
+        "booking": {
+          "label": "Interview",
+          "labelPlural": "Interviews"
+        },
+        "contact": {
+          "label": "Candidate",
+          "labelPlural": "Candidates"
+        }
+      },
+      "fieldTweaks": [
+        "contact:Availability date:date",
+        "contact:Candidate source:single_select",
+        "contact:Candidate stage:single_select",
+        "contact:Desired pay:text",
+        "contact:LinkedIn URL:url",
+        "contact:Prescreen checks:multi_select",
+        "contact:Resume link:url",
+        "contact:Role interest:text",
+        "job:Ad campaign:text",
+        "job:Client or hiring manager:text",
+        "job:Department:text",
+        "job:Employment type:single_select",
+        "job:Location:text",
+        "job:Openings count:number",
+        "job:Pay range:text",
+        "job:Target start:date",
+        "job:Work mode:single_select"
+      ],
+      "hooks": {
+        "dashboards": 1,
+        "analytics": 3,
+        "libraryFlavor": "recruitment_marketing",
+        "commDrafts": 4,
+        "aiInstructionSections": 1
+      }
+    }
+  },
+  "shape": {
+    "keys": [
+      "ai_receptionist",
+      "field_services",
+      "general",
+      "recruitment_marketing"
+    ],
+    "cellCount": 119
+  }
+}

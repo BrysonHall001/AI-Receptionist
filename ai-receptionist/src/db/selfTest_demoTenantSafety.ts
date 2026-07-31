@@ -278,8 +278,11 @@ async function main() {
   // DEVTOOLS TABS (authorised): the one-item strip is back, deliberately, because a second
   // tool is planned and the strip makes it a one-line registry entry. RE-PINNED at the same
   // strictness - exact title list, exact tab count.
-  check(JSON.stringify(toolTitles) === JSON.stringify(["Demo Data"]) && subTabs.length === 1,
-    `the TOOLS tab holds the demo-data tool behind a sub-tab strip (${toolTitles.join(" \u00b7 ")} \u00b7 ${subTabs.join(" \u00b7 ")}); the standalone sweep runner is still gone`);
+  // TEMPLATE BUILDER (authorised): the strip gains its second tool. Re-pinned to the INTENT -
+  // Demo Data is still the first tool behind the strip, and the standalone sweep runner is
+  // still gone - so a third tool does not break this again.
+  check(toolTitles[0] === "Demo Data" && subTabs[0] === "Demo Data" && !subTabs.some((t: string) => /sweep/i.test(t)),
+    `the TOOLS tab holds the demo-data tool first behind a sub-tab strip (${toolTitles.join(" \u00b7 ")} \u00b7 ${subTabs.join(" \u00b7 ")}); the standalone sweep runner is still gone`);
   // LAYER 1 moved from a dropdown to the TABLE: only demo tenants get a row.
   const tenantCells = $$(".dd-table-host tbody tr .adm-rowname").map((c: any) => c.textContent);
   check(tenantCells.every((n: string) => n.indexOf("dts-live") === -1 && n.indexOf("dts-real") === -1) && tenantCells.some((n: string) => n.indexOf("dts-banner") !== -1),

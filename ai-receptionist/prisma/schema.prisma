@@ -267,6 +267,34 @@ model UserTrustedDevice {
   @@index([userId])
 }
 
+/// A tenant template BUILT ON THE SCREEN, as opposed to the four that ship in code.
+///
+/// The four built-ins stay in code and are untouched by this table. Migrating them would be
+/// a rewrite of the thing every existing tenant was created from, for no gain, and leaving
+/// them alone means a bug here cannot break an existing template.
+///
+/// `spec` IS THE WHOLE TEMPLATE, one JSON blob rather than a column per field. The template
+/// shape has changed in four of the last six batches; columns would mean a migration each
+/// time, and nothing ever queries inside it - it is read whole, by key.
+///
+/// A row here is DATA ONLY. It carries pages, modules, field tweaks, relabels, label
+/// overrides and the AI settings. It does not carry content-pack hooks: those are data too
+/// (they are plain JSON widget definitions, not functions), but nothing on the builder screen
+/// authors them yet, so a built template saves them empty. The shape is ready for the batch
+/// that adds a widget step.
+model TenantTemplateRow {
+  id          String   @id @default(cuid())
+  /// Slug of the label. UNIQUE here, and additionally refused if it collides with a built-in.
+  key         String   @unique
+  label       String
+  description String
+  /// The whole TenantTemplate-shaped object. See tenantTemplates.ts.
+  spec        Json     @default("{}")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model UserSsoLink {
   id        String   @id @default(cuid())
   userId    String

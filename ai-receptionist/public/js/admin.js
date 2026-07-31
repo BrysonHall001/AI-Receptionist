@@ -210,6 +210,10 @@
    * .seg-fill-* classes; --seg-count drives its width and offset so a
    * two-segment control needs no second stylesheet.
    */
+  /** The AI-mode glyphs. Hoisted from inside the create wizard so the template builder uses
+   *  the SAME icons rather than a second copy of this line. */
+  const aiIcon = (mode) => (App.icons && App.icons.AI_STATE_ICONS && App.icons.AI_STATE_ICONS[mode]) || "";
+
   function segmentedControl(opts) {
     const segments = opts.segments || [];
     const scale = opts.scale === "sm" ? "sm" : "md";
@@ -1326,7 +1330,6 @@
     const vWrap = el("div"); vWrap.classList.add("adm-featcol", "adm-ai-left");
     const aiDesc = el("p", "cell-muted adm-ai-desc");
     function paintAiDesc() { aiDesc.textContent = AI_DESCS[draft.voiceMode || "OFF"]; }
-    const aiIcon = (mode) => (App.icons && App.icons.AI_STATE_ICONS && App.icons.AI_STATE_ICONS[mode]) || "";
     const aiSeg = segmentedControl({
       segments: [
         { key: "OFF", label: "Off", icon: aiIcon("OFF") },
@@ -1873,6 +1876,7 @@
   // modal's "run the sweep when seeding finishes" option are elsewhere and untouched.)
   const TOOL_SUBTABS = [
     { key: "demodata", label: "Demo Data", mount: (host) => renderDemoDataTool(host) },
+    { key: "template", label: "Create a Template", mount: (host) => renderTemplateBuilder(host) },
     // future tools register here - one line each
   ];
   function renderToolsSection(panel) {
@@ -1890,6 +1894,239 @@
   // starts from a row, not in a permanent form. Batch 35's guards are unchanged:
   // only isDemo tenants are listed AND the endpoints refuse anything else.
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  /** TEMPLATE BUILDER (part 1) — build a tenant template without writing code.
+   *
+   *  It REUSES the Create Tenant step-4 controls rather than authoring parallel ones:
+   *  lockChecklist for the page toggles, the same module checklist shape, and
+   *  segmentedControl for the AI receptionist setting. What it saves is a `spec` blob in
+   *  exactly the shape a code template has, so the resolver hands both kinds downstream
+   *  identically and there is only ever ONE creation path.
+   *
+   *  Its limits are stated ON THE SCREEN rather than left to be discovered - see the note
+   *  block below. */
+  function renderTemplateBuilder(parent) {
+    const sec = el("section", "tool-card card");
+    sec.appendChild(el("h3", "tool-h", "Create a Template"));
+    sec.appendChild(el("p", "cell-muted tool-hint", "Build a starting point for new tenants \u2014 which pages and modules they begin with, what the AI receptionist does, and any extra fields. It appears in Create tenant beside the built-in ones."));
+    parent.appendChild(sec);
+
+    const listHost = el("div", "tb-list");
+    sec.appendChild(listHost);
+    const formHost = el("div", "tb-form u-hidden");
+    sec.appendChild(formHost);
+
+    let rows = [];
+    let draft = null;        // { id, label, description, spec }
+    let modules = [];        // [{ key, labelPlural, togglable }] - the SAME list step 4 loads
+
+    // ---- the honest limits, on screen ----
+    function limitsNote() {
+      const n = el("div", "tb-limits");
+      n.innerHTML = `<p class="u-m-0"><strong>What a template you build carries.</strong> The pages and modules a new tenant starts with, what its AI receptionist does, any label changes, and extra fields on its modules.</p>
+        <p class="cell-muted u-mb-0">What it does not carry yet: the example records, ready-made dashboards and tailored Learning Center material that Field Services and Recruitment Marketing come with. Those are still written in code. A tenant made from your template is complete and correct \u2014 it simply starts emptier.</p>`;
+      return n;
+    }
+
+    async function load() {
+      listHost.innerHTML = "";
+      listHost.appendChild(el("p", "cell-muted", "Loading\u2026"));
+      try {
+        const r = await App.api("/api/admin/template-rows");
+        rows = (r && r.rows) || [];
+        // The module list comes from the endpoint step 4 already uses, so a module added to
+        // the product appears here with no change to this screen - and `togglable` carries
+        // the same core-module rule rather than this screen inventing a second one.
+        const m = await App.api("/api/admin/portals/record-type-options");
+        modules = (m && m.options) || [];
+      } catch (e) { listHost.innerHTML = ""; listHost.appendChild(el("p", "cell-muted", "Couldn't load your templates.")); return; }
+      paintList();
+    }
+
+    function paintList() {
+      listHost.innerHTML = "";
+      const bar = el("div", "add-user acct-row");
+      const add = el("button", "btn btn-primary btn-sm", "+ New template");
+      add.onclick = () => openForm(null);
+      bar.appendChild(add);
+      listHost.appendChild(bar);
+      if (!rows.length) {
+        listHost.appendChild(el("p", "cell-muted", "You haven't built any templates yet."));
+        return;
+      }
+      const tbl = el("table", "mini-table");
+      tbl.innerHTML = `<thead><tr><th class="pt-t25">Template</th><th class="pt-t25">Description</th><th class="pt-rt">Edit</th></tr></thead>`;
+      const body = el("tbody");
+      rows.forEach((row) => {
+        const tr = el("tr");
+        tr.appendChild(el("td", null, esc(row.label)));
+        tr.appendChild(el("td", "cell-muted", esc(row.description || "")));
+        const tdc = el("td", "pt-t24");
+        const b = el("button", "btn btn-ghost btn-sm", "Edit");
+        b.onclick = () => openForm(row);
+        tdc.appendChild(b);
+        tr.appendChild(tdc);
+        body.appendChild(tr);
+      });
+      tbl.appendChild(body);
+      listHost.appendChild(tbl);
+    }
+
+    function openForm(row) {
+      draft = row
+        ? { id: row.id, label: row.label, description: row.description || "", spec: JSON.parse(JSON.stringify(row.spec || {})) }
+        : { id: null, label: "", description: "", spec: { pagesOffPrefill: [], modulesHiddenPrefill: [], aiVoiceMode: null, fieldTweaks: [], pageLabelOverrides: {}, moduleRelabels: {}, customLcOffer: false } };
+      listHost.classList.add("u-hidden");
+      formHost.classList.remove("u-hidden");
+      formHost.innerHTML = "";
+      formHost.appendChild(limitsNote());
+
+      // ---- name + description ----
+      const idRow = el("div", "tb-idrow");
+      const nameCol = el("div", "adm-fcol");
+      nameCol.appendChild(el("label", "field-label", "Template name"));
+      const nameInp = el("input", "input"); nameInp.value = draft.label; nameInp.setAttribute("placeholder", "Food Service");
+      nameCol.appendChild(nameInp);
+      const descCol = el("div", "adm-fcol");
+      descCol.appendChild(el("label", "field-label", "Description"));
+      const descInp = el("input", "input"); descInp.value = draft.description; descInp.setAttribute("placeholder", "Kitchens and counters \u2014 orders, not jobs.");
+      descCol.appendChild(descInp);
+      idRow.appendChild(nameCol); idRow.appendChild(descCol);
+      formHost.appendChild(idRow);
+      if (draft.id) {
+        const k = el("p", "cell-muted tb-key", "");
+        k.textContent = "This template's identifier never changes, so tenants already made from it stay linked. Renaming changes the words only.";
+        formHost.appendChild(k);
+      }
+
+      // ---- pages: the SAME control the wizard uses ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "Pages a new tenant starts with"));
+      const pagesHost = el("div");
+      formHost.appendChild(pagesHost);
+      lockChecklist(pagesHost, draft.spec.pagesOffPrefill || [], (arr) => { draft.spec.pagesOffPrefill = arr; }, true);
+
+      // ---- modules ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "Modules a new tenant starts with"));
+      const modHost = el("div");
+      formHost.appendChild(modHost);
+      buildModuleToggles(modHost);
+
+      // ---- the AI receptionist, the SAME segmented control ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "AI receptionist"));
+      const aiHost = el("div", "adm-ai-row");
+      const aiLeft = el("div", "adm-featcol adm-ai-left");
+      // The SAME control and the SAME three modes the wizard offers - read from its own
+      // call rather than invented, so a mode added there appears here too.
+      const aiSeg = segmentedControl({
+        segments: [
+          { key: "OFF", label: "Off", icon: aiIcon("OFF") },
+          { key: "WALKIE", label: "Standard", icon: aiIcon("WALKIE") },
+          { key: "SMOOTH", label: "Premium", icon: aiIcon("SMOOTH") },
+        ],
+        value: draft.spec.aiVoiceMode || "OFF",
+        onChange: (mode) => { draft.spec.aiVoiceMode = mode === "OFF" ? null : mode; },
+      });
+      aiLeft.appendChild(aiSeg.el);
+      aiHost.appendChild(aiLeft);
+      aiHost.appendChild(el("span", "adm-ai-div"));
+      const aiRight = el("div", "adm-ai-right");
+      aiRight.appendChild(el("p", "adm-ai-desc cell-muted", "What the receptionist does on a tenant made from this template. The hub can still change it per tenant."));
+      aiHost.appendChild(aiRight);
+      formHost.appendChild(aiHost);
+
+      // ---- extra fields ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "Extra fields"));
+      const fieldsHost = el("div", "tb-fields");
+      formHost.appendChild(fieldsHost);
+      buildFieldEditor(fieldsHost);
+
+      // ---- save / cancel ----
+      const actions = el("div", "add-user acct-row u-mt-8");
+      const save = el("button", "btn btn-primary btn-sm", draft.id ? "Save changes" : "Create template");
+      const cancel = el("button", "btn btn-ghost btn-sm", "Cancel");
+      cancel.onclick = () => { formHost.classList.add("u-hidden"); listHost.classList.remove("u-hidden"); };
+      save.onclick = async () => {
+        draft.label = nameInp.value.trim();
+        draft.description = descInp.value.trim();
+        if (!draft.label) { toast("Give the template a name", true); return; }
+        save.disabled = true;
+        try {
+          await App.api("/api/admin/template-rows", { method: "POST", body: JSON.stringify({ id: draft.id, label: draft.label, description: draft.description, spec: draft.spec }) });
+          toast(draft.id ? "Template saved" : "Template created");
+          formHost.classList.add("u-hidden"); listHost.classList.remove("u-hidden");
+          await load();
+        } catch (err) { toast(err.message, true); save.disabled = false; }
+      };
+      actions.appendChild(save); actions.appendChild(cancel);
+      formHost.appendChild(actions);
+    }
+
+    /** Module on/off. Removing a module here only edits the BLUEPRINT - there is no tenant
+     *  behind it and nothing here writes to one. */
+    function buildModuleToggles(host) {
+      host.innerHTML = "";
+      const hidden = new Set(draft.spec.modulesHiddenPrefill || []);
+      modules.forEach((m) => {
+        const row = el("label", "adm-row-click");
+        const cb = el("input"); cb.type = "checkbox";
+        cb.checked = !hidden.has(m.key);
+        cb.disabled = !m.togglable;                     // the core-module rule, from the server
+        cb.onchange = () => {
+          if (cb.checked) hidden.delete(m.key); else hidden.add(m.key);
+          draft.spec.modulesHiddenPrefill = Array.from(hidden);
+        };
+        row.appendChild(cb);
+        row.appendChild(el("span", null, esc(m.labelPlural || m.label || m.key)));
+        host.appendChild(row);
+      });
+    }
+
+    /** Extra fields per module, in the SAME shape a code template's fieldTweaks use - which
+     *  is also the shape createField already takes, so the applier needs no new branch.
+     *  Views and pipelines are NOT here: those are per-tenant records with stage rows behind
+     *  them, and expressing them as a blueprint is its own piece of work. */
+    function buildFieldEditor(host) {
+      host.innerHTML = "";
+      const tweaks = draft.spec.fieldTweaks || (draft.spec.fieldTweaks = []);
+      const tbl = el("table", "mini-table");
+      tbl.innerHTML = `<thead><tr><th class="pt-t25">Module</th><th class="pt-t25">Field</th><th class="pt-t25">Type</th><th class="pt-rt">Remove</th></tr></thead>`;
+      const body = el("tbody");
+      tweaks.forEach((tw, i) => {
+        const tr = el("tr");
+        tr.appendChild(el("td", null, esc(tw.moduleKey)));
+        tr.appendChild(el("td", null, esc(tw.field && tw.field.label)));
+        tr.appendChild(el("td", "cell-muted", esc(tw.field && tw.field.type)));
+        const td = el("td", "pt-t24");
+        const x = el("button", "btn btn-ghost btn-sm", "\u00d7");
+        x.onclick = () => { tweaks.splice(i, 1); buildFieldEditor(host); };
+        td.appendChild(x); tr.appendChild(td);
+        body.appendChild(tr);
+      });
+      tbl.appendChild(body);
+      host.appendChild(tbl);
+
+      const addRow = el("div", "add-user acct-row");
+      const modSel = el("select", "input");
+      modules.forEach((m) => { const o = el("option", null, esc(m.labelPlural || m.label || m.key)); o.value = m.key; modSel.appendChild(o); });
+      const labInp = el("input", "input"); labInp.setAttribute("placeholder", "Field name");
+      const typeSel = el("select", "input");
+      ["text", "textarea", "number", "currency", "date", "datetime", "checkbox", "single_select", "phone", "email", "url"]
+        .forEach((t) => { const o = el("option", null, t); o.value = t; typeSel.appendChild(o); });
+      const add = el("button", "btn btn-ghost btn-sm", "Add field");
+      add.onclick = () => {
+        const label = labInp.value.trim();
+        if (!label) { toast("Name the field", true); return; }
+        tweaks.push({ moduleKey: modSel.value, field: { label, type: typeSel.value } });
+        labInp.value = "";
+        buildFieldEditor(host);
+      };
+      addRow.appendChild(modSel); addRow.appendChild(labInp); addRow.appendChild(typeSel); addRow.appendChild(add);
+      host.appendChild(addRow);
+    }
+
+    load();
+  }
+
   function renderDemoDataTool(parent) {
     const sec = el("section", "tool-card card");
     sec.appendChild(el("h3", "tool-h", "Demo Data"));

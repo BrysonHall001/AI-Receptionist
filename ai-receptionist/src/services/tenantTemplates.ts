@@ -518,3 +518,87 @@ export async function applyTemplateAtCreation(tenantId: string, template: Tenant
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { SYSTEM_RECORD_TYPES } = require("./recordTypeService");
 validateTemplates(SYSTEM_RECORD_TYPES.map((d: { key: string }) => d.key));
+
+// ===========================================================================
+// TEMPLATE BUILDER (part 1) — code templates and BUILT templates, one shape.
+// ===========================================================================
+//
+// The four built-ins above stay exactly as they are. Everything here is ADDITIVE: a built
+// template is a TenantTemplateRow whose `spec` is the same object shape, and the resolver
+// hands both kinds to the same downstream code, which cannot tell them apart.
+//
+// WHY getTemplate() BELOW IS UNCHANGED AND SYNCHRONOUS: eleven self-tests call it directly,
+// and so do several places that only ever want a built-in. Making it async would have churned
+// all of them for no gain. The DB-aware resolver is a SEPARATE async function, and only the
+// four production call sites that must see built templates use it.
+
+/** Keys that a built template may never take. */
+export function reservedTemplateKeys(): string[] {
+  return TENANT_TEMPLATES.map((t) => t.key);
+}
+
+/** "Food Service" -> "food_service". Stable: the key never changes once saved. */
+export function slugTemplateKey(label: string): string {
+  return String(label || "").toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "template";
+}
+
+/**
+ * A built template's spec, normalised into the SAME shape a code template has.
+ *
+ * Anything missing falls back to the empty/neutral value, so a spec saved by an older
+ * version of the builder still produces a valid template rather than throwing downstream.
+ * hooks are ALWAYS empty for a built template - see the model comment.
+ */
+export function specToTemplate(row: { key: string; label: string; description: string; spec: any }): TenantTemplate {
+  const s = (row.spec || {}) as any;
+  const arr = (v: any) => (Array.isArray(v) ? v : []);
+  const obj = (v: any) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+  return {
+    key: row.key,
+    label: row.label,
+    description: row.description,
+    pagesOffPrefill: arr(s.pagesOffPrefill),
+    modulesHiddenPrefill: arr(s.modulesHiddenPrefill),
+    aiVoiceMode: s.aiVoiceMode ?? null,
+    aiSchedulingTarget: s.aiSchedulingTarget ?? null,
+    aiIntake: s.aiIntake ?? null,
+    fieldTweaks: arr(s.fieldTweaks),
+    pageLabelOverrides: obj(s.pageLabelOverrides),
+    customLcOffer: !!s.customLcOffer,
+    moduleRelabels: obj(s.moduleRelabels),
+    hooks: { ...EMPTY_HOOKS },
+  } as TenantTemplate;
+}
+
+/**
+ * THE ONE RESOLVER. Code first, then the table.
+ *
+ * Code wins on a collision, always - a built row can never shadow a built-in, and the builder
+ * refuses such a key at save time so the situation should not arise. Belt and braces, because
+ * a shadowed built-in would silently change what every tenant made from it receives.
+ */
+export async function resolveTemplate(key: string | null | undefined): Promise<TenantTemplate | null> {
+  if (!key) return null;
+  const built = getTemplate(key);
+  if (built) return built;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { prisma } = require("../db/client");
+    const row = await (prisma as any).tenantTemplateRow.findUnique({ where: { key: String(key) } });
+    return row ? specToTemplate(row) : null;
+  } catch { return null; }
+}
+
+/** Every template the wizard should offer: the four built-ins, then the built ones. */
+export async function listAllTemplates(): Promise<TenantTemplate[]> {
+  const out: TenantTemplate[] = [...TENANT_TEMPLATES];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { prisma } = require("../db/client");
+    const rows = await (prisma as any).tenantTemplateRow.findMany({ orderBy: { createdAt: "asc" } });
+    const reserved = new Set(reservedTemplateKeys());
+    for (const r of rows) if (!reserved.has(r.key)) out.push(specToTemplate(r));
+  } catch { /* no table yet, or no database: the built-ins alone are a valid answer */ }
+  return out;
+}

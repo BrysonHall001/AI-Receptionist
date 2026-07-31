@@ -197,8 +197,10 @@ async function main() {
   // second tool is planned. The thing this assertion actually guards - that the DETECTOR
   // SWEEP tool and its tab are gone - is unchanged and still asserted exactly.
   const dpSubs = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
-  check(dpSubs.length === 1 && dpSubs[0] === "Demo Data" && !/Detector sweep/i.test(w.document.body.textContent || ""),
-    `the strip holds Demo Data only \u2014 the Detector Sweep sub-tab and its tool are still absent (${dpSubs.join(", ")})`);
+  // TEMPLATE BUILDER (authorised): the strip gained Create a Template. What this assertion
+  // exists to protect is that the DETECTOR SWEEP tool is still gone - that is unchanged.
+  check(dpSubs[0] === "Demo Data" && !dpSubs.some((t: string) => /sweep/i.test(t)) && !/Detector sweep/i.test(w.document.body.textContent || ""),
+    `Demo Data leads the strip and the Detector Sweep sub-tab and its tool are still absent (${dpSubs.join(", ")})`);
   const heads = $$(".dd-table-host thead th").map((h: any) => h.textContent.replace(/[\u25be\u25bc\u25b4]/g, "").trim()).filter(Boolean);
   check(heads[0] === "Actions", `ACTIONS IS THE FIRST COLUMN \u2014 the controls can never be what scrolls away (${heads.join(" | ")})`);
   const firstCell = $(".dd-table-host tbody tr td:first-child");

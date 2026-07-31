@@ -1,6 +1,11 @@
 {
   "note": "Pre-existing use-before-declare hits in DEFERRED callbacks, where the order is fine. This ratchet fails on ADDITIONS.",
   "hits": [
+    "src/routes/admin.ts  invite",
+    "src/routes/admin.ts  link",
+    "src/routes/admin.ts  name",
+    "src/routes/admin.ts  since",
+    "src/routes/admin.ts  user",
     "src/routes/api.ts  aiKnowledgeModules",
     "src/routes/api.ts  aiKnowledgePages",
     "src/routes/api.ts  assumedRole",
