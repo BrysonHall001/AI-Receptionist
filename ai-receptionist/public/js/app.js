@@ -651,7 +651,9 @@
     } else {
       text = "Impersonation active";
     }
-    banner.appendChild(el("span", "imp-banner-text", text));
+    const impText = el("span", "imp-banner-text", text);
+    if (App.tips) App.tips.attach(impText, "impersonation");
+    banner.appendChild(impText);
     const exit = el("button", "btn btn-sm imp-banner-exit", "Exit");
     exit.onclick = exitImpersonation;
     banner.appendChild(exit);

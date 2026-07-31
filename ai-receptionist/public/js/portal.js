@@ -4052,7 +4052,9 @@
    */
   function buildFieldLibrary(col, adapter) {
     const a = adapter || FIELD_LIBRARY_TENANT_ADAPTER;
-    col.appendChild(el("div", "mf-col-title", "Field library"));
+    const libTitle = el("div", "mf-col-title", "Field library");
+    if (App.tips) App.tips.attach(libTitle, "field_key_rename");
+    col.appendChild(libTitle);
     col.appendChild(el("p", "mf-col-hint", "Drag a field type onto a section to add it."));
     const list = el("div", "mf-lib-list");
     const canEdit = a.canEdit();
@@ -5030,7 +5032,9 @@
   function structureSection(adapter) {
     const _s = adapter || STRUCTURE_TENANT_ADAPTER;
     const sec = el("div", "mf-structure");
-    sec.appendChild(el("div", "fields-section-name mf-structure-title", "Structure & behavior"));
+    const structTitle = el("div", "fields-section-name mf-structure-title", "Structure & behavior");
+    if (App.tips) App.tips.attach(structTitle, "stages_vs_statuses");
+    sec.appendChild(structTitle);
     const on = _s.pipelineOn();
 
     const tRow = el("div", "card mf-pipeline-card");
@@ -5243,7 +5247,9 @@
       // The degrade warning shows when the STORED target resolves to none.
       const capable = App.visibleRecordTypes(types).filter((t) => (t.key === "booking" || t.key === "work_order"));
       const tgtRow = el("div", "ai-target-row");
-      tgtRow.appendChild(el("label", "field-label", "Schedules into"));
+      const tgtLabel = el("label", "field-label", "The receptionist books into");
+      if (App.tips) App.tips.attach(tgtLabel, "ai_scheduling_target");
+      tgtRow.appendChild(tgtLabel);
       const tgtSel = el("select", "input"); tgtSel.id = "ai-schedule-target";
       capable.forEach((t) => { const o = document.createElement("option"); o.value = t.key; o.textContent = t.labelPlural || t.label || t.key; tgtSel.appendChild(o); });
       const noneOpt = document.createElement("option"); noneOpt.value = "none"; noneOpt.textContent = "Nothing — take messages and requests only"; tgtSel.appendChild(noneOpt);
@@ -5535,6 +5541,8 @@
               ${gridHtml(role)}
             </div>
           </div>`;
+        // The tip explains what a custom role REPLACES, which the screen does not say.
+        if (App.tips) { const h2 = host.querySelector("h2.settings-h"); if (h2) App.tips.attach(h2, "custom_role"); }
 
         host.querySelectorAll("[data-system]").forEach((n) => n.onclick = () => { sel = { kind: "system", role: n.getAttribute("data-system") }; render(); });
         host.querySelectorAll("[data-custom]").forEach((n) => n.onclick = () => { sel = { kind: "custom", id: n.getAttribute("data-custom") }; render(); });
@@ -6286,6 +6294,7 @@
           }
           statusEl.textContent = "On. " + st.recoveryRemaining + " recovery code" + (st.recoveryRemaining === 1 ? "" : "s") + " left"
             + (st.trustedDevices ? " \u00b7 " + st.trustedDevices + " remembered device" + (st.trustedDevices === 1 ? "" : "s") : "") + ".";
+          if (App.tips) { App.tips.attach(statusEl, "recovery_codes"); App.tips.attach(statusEl, "trusted_devices"); }
           const regen = el("button", "btn btn-ghost btn-sm", "New recovery codes");
           regen.onclick = () => confirmThen("/api/account/mfa/recovery-codes", "New recovery codes", showCodes);
           const off = el("button", "btn btn-ghost btn-sm", "Turn off");

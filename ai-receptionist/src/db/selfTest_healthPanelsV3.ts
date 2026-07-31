@@ -119,7 +119,7 @@ async function main() {
   check(adminRoutes.includes("googleConnection.findMany({ select: { tenantId: true, status: true, lastSyncedAt: true, lastSyncError: true } })") && adminRoutes.includes('resourceCalendarMap.groupBy({ by: ["tenantId"]'), "Google Calendar: GoogleConnection status/lastSyncedAt/lastSyncError + ResourceCalendarMap counts");
   check(adminRoutes.includes('FROM "Charge" ORDER BY "tenantId", "createdAt" DESC'), "Stripe: the latest Charge per tenant (read-only)");
   check(adminJs.includes('if (!dataCfg && (checkKey === "twilio" || checkKey === "google" || checkKey === "stripe"))') && adminJs.includes('el("h4", "settings-sub", "Per-tenant configuration")'), "the table sits between the status header and check history on exactly the three Tier-B tiles");
-  for (const col of ['"Phone number"', '"Voice mode"', '"Webhook OK?"', '"Connected?"', '"Calendars mapped"', '"Sync"', '"Billing status"', '"Stripe customer?"', '"Last charge"']) check(adminJs.includes(`label: ${col}`), `Tier-B column: ${col}`);
+  for (const col of ['"Phone number"', '"Voice mode"', '"Webhook OK?"', '"Connected?"', '"Calendars mapped"', '"Sync"', '"Billing status"', '"Set up for card payments?"', '"Last charge"']) check(adminJs.includes(`label: ${col}`), `Tier-B column: ${col}`);
   try {
     const { prisma } = require("../db/client");
     const t = await (prisma as any).tenant.findFirst({ select: { phoneNumber: true, voiceMode: true, billingStatus: true, stripeCustomerId: true } });

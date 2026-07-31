@@ -959,6 +959,7 @@
     // columns' headings, descriptions and content all begin at the same height.
     const hint = el("p", "cell-muted"); hint.classList.add("adm-hint");
     hint.textContent = "Checked = the module is on for this tenant and appears in its portal. Uncheck a module to switch it OFF — it disappears from Settings → Modules & Fields for everyone in the tenant, including its Portal Admin, though nothing is deleted and switching it back on restores it exactly. (A module's fields, layout and stages are managed inside the portal, not here.)";
+    if (App.tips) App.tips.attach(hint, "modules_vs_permissions");
     const card = el("div", "card adm-card2 adm-mp-card");
     // HUB POLISH 3: the description lives INSIDE the card. The two hints are near the
     // same length but sit in a 4fr and a 6fr column, so they wrap to DIFFERENT line
@@ -1432,6 +1433,7 @@
     tplWrap.appendChild(tplBand);
     tplWrap.appendChild(tplRow);
     const tplReset = el("p", "cell-muted adm-tpl-reset"); // filled on a switch; reserved space otherwise
+    if (App.tips) App.tips.attach(tplReset, "template_prefill");
     tplWrap.appendChild(tplReset);
     s4.appendChild(tplWrap);
     draft.template = "general";
@@ -1688,6 +1690,7 @@
     finish.onclick = async () => {
       const nameEl = document.querySelector("#sp-name");
       const emailEl = document.querySelector("#sp-email");
+      if (App.tips) { const bl = document.querySelector('label[for="sp-billing"]'); if (bl && !bl.querySelector(".tip-wrap")) App.tips.attach(bl, "billing_trial"); }
       const billingEl = document.querySelector("#sp-billing");
       const name = nameEl ? nameEl.value.trim() : "";
       const notifyEmail = emailEl ? emailEl.value.trim() : "";
@@ -3007,6 +3010,7 @@
           // Wipe is GHOST, not danger: its guard is the typed-name confirmation in its own
           // modal, and the tenants list's precedent is one danger button per row.
           const wipe = el("button", "btn btn-ghost btn-sm", "Wipe");
+          if (App.tips) { const tw = App.tips.tip("demo_wipe"); if (tw) wipe.insertAdjacentElement("afterend", tw); }
           wipe.onclick = (e) => { e.stopPropagation(); openWipeModal(r); };
           box.appendChild(wipe);
         } else {
@@ -3493,7 +3497,7 @@
     ],
     stripe: [
       { label: "Billing status", render: (r) => rn(r.billingStatus) },
-      { label: "Stripe customer?", render: (r) => r.hasStripeCustomer ? `<span class="pill success">yes</span>` : "\u2014" },
+      { label: "Set up for card payments?", render: (r) => r.hasStripeCustomer ? `<span class="pill success">yes</span>` : "\u2014" },
       { label: "Last charge", render: (r) => r.lastChargeStatus ? `${esc(r.lastChargeStatus)} ${rnDate(r.lastChargeAt)}` : "\u2014" },
     ],
   };
