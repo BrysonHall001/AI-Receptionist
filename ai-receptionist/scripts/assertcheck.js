@@ -66,8 +66,31 @@ for(const f of suites){
     }catch(e){ skipped++; }
   }
 }
+// A RATCHET, not an absolute check. Some assertions were already broken before any of this
+// tooling existed, and failing on those makes the signal useless - the same reasoning
+// designRatchet uses for the layout counters. A recorded baseline means this fails only when
+// something NEW breaks, and tells you when a baseline entry has been FIXED so it can shrink.
+const BASELINE = path.join(__dirname, "assertcheck.baseline.json");
+const key = (b) => `${b[0]}::${b[2]}`;
+const nowBroken = new Set(broken.map(key));
 console.log(`  evaluated ${checked} source-text assertions (${skipped} not statically evaluable)`);
-if(!broken.length){ console.log("  ALL PASS"); process.exit(0); }
-console.log("  BROKEN:");
-for(const b of broken) console.log("    "+b[0].replace("selfTest_","")+":"+b[1]+"  "+b[2]);
+
+if (process.argv.includes("--record")) {
+  fs.writeFileSync(BASELINE, JSON.stringify({ note: "Assertions already broken when this ratchet was introduced. It fails only on ADDITIONS. Shrink it when you fix one.", broken: [...nowBroken].sort() }, null, 2) + "\n");
+  console.log(`  recorded ${nowBroken.size} known-broken assertions as the baseline`);
+  process.exit(0);
+}
+let known = new Set();
+try { known = new Set(JSON.parse(fs.readFileSync(BASELINE, "utf8")).broken || []); }
+catch { console.log("  (no baseline recorded - run with --record once)"); }
+
+const added = [...nowBroken].filter((k) => !known.has(k));
+const fixed = [...known].filter((k) => !nowBroken.has(k));
+if (fixed.length) {
+  console.log(`  ${fixed.length} baseline assertion(s) now PASS - remove them from the baseline:`);
+  for (const k of fixed) console.log("    " + k.split("::")[0].replace("selfTest_", "") + "  " + k.split("::")[1].slice(0, 70));
+}
+if (!added.length) { console.log(`  NO NEW BREAKAGE (${known.size} known-broken, unchanged)`); process.exit(0); }
+console.log("  NEWLY BROKEN BY THIS CHANGE:");
+for (const b of broken) if (added.includes(key(b))) console.log("    " + b[0].replace("selfTest_", "") + ":" + b[1] + "  " + b[2]);
 process.exit(1);

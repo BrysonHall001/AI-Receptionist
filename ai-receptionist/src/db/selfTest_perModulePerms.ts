@@ -18,6 +18,8 @@ const { can, moduleAreaKey, getPermissionCatalogFor, effectiveMatrix, permission
 const { readFileSync } = require("fs");
 const { resolve: resolvePath } = require("path");
 const { createPortal } = require("../services/portalService");
+const { createUser } = require("../services/userService");
+const { createApp } = require("../app");
 const { listRecordTypes } = require("../services/recordTypeService");
 
 const db = prisma as any;
@@ -213,6 +215,35 @@ async function main() {
     }
   }
   check(ungrantable === "", `every row \u00d7 every right is grantable, checked generically over the tenant's own modules${ungrantable}`);
+
+  // ---------- (8b) THE ENDPOINT ITSELF ----------
+  // Everything above drives the SERVICE functions. That is exactly how a use-before-declare
+  // in the ROUTE shipped and 500'd this page: `systemRoles` read `moduleAreas` inside a
+  // .map() callback declared above it, which TypeScript cannot flag because it cannot prove a
+  // callback runs immediately - and .map() runs at once. Nothing here called the endpoint, so
+  // nothing caught it. This does.
+  console.log("\n(8b) GET /api/portal-roles actually responds:");
+  const srv = createApp().listen(0);
+  await new Promise((r) => srv.once("listening", r));
+  const base = `http://127.0.0.1:${(srv.address() as any).port}`;
+  const pw = "Correct-Horse-9!";
+  const admin: any = await createUser({ email: `pmp-admin-${stamp}@example.invalid`, name: "PMP Admin", password: pw, role: "PORTAL_ADMIN", tenantId: t.id });
+  cleanup.push(admin.id);
+  const login = await fetch(base + "/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: admin.email, password: pw }) });
+  const jar = login.headers.getSetCookie ? login.headers.getSetCookie().join("; ") : String(login.headers.get("set-cookie") || "");
+  const r = await fetch(base + "/api/portal-roles", { headers: { Cookie: jar } });
+  let payload: any = null; try { payload = await r.json(); } catch { /* */ }
+  check(r.status === 200, `the endpoint returns 200 (got ${r.status}) \u2014 a 500 here is the whole page failing to load`);
+  const rows = ((payload && payload.catalog) || []).filter((a: any) => a.section === "Modules");
+  check(rows.length >= 2, `\u2026and the payload carries ${rows.length} module rows`);
+  check(rows.every((a: any) => Array.isArray(a.rights) && a.rights.length === 3),
+    "\u2026each with its three rights, so the screen has something to draw");
+  const sysAdmin = ((payload && payload.systemRoles) || []).find((x: any) => x.role === "PORTAL_ADMIN");
+  check(!!sysAdmin && rows.every((a: any) => sysAdmin.permissions[a.key] && sysAdmin.permissions[a.key].edit === true),
+    "\u2026the reference matrix in the SAME response has a real cell for every module row");
+  check(!!payload.myPermissions && rows.every((a: any) => payload.myPermissions[a.key] && payload.myPermissions[a.key].edit === true),
+    "\u2026and so does the granter's ceiling, which is what lets a checkbox render");
+  srv.close();
 
   // ---------- (9) the columns line up ----------
   console.log("\n(9) the permission columns:");

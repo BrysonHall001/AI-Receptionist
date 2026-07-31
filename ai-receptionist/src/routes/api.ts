@@ -2687,11 +2687,17 @@ apiRouter.get("/portal-roles", async (req: Request, res: Response) => {
   const countMap = new Map<string, number>();
   counts.forEach((c) => { if (c.customRoleId) countMap.set(c.customRoleId, c._count?._all ?? 0); });
   const customWithCounts = customRoles.map((r: any) => ({ ...r, assignedCount: countMap.get(r.id) || 0 }));
-  const systemRoles = SYSTEM_ROLES.filter((s) => PER_PORTAL_SYSTEM_ROLES.includes(s.role)).map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role, moduleAreas) }));
   // The dynamic module areas this tenant publishes. BOTH matrices below must know about them
-  // or the editor draws a dash where a checkbox belongs - which is exactly what shipped.
+  // or the editor draws a dash where a checkbox belongs.
+  //
+  // DECLARED BEFORE ANYTHING USES IT, and that ordering is load-bearing: systemRoles below
+  // reads moduleAreas inside a .map() callback. TypeScript cannot prove a callback runs
+  // immediately, so it does NOT flag use-before-declaration there - but .map() executes at
+  // once, so with the declaration underneath this threw "Cannot access 'moduleAreas' before
+  // initialization" at runtime, 500'd GET /portal-roles, and the whole page failed to load.
   const catalog = await getPermissionCatalogFor(tenantId);
   const moduleAreas = catalog.filter((a: any) => a.section === "Modules").map((a: any) => a.key);
+  const systemRoles = SYSTEM_ROLES.filter((s) => PER_PORTAL_SYSTEM_ROLES.includes(s.role)).map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role, moduleAreas) }));
   const myPermissions = await effectiveMatrix(req.user as any, moduleAreas); // the creator's own level (the grant ceiling)
   // Tenant-aware: one row per module this tenant has, named the way it names them. With no
   // tenant (the master hub) this returns the static catalog unchanged.
