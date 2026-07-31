@@ -253,6 +253,90 @@ async function main() {
     `\u2026a toast-eligible row offers all three states (${segStates(leadRow).join("/")})`);
   check(JSON.stringify(segStates(badgeRow)) === JSON.stringify(["off", "badge"]) && /Badge only/.test(badgeRow.textContent),
     `\u2026and a badge-only row offers no toast at all (${segStates(badgeRow).join("/")})`);
+  // ---------- NOTIFICATION ROWS (spacing + alignment batch) ----------
+  // This panel already renders live above with real categories, so the settings half is
+  // asserted against the SERVER rather than against markup: the cosmetic fixes are worthless
+  // if a click stops saving, and that is the failure worth guarding.
+  console.log("\n(5b) notification rows \u2014 the settings, then the spacing:");
+
+  // THE ONE THAT MATTERS. Choose a value in the UI, reload the panel, and read it back.
+  // Click, then WAIT FOR THE THING BEING ASSERTED - the saved row - rather than sleeping and
+  // hoping. The assertion is about persistence, so the poll is against persistence.
+  const catOf = (row: any) => (row.querySelector(".notif-pref-title") || {}).textContent;
+  const keyFor = (row: any) => (svc.NOTIFICATION_CATEGORIES.find((c: any) => c.label === catOf(row)) || {}).key;
+  const prefsNow = async () => {
+    const r: any = await db.user.findUnique({ where: { id: alice.id }, select: { notifPrefs: true } });
+    return (r && r.notifPrefs) || {};
+  };
+  const clickState = async (row: any, state: string) => {
+    const btn = Array.from(row.querySelectorAll(".notif-pref-seg .seg-btn")).find((b2: any) => b2.dataset.state === state) as any;
+    if (btn) btn.click();
+    const k = keyFor(row);
+    const wantToast = state === "toast";
+    await untilAsync(async () => {
+      const p2 = (await prefsNow())[k];
+      return !!p2 && p2.on === true && p2.toast === wantToast;
+    }, 6000);
+  };
+  await clickState(leadRow, "toast");
+  await clickState(badgeRow, "badge");
+  // Read the saved value straight off the USER ROW rather than through another HTTP call:
+  // notifPrefs is where it actually lands, so this proves persistence and not just an echo.
+  const savedRow: any = await db.user.findUnique({ where: { id: alice.id }, select: { notifPrefs: true } });
+  const savedPrefs = (savedRow && savedRow.notifPrefs) || {};
+  const leadKey = keyFor(leadRow);
+  const badgeKey = keyFor(badgeRow);
+  const lp = savedPrefs[leadKey] || null;
+  const bp = savedPrefs[badgeKey] || null;
+  check(!!lp && lp.on === true && lp.toast === true,
+    `SETTINGS STILL SAVE: choosing Toast on "${catOf(leadRow)}" persisted as on+toast (${JSON.stringify(lp)})`);
+  check(!!bp && bp.on === true && bp.toast === false,
+    `\u2026and Badge only on "${catOf(badgeRow)}" persisted as on without toast (${JSON.stringify(bp)})`);
+  // and it comes BACK that way on a fresh render of the panel
+  w.location.hash = "#/settings/notifications"; w.dispatchEvent(new w.Event("hashchange"));
+  w.location.hash = "#/settings/account"; w.dispatchEvent(new w.Event("hashchange"));
+  await until(() => $(".notif-pref-row"));
+  const reLead = $$(".notif-pref-row").find((r: any) => new RegExp(catOf(leadRow)).test(r.textContent));
+  const onNow = reLead ? (Array.from(reLead.querySelectorAll(".notif-pref-seg .seg-btn")).find((b2: any) => b2.classList.contains("seg-on")) as any) : null;
+  check(!!onNow && onNow.dataset.state === "toast",
+    `\u2026and the panel reopens showing the chosen value (${onNow ? onNow.dataset.state : "nothing selected"})`);
+  // the CHOICES per category are unchanged - the shapes asserted above, re-counted after the edits
+  const shapes = $$(".notif-pref-row")
+    .filter((r: any) => catLabels.some((l: string) => r.textContent.startsWith(l)))
+    .map((r: any) => r.querySelectorAll(".notif-pref-seg .seg-btn").length);
+  check(shapes.length === svc.NOTIFICATION_CATEGORIES.length && shapes.every((n: number) => n === 2 || n === 3),
+    `\u2026with every category still offering exactly the choices it did (${shapes.join("/")})`);
+
+  // SPACING. The row - not the card - carries the horizontal padding, which is the house
+  // pattern for a list with dividers, and it is the SAME token the sibling settings cards use.
+  const cssNow = readFileSync(join(PUB, "styles.css"), "utf8");
+  const rowRule = (/\.notif-pref-row \{([^}]*)\}/.exec(cssNow) || [, ""])[1];
+  const cardRule = (/\.notif-prefs-card \{([^}]*)\}/.exec(cssNow) || [, ""])[1];
+  check(/padding:\s*var\(--list-row-pad\)\s+var\(--card-pad-lg\)/.test(rowRule),
+    "SPACING: the row's horizontal padding is --card-pad-lg, the same token the sibling settings cards use");
+  check(/\.settings-card \{[^}]*padding: var\(--card-pad-lg\)/.test(cssNow),
+    "\u2026and that token really is what those siblings use, so the two cannot drift apart");
+  check(!/padding/.test(cardRule),
+    "\u2026while the CARD stays unpadded, so each row's divider still spans its full width");
+
+  // ALIGNMENT. A shared minimum width on the control area, contents pushed right: both edges
+  // line up whether a category offers two choices or three.
+  const ctrlRule = (/\.notif-pref-ctrls \{([^}]*)\}/.exec(cssNow) || [, ""])[1];
+  check(/min-width:\s*\d+px/.test(ctrlRule) && /justify-content:\s*flex-end/.test(ctrlRule),
+    "ALIGNMENT: every row's control area shares a minimum width and pushes its contents right");
+  check(!/[^-]width:\s*\d+px/.test(ctrlRule),
+    "\u2026as a MINIMUM, not a fixed width, so a future fourth choice takes the space instead of being clipped");
+  check(/flex-wrap:\s*wrap/.test(rowRule) && /min-width:\s*0/.test((/\.notif-pref-text \{([^}]*)\}/.exec(cssNow) || [, ""])[1]),
+    "\u2026and at a narrow width the row wraps and the text column shrinks, so nothing clips");
+
+  // THE DEAD RULE.
+  check(!/\.widget-actions/.test(cssNow) && !/\.widget-size\s*\{/.test(cssNow),
+    "the hover-reveal rules orphaned by the widget chrome move are gone from the stylesheet");
+  const spaJs = readdirSync(join(PUB, "js")).filter((f: string) => f.endsWith(".js"))
+    .map((f: string) => readFileSync(join(PUB, "js", f), "utf8")).join("\n");
+  check(!/["'`][^"'`]*widget-actions/.test(spaJs) && !/["'`][^"'`]*widget-size["'`]/.test(spaJs),
+    "\u2026and no script still names either class");
+
   // DOM smoke: nothing clipped over text
   const cssSrc = readFileSync(join(PUB, "styles.css"), "utf8");
   check(/\.notif-row-title \{[^}]*-webkit-line-clamp: 2/.test(cssSrc) && /\.notif-row-body \{[^}]*-webkit-line-clamp: 2/.test(cssSrc) && /\.notif-body \{[^}]*overflow-y: auto/.test(cssSrc),

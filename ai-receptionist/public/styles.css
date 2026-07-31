@@ -1164,7 +1164,6 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
    bottom edge, and the title has the card's full width. */
 .widget-head { display: flex; align-items: center; margin-bottom: 10px; }
 .widget-title { font-weight: 700; font-size: var(--text-base); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* hardening: long widget titles never push the actions out of the card */
-.widget-actions { display: flex; gap: 2px; opacity: 0; transition: opacity var(--transition); flex: none; align-items: center; flex-wrap: wrap; min-width: 0; }
 /* The persistent control bar. Full-bleed to the card's edges (the negative margins cancel
    the card's own padding, which is why that padding is a variable above) on the adjacent
    surface token every theme already defines, so it reads as chrome rather than content.
@@ -1202,7 +1201,6 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 
 /* ---------- Home dashboard host ---------- */
 .home-dashboard { margin-bottom: 10px; min-height: 80px; }
-.widget-size { display: inline-flex; gap: var(--sp-1); margin-right: 4px; }
 .w-size-select { font-size: var(--text-xs); padding: 2px 4px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--panel); color: var(--ink); }
 
 .section-divider { border-top: 2px solid var(--line); margin: 24px 0 24px; }
@@ -2274,17 +2272,32 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .notif-chip-on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .notif-prefs { margin-top: var(--sp-6); }
 .notif-prefs-hint { margin: 0 0 var(--sp-3); font-size: var(--text-sm); }
+/* THE PANEL HAD NO HORIZONTAL PADDING AT ALL. Its siblings on this screen - the quiet-hours
+   and duration cards - are "settings-card card" and get --card-pad-lg; this one was bare
+   "card", which has no padding rule, so the whole panel ran edge to edge. The controls looked
+   jammed against the right because they WERE - and so, less obviously, was the text.
+   The padding goes on the ROW, not the card, which is the house pattern for a list with
+   separators (.field-row, .modal-head, tbody td all do this): it lines the content up with
+   the sibling cards' 24px while letting each row's divider still span the full card width.
+   Padding the card instead would have inset every divider and made the list look boxed. */
 .notif-prefs-card { display: flex; flex-direction: column; }
 /* Suggestion preferences: a row that is quiet says so, and why. */
 .sug-pref-state { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
 .sug-pref-reason { font-size: var(--text-xs); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sug-quieted { margin-bottom: var(--sp-3); }
-.notif-pref-row { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; justify-content: space-between; padding: var(--list-row-pad) 0; border-bottom: 1px solid var(--line); }
+.notif-pref-row { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; justify-content: space-between; padding: var(--list-row-pad) var(--card-pad-lg); border-bottom: 1px solid var(--line); }
 .notif-pref-row:last-child { border-bottom: none; }
 .notif-pref-text { min-width: 0; flex: 1 1 240px; }
 .notif-pref-title { font-size: var(--text-sm); font-weight: 500; }
 .notif-pref-desc { font-size: var(--text-xs); }
-.notif-pref-ctrls { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
+/* THE COLUMN READS AS A COLUMN. Every row's control area is given the SAME WIDTH and its
+   contents are pushed to the right edge of it, so a two-choice control (Off / Badge only) and
+   a three-choice one (Off / Badge only / Toast) share a right edge AND a left one.
+   WHY A SHARED WIDTH RATHER THAN JUST RIGHT-ALIGNING: right-aligning alone lines up the right
+   edges and leaves the LEFT edges as ragged as they are today, which is the half the eye
+   actually reads down a column of differing widths. A shared width fixes both edges at once.
+   It is a min-width, not a width, so a future four-choice category cannot be clipped by it. */
+.notif-pref-ctrls { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; justify-content: flex-end; min-width: 210px; }
 /* One three-state control per category, at the smaller scale the settings rows
    want — the same .seg-toggle/.seg-btn component the list/board switch uses. */
 .notif-pref-seg .seg-btn { padding: 3px 10px; font-size: var(--text-xs); }
