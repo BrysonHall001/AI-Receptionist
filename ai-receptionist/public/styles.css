@@ -2508,6 +2508,15 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .pt-t23 { text-align: center; color: var(--ink-faint); opacity: .3; }
 .pt-t24 { text-align: center; }
 .pt-t25 { text-align: left; }
+/* PERMISSION COLUMNS LINE UP. The mark cells were already centred (.pt-t21-24) but the
+   headers inherit the global `thead th { text-align: left }`, so every tick and checkbox sat
+   off-centre from its own heading. Centring the right-hand headers - and giving them one
+   shared width - makes the two agree in EVERY section and in BOTH views, because both the
+   read-only reference table and the editable grid are built by the same two lines above. */
+.mini-table thead th.pt-rt { text-align: center; width: 92px; }
+.mini-table tbody td.pt-t21, .mini-table tbody td.pt-t22,
+.mini-table tbody td.pt-t23, .mini-table tbody td.pt-t24 { width: 92px; }
+.pt-t24 input[type="checkbox"] { margin: 0; }
 .pt-t26 { font-size: var(--text-xs); }
 .pt-t27 { font-size: var(--text-xs); padding-top: 8px; }
 .pt-t28 { cursor: pointer; font-weight: 600; padding: 4px 0; }

@@ -93,11 +93,11 @@ function main() {
     const st = new Function("data", "esc", "role", "my", "editing", "App", body + "\nreturn sectionTable;")(
       { catalog: catalog2 }, esc2, { permissions: full2, editable: true }, full2, false, { util: {} });
     pagesHtml = st("Pages");
-    check(/<th>Access<\/th>/.test(pagesHtml) && !/SECTION_COLS/.test(body),
+    check(/<th[^>]*>Access<\/th>/.test(pagesHtml) && !/SECTION_COLS/.test(body),
       "a single-right area renders one 'Access' column, and no column is chosen by section name");
   }
   // CONVERTED with the one above: the same SECTION_COLS literal, now derived from rights.
-  check(/<th>View<\/th><th>Edit<\/th><th>Delete<\/th>/.test(pagesHtml) && !/<th>Manage<\/th>/.test(pagesHtml),
+  check(/<th[^>]*>View<\/th><th[^>]*>Edit<\/th><th[^>]*>Delete<\/th>/.test(pagesHtml) && !/<th[^>]*>Manage<\/th>/.test(pagesHtml),
     "a three-right area renders View/Edit/Delete and nothing else");
   check(/Manage Settings \(all\)/.test(portal), "Settings collapses to one 'Manage Settings (all)' toggle");
   check(/grantableKeys = areas\.filter\(\(a\) => !a\.locked\)\.map/.test(portal), "settings toggle writes every grantable settings_* key");

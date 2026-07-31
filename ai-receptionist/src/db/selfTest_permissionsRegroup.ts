@@ -102,7 +102,7 @@ function main() {
   const pages = sectionTable("Pages");
   check((pages.match(/<table/g) || []).length === 2,
     "a section holding both kinds renders TWO tables, so a lone tick never sits in column one of three");
-  check(/<th>Access<\/th>/.test(pages) && /nothing partial to grant/.test(pages),
+  check(/<th[^>]*>Access<\/th>/.test(pages) && /nothing partial to grant/.test(pages),
     "\u2026the on/off table has a single Access column and says there is nothing partial to grant");
   let colsOk = "";
   for (const sec of AREA_SECTIONS) {

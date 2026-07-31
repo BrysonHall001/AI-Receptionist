@@ -5367,7 +5367,7 @@
               if (a.group) { if (seenG[a.group]) return; seenG[a.group] = true; grantableLabels.push(a.groupLabel || a.label); }
               else grantableLabels.push(a.label);
             });
-            const head = `<thead><tr><th class="pt-t25">Area</th><th>Manage Settings</th></tr></thead>`;
+            const head = `<thead><tr><th class="pt-t25">Area</th><th class="pt-rt">Manage Settings</th></tr></thead>`;
             const row = `<tr><td>Manage Settings (all)<div class="cell-muted pt-t26">${esc(grantableLabels.join(", "))}</div></td>${cellFor(grantableKeys, "manage")}</tr>`;
             const lockNote = lockedAreas.length
               ? `<tr><td colspan="2" class="cell-muted pt-t27">\uD83D\uDD12 ${esc(lockedAreas.map((a) => a.label).join(" and "))} are always admin-managed — not controlled by this toggle.</td></tr>`
@@ -5386,7 +5386,7 @@
           const tables = sigs.map((sig) => {
             const group = areas.filter((a) => sigOf(a) === sig);
             const cols = colsFor(sig.split(","));
-            const head = `<thead><tr><th class="pt-t25">Area</th>${cols.map((c) => `<th>${c[1]}</th>`).join("")}</tr></thead>`;
+            const head = `<thead><tr><th class="pt-t25">Area</th>${cols.map((c) => `<th class="pt-rt">${c[1]}</th>`).join("")}</tr></thead>`;
             const rows = group.map((a) => `<tr><td>${esc(a.label)}</td>${cols.map((c) => cellFor([a.key], c[0])).join("")}</tr>`).join("");
             const note = cols.length === 1 && sigs.length > 1
               ? `<p class="cell-muted pt-t26">These are on or off \u2014 there is nothing partial to grant.</p>`

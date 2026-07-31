@@ -13,7 +13,10 @@ process.env.AI_PROVIDER = "mock";
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { prisma, disconnectDb } = require("./client");
 const { permissionGate } = require("../middleware/permissionGate");
-const { can, moduleAreaKey, getPermissionCatalogFor } = require("../services/permissionService");
+const { can, moduleAreaKey, getPermissionCatalogFor, effectiveMatrix, permissionMatrixForRole,
+        validateCustomRolePermissions, createPortalRole } = require("../services/permissionService");
+const { readFileSync } = require("fs");
+const { resolve: resolvePath } = require("path");
 const { createPortal } = require("../services/portalService");
 const { listRecordTypes } = require("../services/recordTypeService");
 
@@ -152,6 +155,92 @@ async function main() {
     "every module row offers exactly view/edit/delete \u2014 the three the gate actually enforces");
   check(!cat3.some((a: any) => a.key === "records"),
     "the old single Modules row is gone, so nothing claims to grant every module at once");
+
+  // ---------- (8) THE DEFECT: every published row must be grantable, not just Contacts ----------
+  console.log("\n(8) every module row is grantable, saveable and reloadable:");
+  await db.tenant.update({ where: { id: t.id }, data: { labels: {} } });   // unhide invoice again
+  const cat4 = await getPermissionCatalogFor(t.id);
+  const moduleAreas = cat4.filter((a: any) => a.section === "Modules").map((a: any) => a.key);
+  const dynamic = moduleAreas.filter((k: string) => k !== "contacts");
+  check(dynamic.length >= 3, `the tenant publishes ${dynamic.length} module rows besides Contacts`);
+
+  // the granter is a Portal Admin, exactly as in the New role editor
+  const granter = { id: "pa2", role: "PORTAL_ADMIN", tenantId: t.id, customRoleId: null };
+  const ceiling = await effectiveMatrix(granter, moduleAreas);
+  check(moduleAreas.every((k: string) => ceiling[k] && ceiling[k].view === true && ceiling[k].edit === true && ceiling[k].delete === true),
+    "the granter's ceiling covers EVERY published row \u2014 which is what lets the editor draw a checkbox for each");
+
+  // NEGATIVE: the ceiling as it was BUILT BEFORE THIS FIX (static areas only) - this is
+  // precisely the shipped bug, and it must be visibly different.
+  const shippedCeiling = await effectiveMatrix(granter);
+  check(dynamic.every((k: string) => shippedCeiling[k] === undefined),
+    "NEGATIVE: built the old way it has NO cell for any module but Contacts \u2014 the bug that shipped, and this check would have caught it");
+  check(shippedCeiling["contacts"] && shippedCeiling["contacts"].edit === true,
+    "\u2026and Contacts DID have one, which is exactly why it was the only row that worked");
+
+  // the reference tables carry real values for every row too
+  const ref = permissionMatrixForRole("PORTAL_ADMIN", moduleAreas);
+  check(moduleAreas.every((k: string) => ref[k] && ref[k].delete === true),
+    "the system-role reference table has a real value for every row, not a dash");
+
+  // SAVE through the real path, with the real ceiling, then RELOAD
+  const grant: any = {};
+  dynamic.forEach((k: string) => { grant[k] = { view: true, edit: true, delete: true }; });
+  check(validateCustomRolePermissions(grant, ceiling).ok === true,
+    "a grant naming every module VALIDATES against that ceiling");
+  check(validateCustomRolePermissions(grant, shippedCeiling).ok === false,
+    "NEGATIVE: against the old ceiling the same grant is REFUSED \u2014 saving would have failed even if you could tick it");
+  const saved: any = await createPortalRole(t.id, `pmp-saved-${stamp}`, grant, ceiling);
+  const reloaded: any = await db.portalRole.findUnique({ where: { id: saved.id } });
+  check(dynamic.every((k: string) => reloaded.permissions[k] && reloaded.permissions[k].edit === true),
+    "\u2026it saves and RELOADS with every per-module grant intact");
+
+  // and it is ENFORCED, not merely drawn
+  const savedUser = { id: "u-saved", role: "CLIENT_USER", tenantId: t.id, customRoleId: saved.id };
+  check((await gate(savedUser, "PATCH", `/records/${job.id}`)).allowed === true,
+    "the saved role can edit a record in a module it was granted");
+  const narrow: any = await db.portalRole.create({ data: { tenantId: t.id, name: `pmp-narrow-${stamp}`, permissions: { [moduleAreaKey("job")]: { view: true, edit: true }, [moduleAreaKey("invoice")]: { view: true } } } });
+  const narrowUser = { id: "u-narrow", role: "CLIENT_USER", tenantId: t.id, customRoleId: narrow.id };
+  check((await gate(narrowUser, "PATCH", `/records/${job.id}`)).allowed === true
+    && (await gate(narrowUser, "PATCH", `/records/${inv.id}`)).allowed === false,
+    "\u2026and a role granted edit on ONE module is refused on the other, at the endpoint");
+
+  // GENERIC over whatever this tenant has, so a custom module needs no test edit
+  let ungrantable = "";
+  for (const k of moduleAreas) {
+    for (const r of ["view", "edit", "delete"]) {
+      if (ceiling[k]?.[r] !== true) ungrantable += ` ${k}.${r}`;
+    }
+  }
+  check(ungrantable === "", `every row \u00d7 every right is grantable, checked generically over the tenant's own modules${ungrantable}`);
+
+  // ---------- (9) the columns line up ----------
+  console.log("\n(9) the permission columns:");
+  const portalSrc = readFileSync(resolvePath(__dirname, "..", "..", "public", "js", "portal.js"), "utf8");
+  const body = portalSrc.slice(portalSrc.indexOf("        const RIGHT_LABEL = {"), portalSrc.indexOf('        return (data.sections || []).map(sectionTable).join("");'));
+  const escFn = (x: any) => String(x);
+  const mk = (editing: boolean) =>
+    // eslint-disable-next-line no-new-func
+    new Function("data", "esc", "role", "my", "editing", "App", body + "\nreturn sectionTable;")(
+      { catalog: cat4 }, escFn, { permissions: ceiling, editable: editing }, ceiling, editing, { util: {} });
+  let misaligned = "";
+  for (const editing of [false, true]) {
+    const st = mk(editing);
+    for (const sec of ["Pages", "Modules", "Settings", "Admin"]) {
+      const html = st(sec);
+      if (!html) continue;
+      for (const tb of html.split("<table").slice(1)) {
+        const heads = (tb.match(/<th class="pt-rt">/g) || []).length;
+        const firstRow = (tb.match(/<tr><td>[\s\S]*?<\/tr>/) || [""])[0];
+        const marks = (firstRow.match(/<td class="pt-t2[1-4]"/g) || []).length;
+        if (heads !== marks) misaligned += ` ${editing ? "editor" : "reference"}/${sec}(${heads}v${marks})`;
+      }
+    }
+  }
+  check(misaligned === "", `every mark cell has a centred header above it, in all four sections and BOTH views${misaligned}`);
+  const editorHtml = mk(true)("Modules");
+  check((editorHtml.match(/<input type="checkbox"/g) || []).length === moduleAreas.length * 3,
+    `the editor draws a checkbox for every module and every right (${(editorHtml.match(/<input type="checkbox"/g) || []).length} of ${moduleAreas.length * 3})`);
 
   for (const id of cleanup) { await db.tenant.delete({ where: { id } }).catch(() => { /* best-effort */ }); }
   console.log("");

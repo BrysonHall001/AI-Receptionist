@@ -2687,11 +2687,15 @@ apiRouter.get("/portal-roles", async (req: Request, res: Response) => {
   const countMap = new Map<string, number>();
   counts.forEach((c) => { if (c.customRoleId) countMap.set(c.customRoleId, c._count?._all ?? 0); });
   const customWithCounts = customRoles.map((r: any) => ({ ...r, assignedCount: countMap.get(r.id) || 0 }));
-  const systemRoles = SYSTEM_ROLES.filter((s) => PER_PORTAL_SYSTEM_ROLES.includes(s.role)).map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role) }));
-  const myPermissions = await effectiveMatrix(req.user as any); // the creator's own level (the grant ceiling)
+  const systemRoles = SYSTEM_ROLES.filter((s) => PER_PORTAL_SYSTEM_ROLES.includes(s.role)).map((s) => ({ role: s.role, label: s.label, ceiling: !!s.ceiling, permissions: permissionMatrixForRole(s.role, moduleAreas) }));
+  // The dynamic module areas this tenant publishes. BOTH matrices below must know about them
+  // or the editor draws a dash where a checkbox belongs - which is exactly what shipped.
+  const catalog = await getPermissionCatalogFor(tenantId);
+  const moduleAreas = catalog.filter((a: any) => a.section === "Modules").map((a: any) => a.key);
+  const myPermissions = await effectiveMatrix(req.user as any, moduleAreas); // the creator's own level (the grant ceiling)
   // Tenant-aware: one row per module this tenant has, named the way it names them. With no
   // tenant (the master hub) this returns the static catalog unchanged.
-  res.json({ catalog: await getPermissionCatalogFor(tenantId), sections: AREA_SECTIONS, systemRoles, customRoles: customWithCounts, myPermissions });
+  res.json({ catalog, sections: AREA_SECTIONS, systemRoles, customRoles: customWithCounts, myPermissions });
 });
 
 apiRouter.post("/portal-roles", async (req: Request, res: Response) => {
@@ -2700,7 +2704,10 @@ apiRouter.post("/portal-roles", async (req: Request, res: Response) => {
   if (!(await can(req.user!, "users", "edit"))) { res.status(403).json({ error: "Not authorized" }); return; }
   const { name, permissions } = (req.body ?? {}) as { name?: string; permissions?: any };
   try {
-    const ceiling = await effectiveMatrix(req.user as any);
+    // The ceiling must publish every area the editor offered, or a per-module grant is
+    // refused on save with "beyond your permission level".
+    const moduleAreas = (await getPermissionCatalogFor(tenantId)).filter((a: any) => a.section === "Modules").map((a: any) => a.key);
+    const ceiling = await effectiveMatrix(req.user as any, moduleAreas);
     const role = await createPortalRole(tenantId, name || "", permissions || {}, ceiling);
     res.json(role);
   } catch (e) { res.status(400).json({ error: (e as Error).message }); }
@@ -2714,7 +2721,10 @@ apiRouter.patch("/portal-roles/:id", async (req: Request, res: Response) => {
   if (!existing) { res.status(404).json({ error: "Role not found in this portal" }); return; }
   const { name, permissions } = (req.body ?? {}) as { name?: string; permissions?: any };
   try {
-    const ceiling = await effectiveMatrix(req.user as any);
+    // The ceiling must publish every area the editor offered, or a per-module grant is
+    // refused on save with "beyond your permission level".
+    const moduleAreas = (await getPermissionCatalogFor(tenantId)).filter((a: any) => a.section === "Modules").map((a: any) => a.key);
+    const ceiling = await effectiveMatrix(req.user as any, moduleAreas);
     const role = await updatePortalRole(req.params.id, tenantId, name || "", permissions || {}, ceiling);
     res.json(role);
   } catch (e) { res.status(400).json({ error: (e as Error).message }); }

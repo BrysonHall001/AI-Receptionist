@@ -2,7 +2,7 @@
   "name": "ai-receptionist-mvp",
   "version": "1.0.0",
   "private": true,
-  "description": "AI Phone Receptionist SaaS MVP \u2014 inbound call -> AI conversation -> structured extraction -> DB -> email.",
+  "description": "AI Phone Receptionist SaaS MVP — inbound call -> AI conversation -> structured extraction -> DB -> email.",
   "type": "commonjs",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -22,6 +22,7 @@
     "seed:changelog": "tsx src/db/seedChangelog.ts",
     "backfill:geocode": "tsx src/db/backfillGeocode.ts",
     "selftest": "tsx scripts/selftest.ts",
+    "check-assertions": "node scripts/assertcheck.js",
     "selftest:all": "tsx scripts/selftest.ts --all"
   },
   "dependencies": {

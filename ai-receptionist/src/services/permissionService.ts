@@ -163,6 +163,24 @@ export function recordTypeKeyOfArea(area: string): string | null {
 /** A per-module area answers to the SAME base area for locks, kinds and the ceiling. */
 function baseAreaOf(area: string): string { return isModuleArea(area) ? RECORDS_AREA : area; }
 
+/**
+ * THE ONE PLACE a custom role's answer for an area is decided.
+ *
+ * can() enforces with this and effectiveMatrix draws the editor with it, deliberately: when
+ * those two disagree the screen shows a checkbox the gate then refuses, or hides one it
+ * would have allowed. Both are lies, and both were shipping.
+ *
+ * `stored` is the role's raw blob (presence matters, and capToCeiling drops false rights);
+ * `capped` is the same blob capped to the ceiling.
+ */
+function resolveForRole(stored: Record<string, unknown>, capped: Permissions, area: string, right: Right): boolean {
+  if (isModuleArea(area)) {
+    if (Object.prototype.hasOwnProperty.call(stored, area)) return capped[area]?.[right] === true;
+    return capped[RECORDS_AREA]?.[right] === true;
+  }
+  return capped[area]?.[right] === true;
+}
+
 function ceilingAllows(area: string, right: Right): boolean {
   return CEILING[baseAreaOf(area)]?.[right] === true;
 }
@@ -282,18 +300,10 @@ export async function can(user: PermUser | null | undefined, area: string, right
    * until someone grants it. That is the safe direction. A new module must not silently
    * become readable by every custom role that happened to exist before it.
    */
-  if (isModuleArea(area)) {
-    // PRESENCE IS PER MODULE, NOT PER RIGHT, and it is read from the STORED blob rather than
-    // the capped one. Once a role names a module at all it is explicitly configured, and the
-    // legacy grant must not top it up - otherwise you could never REVOKE edit on one module
-    // while keeping it on the others, which is the entire feature. Reading the stored blob
-    // matters because capToCeiling drops rights that are false, so a module configured as
-    // "all three off" would otherwise look unconfigured and silently inherit the legacy grant.
-    const stored = ((role as any).permissions || {}) as Record<string, unknown>;
-    if (Object.prototype.hasOwnProperty.call(stored, area)) return capped[area]?.[right] === true;
-    return capped[RECORDS_AREA]?.[right] === true;
-  }
-  return capped[area]?.[right] === true;
+  // PRESENCE IS PER MODULE, NOT PER RIGHT, and read from the STORED blob: once a role names
+  // a module at all it is explicitly configured and the legacy grant must not top it up,
+  // otherwise you could never REVOKE edit on one module while keeping it on the others.
+  return resolveForRole(((role as any).permissions || {}) as Record<string, unknown>, capped, area, right);
 }
 
 // ---------------------------------------------------------------------------
@@ -356,17 +366,33 @@ export async function updatePortalRole(id: string, tenantId: string, name: strin
 // The full effective permission matrix for ANY user (system or custom role) — used as
 // the creator's-own-level ceiling and sent to the UI so it can grey cells the creator
 // can't grant. For a custom-role user it's the role's stored set, capped to the catalog.
-export async function effectiveMatrix(user: PermUser | null | undefined): Promise<Permissions> {
+/**
+ * The acting user's own level - the CEILING on what they may grant.
+ *
+ * `extraAreas` matters twice over: it is what the editor draws its checkboxes from, AND what
+ * validateCustomRolePermissions checks a save against. Without it a per-module grant had no
+ * checkbox to tick and would have been REFUSED on save even if it had.
+ */
+export async function effectiveMatrix(user: PermUser | null | undefined, extraAreas: string[] = []): Promise<Permissions> {
   if (user?.customRoleId) {
     const role: any = await prisma.portalRole.findUnique({ where: { id: user.customRoleId } } as any).catch(() => null);
     if (role && (!user.tenantId || role.tenantId === user.tenantId)) {
       const capped = capToCeiling(role.permissions);
+      const stored = (role.permissions || {}) as Record<string, unknown>;
       const m: Permissions = {};
-      for (const a of AREAS) { m[a.key] = {}; for (const r of rightsForKind(a.kind)) m[a.key][r] = capped[a.key]?.[r] === true; }
+      for (const a of AREAS) { m[a.key] = {}; for (const r of rightsForKind(a.kind)) m[a.key][r] = resolveForRole(stored, capped, a.key, r); }
+      for (const key of extraAreas) {
+        if (m[key]) continue;
+        const def = AREA_BY_KEY.get(baseAreaOf(key));
+        if (!def) continue;
+        m[key] = {};
+        // THE SAME resolver can() enforces with, so the editor cannot offer what the gate refuses.
+        for (const r of rightsForKind(def.kind)) m[key][r] = resolveForRole(stored, capped, key, r);
+      }
       return m;
     }
   }
-  return permissionMatrixForRole(user?.role || "");
+  return permissionMatrixForRole(user?.role || "", extraAreas);
 }
 
 // ===========================================================================
@@ -445,11 +471,27 @@ function recordTypeHrefFor(key: string): string {
 
 // The full permission matrix for a SYSTEM role (for read-only reference display in
 // the UI). Computed with the SAME systemCan the server enforces with.
-export function permissionMatrixForRole(role: string): Permissions {
+/**
+ * `extraAreas` carries the tenant's DYNAMIC records:<key> areas.
+ *
+ * Without it this iterates the STATIC catalog only - which is why every module row but
+ * Contacts drew a dash in the reference tables: Contacts is a real static AREAS entry and the
+ * others are not, so the matrix simply had no cell for them. Passing nothing keeps the old
+ * behaviour byte-for-byte, which is what the baseline snapshot pins.
+ */
+export function permissionMatrixForRole(role: string, extraAreas: string[] = []): Permissions {
   const m: Permissions = {};
   for (const a of AREAS) {
     m[a.key] = {};
     for (const r of rightsForKind(a.kind)) m[a.key][r] = systemCan(role, a.key, r);
+  }
+  for (const key of extraAreas) {
+    if (m[key]) continue;
+    const def = AREA_BY_KEY.get(baseAreaOf(key));
+    if (!def) continue;
+    m[key] = {};
+    // System roles have uniform access across modules, so they answer on the base area.
+    for (const r of rightsForKind(def.kind)) m[key][r] = systemCan(role, baseAreaOf(key), r);
   }
   return m;
 }
