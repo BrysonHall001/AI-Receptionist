@@ -43,9 +43,15 @@ console.log("=============================");
 // ---------- (1) motion ----------
 console.log("\n(1) one motion duration + reduced motion:");
 check(/--transition: 120ms ease;/.test(css), "--transition token minted in :root (120ms ease)");
+// EXTENDED, NOT RELAXED (motion polish batch). There is now a named vocabulary rather than a
+// single token, so the rule accepts any of the four names - and STILL rejects a literal
+// duration, which is the half that actually stops the discipline eroding. It had already
+// eroded: six rules were bypassing it before this batch, two of them mine.
+const MOTION_TOKENS = /var\(--(?:transition|motion-quick|motion-standard|motion-settle|motion-expressive)\)/;
 const transDecls = [...css.matchAll(/(?<![-\w])transition:\s*([^;{}]+);/g)];
-const badTrans = transDecls.filter((m) => !/^\s*none\b/.test(m[1]) && (/\d+\s*m?s\b/.test(m[1]) || !m[1].includes("var(--transition)")));
-check(transDecls.length > 0 && badTrans.length === 0, `every transition rule uses var(--transition) as its only duration (${transDecls.length} rules, offenders: ${badTrans.length})`);
+const badTrans = transDecls.filter((m) => !/^\s*none\b/.test(m[1]) && (/\d+\s*m?s\b/.test(m[1]) || !MOTION_TOKENS.test(m[1])));
+check(transDecls.length > 0 && badTrans.length === 0,
+  `every transition rule uses a NAMED motion token and no literal duration (${transDecls.length} rules, offenders: ${badTrans.length}${badTrans.length ? ": " + badTrans.map((m) => m[1].trim().slice(0, 40)).join(" | ") : ""})`);
 const rm = css.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{[^}]*\}/);
 check(!!rm && /transition: none !important/.test(rm[0]) && /animation: none !important/.test(rm[0]), "global prefers-reduced-motion block: transitions AND animations off");
 check(/@keyframes modalIn \{ from \{ opacity: 0; transform: translateY\(4px\) scale\(0\.985\)/.test(css) && /\.modal \{ animation: modalIn var\(--transition\);/.test(css), "modal entrance is fade + slight scale on the token (transform/opacity only)");

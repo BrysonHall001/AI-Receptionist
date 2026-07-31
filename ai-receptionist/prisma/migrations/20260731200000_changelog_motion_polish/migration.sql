@@ -1,0 +1,11 @@
+-- Changelog: motion polish
+INSERT INTO "ChangeLogEntry" ("id","date","type","description","commitSha","createdAt")
+VALUES (
+  'cl_motion_polish_20260731',
+  '2026-07-31',
+  'Improvement',
+  'The app moves with a bit more life in it, and the logo on the sign-in screen now says hello. Hover the Clarity mark on the sign-in page and it gives a quick tilt and settles back. It happens once and then stops, so leaving your mouse on it does not set it wagging forever. It is only on the sign-in and password screens. The logo up in the corner of the app itself stays perfectly still, because something moving in the corner of your eye all day is a nuisance rather than a delight. Everywhere else the change is deliberately quiet. Things you click fifty times a day, buttons, tick boxes, tabs, rows in a table, still move exactly as quickly and calmly as they always have. Nothing bounces there. A CRM where the menus boing about is a toy, and that is not what anyone wants from something they work in. What did change is that panels and sliding drawers now ease rather than simply stop, and the highlight that flashes on a row you just created eases off more smoothly. There is one other spot with real character: the little picture on a template button gives a small hop when you hover it, which you see occasionally rather than constantly. Underneath, the tidier part. There are now four named speeds for movement instead of one, so the next person to add something has an obvious right answer instead of picking a number out of the air. Six places had already drifted off the old single speed and invented their own timings, two of them ours from a recent batch, and one of those was pointing at a setting that did not exist at all. All six are back in line, and the check that watches for this now covers the new names properly, so it catches a stray value again instead of quietly letting it through. If you have asked your computer for reduced motion, none of this applies to you. The logo sits still, everything else changes instantly, and every part of the app works exactly the same. Nothing anywhere waits for an animation to finish before it does its job.',
+  'batch-motion-polish-20260731',
+  NOW()
+)
+ON CONFLICT ("commitSha") DO NOTHING;

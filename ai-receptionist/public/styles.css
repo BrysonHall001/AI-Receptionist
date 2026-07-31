@@ -106,6 +106,23 @@
      The one motion duration, the one focus treatment, the one disabled treatment,
      leading + tracking steps, and control metrics. Every value below is consumed by
      component classes only — adjusting a value here retunes the whole app. */
+  /* ---------------------------------------------------------------------
+     THE MOTION VOCABULARY.
+     Four named tokens, so nobody has to invent 240ms. Pick by PURPOSE, never by taste:
+
+       --motion-quick       things people touch fifty times a day. Calm and fast.
+       --motion-standard    panels, drawers, modals, toasts. Enough travel to read.
+       --motion-settle      a highlight that draws the eye and then releases it.
+       --motion-expressive  the overshoot. TRANSFORM ONLY, and only occasional moments -
+                            a colour or a shadow that overshoots is just wrong, and chrome
+                            that bounces makes a CRM feel like a toy.
+
+     --transition keeps its exact original value, so the fifty-odd rules already using it
+     behave identically. It is now an alias for --motion-quick rather than a rival to it. */
+  --motion-quick: 120ms ease;
+  --motion-standard: 200ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  --motion-settle: 400ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  --motion-expressive: 420ms cubic-bezier(0.34, 1.42, 0.64, 1);
   --transition: 120ms ease;              /* the ONLY duration for interaction transitions */
   --focus-ring: 0 0 0 3px var(--accent-soft); /* soft accent halo (inputs, switch) */
   --disabled-opacity: 0.55;              /* one disabled look everywhere */
@@ -566,6 +583,22 @@ tbody tr:hover { background-color: var(--row-hover); background-size: 100% 2px; 
 .brand-logo--icon svg { height: 37px; width: 37px; display: block; } /* logo upgrade: +23% */
 .auth-logo { display: flex; justify-content: center; }
 .auth-logo svg { height: 40px; width: auto; display: block; }
+/* THE AUTH LOGO HOVER. The first thing anyone sees of the product, so it gets the one piece
+   of real character in the app: a short tilt-and-settle on the overshoot curve.
+   IT PLAYS ONCE. No infinite iteration and no alternate direction, so a pointer left resting
+   on it does nothing after the first 420ms - a mark that keeps moving is a distraction, not
+   a flourish. TRANSFORM ONLY, so it composites and forces no layout, and it does not move the
+   logo's resting position by a pixel: the animation begins and ends at rotate(0) scale(1).
+   Scoped to .auth-logo, which exists only on the sign-in, forgot, reset, SSO-link and MFA
+   screens. The app's own chrome uses .brand-logo--full/--icon and is deliberately untouched. */
+@keyframes authLogoGreet {
+  0%   { transform: rotate(0deg) scale(1); }
+  35%  { transform: rotate(-7deg) scale(1.06); }
+  70%  { transform: rotate(4deg) scale(1.02); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+.auth-logo svg { transform-origin: 50% 60%; will-change: transform; }
+.auth-logo:hover svg { animation: authLogoGreet var(--motion-expressive) both; }
 .brand-logo-preview { max-height: 56px; max-width: 220px; width: auto; height: auto; object-fit: contain; display: block; border-radius: 6px; }
 .brand-attribution { font-size: var(--text-xs); line-height: 1.2; color: var(--ink-faint); letter-spacing: var(--tracking-caps); }
 /* Tagline relocated (portal view) to sit directly ABOVE the divider that tops the
@@ -852,8 +885,8 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 /* ---------- Fields tab ---------- */
 .field-list { display: flex; flex-direction: column; }
 /* A field arrived here from an accepted suggestion: hold the eye for a moment. */
-.auto-card--flash { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-soft); transition: background 400ms ease-out, box-shadow 400ms ease-out; }
-.field-row--flash { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-soft); transition: background 400ms ease-out, box-shadow 400ms ease-out; }
+.auto-card--flash { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-soft); transition: background var(--motion-settle), box-shadow var(--motion-settle); }
+.field-row--flash { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-soft); transition: background var(--motion-settle), box-shadow var(--motion-settle); }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .field-row:last-child { border-bottom: none; }
 .field-row.dragging { opacity: 0.5; background: var(--accent-soft); }
@@ -4165,7 +4198,7 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .adm-seg-ic svg { width: 100%; height: 100%; display: block; }
 .adm-seg-btn.active { color: var(--on-accent); }
 .adm-seg { --seg-count: 3; --seg-index: 0; }
-.adm-seg-fill { position: absolute; top: 0; bottom: 0; width: calc(100% / var(--seg-count)); background: var(--accent); z-index: 0; transition: left 150ms ease-out, clip-path 150ms ease-out, border-radius 150ms ease-out; }
+.adm-seg-fill { position: absolute; top: 0; bottom: 0; width: calc(100% / var(--seg-count)); background: var(--accent); z-index: 0; transition: left var(--motion-quick), clip-path var(--motion-quick), border-radius var(--motion-quick); }
 .seg-fill-left { left: 0; border-radius: var(--radius) 0 0 var(--radius); clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%); }
 .seg-fill-mid { left: calc(100% / var(--seg-count) * var(--seg-index)); top: 3px; bottom: 3px; border-radius: calc(var(--radius) - 3px); clip-path: none; }
 .seg-fill-right { left: calc(100% - (100% / var(--seg-count))); border-radius: 0 var(--radius) var(--radius) 0; clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%); }
@@ -4195,7 +4228,7 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 /* The band behind the row. Its gradient SHIFTS slightly as the row scrolls, so the row reads
    as something you can move rather than something that got cut off. The shift is applied as
    background-position by the scroll handler; the size below is what gives it room to move. */
-.adm-tpl-band { position: absolute; left: 0; right: 0; z-index: 0; background: linear-gradient(to right, var(--accent), var(--tpl-band-stop)); background-size: 140% 100%; background-position: 0% 0%; transition: background-position var(--dur-2, .18s) linear; } /* vertical position is DERIVED from the rendered card row (admin.js positionTplBand) — the old fixed 64px offset predated content-driven heights and is gone */ /* crosses the cards at ~their vertical midline; square edges, no shadow */
+.adm-tpl-band { position: absolute; left: 0; right: 0; z-index: 0; background: linear-gradient(to right, var(--accent), var(--tpl-band-stop)); background-size: 140% 100%; background-position: 0% 0%; transition: background-position var(--motion-standard); } /* vertical position is DERIVED from the rendered card row (admin.js positionTplBand) — the old fixed 64px offset predated content-driven heights and is gone */ /* crosses the cards at ~their vertical midline; square edges, no shadow */
 /* TEMPLATE ROW - SCROLLS SIDEWAYS RATHER THAN WRAPPING (part 2).
    The cards are bespoke artwork at fixed widths, so wrapping them onto a second line breaks
    the band behind them and squashing them is not an option. `nowrap` + `overflow-x: auto`
@@ -4208,7 +4241,7 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .adm-tpl-row { padding: 24px 2px 24px; margin-top: -16px; }
 /* End affordances: it should be obvious there is more one way and not the other. Set by the
    scroll handler, which adds/removes these classes. */
-.adm-tpl-zone::before, .adm-tpl-zone::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40px; z-index: 2; pointer-events: none; opacity: 0; transition: opacity var(--dur-2, .18s) ease; }
+.adm-tpl-zone::before, .adm-tpl-zone::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40px; z-index: 2; pointer-events: none; opacity: 0; transition: opacity var(--motion-standard); }
 .adm-tpl-zone::before { left: 0; background: linear-gradient(to right, var(--panel), transparent); }
 .adm-tpl-zone::after { right: 0; background: linear-gradient(to left, var(--panel), transparent); }
 .adm-tpl-zone.has-left::before { opacity: 1; }
@@ -4237,7 +4270,7 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
    regression. */
 .tpl-tab { position: relative; z-index: 2; flex: 0 0 auto; align-self: center; border: 1px solid var(--accent); display: inline-flex; align-items: flex-end; justify-content: center; padding: 0 4px 5px; font-size: calc(var(--text-xs) - 2px); color: var(--ink-soft); gap: 4px; white-space: nowrap; overflow: visible; }
 .tpl-tab input { margin: 0 0 1px; flex: 0 0 auto; width: 11px; height: 11px; }
-.tpl-glyph { z-index: 3; width: 30px; height: 30px; color: var(--ink-soft); transition: transform 150ms ease-out; }
+.tpl-glyph { z-index: 3; width: 30px; height: 30px; color: var(--ink-soft); transition: transform var(--motion-expressive); }
 .tpl-glyph svg { width: 100%; height: 100%; display: block; }
 .adm-tpl-card:hover .tpl-glyph { transform: translateX(-50%) translateY(-5px); } /* the icon RISES out of the tuck; rectangles never move */
 @media (prefers-reduced-motion: reduce) { .tpl-glyph { transition: none; } .adm-tpl-card:hover .tpl-glyph { transform: translateX(-50%); } }
