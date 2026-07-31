@@ -57,7 +57,15 @@ check(contrastSrc.includes("brand C mark --accent on sidebar") && contrastSrc.in
 console.log("\n(2) the shared search box:");
 check(utilJs.includes("App.util.searchBox = function (input)") && utilJs.includes('class="search-ico"') && utilJs.includes('class="search-c"'), "ONE shared search-box builder (icon + C mark shells)");
 check(utilJs.includes('<circle cx="11" cy="11" r="7"/>') && /\.search-ico \{[^}]*color: var\(--ink-faint\);/.test(css), "magnifier left, --ink-faint (currentColor)");
-check(utilJs.includes("App.brandCSvg") && utilJs.includes('aria-hidden="true" focusable="false"') && utilJs.includes('${App.brandCSvg}'), "the C mark right: the SAME brand geometry, var(--accent), decorative (aria-hidden)");
+// CONVERTED (holiday mark batch): this pinned the literal `${App.brandCSvg}` interpolation.
+// The search box now asks for App.holidayMark(), which returns the brand C on every ordinary
+// day and on any failure - so the C is still what renders, it is just reached through one
+// call. What the assertion protects is unchanged and is what it now states: the same brand
+// geometry, var(--accent), decorative, and the ordinary C is what the box falls back to.
+check(utilJs.includes("App.brandCSvg") && utilJs.includes('aria-hidden="true" focusable="false"')
+  && utilJs.includes("App.holidayMark ? App.holidayMark() : App.brandCSvg")
+  && utilJs.includes("|| App.brandCSvg"),
+  "the C mark right: the SAME brand geometry, var(--accent), decorative (aria-hidden)");
 check(css.includes(".search-box .search-input:placeholder-shown ~ .search-c { display: inline-flex; }") && /\.search-c \{[^}]*display: none;/.test(css), "the C hides while the input is non-empty (pure CSS :placeholder-shown — no JS state)");
 check(tableJs.includes("right.appendChild(App.util.searchBox(search));") && (tableJs.match(/el\("input", "search-input"\)/g) || []).length === 1, "the ONE creation site (the shared table toolbar) is converged — module lists, Contacts, admin tenants, Template Library all ride it");
 check(!portalJs.includes('"search-input"') && !adminJs.includes('el("input", "search-input")'), "no bespoke search inputs remain (admin only queries the shared one)");

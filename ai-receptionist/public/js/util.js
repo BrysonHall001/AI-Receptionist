@@ -143,7 +143,12 @@
     box.innerHTML =
       `<span class="search-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4.2-4.2"/></svg></span>`;
     box.appendChild(input);
-    box.insertAdjacentHTML("beforeend", `<span class="search-c" aria-hidden="true">${App.brandCSvg}</span>`);
+    // THE HOLIDAY MARK. On a notable day this is a small piece of artwork instead of the C.
+    // holidayMark() returns the ordinary mark on any failure whatsoever, and the guard below
+    // covers the one case it cannot: holiday.js not having loaded at all. The search box has
+    // no other knowledge of the feature and cannot be taken down by it.
+    const mark = (App.holidayMark ? App.holidayMark() : App.brandCSvg) || App.brandCSvg;
+    box.insertAdjacentHTML("beforeend", `<span class="search-c" aria-hidden="true">${mark}</span>`);
     return box;
   };
 

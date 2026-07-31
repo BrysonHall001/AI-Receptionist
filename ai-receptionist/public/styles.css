@@ -3759,6 +3759,11 @@ select.input {
 .search-c { position: absolute; right: 10px; display: none; width: 14px; height: 16px; pointer-events: none; }
 .search-c svg { width: 14px; height: 16px; display: block; }
 .search-box .search-input:placeholder-shown ~ .search-c { display: inline-flex; }
+/* THE HOLIDAY MARK. Same 14x16 footprint as the C, same accent colour, so a glyph cannot sit
+   differently or read differently from the mark it replaces. pointer-events are re-enabled on
+   just this span so the native title tooltip can be reached - the wrapper stays inert. */
+.search-c-holiday { display: block; width: 14px; height: 16px; color: var(--accent); pointer-events: auto; cursor: default; }
+.search-c-holiday svg { width: 14px; height: 16px; display: block; }
 
 /* Route-change materialization: top-level page blocks fade-slide up 7px, 25ms/item,
    capped at 150ms (items past the cap appear together). Opacity/transform only —
