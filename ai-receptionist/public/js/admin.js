@@ -2212,6 +2212,17 @@
       formHost.appendChild(fieldsHost);
       buildFieldEditor(fieldsHost);
 
+      // ---- views, for the selected module ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "Views"));
+      const viewsHost = el("div", "tb-views");
+      formHost.appendChild(viewsHost);
+      buildViewsForBlueprint(viewsHost);
+
+      // ---- structure & behavior, for the selected module ----
+      const structHost = el("div", "tb-structure");
+      formHost.appendChild(structHost);
+      buildStructureForBlueprint(structHost);
+
       // ---- save / cancel ----
       const actions = el("div", "add-user acct-row u-mt-8");
       const save = el("button", "btn btn-primary btn-sm", draft.id ? "Save changes" : "Create template");
@@ -2278,7 +2289,11 @@
       App.mf.buildModulesRow(host, shown(), (key) => {
         draft.spec._selected = key;
         buildModuleToggles(host);
-        if (typeof paintModuleDetail === "function") paintModuleDetail();
+        // The fields and views panels both hang off the selected module, exactly as the
+        // tenant screen's Fields column and Views strip do.
+        const fh = document.querySelector(".tb-fields"); if (fh) buildFieldEditor(fh);
+        const vh = document.querySelector(".tb-views"); if (vh) buildViewsForBlueprint(vh);
+        const sh = document.querySelector(".tb-structure"); if (sh) buildStructureForBlueprint(sh);
       }, adapter);
     }
 
@@ -2452,7 +2467,10 @@
         // NO CONFIRMATION, deliberately: on a tenant this destroys records and is confirmed.
         // Here it edits a blueprint that has not created anything yet, so a modal would imply
         // a consequence that does not exist.
-        del.onclick = () => { tweaks.splice(i, 1); buildFieldEditor(host); };
+        del.onclick = () => {
+          tweaks.splice(i, 1); buildFieldEditor(host);
+          const vh = document.querySelector(".tb-views"); if (vh) buildViewsForBlueprint(vh);
+        };
         row.appendChild(up); row.appendChild(down); row.appendChild(del);
         list.appendChild(row);
       });
@@ -2475,6 +2493,127 @@
     }
 
     let dragType = null;
+
+    /**
+     * THE VIEWS PANEL, over the blueprint.
+     *
+     * The SAME buildViewsSection the tenant screen renders. Every availability rule is a pure
+     * function of the module and its fields, so a blueprint evaluates them exactly as a tenant
+     * does - Board needs a pipeline, Calendar a date field, Map an address field, Gallery an
+     * image field, Lanes the booking or work-order module. Nothing is dimmed for want of
+     * records, because no rule ever looked at one.
+     *
+     * The adapter reads the fields the BLUEPRINT declares and writes back into it. No network.
+     */
+    function buildViewsForBlueprint(host) {
+      host.innerHTML = "";
+      if (!(App.mf && App.mf.buildViewsSection)) { host.appendChild(el("p", "cell-muted", "The views editor is unavailable.")); return; }
+      const key = draft.spec._selected || (modules[0] && modules[0].key) || "contact";
+      const mod = modules.find((m) => m.key === key) || { key };
+      const rl = (draft.spec.moduleRelabels || {})[key] || {};
+      const per = (draft.spec.moduleViews = draft.spec.moduleViews || {});
+      const mine = (per[key] = per[key] || { enabledViews: [], pipelineEnabled: false, calendarDateField: null, calendarLanes: false, calendarTray: false, recordStages: [] });
+      // The record type the panel reasons about, assembled from the blueprint.
+      const typeForPanel = {
+        key: key,
+        label: rl.label || mod.label || key,
+        labelPlural: rl.labelPlural || mod.labelPlural || mod.label || key,
+        enabledViews: mine.enabledViews || [],
+        pipelineEnabled: mine.pipelineEnabled === true,
+        calendarDateField: mine.calendarDateField || null,
+        calendarLanes: mine.calendarLanes === true,
+        calendarTray: mine.calendarTray === true,
+        recordStages: mine.recordStages || [],
+      };
+      App.mf.buildViewsSection(host, typeForPanel, {
+        canEdit: () => true,
+        // THE FIELDS THE BLUEPRINT DECLARES, not a tenant's. Availability is computed from
+        // these, which is why a template can offer Calendar the moment you add a date field.
+        fieldsFor: (k) => Promise.resolve(
+          (draft.spec.fieldTweaks || [])
+            .filter((tw) => tw.moduleKey === k)
+            .map((tw) => ({ key: slugField(tw.field.label), label: tw.field.label, type: tw.field.type }))
+        ),
+        persist: (payload) => {
+          // Save into the blueprint. The payload is the same shape the tenant endpoint takes.
+          if (Object.prototype.hasOwnProperty.call(payload, "enabledViews")) mine.enabledViews = payload.enabledViews || [];
+          ["calendarDateField", "calendarLanes", "calendarTray"].forEach((k2) => {
+            if (Object.prototype.hasOwnProperty.call(payload, k2)) mine[k2] = payload[k2];
+          });
+          return Promise.resolve(typeForPanel);
+        },
+        afterSaved: () => { buildViewsForBlueprint(host); },
+      });
+    }
+
+    /**
+     * THE STRUCTURE & BEHAVIOR PANEL, over the blueprint.
+     *
+     * Same component, and the pipeline toggle means the same thing. What differs is the
+     * CONSEQUENCE, and the hint says so rather than borrowing the tenant's reassurance:
+     * on a tenant "nothing is deleted" matters because records already sit in stages; in a
+     * template there are no records at all, so promising not to delete them would be noise.
+     */
+    function buildStructureForBlueprint(host) {
+      host.innerHTML = "";
+      if (!(App.mf && App.mf.structureSection)) { host.appendChild(el("p", "cell-muted", "The structure editor is unavailable.")); return; }
+      const key = draft.spec._selected || (modules[0] && modules[0].key) || "contact";
+      const per = (draft.spec.moduleViews = draft.spec.moduleViews || {});
+      const mine = (per[key] = per[key] || { enabledViews: [], pipelineEnabled: false, subtypes: [], stages: [], recordStages: [] });
+      host.appendChild(App.mf.structureSection({
+        canEdit: () => true,
+        pipelineOn: () => mine.pipelineEnabled === true,
+        hintFor: (on) => on
+          ? "On \u2014 tenants made from this template start with types, stages and statuses on this module."
+          : "Off \u2014 tenants start with this module as a flat list. Turn it on to give it stages.",
+        setPipeline: (enabled) => {
+          mine.pipelineEnabled = !!enabled;
+          buildStructureForBlueprint(host);
+          const vh = document.querySelector(".tb-views"); if (vh) buildViewsForBlueprint(vh);
+          return Promise.resolve();
+        },
+        cards: () => [stageListCard(host, mine, "stages", "Stages", "The columns a board shows."),
+                      stageListCard(host, mine, "recordStages", "Statuses", "One column per status on the list board.")],
+      }));
+    }
+
+    /** A simple editable list of stages or statuses. Order is the order they are shown in. */
+    function stageListCard(host, mine, field, title, hint) {
+      const card = el("div", "card mf-structure-card");
+      card.appendChild(el("div", "fields-section-name", title));
+      card.appendChild(el("p", "cell-muted mf-view-hint", hint));
+      const rows = (mine[field] = mine[field] || []);
+      rows.forEach((r, i) => {
+        const row = el("div", "add-user acct-row");
+        row.appendChild(el("span", "field-row-name", esc(r.label)));
+        const up = el("button", "btn btn-ghost btn-sm", "\u2191"); up.disabled = i === 0;
+        up.onclick = () => { rows.splice(i - 1, 0, rows.splice(i, 1)[0]); buildStructureForBlueprint(host); };
+        const down = el("button", "btn btn-ghost btn-sm", "\u2193"); down.disabled = i === rows.length - 1;
+        down.onclick = () => { rows.splice(i + 1, 0, rows.splice(i, 1)[0]); buildStructureForBlueprint(host); };
+        const del = el("button", "btn btn-ghost btn-sm", "\u00d7");
+        del.onclick = () => { rows.splice(i, 1); buildStructureForBlueprint(host); };
+        row.appendChild(up); row.appendChild(down); row.appendChild(del);
+        card.appendChild(row);
+      });
+      if (!rows.length) card.appendChild(el("p", "cell-muted", "None yet."));
+      const addRow = el("div", "add-user acct-row u-mt-8");
+      const inp = el("input", "input"); inp.placeholder = "Add a " + title.toLowerCase().replace(/e?s$/, "");
+      const add = el("button", "btn btn-ghost btn-sm", "Add");
+      add.onclick = () => {
+        const v = inp.value.trim();
+        if (!v) { toast("Give it a name", true); return; }
+        rows.push({ label: v });
+        buildStructureForBlueprint(host);
+      };
+      addRow.appendChild(inp); addRow.appendChild(add);
+      card.appendChild(addRow);
+      return card;
+    }
+
+    /** The same rule the server uses to derive a field key from its label. */
+    function slugField(label) {
+      return (String(label) || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "field";
+    }
 
     /** Reorder within the selected module, leaving other modules' fields where they are. */
     function moveTweak(index, dir, moduleKey) {
@@ -2510,6 +2649,9 @@
         draft.spec.fieldTweaks.push({ moduleKey, field: { label, type: inner.querySelector("#af-type").value } });
         overlay.remove();
         buildFieldEditor(host);
+        // Adding a date, address or image field can make a view AVAILABLE, so the views panel
+        // is repainted with it - the same liveness the tenant screen has.
+        const vh = document.querySelector(".tb-views"); if (vh) buildViewsForBlueprint(vh);
       };
     }
 

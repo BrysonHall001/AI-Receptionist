@@ -43,7 +43,14 @@ async function main() {
   check(!/name: "Gallery", comingSoon: true/.test(portal) && !/GALLERY — future batch/.test(portal), "the \"Coming soon\" Gallery state is gone");
   // Shared liveness plumbing: the Views panel re-fetches CURRENT fields every render, and every
   // Fields-column repaint (field add/edit/delete) re-runs it — the Calendar-tile fix, unchanged.
-  check(/App\.portalApi\("\/api\/fields\?recordType=" \+ encodeURIComponent\(selectedType\.key\)\)/.test(bv), "the tile reads the module's CURRENT field defs (fresh fetch, never stale)");
+  // CONVERTED (views & pipelines batch): this pinned the literal portalApi call inside the
+  // panel. The FETCH MOVED INTO THE ADAPTER so the template builder can supply the blueprint's
+  // own fields instead. The liveness it protects is unchanged and is what is asserted now:
+  // the panel asks its adapter for fields on every render, and the tenant adapter fetches
+  // them fresh from the server rather than caching.
+  check(/_a\.fieldsFor\(selectedType\.key\)/.test(bv)
+    && /fieldsFor: function \(key\) \{ return App\.portalApi\("\/api\/fields\?recordType=" \+ encodeURIComponent\(key\)\); \}/.test(portal),
+    "the tile reads the module's CURRENT field defs (fresh fetch, never stale)");
   check(/if \(refresh && mfViewsRepaint\) \{ try \{ mfViewsRepaint\(\); \} catch \(e\) \{\} \}/.test(portal), "field add/edit/delete re-evaluates the panel (the shared liveness hook)");
 
   // ---- (2) gallery view mode + card render rules ----

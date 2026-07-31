@@ -62,14 +62,21 @@ check(/if \(boardEnabled\) \{[\s\S]{0,400}?seg-btn seg-on", "List"[\s\S]{0,200}?
 check(/if \(boardEnabled && view === "board"\) renderBoard\(\)/.test(REL), "board view is only reachable when boardEnabled");
 
 console.log("\n(E) Views section rendered beneath Terms:");
-check(/function buildViewsSection\(col, selectedType\)/.test(portal), "buildViewsSection exists");
+// CONVERTED (views & pipelines batch): this pinned the exact SIGNATURE, which gained an
+// adapter so the template builder could share the panel. What it protects is that the views
+// panel exists and renders its four tiles, so that is what it asserts now.
+check(/function buildViewsSection\(/.test(portal) && /mf-view-row/.test(portal) && /mf-view-name/.test(portal),
+  "buildViewsSection exists and renders view rows");
 check(/const renderViewsStrip = function \(\) \{ buildViewsSection\(viewsStrip, currentType\(\)\); \};/.test(portal), "the Views section renders as the horizontal strip (layout restructure)");
 check(/Turn on a pipeline to enable the Board view\./.test(portal), "Board shows the pipeline-required hint when unavailable");
 check(/Add a date field to enable the Calendar view\./.test(portal), "Calendar shows the date-field-required hint when unavailable");
 check(/name: "Map", available: mapAvailable/.test(portal) && /name: "Gallery", available: galAvailable/.test(portal), "Map and Gallery are both built (availability-driven) — no more coming-soon tiles");
 check(/Calendar date field/.test(portal) && /dateFields\.length > 1/.test(portal), "a date-field picker appears when Calendar is on and there are multiple date fields");
 check(/"\/api\/record-types\/views", \{ method: "POST"/.test(portal), "toggles persist to POST /api/record-types/views");
-check(/App\.state\.me\.role !== "CLIENT_USER"/.test(portal.slice(portal.indexOf("function buildViewsSection"), portal.indexOf("function buildViewsSection") + 1200)), "the Views editor is guarded by the module-management permission");
+// CONVERTED: the role check moved into the VIEWS TENANT ADAPTER so a blueprint editor can
+// supply its own. The gate is unchanged - it is stated once, beside the panel.
+check(/canEdit: function \(\) \{ return App\.state\.me\.role !== "CLIENT_USER"; \}/.test(portal)
+  && /const canEdit = _a\.canEdit\(\);/.test(portal), "the Views editor is guarded by the module-management permission");
 
 console.log("\n(F) backend routes exist:");
 check(/apiRouter\.post\("\/record-types\/views"/.test(api), "POST /record-types/views endpoint exists");

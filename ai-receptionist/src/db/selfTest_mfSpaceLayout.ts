@@ -40,7 +40,12 @@ check(/if \(structureMount\) \{ structureMount\.innerHTML = ""; structureMount\.
 check(!/scroll\.appendChild\(structureSection\(\)\);\s*\n\s*wrap\.appendChild\(scroll\)/.test(rf), "…and no longer appends it inside the Fields scroller");
 check(/else scroll\.appendChild\(structureSection\(\)\);/.test(rf), "…with the in-column fallback kept for any mount-less caller");
 check(/if \(canEdit && selectedType\) \{/.test(rf), "the permission gate is unchanged (canEdit + a selected module)");
-check(/mfViewsRepaint\(rt \|\| null\)/.test(rf) || /mfViewsRepaint\(/.test(portal.slice(portal.indexOf("function structureSection()"), portal.indexOf("const scroll = el"))), "the pipeline toggle still re-renders the Views strip (mfViewsRepaint wiring intact)");
+// CONVERTED (views & pipelines batch): the slice anchored on "function structureSection()",
+// a signature that gained an adapter, so the slice became empty and the check vacuous. The
+// repaint itself moved into the TENANT ADAPTER, which is where the tenant-specific behaviour
+// now lives. Anchored on the adapter, so it cannot silently become empty again.
+check(/mfViewsRepaint\(rt \|\| null\)/.test(rf)
+  || /if \(mfViewsRepaint\) mfViewsRepaint\(updated\);/.test(portal.slice(portal.indexOf("const STRUCTURE_TENANT_ADAPTER"), portal.indexOf("const STRUCTURE_TENANT_ADAPTER") + 1400)), "the pipeline toggle still re-renders the Views strip (mfViewsRepaint wiring intact)");
 check(/if \(refresh && mfViewsRepaint\) \{ try \{ mfViewsRepaint\(\); \} catch \(e\) \{\} \}/.test(portal), "field add/edit/delete liveness still repaints the strip");
 
 // ---- (2) two-column sections, >=3 threshold ----

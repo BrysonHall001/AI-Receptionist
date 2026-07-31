@@ -125,7 +125,14 @@ async function main() {
   // builder), counts date AND datetime, and every field add/edit/delete repaints the panel.
   check(/function moduleDateFields\(t, fields\)/.test(portal) && /f\.type === "date" \|\| f\.type === "datetime"/.test(portal), "Calendar availability counts BOTH date and datetime fields");
   const bv = portal.slice(portal.indexOf("function buildViewsSection"), portal.indexOf("async function renderSettings"));
-  check(/App\.portalApi\("\/api\/fields\?recordType=" \+ encodeURIComponent\(selectedType\.key\)\)/.test(bv), "the Views panel fetches the module's CURRENT field defs on every render (never stale)");
+  // CONVERTED (views & pipelines batch): this pinned the literal portalApi call inside the
+  // panel. The FETCH MOVED INTO THE ADAPTER so the template builder can supply the blueprint's
+  // own fields instead. The liveness it protects is unchanged and is what is asserted now:
+  // the panel asks its adapter for fields on every render, and the tenant adapter fetches
+  // them fresh from the server rather than caching.
+  check(/_a\.fieldsFor\(selectedType\.key\)/.test(bv)
+    && /fieldsFor: function \(key\) \{ return App\.portalApi\("\/api\/fields\?recordType=" \+ encodeURIComponent\(key\)\); \}/.test(portal),
+    "the Views panel fetches the module's CURRENT field defs on every render (never stale)");
   check(/const calAvailable = dateFields\.length > 0;/.test(bv), "Calendar availability is computed from those current field defs");
   check(/if \(refresh && mfViewsRepaint\) \{ try \{ mfViewsRepaint\(\); \} catch \(e\) \{\} \}/.test(portal), "every Fields-column repaint re-renders the Views panel (the liveness hook)");
   // The add/edit/delete paths all flow through renderFields(true), which now triggers the hook.

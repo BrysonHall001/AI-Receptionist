@@ -65,10 +65,17 @@ async function main() {
 
   // (4) editors grouped under "Structure & behavior" with the toggle, in the Modules & Fields UI.
   const portal = readFileSync(resolve(__dirname, "../../public/js/portal.js"), "utf8");
-  check(/function structureSection\(\)/.test(portal), "portal.js builds a Structure & behavior section");
+  // CONVERTED: the signature gained an adapter, and the function was hoisted to module scope
+  // so both screens can reach it. It still builds the same section.
+  check(/function structureSection\(/.test(portal) && /mf-structure-title", "Structure & behavior"/.test(portal),
+    "portal.js builds a Structure & behavior section");
   check(/"Structure & behavior"/.test(portal), "the section carries the 'Structure & behavior' heading");
   check(/\/api\/record-types\/pipeline/.test(portal), "the toggle posts to the pipeline endpoint");
-  check(/if \(on\) \{ sec\.appendChild\(subtypesCard\(\)\); sec\.appendChild\(statusesCard\(\)\); \}/.test(portal), "the types/pipelines + Statuses editors show only when the pipeline is on");
+  // CONVERTED: the two cards now come from the adapter, so a blueprint can supply its own
+  // pair. The GATE is what matters and it is unchanged: they render only when the pipeline is on.
+  check(/if \(on\) _s\.cards\(on\)\.forEach/.test(portal)
+    && /cards: function \(\) \{ return \[subtypesCard\(\), statusesCard\(\)\]; \}/.test(portal),
+    "the types/pipelines + Statuses editors show only when the pipeline is on");
 }
 
 main()

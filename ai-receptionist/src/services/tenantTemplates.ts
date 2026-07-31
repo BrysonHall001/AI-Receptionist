@@ -42,6 +42,19 @@ export interface TenantTemplate {
    *  moduleOrder: the nav order a new tenant starts with.
    *  newModules:  modules a new tenant should be CREATED with, beyond the system set. */
   moduleOrder?: string[];
+  /** Per-module views and pipeline, keyed by module key. Builder-only and OPTIONAL, so a
+   *  blueprint saved before this batch simply has none. Every field mirrors a RecordType
+   *  column, so a template-made pipeline is the same structure a hand-built one is. */
+  moduleViews?: Record<string, {
+    enabledViews?: string[];
+    pipelineEnabled?: boolean;
+    calendarDateField?: string | null;
+    calendarLanes?: boolean;
+    calendarTray?: boolean;
+    subtypes?: Array<{ key?: string; label: string }>;
+    stages?: Array<{ key?: string; label: string }>;
+    recordStages?: Array<{ key?: string; label: string }>;
+  }>;
   newModules?: Array<{ key: string; label: string; labelPlural?: string }>;
   label: string;
   description: string;
@@ -553,6 +566,40 @@ export async function applyTemplateAtCreation(tenantId: string, template: Tenant
       } catch (e) { logger.warn(`template ${template.key}: could not set module order: ${(e as Error).message}`); }
     }
 
+    // ---- BUILDER: per-module VIEWS and PIPELINE ----
+    // Written straight onto the record type, because every one of these is a RecordType
+    // column. That is what makes a template-made pipeline identical to a hand-built one -
+    // there is no separate representation to drift.
+    const moduleViews = (template as any).moduleViews || {};
+    if (Object.keys(moduleViews).length) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { listRecordTypes: listRT2 } = require("./recordTypeService");
+      const live = (await listRT2(tenantId)) || [];
+      for (const [k, cfg] of Object.entries(moduleViews as Record<string, any>)) {
+        const key = createdKeyFor[k] || k;
+        const rt = live.find((t: any) => t.key === key);
+        if (!rt || !cfg) continue;
+        const data: any = {};
+        if (Array.isArray(cfg.enabledViews)) data.enabledViews = cfg.enabledViews;
+        if (typeof cfg.pipelineEnabled === "boolean") data.pipelineEnabled = cfg.pipelineEnabled;
+        if (cfg.calendarDateField !== undefined) data.calendarDateField = cfg.calendarDateField;
+        if (typeof cfg.calendarLanes === "boolean") data.calendarLanes = cfg.calendarLanes;
+        if (typeof cfg.calendarTray === "boolean") data.calendarTray = cfg.calendarTray;
+        // The three lists are stored as-is; each entry gets a key derived from its label the
+        // same way the tenant screen derives one, so the shapes match exactly.
+        const withKeys = (rows: any[]) => (rows || []).filter((r) => r && r.label).map((r) => ({
+          key: r.key || String(r.label).toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40),
+          label: String(r.label),
+        }));
+        if (Array.isArray(cfg.subtypes)) data.subtypes = withKeys(cfg.subtypes);
+        if (Array.isArray(cfg.stages)) data.stages = withKeys(cfg.stages);
+        if (Array.isArray(cfg.recordStages)) data.recordStages = withKeys(cfg.recordStages);
+        if (!Object.keys(data).length) continue;
+        try { await (prisma as any).recordType.update({ where: { id: rt.id }, data }); }
+        catch (e) { logger.warn(`template ${template.key}: could not configure ${key}: ${(e as Error).message}`); }
+      }
+    }
+
     // ---- RM-1: template-scoped module RELABELS (stock-label-only) ----
     const relabels = Object.entries(template.moduleRelabels || {});
     if (relabels.length) {
@@ -717,6 +764,7 @@ export function specToTemplate(row: { key: string; label: string; description: s
     // it is asserted. Every consumer reads them as `|| []`, so a template that DOES declare
     // one is still indistinguishable in behaviour.
     ...(arr(s.moduleOrder).length ? { moduleOrder: arr(s.moduleOrder) } : {}),
+    ...(s.moduleViews && Object.keys(obj(s.moduleViews)).length ? { moduleViews: obj(s.moduleViews) } : {}),
     ...(arr(s.newModules).filter((m: any) => m && m.key && m.label).length
       ? { newModules: arr(s.newModules).filter((m: any) => m && m.key && m.label) } : {}),
     hooks: {

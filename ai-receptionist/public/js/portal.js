@@ -3341,38 +3341,39 @@
     // heading, gated by an explicit Pipeline on/off toggle. OFF = flat catalog (editors hidden);
     // ON = pipeline shown (types/stages/statuses + board behavior, exactly as today). The toggle
     // is NON-DESTRUCTIVE — turning it off keeps all types/stages/statuses + record assignments.
-    function structureSection() {
-      const sec = el("div", "mf-structure");
-      sec.appendChild(el("div", "fields-section-name mf-structure-title", "Structure & behavior"));
-      const on = selectedType.pipelineEnabled !== false;
+    /**
+     * THE STRUCTURE & BEHAVIOR PANEL — one implementation, two screens.
+     *
+     * The pipeline toggle is the whole gate: ON reveals the types and statuses editors, OFF
+     * makes the module a flat catalogue. Both states are pure data, so a blueprint expresses
+     * them exactly as a tenant does.
+     *
+     * THE CONSEQUENCE DIFFERS AND THE WORDING SAYS SO. On a tenant the toggle is
+     * non-destructive but records already sit in stages, so the hint promises nothing is
+     * deleted. In a blueprint there are no records at all, so the adapter supplies its own
+     * hint rather than borrowing a reassurance that would be meaningless.
+     *
+     * adapter: { canEdit(), pipelineOn(), setPipeline(on) -> Promise, hintFor(on), cards(on) -> [nodes] }
+     */
 
-      const tRow = el("div", "card mf-pipeline-card");
-      const toggle = el("label", "switch");
-      const cb = el("input"); cb.type = "checkbox"; cb.checked = on; cb.disabled = !canEdit;
-      toggle.appendChild(cb); toggle.appendChild(el("span", "switch-track"));
-      const tText = el("div", "mf-pipeline-text");
-      tText.appendChild(el("div", "mf-pipeline-title", "Pipeline"));
-      tText.appendChild(el("div", "cell-muted mf-pipeline-hint",
-        on ? "On — this module has types, stages, and statuses (board behavior). Turn off to make it a flat catalog; nothing is deleted."
-           : "Off — this module is a flat catalog. Turn on to add types, stages, and statuses and build a pipeline."));
-      tRow.appendChild(toggle); tRow.appendChild(tText);
-      sec.appendChild(tRow);
-      cb.onchange = async () => {
-        cb.disabled = true;
-        try {
-          const updated = await App.portalApi("/api/record-types/pipeline", { method: "POST", body: JSON.stringify({ recordType: selectedKey, enabled: cb.checked }) });
-          App.util.toast(cb.checked ? "Pipeline turned on" : "Pipeline turned off");
-          renderFields(true); // repaint the Fields column (reveals/hides the stages editor, as before)
-          // Repaint the Views panel off the FRESH record type so Board flips available/unavailable
-          // live (its availability keys off pipelineEnabled, which just changed on the server).
-          if (mfViewsRepaint) mfViewsRepaint(updated);
-        } catch (e) { App.util.toast(e.message, true); cb.checked = !cb.checked; cb.disabled = false; }
-      };
+    /** The TENANT adapter: exactly what structureSection used to do inline. */
+    const STRUCTURE_TENANT_ADAPTER = {
+      canEdit: function () { return canEdit; },
+      pipelineOn: function () { return selectedType.pipelineEnabled !== false; },
+      hintFor: function (on) {
+        return on ? "On \u2014 this module has types, stages, and statuses (board behavior). Turn off to make it a flat catalog; nothing is deleted."
+                  : "Off \u2014 this module is a flat catalog. Turn on to add types, stages, and statuses and build a pipeline.";
+      },
+      setPipeline: async function (enabled) {
+        const updated = await App.portalApi("/api/record-types/pipeline", { method: "POST", body: JSON.stringify({ recordType: selectedKey, enabled: enabled }) });
+        App.util.toast(enabled ? "Pipeline turned on" : "Pipeline turned off");
+        renderFields(true);
+        if (mfViewsRepaint) mfViewsRepaint(updated);
+        return updated;
+      },
+      cards: function () { return [subtypesCard(), statusesCard()]; },
+    };
 
-      // Pipeline ON → show the (generic) types/pipelines + Statuses editors, unchanged.
-      if (on) { sec.appendChild(subtypesCard()); sec.appendChild(statusesCard()); }
-      return sec;
-    }
 
     // Task: give the Fields list its OWN scroll that fits the viewport, so scrolling
     // while hovering it moves only this column (the library, Terms, and page stay put).
@@ -4803,13 +4804,31 @@
   // field; Map only with an address field; Gallery only with an image field. Each shows an
   // ON/OFF toggle (with an availability hint when it can't be turned on) that controls whether
   // the view appears on the module's list page. Guarded by the module-management permission. ----
-  function buildViewsSection(col, selectedType) {
+  /**
+   * THE VIEWS PANEL — one implementation, two screens.
+   *
+   * Every availability rule here is a pure function of the MODULE and its FIELDS:
+   *   Board    pipelineEnabled || recordStages.length
+   *   Calendar a date/datetime field (or appointmentAt on booking/work_order)
+   *   Map      an address field
+   *   Gallery  an image field
+   *   Lanes    the module is booking or work_order
+   * Not one of them reads a record. That is why the same panel can sit on a template
+   * blueprint and evaluate identically - nothing degrades, and no view needs a caveat.
+   *
+   * The adapter supplies the three things that differ: who may edit, where the fields come
+   * from, and what "save" means. The component itself performs NO network call.
+   *
+   * adapter: { canEdit(), fieldsFor(moduleKey) -> Promise<fields>, persist(payload) -> Promise<recordType>, afterSaved(rt) }
+   */
+  function buildViewsSection(col, selectedType, adapter) {
+    const _a = adapter || VIEWS_TENANT_ADAPTER;
     const prev = col.querySelector(".mf-views"); if (prev) prev.remove(); // avoid dupes on re-render
     if (!selectedType) return;
     // Contacts get ALL FOUR tiles under the standard data-driven rules (contacts-all-views):
     // Board needs the contact pipeline, Calendar a date field, Gallery an image field, Map an
     // address field — no special-casing left.
-    const canEdit = App.state.me.role !== "CLIENT_USER";
+    const canEdit = _a.canEdit();
     const modName = selectedType.labelPlural || selectedType.label || "these records";
 
     const sec = el("div", "mf-views");
@@ -4823,7 +4842,7 @@
     sec.appendChild(body);
     col.appendChild(sec);
 
-    App.portalApi("/api/fields?recordType=" + encodeURIComponent(selectedType.key))
+    _a.fieldsFor(selectedType.key)
       .catch(function () { return []; })
       .then(function (fields) {
         body.innerHTML = "";
@@ -4837,7 +4856,7 @@
         function persist(nextViews, calField) {
           const payload = { recordType: selectedType.key, enabledViews: nextViews };
           if (calField !== undefined) payload.calendarDateField = calField;
-          return App.portalApi("/api/record-types/views", { method: "POST", body: JSON.stringify(payload) });
+          return _a.persist(payload);
         }
         function afterSave(rt, msg) {
           // Merge the server's authoritative view state back onto the in-memory module so the
@@ -4845,7 +4864,7 @@
           if (rt) { selectedType.enabledViews = rt.enabledViews; selectedType.calendarDateField = rt.calendarDateField; }
           App.util.toast(msg);
           buildViewsSection(col, selectedType); // repaint (updates hints, picker visibility)
-          if (App._route) App._route();
+          _a.afterSaved();
         }
 
         // One row: toggle + name (+ badge) + hint. Returns the checkbox for wiring.
@@ -4958,12 +4977,12 @@
               cb.disabled = true;
               const payload = { recordType: selectedType.key, enabledViews: moduleEnabledViews(selectedType) };
               payload[field] = cb.checked;
-              App.portalApi("/api/record-types/views", { method: "POST", body: JSON.stringify(payload) })
+              _a.persist(payload)
                 .then(function (rt) {
                   if (rt) { selectedType.calendarLanes = rt.calendarLanes; selectedType.calendarTray = rt.calendarTray; selectedType.enabledViews = rt.enabledViews; }
                   App.util.toast(cb.checked ? onMsg : offMsg);
                   buildViewsSection(col, selectedType);
-                  if (App._route) App._route();
+                  _a.afterSaved();
                 })
                 .catch(function (e) { cb.checked = !cb.checked; cb.disabled = false; App.util.toast(e.message, true); });
             };
@@ -5007,6 +5026,41 @@
         };
       });
   }
+
+  function structureSection(adapter) {
+    const _s = adapter || STRUCTURE_TENANT_ADAPTER;
+    const sec = el("div", "mf-structure");
+    sec.appendChild(el("div", "fields-section-name mf-structure-title", "Structure & behavior"));
+    const on = _s.pipelineOn();
+
+    const tRow = el("div", "card mf-pipeline-card");
+    const toggle = el("label", "switch");
+    const cb = el("input"); cb.type = "checkbox"; cb.checked = on; cb.disabled = !_s.canEdit();
+    toggle.appendChild(cb); toggle.appendChild(el("span", "switch-track"));
+    const tText = el("div", "mf-pipeline-text");
+    tText.appendChild(el("div", "mf-pipeline-title", "Pipeline"));
+    tText.appendChild(el("div", "cell-muted mf-pipeline-hint", _s.hintFor(on)));
+    tRow.appendChild(toggle); tRow.appendChild(tText);
+    sec.appendChild(tRow);
+    cb.onchange = async () => {
+      cb.disabled = true;
+      try { await _s.setPipeline(cb.checked); }
+      catch (e) { App.util.toast(e.message, true); cb.checked = !cb.checked; cb.disabled = false; }
+    };
+;
+
+    // Pipeline ON → show the (generic) types/pipelines + Statuses editors, unchanged.
+    if (on) _s.cards(on).forEach(function (n) { sec.appendChild(n); });
+    return sec;
+  }
+
+  /** The TENANT adapter: exactly what buildViewsSection used to do inline. */
+  const VIEWS_TENANT_ADAPTER = {
+    canEdit: function () { return App.state.me.role !== "CLIENT_USER"; },
+    fieldsFor: function (key) { return App.portalApi("/api/fields?recordType=" + encodeURIComponent(key)); },
+    persist: function (payload) { return App.portalApi("/api/record-types/views", { method: "POST", body: JSON.stringify(payload) }); },
+    afterSaved: function () { if (App._route) App._route(); },
+  };
 
   async function renderSettings(sub) {
     const me = App.state.me;
@@ -9060,6 +9114,8 @@
   App.mf = {
     buildModulesRow: buildModulesRow,
     buildFieldLibrary: buildFieldLibrary,
+    buildViewsSection: buildViewsSection,
+    structureSection: function (adapter) { return structureSection(adapter); },
     fieldTypeKeys: function () { return Object.keys((App.fields && App.fields.TYPE_LABELS) || {}); },
   };
 
