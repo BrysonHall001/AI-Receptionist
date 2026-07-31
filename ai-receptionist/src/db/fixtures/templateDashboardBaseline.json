@@ -1,0 +1,865 @@
+{
+  "note": "Every dashboard and analytics widget each BUILT-IN template seeds. The builder must not move one byte of this.",
+  "templates": {
+    "general": {
+      "dashboards": [],
+      "analytics": []
+    },
+    "ai_receptionist": {
+      "dashboards": [],
+      "analytics": []
+    },
+    "field_services": {
+      "dashboards": [
+        {
+          "name": "__home__",
+          "widgets": [
+            {
+              "id": "fs_home_new_requests",
+              "title": "New requests",
+              "type": "kpi",
+              "source": "work_order",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "stageKey",
+                  "op": "is",
+                  "value": "new_request",
+                  "conj": "AND"
+                }
+              ]
+            },
+            {
+              "id": "fs_home_today",
+              "title": "Today's schedule",
+              "type": "list",
+              "source": "work_order",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "columns": [
+                "title",
+                "appointmentAt",
+                "resource",
+                "stageKey"
+              ],
+              "filters": [
+                {
+                  "field": "appointmentAt",
+                  "op": "today",
+                  "value": "",
+                  "conj": "AND"
+                }
+              ]
+            },
+            {
+              "id": "fs_home_by_status",
+              "title": "Jobs by status",
+              "type": "pie",
+              "source": "work_order",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "stageKey"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "fs_home_invoiced",
+              "title": "Invoiced (last 30 days)",
+              "type": "kpi",
+              "source": "invoice",
+              "measure": {
+                "op": "sum",
+                "field": "total"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "invoice_date",
+                  "op": "previous",
+                  "value": 30,
+                  "unit": "days",
+                  "conj": "AND"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "analytics": [
+        {
+          "name": "Operations",
+          "widgets": [
+            {
+              "id": "fs_ops_requests_week",
+              "title": "Requests over time",
+              "type": "line",
+              "source": "work_order",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "createdAt",
+                  "date": "week"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "fs_ops_by_status",
+              "title": "Jobs by status",
+              "type": "pie",
+              "source": "work_order",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "stageKey"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "fs_ops_by_type",
+              "title": "Jobs by type",
+              "type": "bar",
+              "source": "work_order",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "subtypeKey"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "fs_ops_completed_week",
+              "title": "Completed jobs by week (created date)",
+              "type": "line",
+              "source": "work_order",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "createdAt",
+                  "date": "week"
+                }
+              ],
+              "series": [],
+              "filters": [
+                {
+                  "field": "stageKey",
+                  "op": "is",
+                  "value": "completed",
+                  "conj": "AND"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Revenue",
+          "widgets": [
+            {
+              "id": "fs_rev_invoiced_month",
+              "title": "Invoiced over time",
+              "type": "line",
+              "source": "invoice",
+              "measure": {
+                "op": "sum",
+                "field": "total"
+              },
+              "groupBy": [
+                {
+                  "key": "invoice_date",
+                  "date": "month"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "fs_rev_paid_vs_out",
+              "title": "Paid vs outstanding",
+              "type": "pie",
+              "source": "invoice",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "status"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "fs_plan_renewals",
+              "title": "Plan renewals by month",
+              "type": "bar",
+              "source": "service_plan",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "renewal_date",
+                  "date": "month"
+                }
+              ],
+              "series": [],
+              "filters": [
+                {
+                  "field": "stageKey",
+                  "op": "is",
+                  "value": "active",
+                  "conj": "AND"
+                }
+              ]
+            },
+            {
+              "id": "fs_rev_by_method",
+              "title": "Invoices by payment method",
+              "type": "pie",
+              "source": "invoice",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "payment_method"
+                }
+              ],
+              "series": [],
+              "filters": []
+            }
+          ]
+        },
+        {
+          "name": "Customers & Calls",
+          "widgets": [
+            {
+              "id": "fs_cc_calls_week",
+              "title": "Calls over time",
+              "type": "line",
+              "source": "calls",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "createdAt",
+                  "date": "week"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "fs_cc_calls_outcome",
+              "title": "Calls by outcome",
+              "type": "pie",
+              "source": "calls",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "status"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "fs_cc_new_contacts",
+              "title": "New contacts over time",
+              "type": "line",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "createdAt",
+                  "date": "week"
+                }
+              ],
+              "series": [],
+              "filters": []
+            }
+          ]
+        }
+      ]
+    },
+    "recruitment_marketing": {
+      "dashboards": [
+        {
+          "name": "__home__",
+          "widgets": [
+            {
+              "id": "rm_home_new_candidates",
+              "title": "New candidates this week",
+              "type": "kpi",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "createdAt",
+                  "op": "previous",
+                  "value": 7,
+                  "unit": "days",
+                  "conj": "AND"
+                }
+              ]
+            },
+            {
+              "id": "rm_home_by_source",
+              "title": "Candidates by source",
+              "type": "pie",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "candidate_source"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "rm_home_interviews",
+              "title": "Interviews (last 7 days)",
+              "type": "kpi",
+              "source": "booking",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "appointmentAt",
+                  "op": "previous",
+                  "value": 7,
+                  "unit": "days",
+                  "conj": "AND"
+                }
+              ]
+            },
+            {
+              "id": "rm_home_pipeline",
+              "title": "Pipeline snapshot",
+              "type": "pie",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "candidate_stage"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "rm_home_hired",
+              "title": "Hired candidates",
+              "type": "kpi",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "candidate_stage",
+                  "op": "is",
+                  "value": "Hired",
+                  "conj": "AND"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "analytics": [
+        {
+          "name": "Candidate pipeline",
+          "widgets": [
+            {
+              "id": "rm_pipe_stage_dist",
+              "title": "Candidates by stage",
+              "type": "pie",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "candidate_stage"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "rm_pipe_new_week",
+              "title": "New candidates per week",
+              "type": "line",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "createdAt",
+                  "date": "week"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "rm_pipe_flow_time",
+              "title": "Pipeline over time (by week added)",
+              "type": "stacked",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "createdAt",
+                  "date": "week"
+                }
+              ],
+              "series": [
+                {
+                  "key": "candidate_stage"
+                }
+              ],
+              "filters": []
+            },
+            {
+              "id": "rm_pipe_conv_new",
+              "title": "New leads (count)",
+              "type": "kpi",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "candidate_stage",
+                  "op": "is",
+                  "value": "New lead",
+                  "conj": "AND"
+                }
+              ]
+            },
+            {
+              "id": "rm_pipe_conv_interviewed",
+              "title": "Interviewed (count)",
+              "type": "kpi",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "candidate_stage",
+                  "op": "is",
+                  "value": "Interviewed",
+                  "conj": "AND"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Where candidates come from",
+          "widgets": [
+            {
+              "id": "rm_src_over_time",
+              "title": "Candidates by source over time",
+              "type": "stacked",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "createdAt",
+                  "date": "week"
+                }
+              ],
+              "series": [
+                {
+                  "key": "candidate_source"
+                }
+              ],
+              "filters": []
+            },
+            {
+              "id": "rm_src_share",
+              "title": "Source share",
+              "type": "pie",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "candidate_source"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "rm_src_stage_matrix",
+              "title": "Source × stage",
+              "type": "heatmap",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "candidate_source"
+                }
+              ],
+              "series": [
+                {
+                  "key": "candidate_stage"
+                }
+              ],
+              "filters": []
+            },
+            {
+              "id": "rm_src_hires",
+              "title": "Hires by source (the ad-ROI view)",
+              "type": "bar",
+              "source": "contacts",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "candidate_source"
+                }
+              ],
+              "series": [],
+              "filters": [
+                {
+                  "field": "candidate_stage",
+                  "op": "is",
+                  "value": "Hired",
+                  "conj": "AND"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Interviews & calls",
+          "widgets": [
+            {
+              "id": "rm_int_per_week",
+              "title": "Interviews per week",
+              "type": "line",
+              "source": "booking",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "appointmentAt",
+                  "date": "week"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "rm_int_calls_week",
+              "title": "AI calls per week",
+              "type": "line",
+              "source": "calls",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "createdAt",
+                  "date": "week"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "rm_int_cancelled",
+              "title": "Cancelled interviews",
+              "type": "kpi",
+              "source": "booking",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "stageKey",
+                  "op": "is",
+                  "value": "cancelled",
+                  "conj": "AND"
+                }
+              ]
+            },
+            {
+              "id": "rm_int_no_show",
+              "title": "No-shows",
+              "type": "kpi",
+              "source": "booking",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "stageKey",
+                  "op": "is",
+                  "value": "no_show",
+                  "conj": "AND"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "food_service": {
+      "dashboards": [
+        {
+          "name": "__home__",
+          "widgets": [
+            {
+              "id": "food_home_today",
+              "title": "Today's reservations",
+              "type": "list",
+              "source": "booking",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "columns": [
+                "title",
+                "appointmentAt",
+                "stageKey"
+              ],
+              "filters": [
+                {
+                  "field": "appointmentAt",
+                  "op": "today",
+                  "value": "",
+                  "conj": "AND"
+                }
+              ]
+            },
+            {
+              "id": "food_home_week_covers",
+              "title": "Reservations this week",
+              "type": "kpi",
+              "source": "booking",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "appointmentAt",
+                  "op": "previous",
+                  "value": "7",
+                  "conj": "AND"
+                }
+              ]
+            },
+            {
+              "id": "food_home_quotes",
+              "title": "Catering quotes by stage",
+              "type": "pie",
+              "source": "estimate",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "stageKey"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "food_home_calls",
+              "title": "Calls answered (last 7 days)",
+              "type": "kpi",
+              "source": "calls",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": [
+                {
+                  "field": "createdAt",
+                  "op": "previous",
+                  "value": "7",
+                  "conj": "AND"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "analytics": [
+        {
+          "name": "Covers & reservations",
+          "widgets": [
+            {
+              "id": "food_an_res_by_day",
+              "title": "Reservations by day",
+              "type": "bar",
+              "source": "booking",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "appointmentAt"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "food_an_party",
+              "title": "Average party size",
+              "type": "kpi",
+              "source": "booking",
+              "measure": {
+                "op": "avg",
+                "field": "party_size"
+              },
+              "groupBy": [],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "food_an_occasion",
+              "title": "Reservations by occasion",
+              "type": "pie",
+              "source": "booking",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "occasion"
+                }
+              ],
+              "series": [],
+              "filters": []
+            }
+          ]
+        },
+        {
+          "name": "Catering",
+          "widgets": [
+            {
+              "id": "food_an_quote_value",
+              "title": "Quoted value by stage",
+              "type": "bar",
+              "source": "estimate",
+              "measure": {
+                "op": "sum",
+                "field": "total"
+              },
+              "groupBy": [
+                {
+                  "key": "stageKey"
+                }
+              ],
+              "series": [],
+              "filters": []
+            },
+            {
+              "id": "food_an_service_style",
+              "title": "Jobs by service style",
+              "type": "pie",
+              "source": "estimate",
+              "measure": {
+                "op": "count"
+              },
+              "groupBy": [
+                {
+                  "key": "service_style"
+                }
+              ],
+              "series": [],
+              "filters": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "shape": {
+    "keys": [
+      "ai_receptionist",
+      "field_services",
+      "food_service",
+      "general",
+      "recruitment_marketing"
+    ],
+    "widgetCount": 42
+  }
+}

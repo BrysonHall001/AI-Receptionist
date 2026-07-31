@@ -2240,6 +2240,18 @@
       formHost.appendChild(structHost);
       buildStructureForBlueprint(structHost);
 
+      // ---- the starting dashboard ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "Home dashboard"));
+      const dashHost = el("div", "tb-dash");
+      formHost.appendChild(dashHost);
+      buildDashboardEditor(dashHost);
+
+      // ---- optional report pages ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "Report pages"));
+      const anaHost = el("div", "tb-analytics");
+      formHost.appendChild(anaHost);
+      buildAnalyticsEditor(anaHost);
+
       // ---- save / cancel ----
       const actions = el("div", "add-user acct-row u-mt-8");
       const save = el("button", "btn btn-primary btn-sm", draft.id ? "Save changes" : "Create template");
@@ -2666,6 +2678,184 @@
       Array.prototype.forEach.call(grid.querySelectorAll(".tb-iconopt"), function (l) {
         const rb = l.querySelector("input");
         l.classList.toggle("selected", !!(rb && rb.checked));
+      });
+    }
+
+    /**
+     * DASHBOARD WIDGETS, authored on the template.
+     *
+     * This reuses the REAL widget editor - App.reports.openWidgetEditor - rather than a
+     * lookalike. That editor takes everything it needs as parameters (sources, the widget,
+     * and an onSave callback) and performs NO network call of its own, so pointing it at a
+     * blueprint needs no adapter and gives it no route to a live tenant.
+     *
+     * The sources it is handed are assembled from what the TEMPLATE declares: its visible
+     * modules, and the fields it adds to them. So you can only build a widget out of things
+     * the template actually creates - which is the authoring-time half of the validation.
+     */
+    function buildDashboardEditor(host) {
+      host.innerHTML = "";
+      if (!(App.reports && App.reports.openWidgetEditor)) {
+        host.appendChild(el("p", "cell-muted", "The widget editor is unavailable."));
+        return;
+      }
+      // FLAT on the spec, like every other key it stores - libraryFlavor, moduleViews, icon.
+      // They are nested under `hooks` on the RESOLVED template, but the spec is flat, and
+      // mixing the two shapes is exactly how the authored widgets went nowhere the first time.
+      const home = (draft.spec.dashboards = draft.spec.dashboards || []);
+      // The home row is one seed named __home__, the shape the seeder already expects.
+      let seed = home.find(function (d) { return d.name === "__home__"; });
+      if (!seed) { seed = { name: "__home__", widgets: [] }; home.push(seed); }
+      seed.widgets = seed.widgets || [];
+
+      host.appendChild(el("p", "cell-muted tb-note",
+        "Widgets a new tenant starts with on its Home Dashboard. It can edit, move or delete them afterwards like any others."));
+
+      const list = el("div", "field-list");
+      if (!seed.widgets.length) list.appendChild(el("p", "cell-muted", "No widgets yet \u2014 a new tenant would open to an empty dashboard."));
+      seed.widgets.forEach(function (w, i) {
+        const row = el("div", "field-row");
+        row.appendChild(el("span", "field-row-name", esc(w.title || "Untitled")));
+        row.appendChild(el("span", "cell-muted field-row-type", (w.type || "") + " \u00b7 " + (w.source || "")));
+        const up = el("button", "btn btn-ghost btn-sm", "\u2191"); up.disabled = i === 0;
+        up.onclick = function () { seed.widgets.splice(i - 1, 0, seed.widgets.splice(i, 1)[0]); buildDashboardEditor(host); };
+        const down = el("button", "btn btn-ghost btn-sm", "\u2193"); down.disabled = i === seed.widgets.length - 1;
+        down.onclick = function () { seed.widgets.splice(i + 1, 0, seed.widgets.splice(i, 1)[0]); buildDashboardEditor(host); };
+        const edit = el("button", "btn btn-ghost btn-sm", "Edit");
+        edit.onclick = function () { openTemplateWidget(host, seed, w); };
+        const del = el("button", "btn btn-ghost btn-sm", "\u00d7");
+        del.onclick = function () { seed.widgets.splice(i, 1); buildDashboardEditor(host); };
+        row.appendChild(up); row.appendChild(down); row.appendChild(edit); row.appendChild(del);
+        list.appendChild(row);
+      });
+      host.appendChild(list);
+
+      const bar = el("div", "add-user acct-row u-mt-8");
+      const add = el("button", "btn btn-ghost btn-sm", "Add widget");
+      add.onclick = function () { openTemplateWidget(host, seed, null); };
+      bar.appendChild(add);
+      host.appendChild(bar);
+    }
+
+    /**
+     * ANALYTICS BOARDS, authored on the template.
+     *
+     * Same editor, same sources, same save path - the only difference is that these are NAMED
+     * boards rather than the one home row, and the seeder already creates a named dashboard
+     * for each. Recruitment Marketing ships none of these and is still a full template, so
+     * this is genuinely optional and the screen says so.
+     */
+    function buildAnalyticsEditor(host) {
+      host.innerHTML = "";
+      if (!(App.reports && App.reports.openWidgetEditor)) { host.appendChild(el("p", "cell-muted", "The widget editor is unavailable.")); return; }
+      const boards = (draft.spec.analytics = draft.spec.analytics || []);
+      host.appendChild(el("p", "cell-muted tb-note",
+        "Optional. Extra report pages a new tenant starts with, beside its Home Dashboard."));
+      if (!boards.length) host.appendChild(el("p", "cell-muted", "No report pages \u2014 the tenant starts with just its dashboard."));
+      boards.forEach(function (b, bi) {
+        const card = el("div", "card mf-structure-card");
+        const head = el("div", "add-user acct-row");
+        head.appendChild(el("span", "field-row-name", esc(b.name)));
+        const delB = el("button", "btn btn-ghost btn-sm", "\u00d7");
+        delB.onclick = function () { boards.splice(bi, 1); buildAnalyticsEditor(host); };
+        head.appendChild(delB);
+        card.appendChild(head);
+        (b.widgets || []).forEach(function (wg, wi) {
+          const row = el("div", "add-user acct-row");
+          row.appendChild(el("span", "cell-muted", esc(wg.title || "Untitled") + " \u00b7 " + (wg.type || "")));
+          const e = el("button", "btn btn-ghost btn-sm", "Edit");
+          e.onclick = function () { openBoardWidget(host, b, wg); };
+          const x = el("button", "btn btn-ghost btn-sm", "\u00d7");
+          x.onclick = function () { b.widgets.splice(wi, 1); buildAnalyticsEditor(host); };
+          row.appendChild(e); row.appendChild(x);
+          card.appendChild(row);
+        });
+        const addW = el("button", "btn btn-ghost btn-sm", "Add widget");
+        addW.onclick = function () { openBoardWidget(host, b, null); };
+        card.appendChild(addW);
+        host.appendChild(card);
+      });
+      const bar = el("div", "add-user acct-row u-mt-8");
+      const nameI = el("input", "input"); nameI.placeholder = "Report page name";
+      const addB = el("button", "btn btn-ghost btn-sm", "Add report page");
+      addB.onclick = function () {
+        const n = nameI.value.trim();
+        if (!n) { toast("Name the report page", true); return; }
+        if (n === "__home__") { toast("That name is reserved for the home dashboard", true); return; }
+        if (boards.some(function (x) { return x.name === n; })) { toast("There is already a page called that", true); return; }
+        boards.push({ name: n, widgets: [] });
+        buildAnalyticsEditor(host);
+      };
+      bar.appendChild(nameI); bar.appendChild(addB);
+      host.appendChild(bar);
+    }
+
+    function openBoardWidget(host, board, existing) {
+      const sources = blueprintSources();
+      const keys = Object.keys(sources);
+      if (!keys.length) { toast("Add a module before adding a widget", true); return; }
+      App.reports.openWidgetEditor({
+        sources: sources, sourceKeys: keys,
+        defaultSourceKey: (existing && sources[existing.source]) ? existing.source : keys[0],
+        widget: existing || null, showScope: false,
+        onSave: function (widget) {
+          if (!widget.id) widget.id = "tplw_" + Math.random().toString(36).slice(2, 10);
+          board.widgets = board.widgets || [];
+          const at = existing ? board.widgets.indexOf(existing) : -1;
+          if (at >= 0) board.widgets[at] = widget; else board.widgets.push(widget);
+          buildAnalyticsEditor(host);
+        },
+      });
+    }
+
+    /**
+     * The sources a template widget may draw from: the modules this template leaves visible,
+     * each carrying the fields the template adds plus the ones every module has.
+     * Shape is the editor's own contract - { label, reportFields, defaultGroupByKey }.
+     */
+    function blueprintSources() {
+      const hidden = new Set(draft.spec.modulesHiddenPrefill || []);
+      const relabels = draft.spec.moduleRelabels || {};
+      const tweaks = draft.spec.fieldTweaks || [];
+      const out = {};
+      modules.forEach(function (m) {
+        if (hidden.has(m.key)) return;
+        const rl = relabels[m.key] || {};
+        // Every record carries these, whatever the module.
+        const base = [
+          { key: "title", label: "Title", type: "text" },
+          { key: "stageKey", label: "Stage", type: "text" },
+          { key: "createdAt", label: "Created", type: "date" },
+        ];
+        const own = tweaks.filter(function (t) { return t.moduleKey === m.key; })
+          .map(function (t) { return { key: slugField(t.field.label), label: t.field.label, type: t.field.type }; });
+        out[m.key] = {
+          label: rl.labelPlural || rl.label || m.labelPlural || m.label || m.key,
+          reportFields: base.concat(own),
+          defaultGroupByKey: "stageKey",
+        };
+      });
+      return out;
+    }
+
+    /** Open the REAL editor against the blueprint, and save into the draft. */
+    function openTemplateWidget(host, seed, existing) {
+      const sources = blueprintSources();
+      const keys = Object.keys(sources);
+      if (!keys.length) { toast("Add a module before adding a widget", true); return; }
+      App.reports.openWidgetEditor({
+        sources: sources,
+        sourceKeys: keys,
+        defaultSourceKey: (existing && sources[existing.source]) ? existing.source : keys[0],
+        widget: existing || null,
+        showScope: false,
+        onSave: function (widget) {
+          // A stable id, so reordering or re-editing never collides.
+          if (!widget.id) widget.id = "tplw_" + Math.random().toString(36).slice(2, 10);
+          const at = existing ? seed.widgets.indexOf(existing) : -1;
+          if (at >= 0) seed.widgets[at] = widget; else seed.widgets.push(widget);
+          buildDashboardEditor(host);
+        },
       });
     }
 

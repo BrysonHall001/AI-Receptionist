@@ -625,7 +625,40 @@ export async function applyTemplateAtCreation(tenantId: string, template: Tenant
     // ---- CONTENT PACK: dashboards (tenant-templates-2) ----
     // Rides dashboardService only. Idempotent: the home row is filled ONLY when
     // empty; a named dashboard is skipped when one with that name exists.
-    const dashSeeds = [...(template.hooks.dashboards || []), ...(template.hooks.analytics || [])];
+    let dashSeeds = [...(template.hooks.dashboards || []), ...(template.hooks.analytics || [])];
+    // DANGLING REFERENCES. A widget names its module by key. If the template stopped declaring
+    // that module after the widget was authored, the widget would render as a permanently
+    // empty tile on a customer's dashboard. A DROPPED widget is invisible; a broken one is a
+    // support call - so drop it, and say so in the log rather than silently.
+    if (dashSeeds.length) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { listRecordTypes: listRTd, recordTypeHref: hrefOf } = require("./recordTypeService");
+      const realKeys = new Set(((await listRTd(tenantId)) || []).map((t: any) => t.key));
+      // A HIDDEN MODULE IS STILL A RECORD TYPE - hiding is a nav concern, not existence - so
+      // the tenant's own nav is what decides. A panel counting a module the tenant cannot even
+      // navigate to is incoherent, whether or not it would technically render.
+      const trow: any = await (prisma as any).tenant.findUnique({ where: { id: tenantId }, select: { labels: true } });
+      const hiddenHrefs = new Set((((trow && trow.labels) || {}).nav || {}).hidden || []);
+      // These sources are not modules; the reports engine supplies them itself.
+      const NON_MODULE_SOURCES = new Set(["calls", "contacts"]);
+      const kept: any[] = [];
+      for (const seed of dashSeeds) {
+        const widgets = (seed.widgets || []).filter((w: any) => {
+          if (NON_MODULE_SOURCES.has(w.source)) return true;
+          if (!realKeys.has(w.source)) {
+            logger.warn(`[templates] ${template.key}: dropped widget "${w.title || w.id}" \u2014 module "${w.source}" does not exist on this tenant`);
+            return false;
+          }
+          if (hiddenHrefs.has(hrefOf(w.source))) {
+            logger.warn(`[templates] ${template.key}: dropped widget "${w.title || w.id}" \u2014 module "${w.source}" is switched off on this tenant`);
+            return false;
+          }
+          return true;
+        });
+        if (widgets.length) kept.push({ ...seed, widgets });
+      }
+      dashSeeds = kept;
+    }
     if (dashSeeds.length) {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const dashSvc = require("./dashboardService");
@@ -742,6 +775,22 @@ export function slugTemplateKey(label: string): string {
  * and offered as a PICKER on the screen. It must never become free text: an invented key
  * would silently do nothing at all.
  */
+/** Keep only well-formed dashboard seeds and well-formed widgets inside them. */
+function sanitiseSeeds(raw: any): any[] {
+  if (!Array.isArray(raw)) return [];
+  const out: any[] = [];
+  for (const seed of raw) {
+    if (!seed || typeof seed.name !== "string" || !seed.name) continue;
+    const widgets = Array.isArray(seed.widgets) ? seed.widgets.filter((w: any) =>
+      w && typeof w.id === "string" && w.id
+        && typeof w.type === "string" && w.type
+        && typeof w.source === "string" && w.source) : [];
+    if (!widgets.length) continue;                 // an empty board is not worth creating
+    out.push({ name: seed.name, widgets });
+  }
+  return out;
+}
+
 export function specToTemplate(row: { key: string; label: string; description: string; spec: any }): TenantTemplate {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { isLibraryFlavor } = require("../automation/presets");
@@ -776,6 +825,15 @@ export function specToTemplate(row: { key: string; label: string; description: s
       // Validated, never trusted: anything that is not a real flavour becomes null, which
       // applyLibraryFlavor already treats as "no curation".
       libraryFlavor: isLibraryFlavor(s.libraryFlavor) ? String(s.libraryFlavor) : null,
+      // DASHBOARDS AND ANALYTICS, authored on the builder screen. Sanitised by SHAPE here -
+      // a seed needs a name and a widget array, a widget needs an id, a type and a source -
+      // so malformed JSON can never reach the seeder. Whether a widget's source still EXISTS
+      // is a different question, answered at creation time where the real modules are known.
+      // Flat on the spec is the convention, but a blob that nested them under `hooks` is read
+      // too rather than silently ignored - a mismatch between where the builder writes and
+      // where this reads is invisible at every layer except the finished tenant.
+      dashboards: sanitiseSeeds(s.dashboards || (s.hooks && s.hooks.dashboards)),
+      analytics: sanitiseSeeds(s.analytics || (s.hooks && s.hooks.analytics)),
     },
   } as TenantTemplate;
 }
