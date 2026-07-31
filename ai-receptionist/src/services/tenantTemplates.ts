@@ -38,6 +38,11 @@ export interface TemplateHooks {
 
 export interface TenantTemplate {
   key: string;
+  /** Builder-only, both OPTIONAL so a blueprint saved before they existed still validates.
+   *  moduleOrder: the nav order a new tenant starts with.
+   *  newModules:  modules a new tenant should be CREATED with, beyond the system set. */
+  moduleOrder?: string[];
+  newModules?: Array<{ key: string; label: string; labelPlural?: string }>;
   label: string;
   description: string;
   /** Page hrefs the wizard should UNCHECK (prefill only — the admin can re-check). */
@@ -504,6 +509,50 @@ export async function applyTemplateAtCreation(tenantId: string, template: Tenant
         }
       }
     }
+    // ---- BUILDER: modules the template declares that do not exist yet ----
+    // Created through the REAL record-type service, so they are ordinary modules with their
+    // own page, fields and permissions - exactly what "+ Add module" promises.
+    const newModules = (template as any).newModules || [];
+    // THE SERVER RE-DERIVES THE KEY from the label, so the key a blueprint stores is a
+    // PREDICTION, not an instruction. Everything below keys off what was actually created:
+    // the de-duplication check, and the nav order written afterwards. Trusting the blueprint's
+    // key would silently order a module that does not exist under that name.
+    const createdKeyFor: Record<string, string> = {};
+    if (newModules.length) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { createRecordType, listRecordTypes: listRT } = require("./recordTypeService");
+      for (const m of newModules) {
+        const before = new Set(((await listRT(tenantId)) || []).map((t: any) => t.key));
+        // A module whose LABEL already exists is not created twice.
+        const already = ((await listRT(tenantId)) || []).find((t: any) => String(t.label || "").toLowerCase() === String(m.label || "").toLowerCase());
+        if (already) { createdKeyFor[m.key] = already.key; continue; }
+        try {
+          const made = await createRecordType(tenantId, m.label, m.labelPlural);
+          const key = (made && made.key) || ((await listRT(tenantId)) || []).map((t: any) => t.key).find((k: string) => !before.has(k));
+          if (key) createdKeyFor[m.key] = key;
+        } catch (e) { logger.warn(`template ${template.key}: could not create module ${m.label}: ${(e as Error).message}`); }
+      }
+    }
+
+    // ---- BUILDER: the nav ORDER a new tenant starts with ----
+    // Written into the SAME labels.nav JSON the Pages editor uses, so it is an ordinary
+    // reorder the owner can change afterwards - not a second mechanism.
+    const moduleOrder = (template as any).moduleOrder || [];
+    if (moduleOrder.length) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { recordTypeHref } = require("./recordTypeService");
+        const row: any = await (prisma as any).tenant.findUnique({ where: { id: tenantId }, select: { labels: true } });
+        const labels = (row && row.labels) || {};
+        const nav = labels.nav || {};
+        await (prisma as any).tenant.update({
+          where: { id: tenantId },
+          // Map through the ACTUAL created keys, and drop anything that was not created.
+          data: { labels: { ...labels, nav: { ...nav, order: moduleOrder.map((k: string) => createdKeyFor[k] || k).map((k: string) => recordTypeHref(k)), hidden: nav.hidden || [], labels: nav.labels || {} } } },
+        });
+      } catch (e) { logger.warn(`template ${template.key}: could not set module order: ${(e as Error).message}`); }
+    }
+
     // ---- RM-1: template-scoped module RELABELS (stock-label-only) ----
     const relabels = Object.entries(template.moduleRelabels || {});
     if (relabels.length) {
@@ -662,6 +711,14 @@ export function specToTemplate(row: { key: string; label: string; description: s
     pageLabelOverrides: obj(s.pageLabelOverrides),
     customLcOffer: !!s.customLcOffer,
     moduleRelabels: obj(s.moduleRelabels),
+    // BUILDER-ONLY AND CONDITIONAL. These keys appear only when the blueprint actually
+    // declares them, so a template that declares neither comes out with EXACTLY the key set a
+    // code template has - which is the "nothing downstream can tell them apart" guarantee, and
+    // it is asserted. Every consumer reads them as `|| []`, so a template that DOES declare
+    // one is still indistinguishable in behaviour.
+    ...(arr(s.moduleOrder).length ? { moduleOrder: arr(s.moduleOrder) } : {}),
+    ...(arr(s.newModules).filter((m: any) => m && m.key && m.label).length
+      ? { newModules: arr(s.newModules).filter((m: any) => m && m.key && m.label) } : {}),
     hooks: {
       ...EMPTY_HOOKS,
       // Validated, never trusted: anything that is not a real flavour becomes null, which

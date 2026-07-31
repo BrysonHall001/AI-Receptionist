@@ -35,7 +35,12 @@ check(!/const bar = el\("div", "page-actions"\);/.test(portal.slice(portal.index
 
 console.log("\n(3) '+ Add module' button + create form:");
 check(/el\("button", "mf-mod-add", "\+ Add module"\)/.test(portal), "'+ Add module' button rendered in the modules row");
-check(/App\.state\.me\.role !== "CLIENT_USER"/.test(portal.slice(portal.indexOf("mf-mod-add") - 400, portal.indexOf("mf-mod-add") + 200)), "the button is gated to portal-admin and above");
+// CONVERTED: the role check moved out of the render into the TENANT ADAPTER, so that a
+// blueprint editor can supply its own. The gate is unchanged - it is just stated once, next
+// to the other tenant-specific behaviour - so the assertion follows it there.
+check(/canEdit: function \(\) \{ return !!\(App\.state\.me && App\.state\.me\.role !== "CLIENT_USER"\); \}/.test(portal)
+  && /if \(a\.canEdit\(\)\)/.test(portal.slice(portal.indexOf("mf-mod-add") - 400, portal.indexOf("mf-mod-add") + 200)),
+  "the button is gated to portal-admin and above");
 check(/function addModuleModal\(\)/.test(portal), "an Add-module create form exists");
 check(/if \(!touched\) manyEl\.value = App\.pluralize\(oneEl\.value\)/.test(portal), "plural auto-fills from the singular via pluralize (editable)");
 check(/"\/api\/record-types", \{ method: "POST", body: JSON\.stringify\(\{ label: one, labelPlural: many \}\) \}/.test(portal), "create posts to POST /api/record-types");

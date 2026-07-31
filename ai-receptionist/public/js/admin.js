@@ -2235,66 +2235,284 @@
 
     /** Module on/off. Removing a module here only edits the BLUEPRINT - there is no tenant
      *  behind it and nothing here writes to one. */
+    /**
+     * THE MODULE CHIP ROW, over the blueprint.
+     *
+     * The SAME buildModulesRow the tenant's Settings -> Modules & Fields uses, driven by an
+     * adapter that reads and writes draft.spec and NOTHING ELSE. No endpoint is reachable
+     * from here: the shared component performs no network call, and every action below is a
+     * plain object mutation. That is the guarantee - the builder cannot write to a tenant
+     * because there is no code path from it to one.
+     *
+     * A tenant module is HIDDEN, never deleted - deleting one would destroy real records, so
+     * the product has no such route. The blueprint keeps the same verb for the same reason:
+     * "hidden" means a new tenant starts with it switched off.
+     */
     function buildModuleToggles(host) {
       host.innerHTML = "";
-      const hidden = new Set(draft.spec.modulesHiddenPrefill || []);
-      modules.forEach((m) => {
-        const row = el("label", "adm-row-click");
-        const cb = el("input"); cb.type = "checkbox";
-        cb.checked = !hidden.has(m.key);
-        cb.disabled = !m.togglable;                     // the core-module rule, from the server
-        cb.onchange = () => {
-          if (cb.checked) hidden.delete(m.key); else hidden.add(m.key);
-          draft.spec.modulesHiddenPrefill = Array.from(hidden);
-        };
-        row.appendChild(cb);
-        row.appendChild(el("span", null, esc(m.labelPlural || m.label || m.key)));
-        host.appendChild(row);
+      if (!(App.mf && App.mf.buildModulesRow)) { host.appendChild(el("p", "cell-muted", "The module editor is unavailable.")); return; }
+      const hidden = () => new Set(draft.spec.modulesHiddenPrefill || []);
+      const relabels = () => (draft.spec.moduleRelabels = draft.spec.moduleRelabels || {});
+      const order = () => (draft.spec.moduleOrder = draft.spec.moduleOrder || []);
+      // Chips render in the blueprint's own order, then anything it has not ordered yet.
+      const orderedKeys = () => {
+        const o = order();
+        const known = modules.map((m) => m.key);
+        return o.filter((k) => known.indexOf(k) !== -1).concat(known.filter((k) => o.indexOf(k) === -1));
+      };
+      const shown = () => orderedKeys().map((k) => {
+        const m = modules.find((x) => x.key === k);
+        const rl = relabels()[k] || {};
+        return { key: k, label: rl.label || m.label, labelPlural: rl.labelPlural || m.labelPlural || m.label, togglable: m.togglable };
       });
+      const hrefOf = (k) => "#/m/" + k;   // a synthetic href: the blueprint has no nav
+      const adapter = {
+        navOrder: () => orderedKeys().map(hrefOf),
+        hrefFor: hrefOf,
+        isHidden: (href) => hidden().has(String(href).replace("#/m/", "")),
+        selectedKey: () => draft.spec._selected || (shown()[0] && shown()[0].key),
+        canEdit: () => true,
+        onMenu: (btn, t, idx, ordered) => moduleMenu(btn, t, idx, ordered, host),
+        onAdd: () => addBlueprintModule(host),
+      };
+      App.mf.buildModulesRow(host, shown(), (key) => {
+        draft.spec._selected = key;
+        buildModuleToggles(host);
+        if (typeof paintModuleDetail === "function") paintModuleDetail();
+      }, adapter);
     }
+
+    /** The ⋮ menu, over the blueprint. Same four actions the tenant screen offers. */
+    function moduleMenu(btn, t, idx, ordered, host) {
+      document.querySelectorAll(".mf-mod-menu").forEach((m) => m.remove());
+      const menu = el("div", "mf-mod-menu");
+      const item = (label, disabled, fn, danger) => {
+        const b = el("button", "mf-mod-menu-item" + (danger ? " nav-burger-danger" : ""), label);
+        b.disabled = !!disabled;
+        b.onclick = () => { menu.remove(); fn(); };
+        menu.appendChild(b);
+        return b;
+      };
+      item("Rename\u2026", false, () => renameBlueprintModule(t, host));
+      item("Move up", idx === 0, () => moveBlueprintModule(t, -1, ordered, host));
+      item("Move down", idx === ordered.length - 1, () => moveBlueprintModule(t, 1, ordered, host));
+      const isHidden = (draft.spec.modulesHiddenPrefill || []).indexOf(t.key) !== -1;
+      // Contacts is core on a tenant and core here: the server's own togglable flag decides,
+      // so the two screens cannot disagree about it.
+      item(isHidden ? "Show" : "Hide", !t.togglable, () => {
+        const set = new Set(draft.spec.modulesHiddenPrefill || []);
+        if (set.has(t.key)) set.delete(t.key); else set.add(t.key);
+        draft.spec.modulesHiddenPrefill = Array.from(set);
+        buildModuleToggles(host);
+      }, !isHidden);
+      btn.parentNode.appendChild(menu);
+      setTimeout(() => {
+        const off = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", off); } };
+        document.addEventListener("click", off);
+      }, 0);
+    }
+
+    function renameBlueprintModule(t, host) {
+      const inner = el("div");
+      inner.innerHTML = `<div class="modal-head"><h2>Rename module</h2><button class="icon-btn" id="rm-x">&times;</button></div>
+        <div class="modal-body">
+          <label class="field-label">Singular *</label>
+          <input id="rm-one" class="input" />
+          <label class="field-label">Plural (auto \u2014 editable)</label>
+          <input id="rm-many" class="input" />
+          <p class="muted modal-note">This changes what a new tenant calls the module. It does not rename anything on a tenant that already exists.</p>
+          <button id="rm-save" class="btn btn-primary btn-block u-mt-8">Save</button>
+        </div>`;
+      const overlay = modal(inner);
+      const one = inner.querySelector("#rm-one"); const many = inner.querySelector("#rm-many");
+      one.value = t.label || ""; many.value = t.labelPlural || "";
+      let touched = false;
+      one.addEventListener("input", () => { if (!touched) many.value = App.pluralize ? App.pluralize(one.value) : one.value; });
+      many.addEventListener("input", () => { touched = true; });
+      inner.querySelector("#rm-x").onclick = () => overlay.remove();
+      inner.querySelector("#rm-save").onclick = () => {
+        const a = one.value.trim(); const b = many.value.trim() || a;
+        if (!a) { toast("Singular name is required", true); return; }
+        draft.spec.moduleRelabels = draft.spec.moduleRelabels || {};
+        draft.spec.moduleRelabels[t.key] = { label: a, labelPlural: b };
+        overlay.remove();
+        buildModuleToggles(host);
+      };
+    }
+
+    function moveBlueprintModule(t, dir, ordered, host) {
+      const keys = ordered.map((x) => x.key);
+      const i = keys.indexOf(t.key);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= keys.length) return;
+      keys.splice(j, 0, keys.splice(i, 1)[0]);
+      draft.spec.moduleOrder = keys;
+      buildModuleToggles(host);
+    }
+
+    /** "+ Add module" declares a module a NEW TENANT should be created with. */
+    function addBlueprintModule(host) {
+      const inner = el("div");
+      inner.innerHTML = `<div class="modal-head"><h2>Add module</h2><button class="icon-btn" id="am2-x">&times;</button></div>
+        <div class="modal-body">
+          <label class="field-label">Singular *</label>
+          <input id="am2-one" class="input" placeholder="e.g. Vehicle" />
+          <label class="field-label">Plural (auto \u2014 editable)</label>
+          <input id="am2-many" class="input" placeholder="e.g. Vehicles" />
+          <p class="muted modal-note">Tenants made from this template will start with this module. It is created when the tenant is created \u2014 nothing is created now.</p>
+          <button id="am2-save" class="btn btn-primary btn-block u-mt-8">Add to template</button>
+        </div>`;
+      const overlay = modal(inner);
+      const one = inner.querySelector("#am2-one"); const many = inner.querySelector("#am2-many");
+      let touched = false;
+      one.addEventListener("input", () => { if (!touched) many.value = App.pluralize ? App.pluralize(one.value) : one.value; });
+      many.addEventListener("input", () => { touched = true; });
+      inner.querySelector("#am2-x").onclick = () => overlay.remove();
+      inner.querySelector("#am2-save").onclick = () => {
+        const a = one.value.trim(); const b = many.value.trim() || a;
+        if (!a) { toast("Singular name is required", true); return; }
+        // THE SAME RULE THE SERVER USES (slugifyRecordTypeKey in recordTypeService): lower,
+        // trim, non-alphanumerics to underscore, trimmed of underscores, capped at 40, with a
+        // fallback. It must match, because the server re-derives the key from the label when it
+        // creates the module - a different rule here would store a key the tenant never has.
+        const key = (String(a) || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "module";
+        if (!key) { toast("Give it a name with letters in it", true); return; }
+        if (modules.some((m) => m.key === key)) { toast("There is already a module called that", true); return; }
+        draft.spec.newModules = draft.spec.newModules || [];
+        draft.spec.newModules.push({ key, label: a, labelPlural: b });
+        modules.push({ key, label: a, labelPlural: b, togglable: true });
+        draft.spec.moduleOrder = (draft.spec.moduleOrder || []).concat([key]);
+        overlay.remove();
+        buildModuleToggles(host);
+      };
+    }
+
 
     /** Extra fields per module, in the SAME shape a code template's fieldTweaks use - which
      *  is also the shape createField already takes, so the applier needs no new branch.
      *  Views and pipelines are NOT here: those are per-tenant records with stage rows behind
      *  them, and expressing them as a blueprint is its own piece of work. */
+    /**
+     * FIELDS, over the blueprint — the SAME field library the tenant screen renders.
+     *
+     * The eleven hand-written types are DELETED, not extended. The grid below is
+     * App.mf.buildFieldLibrary, which reads Object.keys(App.fields.TYPE_LABELS) - all
+     * twenty-four - so the two screens cannot disagree and a type added later needs no edit
+     * here at all.
+     *
+     * Fields are per MODULE: they hang off the currently selected chip, the way the tenant
+     * screen's Fields column hangs off the selected module. Everything is a mutation of
+     * draft.spec.fieldTweaks; nothing here can reach a tenant.
+     */
     function buildFieldEditor(host) {
       host.innerHTML = "";
       const tweaks = draft.spec.fieldTweaks || (draft.spec.fieldTweaks = []);
-      const tbl = el("table", "mini-table");
-      tbl.innerHTML = `<thead><tr><th class="pt-t25">Module</th><th class="pt-t25">Field</th><th class="pt-t25">Type</th><th class="pt-rt">Remove</th></tr></thead>`;
-      const body = el("tbody");
-      tweaks.forEach((tw, i) => {
-        const tr = el("tr");
-        tr.appendChild(el("td", null, esc(tw.moduleKey)));
-        tr.appendChild(el("td", null, esc(tw.field && tw.field.label)));
-        tr.appendChild(el("td", "cell-muted", esc(tw.field && tw.field.type)));
-        const td = el("td", "pt-t24");
-        const x = el("button", "btn btn-ghost btn-sm", "\u00d7");
-        x.onclick = () => { tweaks.splice(i, 1); buildFieldEditor(host); };
-        td.appendChild(x); tr.appendChild(td);
-        body.appendChild(tr);
-      });
-      tbl.appendChild(body);
-      host.appendChild(tbl);
+      const selected = draft.spec._selected || (modules[0] && modules[0].key) || "contact";
+      const selMod = modules.find((m) => m.key === selected) || {};
+      const selLabel = (draft.spec.moduleRelabels || {})[selected]
+        ? (draft.spec.moduleRelabels[selected].labelPlural || draft.spec.moduleRelabels[selected].label)
+        : (selMod.labelPlural || selMod.label || selected);
 
-      const addRow = el("div", "add-user acct-row");
-      const modSel = el("select", "input");
-      modules.forEach((m) => { const o = el("option", null, esc(m.labelPlural || m.label || m.key)); o.value = m.key; modSel.appendChild(o); });
-      const labInp = el("input", "input"); labInp.setAttribute("placeholder", "Field name");
-      const typeSel = el("select", "input");
-      ["text", "textarea", "number", "currency", "date", "datetime", "checkbox", "single_select", "phone", "email", "url"]
-        .forEach((t) => { const o = el("option", null, t); o.value = t; typeSel.appendChild(o); });
+      const grid = el("div", "mf-grid");
+      const colLib = el("div", "mf-col mf-col-library");
+      const colFields = el("div", "mf-col mf-col-fields");
+      grid.appendChild(colLib); grid.appendChild(colFields);
+      host.appendChild(grid);
+
+      // ---- the library, shared ----
+      if (App.mf && App.mf.buildFieldLibrary) {
+        App.mf.buildFieldLibrary(colLib, {
+          canEdit: () => true,
+          onDragStart: (t) => { dragType = t; },
+          onDragEnd: () => { dragType = null; },
+        });
+      } else {
+        colLib.appendChild(el("p", "cell-muted", "The field library is unavailable."));
+      }
+
+      // ---- the fields on the selected module ----
+      const head = el("div", "mf-fields-head");
+      head.appendChild(el("div", "mf-fields-module", esc(selLabel)));
+      colFields.appendChild(head);
+      colFields.appendChild(el("p", "muted mf-fields-intro", "Drag a type from the library, or press Add field. Tenants made from this template start with these."));
+
+      const list = el("div", "field-list");
+      const mine = tweaks.map((tw, i) => ({ tw, i })).filter((x) => x.tw.moduleKey === selected);
+      if (!mine.length) list.appendChild(el("p", "cell-muted", "No extra fields on " + esc(selLabel) + " yet."));
+      mine.forEach(({ tw, i }, n) => {
+        const row = el("div", "field-row");
+        row.appendChild(el("span", "field-row-name", esc(tw.field.label)));
+        row.appendChild(el("span", "cell-muted field-row-type", (App.fields && App.fields.TYPE_LABELS && App.fields.TYPE_LABELS[tw.field.type]) || tw.field.type));
+        const up = el("button", "btn btn-ghost btn-sm", "\u2191"); up.disabled = n === 0;
+        up.onclick = () => { moveTweak(i, -1, selected); buildFieldEditor(host); };
+        const down = el("button", "btn btn-ghost btn-sm", "\u2193"); down.disabled = n === mine.length - 1;
+        down.onclick = () => { moveTweak(i, 1, selected); buildFieldEditor(host); };
+        const del = el("button", "btn btn-ghost btn-sm", "\u00d7");
+        del.title = "Remove from the template";
+        // NO CONFIRMATION, deliberately: on a tenant this destroys records and is confirmed.
+        // Here it edits a blueprint that has not created anything yet, so a modal would imply
+        // a consequence that does not exist.
+        del.onclick = () => { tweaks.splice(i, 1); buildFieldEditor(host); };
+        row.appendChild(up); row.appendChild(down); row.appendChild(del);
+        list.appendChild(row);
+      });
+      colFields.appendChild(list);
+
+      // dropping a library type onto the list adds a field of that type
+      list.addEventListener("dragover", (e) => { if (dragType) { e.preventDefault(); list.classList.add("field-list--drop"); } });
+      list.addEventListener("dragleave", () => list.classList.remove("field-list--drop"));
+      list.addEventListener("drop", (e) => {
+        e.preventDefault(); list.classList.remove("field-list--drop");
+        const t = dragType || String((e.dataTransfer && e.dataTransfer.getData("text/plain")) || "").replace("fieldtype:", "");
+        if (t) addFieldModal(host, selected, t);
+      });
+
+      const addRow = el("div", "add-user acct-row u-mt-8");
       const add = el("button", "btn btn-ghost btn-sm", "Add field");
-      add.onclick = () => {
-        const label = labInp.value.trim();
+      add.onclick = () => addFieldModal(host, selected, "text");
+      addRow.appendChild(add);
+      colFields.appendChild(addRow);
+    }
+
+    let dragType = null;
+
+    /** Reorder within the selected module, leaving other modules' fields where they are. */
+    function moveTweak(index, dir, moduleKey) {
+      const tweaks = draft.spec.fieldTweaks;
+      const idxs = tweaks.map((tw, i) => (tw.moduleKey === moduleKey ? i : -1)).filter((i) => i >= 0);
+      const at = idxs.indexOf(index);
+      const to = at + dir;
+      if (at < 0 || to < 0 || to >= idxs.length) return;
+      const a = idxs[at]; const b = idxs[to];
+      const tmp = tweaks[a]; tweaks[a] = tweaks[b]; tweaks[b] = tmp;
+    }
+
+    /** Name a field of a chosen type. The type list is the REGISTRY, not a copy. */
+    function addFieldModal(host, moduleKey, type) {
+      const inner = el("div");
+      const opts = Object.keys((App.fields && App.fields.TYPE_LABELS) || {})
+        .map((t) => `<option value="${t}"${t === type ? " selected" : ""}>${esc(App.fields.TYPE_LABELS[t])}</option>`).join("");
+      inner.innerHTML = `<div class="modal-head"><h2>Add field</h2><button class="icon-btn" id="af-x">&times;</button></div>
+        <div class="modal-body">
+          <label class="field-label">Field name *</label>
+          <input id="af-name" class="input" placeholder="e.g. Party size" />
+          <label class="field-label">Type</label>
+          <select id="af-type" class="input">${opts}</select>
+          <p class="muted modal-note">Tenants made from this template start with this field. Nothing is created now.</p>
+          <button id="af-save" class="btn btn-primary btn-block u-mt-8">Add to template</button>
+        </div>`;
+      const overlay = modal(inner);
+      inner.querySelector("#af-x").onclick = () => overlay.remove();
+      inner.querySelector("#af-save").onclick = () => {
+        const label = inner.querySelector("#af-name").value.trim();
         if (!label) { toast("Name the field", true); return; }
-        tweaks.push({ moduleKey: modSel.value, field: { label, type: typeSel.value } });
-        labInp.value = "";
+        draft.spec.fieldTweaks = draft.spec.fieldTweaks || [];
+        draft.spec.fieldTweaks.push({ moduleKey, field: { label, type: inner.querySelector("#af-type").value } });
+        overlay.remove();
         buildFieldEditor(host);
       };
-      addRow.appendChild(modSel); addRow.appendChild(labInp); addRow.appendChild(typeSel); addRow.appendChild(add);
-      host.appendChild(addRow);
     }
+
 
     load();
   }

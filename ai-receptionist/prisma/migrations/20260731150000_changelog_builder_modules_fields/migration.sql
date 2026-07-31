@@ -1,0 +1,11 @@
+-- Changelog: the template builder's modules and fields become the real editor
+INSERT INTO "ChangeLogEntry" ("id","date","type","description","commitSha","createdAt")
+VALUES (
+  'cl_builder_modules_fields_20260731',
+  '2026-07-31',
+  'Improvement',
+  'Building a template now works the same way as setting up a tenant. The lower half of the Create a Template screen used to be a flat list of tick boxes and a small row for adding a field. It is now the same modules editor you already use inside a tenant, under Settings, Modules and Fields. Modules appear as a row of chips. Each one has the same three-dot menu you know: rename it, move it left or right, or switch it off so tenants made from this template start without it. There is a plus Add module button for declaring a module that does not exist yet, and it is created properly when a tenant is made, with its own page, fields and permissions. Contacts stays core and cannot be switched off, exactly as it cannot on a tenant. Clicking a chip selects that module and shows its fields underneath. THE FIELD LIST WAS THE BIGGEST GAP AND IT IS CLOSED. The builder offered eleven field types while a tenant offers twenty-four, because it was using its own hand-written list. That list is gone. Both screens now read the same one, so you get the full library here, including the types that were missing entirely such as line items, auto-number, progress, formula, rating and colour. If we add a type later it appears in both places on its own. You can drag a type from the library onto the field list, reorder fields, and remove one. There is one thing worth understanding, because it is why this was worth doing carefully. Removing a field or switching off a module here only edits the template. It cannot touch a tenant that already exists, because the shared editor has no way to reach one at all. That is built into how it works rather than being a rule we remembered to follow. Templates you built before this update open normally and keep everything they had. Nothing about the tenant screen changed, and nothing about the five built-in templates changed. Views and pipelines are the next piece of this work and are not here yet.',
+  'batch-builder-modules-fields-20260731',
+  NOW()
+)
+ON CONFLICT ("commitSha") DO NOTHING;

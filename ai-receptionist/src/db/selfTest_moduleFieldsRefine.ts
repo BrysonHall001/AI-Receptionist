@@ -35,7 +35,12 @@ check(/\.settings-tile \{[^}]*text-align: center/.test(css), "tile text is cente
 // (2) Modules horizontal row + Hide.
 console.log("\n(2) Modules as a horizontal row with Hide:");
 check(/const modulesRow = el\("nav", "mf-modules-row"\)/.test(portal), "modules render into a horizontal row (mf-modules-row)");
-check(/function buildModulesRow\(rowEl, visibleTypes, onSelect\)/.test(portal), "buildModulesRow builds the tab row");
+// CONVERTED (builder modules & fields batch): this pinned the function's exact SIGNATURE,
+// which changed when the component gained an adapter so the template builder could share it.
+// What it exists to protect is that a tab row gets built, so that is what it now asserts -
+// and it will survive the next signature change too.
+check(/function buildModulesRow\(/.test(portal) && /mf-mod-tab-name/.test(portal) && /mf-mod-tab-burger/.test(portal),
+  "buildModulesRow builds the tab row, with a name and a \u22ee on each tab");
 check(/mf-mod-tab-name/.test(portal) && /mf-mod-tab-burger/.test(portal), "each module is a tab with a name + ⋮");
 check(/function toggleModuleHidden\(t\)/.test(portal) && /App\.persistNav\(\{ order: cfg\.order, hidden: hidden, labels: cfg\.labels \}\)/.test(portal), "Hide/Show toggles the module in nav.hidden via persistNav");
 check(/isHidden \? "Show" : "Hide"/.test(portal), "the ⋮ menu shows Hide (or Show when already hidden)");

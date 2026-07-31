@@ -4035,11 +4035,26 @@
   // Column 1 — the field-type "library" (palette). A simple labeled list in THIS
   // batch (a later batch wires drag-and-drop from here into a module's fields). The
   // types are exactly those the Add-field flow supports (App.fields.TYPE_LABELS).
-  function buildFieldLibrary(col) {
+  /**
+   * THE FIELD LIBRARY — one implementation, two screens.
+   *
+   * It already made NO network call; its only tenant coupling was reading the acting user's
+   * role for canEdit, and writing the module-scope drag variable. Both are now the adapter's,
+   * so the template builder renders the identical grid over a blueprint.
+   *
+   * THE TYPE LIST IS THE REGISTRY, never a copy of it. Object.keys(App.fields.TYPE_LABELS)
+   * is the only source, so a type added there appears on both screens with no second edit.
+   * The builder used to carry a hand-written array of eleven; that array is deleted, not
+   * extended, because an extended copy is exactly what drifts.
+   *
+   * adapter: { canEdit(), onDragStart(type), onDragEnd() }
+   */
+  function buildFieldLibrary(col, adapter) {
+    const a = adapter || FIELD_LIBRARY_TENANT_ADAPTER;
     col.appendChild(el("div", "mf-col-title", "Field library"));
     col.appendChild(el("p", "mf-col-hint", "Drag a field type onto a section to add it."));
     const list = el("div", "mf-lib-list");
-    const canEdit = App.state.me.role !== "CLIENT_USER";
+    const canEdit = a.canEdit();
     Object.keys(App.fields.TYPE_LABELS).forEach(function (t) {
       const item = el("div", "mf-lib-item");
       item.dataset.type = t;
@@ -4049,12 +4064,12 @@
         item.draggable = true;
         item.classList.add("mf-lib-item--draggable");
         item.addEventListener("dragstart", function (e) {
-          mfLibraryDragType = t;
+          a.onDragStart(t);
           item.classList.add("dragging");
           try { e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", "fieldtype:" + t); } catch (_e) {}
         });
         item.addEventListener("dragend", function () {
-          mfLibraryDragType = null;
+          a.onDragEnd();
           item.classList.remove("dragging");
           // Clear any lingering drop highlight.
           Array.prototype.forEach.call(document.querySelectorAll(".field-list--drop"), function (n) { n.classList.remove("field-list--drop"); });
@@ -4064,6 +4079,13 @@
     });
     col.appendChild(list);
   }
+
+  /** The TENANT adapter: exactly what buildFieldLibrary used to do inline. */
+  const FIELD_LIBRARY_TENANT_ADAPTER = {
+    canEdit: function () { return App.state.me.role !== "CLIENT_USER"; },
+    onDragStart: function (t) { mfLibraryDragType = t; },
+    onDragEnd: function () { mfLibraryDragType = null; },
+  };
 
   // Reorder a module by moving its nav href up/down relative to the neighbouring
   // module, reusing the SAME nav-order persistence the Pages editor uses (persistNav).
@@ -4161,36 +4183,73 @@
   // ⋮ menu (Rename / Move up / Move down / Hide-Show). Selecting a tab calls onSelect
   // with the module key. Hidden (from nav) modules stay shown here — greyed — so
   // hiding is always recoverable (their ⋮ shows "Show").
-  function buildModulesRow(rowEl, visibleTypes, onSelect) {
+  /**
+   * THE MODULE CHIP ROW — one implementation, two screens.
+   *
+   * It used to reach for App.fullNavOrder(), App.isNavHidden, App.state.fieldsType and
+   * App.state.me directly, which bound it to a live tenant. It now takes an ADAPTER, so the
+   * same rendering serves the tenant's Settings -> Modules & Fields and the template builder,
+   * which has no tenant behind it at all.
+   *
+   * THE SAFETY PROPERTY, and it is the point of the adapter: this function performs NO
+   * network call of any kind. It never touches App.portalApi. Every action is a call back
+   * into the adapter the caller supplied. portalApi() silently appends
+   * tenantId=App.state.currentPortalId for an admin-tier user, so a shared component that
+   * called it from the hub would write to whichever tenant was last opened. The adapter is
+   * what makes that impossible rather than merely unlikely.
+   *
+   * adapter: {
+   *   navOrder()            -> [href] the order chips are shown in
+   *   hrefFor(key)          -> the nav href for a module key
+   *   isHidden(href)        -> boolean
+   *   selectedKey()         -> the key currently selected
+   *   canEdit()             -> whether the ⋮ and "+ Add module" render
+   *   onMenu(btn, t, idx, ordered)
+   *   onAdd()
+   * }
+   */
+  function buildModulesRow(rowEl, visibleTypes, onSelect, adapter) {
+    const a = adapter || MODULES_ROW_TENANT_ADAPTER;
     rowEl.innerHTML = "";
-    const navPos = {}; (App.fullNavOrder() || []).forEach(function (h, i) { navPos[h] = i; });
-    const ordered = (visibleTypes || []).slice().sort(function (a, b) {
-      const pa = navPos[App.recordTypeHref(a.key)]; const pb = navPos[App.recordTypeHref(b.key)];
+    const navPos = {}; (a.navOrder() || []).forEach(function (h, i) { navPos[h] = i; });
+    const ordered = (visibleTypes || []).slice().sort(function (x, y) {
+      const pa = navPos[a.hrefFor(x.key)]; const pb = navPos[a.hrefFor(y.key)];
       return (pa == null ? 1e9 : pa) - (pb == null ? 1e9 : pb);
     });
+    const selected = a.selectedKey();
     ordered.forEach(function (t, idx) {
-      const isHidden = App.isNavHidden(App.recordTypeHref(t.key));
-      const tab = el("div", "mf-mod-tab" + (t.key === App.state.fieldsType ? " active" : "") + (isHidden ? " mf-mod-tab-hidden" : ""));
+      const isHidden = a.isHidden(a.hrefFor(t.key));
+      const tab = el("div", "mf-mod-tab" + (t.key === selected ? " active" : "") + (isHidden ? " mf-mod-tab-hidden" : ""));
       tab.dataset.key = t.key;
       const name = el("button", "mf-mod-tab-name", esc(t.labelPlural || t.label || t.key));
       name.onclick = function () { onSelect(t.key); };
       tab.appendChild(name);
-      const burger = el("button", "mf-mod-tab-burger", "⋮");
+      const burger = el("button", "mf-mod-tab-burger", "\u22ee");
       burger.title = "Rename, reorder, or hide";
-      burger.onclick = function (e) { e.stopPropagation(); openModuleMenu(burger, t, idx, ordered); };
+      burger.onclick = function (e) { e.stopPropagation(); a.onMenu(burger, t, idx, ordered); };
       tab.appendChild(burger);
       rowEl.appendChild(tab);
     });
     if (!ordered.length) rowEl.appendChild(el("div", "cell-muted", "No modules yet."));
-    // "+ Add module" — to the RIGHT of the last-ordered module. Portal-admin and above
-    // (same gate as field/module management). Creates a record type ordered after the last.
-    if (App.state.me && App.state.me.role !== "CLIENT_USER") {
+    // "+ Add module" — to the RIGHT of the last-ordered module.
+    if (a.canEdit()) {
       const add = el("button", "mf-mod-add", "+ Add module");
       add.title = "Create a new module";
-      add.onclick = function () { addModuleModal(); };
+      add.onclick = function () { a.onAdd(); };
       rowEl.appendChild(add);
     }
   }
+
+  /** The TENANT adapter: exactly what buildModulesRow used to do inline. */
+  const MODULES_ROW_TENANT_ADAPTER = {
+    navOrder: function () { return App.fullNavOrder() || []; },
+    hrefFor: function (key) { return App.recordTypeHref(key); },
+    isHidden: function (href) { return App.isNavHidden(href); },
+    selectedKey: function () { return App.state.fieldsType; },
+    canEdit: function () { return !!(App.state.me && App.state.me.role !== "CLIENT_USER"); },
+    onMenu: function (btn, t, idx, ordered) { openModuleMenu(btn, t, idx, ordered); },
+    onAdd: function () { addModuleModal(); },
+  };
 
   // Create a NEW user-defined module (record type). Singular name + auto/editable plural,
   // exactly like Rename. On save: POST /api/record-types (ordered after the last module,
@@ -8988,6 +9047,22 @@
 
   App.portal = {
     settingsCatalog: settingsSectionMeta, render, refresh, simulate, renderContact, renderRecord, renderRecycledPreview, current: () => current, contactColumnDefs };
+  /**
+   * THE SHARED MODULES & FIELDS PIECES, exposed for the template builder.
+   *
+   * Exposed as RENDERERS THAT TAKE AN ADAPTER, never as anything that talks to a server.
+   * The builder passes an in-memory adapter over its blueprint; the tenant screen passes
+   * MODULES_ROW_TENANT_ADAPTER. One implementation, and no path from the builder to a tenant.
+   *
+   * Contrast this with App.labelsEditor below, which deliberately DOES target
+   * App.state.currentPortalId - that is why the two are kept visibly apart.
+   */
+  App.mf = {
+    buildModulesRow: buildModulesRow,
+    buildFieldLibrary: buildFieldLibrary,
+    fieldTypeKeys: function () { return Object.keys((App.fields && App.fields.TYPE_LABELS) || {}); },
+  };
+
   // Mountable labels editor (the SAME secLabels used by Settings > Labels), so the
   // portal setup screen can render it for a just-created portal. It targets whatever
   // App.state.currentPortalId is set to (via App.portalApi), like the in-portal pane.
