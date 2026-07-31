@@ -41,6 +41,9 @@ export interface TenantTemplate {
   /** Builder-only, both OPTIONAL so a blueprint saved before they existed still validates.
    *  moduleOrder: the nav order a new tenant starts with.
    *  newModules:  modules a new tenant should be CREATED with, beyond the system set. */
+  /** A library icon id chosen on the builder screen. OPTIONAL: a template that never chose
+   *  one simply has no key, and renders the default exactly as it did before. */
+  icon?: string;
   moduleOrder?: string[];
   /** Per-module views and pipeline, keyed by module key. Builder-only and OPTIONAL, so a
    *  blueprint saved before this batch simply has none. Every field mirrors a RecordType
@@ -763,6 +766,7 @@ export function specToTemplate(row: { key: string; label: string; description: s
     // code template has - which is the "nothing downstream can tell them apart" guarantee, and
     // it is asserted. Every consumer reads them as `|| []`, so a template that DOES declare
     // one is still indistinguishable in behaviour.
+    ...(typeof s.icon === "string" && s.icon ? { icon: String(s.icon) } : {}),
     ...(arr(s.moduleOrder).length ? { moduleOrder: arr(s.moduleOrder) } : {}),
     ...(s.moduleViews && Object.keys(obj(s.moduleViews)).length ? { moduleViews: obj(s.moduleViews) } : {}),
     ...(arr(s.newModules).filter((m: any) => m && m.key && m.label).length

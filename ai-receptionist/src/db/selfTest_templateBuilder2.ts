@@ -138,7 +138,7 @@ async function main() {
   const w: any = new JSDOM("<body></body>", { runScripts: "outside-only", url: "http://localhost/" }).window;
   const el = (tag: string, c?: string, h?: string) => { const n = w.document.createElement(tag); if (c) n.className = c; if (h !== undefined) n.innerHTML = h; return n; };
   const esc = (x: any) => String(x == null ? "" : x).replace(/[&<>"]/g, (c: string) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" } as any)[c]);
-  w.App = { util: { el, esc, toast: () => { /* */ }, $: (s: string) => w.document.querySelector(s) }, icons: { forTemplateKey: (k: string) => `<svg data-k="${k}"/>` } };
+  w.App = { util: { el, esc, toast: () => { /* */ }, $: (s: string) => w.document.querySelector(s) }, icons: { forTemplateKey: (k: string) => `<svg data-k="${k}"/>`, forTemplate: (t: any) => (t && t.icon) ? ("<svg data-icon=\"" + t.icon + "\"/>") : "<svg/>" } };
   const templateCard = new Function("global", inner + "\nreturn templateCard;")(w);
   const sample = { key: "field_services", label: "Field Services", description: "Work orders.", customLcOffer: true, builtIn: true };
   const wizardCard = templateCard(sample, { selectedKey: "general", lcChecked: false, onPick: () => { /* */ } });

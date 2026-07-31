@@ -47,7 +47,7 @@ function bootSpiedWindow() {
   w.App = {
     fields: { TYPE_LABELS, TYPE_ICONS: {} },
     util: { el, esc, toast: () => { /* */ }, $: (s: string) => w.document.querySelector(s), $$: (s: string) => Array.from(w.document.querySelectorAll(s)) },
-    icons: { AI_STATE_ICONS: {}, forTemplateKey: () => "<svg/>", forNavHref: () => "<svg/>", forModule: () => "<svg/>" },
+    icons: { AI_STATE_ICONS: {}, forTemplateKey: () => "<svg/>", forTemplate: () => "<svg/>", forNavHref: () => "<svg/>", forModule: () => "<svg/>" },
     state: { me: { role: "OWNER" }, currentPortalId: "SOME-LIVE-TENANT" },
     table: { mount: () => ({}) }, label: (k: string) => k, pluralize: (x: string) => x + "s",
     // EVERY network entry point is a spy. Nothing reaches a server.

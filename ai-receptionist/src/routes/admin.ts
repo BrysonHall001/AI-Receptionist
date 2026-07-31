@@ -195,6 +195,9 @@ adminRouter.get("/tenant-templates", async (_req: Request, res: Response) => {
   res.json({ templates: TENANT_TEMPLATES.map((t: any) => ({
     // The client must never infer "built-in" from position in the list. It is stated.
     builtIn: builtIns.has(t.key),
+    // The chosen library icon, when a built template has one. A code template never does, so
+    // this is always absent for the five and their bespoke glyphs resolve exactly as before.
+    icon: (t as any).icon || null,
     key: t.key, label: t.label, description: t.description,
     pagesOffPrefill: t.pagesOffPrefill, modulesHiddenPrefill: t.modulesHiddenPrefill,
     pageLabelOverrides: t.pageLabelOverrides || {},

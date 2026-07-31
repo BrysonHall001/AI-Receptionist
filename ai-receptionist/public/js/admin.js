@@ -236,7 +236,17 @@
         const card = el("button", "adm-tpl-card" + (isSel ? " active" : ""));
         card.type = "button";
         card.style.setProperty("width", D.mainW + "px"); // height is CONTENT-DRIVEN (regression fix: never fixed)
-        const icSvg = App.icons ? App.icons.forTemplateKey(t.key) : "";
+        // ONE RESOLVER, and it is the only place a template glyph is chosen. Passing the whole
+        // template rather than its key is what lets a BUILT one carry a chosen icon; a code
+        // template has none, so it still resolves by key exactly as before.
+        // ONE RESOLVER, and it is the only place a template glyph is chosen. Passing the whole
+        // template rather than its key is what lets a BUILT one carry a chosen icon; a code
+        // template has none, so it still resolves by key exactly as before.
+        //
+        // The fallback is deliberate: admin.js and icons.js are separate files, so a stale
+        // cached icons.js would otherwise throw here and take the ENTIRE template row down.
+        // Losing a custom icon is a small fault; a blank row is a large one.
+        const icSvg = App.icons ? (App.icons.forTemplate ? App.icons.forTemplate(t) : App.icons.forTemplateKey(t && t.key)) : "";
         // z2: crest (69% of main) — upper half protrudes above the main rect.
         const crest = el("span", "tpl-crest");
         crest.style.setProperty("width", D.crestW + "px"); crest.style.setProperty("height", D.crestH + "px");
@@ -2149,6 +2159,13 @@
       descCol.appendChild(descInp);
       idRow.appendChild(nameCol); idRow.appendChild(descCol);
       formHost.appendChild(idRow);
+
+      // ---- icon ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "Icon"));
+      formHost.appendChild(el("p", "cell-muted tb-note", "The picture shown on this template's button. Leave it unset to use the plain default."));
+      const iconHost = el("div", "tb-iconpick");
+      formHost.appendChild(iconHost);
+      buildIconPicker(iconHost);
       if (draft.id) {
         const k = el("p", "cell-muted tb-key", "");
         k.textContent = "This template's identifier never changes, so tenants already made from it stay linked. Renaming changes the words only.";
@@ -2608,6 +2625,48 @@
       addRow.appendChild(inp); addRow.appendChild(add);
       card.appendChild(addRow);
       return card;
+    }
+
+    /**
+     * THE ICON PICKER.
+     *
+     * A radio GROUP, not a grid of divs: each glyph is a real radio input with a label, so it
+     * is reachable by Tab, walkable with the arrow keys, and announced with its name by a
+     * screen reader - all of which come free from the element rather than being re-implemented.
+     * The visible name under each glyph is the same string the radio is labelled with, so what
+     * you see and what is announced cannot drift apart.
+     *
+     * The list comes from App.icons.iconLibrary(); an entry that resolved to nothing would be
+     * a bug, so it is shown as a visible problem rather than an empty box.
+     */
+    function buildIconPicker(host) {
+      host.innerHTML = "";
+      if (!(App.icons && App.icons.iconLibrary)) { host.appendChild(el("p", "cell-muted", "The icon library is unavailable.")); return; }
+      const grid = el("div", "tb-icongrid");
+      const name = "tb-icon-" + Math.random().toString(36).slice(2, 8);
+      const entries = [{ id: "", name: "Default", svg: App.icons.forTemplateKey("__default") }].concat(App.icons.iconLibrary());
+      entries.forEach(function (ic) {
+        const lab = el("label", "tb-iconopt");
+        const rb = el("input"); rb.type = "radio"; rb.name = name; rb.value = ic.id;
+        rb.checked = (draft.spec.icon || "") === ic.id;
+        rb.className = "tb-iconradio";
+        rb.onchange = function () { draft.spec.icon = ic.id || null; paintIconSelection(grid); };
+        const glyph = el("span", "tb-iconglyph", ic.svg || "");
+        if (!ic.svg) { glyph.textContent = "?"; glyph.title = "This icon is missing: " + ic.id; lab.classList.add("tb-iconopt--broken"); }
+        const txt = el("span", "tb-iconname", esc(ic.name));
+        lab.setAttribute("title", ic.name);
+        lab.appendChild(rb); lab.appendChild(glyph); lab.appendChild(txt);
+        grid.appendChild(lab);
+      });
+      host.appendChild(grid);
+      paintIconSelection(grid);
+    }
+
+    function paintIconSelection(grid) {
+      Array.prototype.forEach.call(grid.querySelectorAll(".tb-iconopt"), function (l) {
+        const rb = l.querySelector("input");
+        l.classList.toggle("selected", !!(rb && rb.checked));
+      });
     }
 
     /** The same rule the server uses to derive a field key from its label. */

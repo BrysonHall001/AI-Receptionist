@@ -715,6 +715,18 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 .tb-idrow .adm-fcol { flex: 1 1 260px; min-width: 0; }
 .tb-key { font-size: var(--text-xs); margin: 0 0 var(--sp-2); }
 .tb-note { font-size: var(--text-xs); margin: 0 0 var(--sp-2); }
+/* The icon picker. Radio inputs are visually hidden but NOT display:none, so they keep their
+   focus ring, tab order and screen-reader name; the label is what is styled. */
+.tb-icongrid { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.tb-iconopt { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 72px; padding: var(--sp-2) 4px; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.tb-iconopt:hover { border-color: var(--accent); }
+.tb-iconopt.selected { border-color: var(--accent); background: var(--panel-2, var(--panel)); }
+.tb-iconopt:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tb-iconradio { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.tb-iconglyph { display: block; width: 20px; height: 20px; color: var(--ink); }
+.tb-iconglyph svg { width: 20px; height: 20px; display: block; }
+.tb-iconname { font-size: var(--text-xs); color: var(--ink-faint); text-align: center; line-height: 1.2; }
+.tb-iconopt--broken { border-color: var(--red); }
 .acct-row .acct-code { width: 10ch; }
 /* The enrolment block: the QR at a scannable size, the typable key grouped and legible,
    and the one-time recovery codes in a block a person can read down and copy. */

@@ -45,6 +45,95 @@
   const CUSTOM_DEFAULT = S(`<path d="M8 2.2 13.4 5v6L8 13.8 2.6 11V5L8 2.2Z"${K}/><path d="M2.9 5.2 8 7.9l5.1-2.7M8 7.9v5.6"${K}/><circle cx="8" cy="5" r=".01" stroke="currentColor" stroke-width="1.1"/>`),
     SYSTEM_MODULE_KEYS = Object.keys(MODULE_ICONS);
 
+  // ===========================================================================
+  // THE ICON LIBRARY — glyphs a BUILT template can choose from.
+  //
+  // Almost all of it is curation, not drawing: the module and page glyphs above are already
+  // business-domain shapes in one style, because every glyph in this file goes through the
+  // same S() wrapper (viewBox 0 0 16 16) and the same K stroke (1.4, round, currentColor).
+  // Nothing existing is redrawn, resized or restyled here.
+  //
+  // The seven below fill the categories a builder is most likely to want and that had no
+  // glyph at all. Each records what it draws and what was rejected, the way the template
+  // glyphs do, because a 16px shape read wrong is worse than no shape.
+  const LIBRARY_EXTRA_ICONS = {
+    // MEDICAL — a rounded cross, not a stethoscope. A stethoscope's tubing collapses into an
+    // indistinct loop at crest size; a cross reads instantly and is not confusable with any
+    // other glyph here (the nearest, "add", is a thin plus and lives in chrome, not here).
+    medical: S(`<path d="M6.4 2.6h3.2v3.8h3.8v3.2H9.6v3.8H6.4V9.6H2.6V6.4h3.8V2.6Z"${K}/>`),
+    // LEGAL — scales. REJECTED: a gavel, which at this size is a small hammer and reads as
+    // tools or construction, colliding with the work-order glyph. The scales' two pans hang
+    // from a beam, a silhouette nothing else in the set has.
+    legal: S(`<path d="M8 2.6v10.8M4.6 13.4h6.8"${K}/><path d="M3 5.4h10"${K}/><path d="M3 5.4 1.6 9.2a2.2 2.2 0 0 0 2.8 0L3 5.4Z"${K}/><path d="M13 5.4l-1.4 3.8a2.2 2.2 0 0 0 2.8 0L13 5.4Z"${K}/>`),
+    // EDUCATION — a mortarboard: a flat diamond cap with a tassel. REJECTED: a stack of books,
+    // which at 16px is three horizontal bars and reads as a menu button, the same trap the
+    // burger glyph documents.
+    education: S(`<path d="M1.8 6.2 8 3.4l6.2 2.8L8 9 1.8 6.2Z"${K}/><path d="M4.4 7.4v3.2c0 .9 1.6 1.8 3.6 1.8s3.6-.9 3.6-1.8V7.4"${K}/><path d="M13.4 6.6v3.2"${K}/>`),
+    // FITNESS — a dumbbell: a bar with a plate at each end. The plates are DELIBERATELY taller
+    // than the bar is thick, so the silhouette stays a dumbbell rather than becoming a plain
+    // horizontal line when the strokes merge.
+    fitness: S(`<path d="M2.2 6.2v3.6M4.4 5v6M11.6 5v6M13.8 6.2v3.6"${K}/><path d="M4.4 8h7.2"${K}/>`),
+    // BEAUTY — open scissors. REJECTED: a comb, which is a rectangle with teeth and turns into
+    // a solid block at small sizes. The scissors' crossed blades and two finger loops survive.
+    beauty: S(`<circle cx="4" cy="12.2" r="1.6"${K}/><circle cx="12" cy="12.2" r="1.6"${K}/><path d="M5.2 11 12.4 2.8M10.8 11 3.6 2.8"${K}/>`),
+    // CLEANING — a spray bottle: trigger head, angled nozzle, body. REJECTED: a bucket, which
+    // is a trapezoid and reads as a plain container, indistinguishable from the product glyph.
+    cleaning: S(`<path d="M6.2 5.4h3.4a1.4 1.4 0 0 1 1.4 1.4v6a.8.8 0 0 1-.8.8H5.6a.8.8 0 0 1-.8-.8v-6a1.4 1.4 0 0 1 1.4-1.4Z"${K}/><path d="M6.6 5.4V3.2h2.6"${K}/><path d="M9.2 3.2h3.2l1.2 1.6"${K}/>`),
+    // EVENTS — a ticket with a perforation. REJECTED: a balloon cluster, which is three circles
+    // and collides with the suggestion glyph; and a calendar, which already exists as the
+    // booking glyph and would be a duplicate shape with a different name.
+    events: S(`<path d="M1.8 5.4a1 1 0 0 1 1-1h10.4a1 1 0 0 1 1 1v1.2a1.4 1.4 0 0 0 0 2.8v1.2a1 1 0 0 1-1 1H2.8a1 1 0 0 1-1-1V9.4a1.4 1.4 0 0 0 0-2.8V5.4Z"${K}/><path d="M9.6 4.4v1.6M9.6 7.2v1.6M9.6 10v1.6"${K}/>`),
+  };
+
+  /**
+   * THE PICKER'S CONTENTS — one flat list, each entry a stable id, a human NAME and the glyph
+   * it resolves to. The name matters: a grid of unlabelled shapes is not a picker.
+   *
+   * The ids are prefixed by where the glyph comes from, so a module glyph and a page glyph can
+   * never collide, and so a stored choice keeps meaning if a set is extended later.
+   */
+  const ICON_LIBRARY = [
+    { id: "mod:contact", name: "People", svg: MODULE_ICONS.contact },
+    { id: "mod:job", name: "Openings", svg: MODULE_ICONS.job },
+    { id: "mod:booking", name: "Calendar", svg: MODULE_ICONS.booking },
+    { id: "mod:work_order", name: "Tools", svg: MODULE_ICONS.work_order },
+    { id: "mod:equipment", name: "Equipment", svg: MODULE_ICONS.equipment },
+    { id: "mod:estimate", name: "Quote", svg: MODULE_ICONS.estimate },
+    { id: "mod:invoice", name: "Invoice", svg: MODULE_ICONS.invoice },
+    { id: "mod:product", name: "Products", svg: MODULE_ICONS.product },
+    { id: "mod:task", name: "Checklist", svg: MODULE_ICONS.task },
+    { id: "mod:vehicle", name: "Vehicle", svg: MODULE_ICONS.vehicle },
+    { id: "mod:property", name: "Property", svg: MODULE_ICONS.property },
+    { id: "page:dashboard", name: "Dashboard", svg: PAGE_ICONS["#/dashboard"] },
+    { id: "page:calls", name: "Phone", svg: PAGE_ICONS["#/calls"] },
+    { id: "page:reports", name: "Reports", svg: PAGE_ICONS["#/reports"] },
+    { id: "page:automations", name: "Automation", svg: PAGE_ICONS["#/automations"] },
+    { id: "page:communication", name: "Messages", svg: PAGE_ICONS["#/communication"] },
+    { id: "page:learn", name: "Guides", svg: PAGE_ICONS["#/learn"] },
+    { id: "page:feedback", name: "Feedback", svg: PAGE_ICONS["#/feedback"] },
+    { id: "page:billing", name: "Billing", svg: PAGE_ICONS["#/billing"] },
+    { id: "lib:medical", name: "Medical", svg: LIBRARY_EXTRA_ICONS.medical },
+    { id: "lib:legal", name: "Legal", svg: LIBRARY_EXTRA_ICONS.legal },
+    { id: "lib:education", name: "Education", svg: LIBRARY_EXTRA_ICONS.education },
+    { id: "lib:fitness", name: "Fitness", svg: LIBRARY_EXTRA_ICONS.fitness },
+    { id: "lib:beauty", name: "Beauty", svg: LIBRARY_EXTRA_ICONS.beauty },
+    { id: "lib:cleaning", name: "Cleaning", svg: LIBRARY_EXTRA_ICONS.cleaning },
+    { id: "lib:events", name: "Events", svg: LIBRARY_EXTRA_ICONS.events },
+  ];
+
+  /** Every library entry, for the picker. Each is { id, name, svg }. */
+  function iconLibrary() { return ICON_LIBRARY.slice(); }
+
+  /**
+   * Resolve a library id to markup. Returns null for an id that is not in the library, so a
+   * caller can fail LOUDLY rather than render an empty box - an entry pointing at nothing is
+   * a bug worth seeing, not worth hiding.
+   */
+  function iconById(id) {
+    const hit = ICON_LIBRARY.find(function (x) { return x.id === id; });
+    return hit ? hit.svg : null;
+  }
+
   function forModuleKey(key) {
     return MODULE_ICONS[key] || CUSTOM_DEFAULT;
   }
@@ -144,7 +233,19 @@
   };
   function forSuggestionType(type) { return SUGGESTION_ICONS[type] || NOTIF_ICONS.suggestion; }
   function forNotificationCategory(key) { return NOTIF_ICONS[key] || NOTIF_ICONS.__default; }
+  /**
+   * THE ONE ANSWER TO "what icon does this template have".
+   *
+   * A CODE template is looked up by key, exactly as before - this path is untouched, which is
+   * why the five built-in glyphs cannot move. A BUILT template has no entry there, so it used
+   * to fall to the default; now it may carry a CHOSEN library id, which wins. An id that is
+   * not in the library falls back to the default rather than rendering nothing.
+   */
+  function forTemplate(t) {
+    if (t && t.icon) { const chosen = iconById(t.icon); if (chosen) return chosen; }
+    return forTemplateKey(t && t.key);
+  }
   function forTemplateKey(key) { return TEMPLATE_ICONS[key] || TEMPLATE_ICONS.__default; }
 
-  App.icons = { forModuleKey, forNavHref, keyForNavHref, forTemplateKey, forNotificationCategory, forSuggestionType, SUGGESTION_ICONS, BELL_ICON, NOTIF_ICONS, PAGE_ICONS, MODULE_ICONS, CUSTOM_DEFAULT, TEMPLATE_ICONS, AI_STATE_ICONS };
+  App.icons = { forModuleKey, forNavHref, keyForNavHref, forTemplateKey, forTemplate, iconLibrary, iconById, forNotificationCategory, forSuggestionType, SUGGESTION_ICONS, BELL_ICON, NOTIF_ICONS, PAGE_ICONS, MODULE_ICONS, CUSTOM_DEFAULT, TEMPLATE_ICONS, AI_STATE_ICONS };
 })();

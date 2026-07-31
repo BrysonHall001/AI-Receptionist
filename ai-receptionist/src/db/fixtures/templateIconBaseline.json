@@ -1,0 +1,147 @@
+{
+  "note": "The glyph each BUILT-IN template resolves to. The icon library must not move one byte of this.",
+  "templates": {
+    "general": "<svg viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M8.6 3.2 9.7 6.9l3.7 1.1-3.7 1.1-1.1 3.7-1.1-3.7L3.8 8l3.7-1.1 1.1-3.7Z\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M3.9 2.6v2M2.9 3.6h2\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M12.9 12.2v1.8M12 13.1h1.8\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/></svg>",
+    "ai_receptionist": "<svg viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M5.6 2.9 3.2 3.7a1.4 1.4 0 0 0-.9 1.6c.5 2.6 1.9 4.9 3.8 6.5a1.4 1.4 0 0 0 1.8.1l1.9-1.5-1.6-2.1-1.3.6a8.4 8.4 0 0 1-1.6-2.7l1.1-.9-.8-2.4Z\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M10.8 5.1c.9.6 1.4 1.6 1.5 2.7\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M11.4 2.7c1.9.9 3.1 2.8 3.1 4.9\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/></svg>",
+    "field_services": "<svg viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M5.9 7.1 3 4.2a2.1 2.1 0 0 1 2.6-2.6l-.9 1.6.9 1.2 1.5.2 1-1.7A2.1 2.1 0 0 1 5.9 7.1Z\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"m6.2 6.9 6.4 6.4\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M12.9 3.1 6.7 9.3M12.9 3.1l.9 1 -1.4 2.2-1.7.3\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"m4.6 10.9 2.7 2.7-1.2 1.2a1.9 1.9 0 0 1-2.7-2.7l1.2-1.2Z\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/></svg>",
+    "recruitment_marketing": "<svg viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M2.2 6.2v3.6l2.6.4 5.6 2.6V3.2L4.8 5.8l-2.6.4Z\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M5.6 10.5v2.3a.9.9 0 0 0 .9.9h.7\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M12.6 6.2c.7.9.7 2.7 0 3.6\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M14.2 4.8c1.3 1.7 1.3 4.7 0 6.4\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/></svg>",
+    "food_service": "<svg viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M2.6 6.4a5.4 5.4 0 0 1 10.8 0Z\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M2.4 8.2h11.2\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M2.6 10.1c1.4.7 2.4-.7 3.7 0s2.4-.7 3.7 0 2.4-.7 3.4 0\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M3.2 12.2a1.6 1.6 0 0 0 1.6 1.4h6.4a1.6 1.6 0 0 0 1.6-1.4Z\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M6.4 4.4h.01M9.4 4.9h.01\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/></svg>",
+    "__default": "<svg viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M8 2.2 13.4 5v6L8 13.8 2.6 11V5L8 2.2Z\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M2.9 5.2 8 7.9l5.1-2.7M8 7.9v5.6\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><circle cx=\"8\" cy=\"5\" r=\".01\" stroke=\"currentColor\" stroke-width=\"1.1\"/></svg>"
+  },
+  "library": [
+    {
+      "id": "mod:contact",
+      "name": "People",
+      "len": 634
+    },
+    {
+      "id": "mod:job",
+      "name": "Openings",
+      "len": 531
+    },
+    {
+      "id": "mod:booking",
+      "name": "Calendar",
+      "len": 383
+    },
+    {
+      "id": "mod:work_order",
+      "name": "Tools",
+      "len": 311
+    },
+    {
+      "id": "mod:equipment",
+      "name": "Equipment",
+      "len": 425
+    },
+    {
+      "id": "mod:estimate",
+      "name": "Quote",
+      "len": 376
+    },
+    {
+      "id": "mod:invoice",
+      "name": "Invoice",
+      "len": 383
+    },
+    {
+      "id": "mod:product",
+      "name": "Products",
+      "len": 374
+    },
+    {
+      "id": "mod:task",
+      "name": "Checklist",
+      "len": 373
+    },
+    {
+      "id": "mod:vehicle",
+      "name": "Vehicle",
+      "len": 539
+    },
+    {
+      "id": "mod:property",
+      "name": "Property",
+      "len": 421
+    },
+    {
+      "id": "page:dashboard",
+      "name": "Dashboard",
+      "len": 388
+    },
+    {
+      "id": "page:calls",
+      "name": "Phone",
+      "len": 311
+    },
+    {
+      "id": "page:reports",
+      "name": "Reports",
+      "len": 360
+    },
+    {
+      "id": "page:automations",
+      "name": "Automation",
+      "len": 237
+    },
+    {
+      "id": "page:communication",
+      "name": "Messages",
+      "len": 370
+    },
+    {
+      "id": "page:learn",
+      "name": "Guides",
+      "len": 407
+    },
+    {
+      "id": "page:feedback",
+      "name": "Feedback",
+      "len": 257
+    },
+    {
+      "id": "page:billing",
+      "name": "Billing",
+      "len": 478
+    },
+    {
+      "id": "lib:medical",
+      "name": "Medical",
+      "len": 249
+    },
+    {
+      "id": "lib:legal",
+      "name": "Legal",
+      "len": 646
+    },
+    {
+      "id": "lib:education",
+      "name": "Education",
+      "len": 516
+    },
+    {
+      "id": "lib:fitness",
+      "name": "Fitness",
+      "len": 356
+    },
+    {
+      "id": "lib:beauty",
+      "name": "Beauty",
+      "len": 493
+    },
+    {
+      "id": "lib:cleaning",
+      "name": "Cleaning",
+      "len": 551
+    },
+    {
+      "id": "lib:events",
+      "name": "Events",
+      "len": 469
+    }
+  ],
+  "shape": {
+    "builtIns": 6,
+    "libraryCount": 26
+  }
+}
