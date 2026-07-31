@@ -714,6 +714,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 .tb-idrow { display: flex; flex-wrap: wrap; gap: var(--sp-4); margin-bottom: var(--sp-2); }
 .tb-idrow .adm-fcol { flex: 1 1 260px; min-width: 0; }
 .tb-key { font-size: var(--text-xs); margin: 0 0 var(--sp-2); }
+.tb-note { font-size: var(--text-xs); margin: 0 0 var(--sp-2); }
 .acct-row .acct-code { width: 10ch; }
 /* The enrolment block: the QR at a scannable size, the typable key grouped and legible,
    and the one-time recovery codes in a block a person can read down and copy. */

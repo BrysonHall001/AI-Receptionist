@@ -41,6 +41,31 @@ export const PRESET_CATEGORIES: PresetCategory[] = [
 // CURATION: a flavored tenant sees the most relevant categories first and the
 // flavor's vertical entries at the top of each section. Nothing is hidden,
 // nothing renamed — every generic entry stays exactly as reachable.
+/**
+ * THE ONE CODE-BOUND FIELD A TEMPLATE CARRIES.
+ *
+ * Everything else in a tenant template is data. A flavour is not: it names a curation that
+ * lives in this file. So the template builder offers it as a PICKER over these keys and must
+ * never accept free text - a key that does not exist here would silently do nothing.
+ *
+ * The labels live beside the keys deliberately, so a new flavour is one entry and the screen
+ * cannot drift from the code.
+ */
+export const LIBRARY_FLAVOR_LABELS: Record<string, string> = {
+  field_services: "Field Services",
+  recruitment_marketing: "Recruitment Marketing",
+};
+
+/** What the builder's dropdown offers. "None" is the absence of a key, not an entry here. */
+export function libraryFlavorOptions(): Array<{ key: string; label: string }> {
+  return Object.keys(LIBRARY_FLAVORS).map((k) => ({ key: k, label: LIBRARY_FLAVOR_LABELS[k] || k }));
+}
+
+/** Is this a flavour that actually exists? Used to refuse anything else at save time. */
+export function isLibraryFlavor(key: unknown): boolean {
+  return typeof key === "string" && Object.prototype.hasOwnProperty.call(LIBRARY_FLAVORS, key);
+}
+
 export const LIBRARY_FLAVORS: Record<string, { categoryOrder: string[]; surfaceVerticals: Vertical[] }> = {
   field_services: {
     categoryOrder: ["stay_in_touch", "follow_ups", "lead_capture", "pipeline"],

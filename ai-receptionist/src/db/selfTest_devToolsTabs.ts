@@ -125,6 +125,16 @@ async function main() {
 
   // ---------- (4) DOM: Developer Tools -> Tools ----------
   console.log("\n(4) DOM \u2014 Developer Tools:");
+  // TEST ISOLATION. This suite's fixtures are named dt-<what>-<epoch ms>. A run that THREW
+  // (rather than merely failing an assertion) never reached its cleanup, so its tenants stayed
+  // behind - and enough of them made the demo table slow enough for the next run to throw too.
+  // Purging our own leftovers first breaks that loop and makes this run independent of history.
+  // The pattern only ever matches machine-generated names, so no real tenant can match it.
+  const stale = await db.tenant.findMany({ where: { isDemo: true }, select: { id: true, name: true } });
+  const mine = stale.filter((t: any) => /^dt-(empty|del|real)-\d{13}$/.test(t.name));
+  for (const t of mine) await db.tenant.delete({ where: { id: t.id } }).catch(() => { /* */ });
+  if (mine.length) console.log(`  (cleared ${mine.length} leftover fixture(s) from earlier runs)`);
+
   const demoA: any = await createPortal({ name: `dt-empty-${stamp}`, billingStatus: "trial", isDemo: true } as any);
   const demoB: any = await createPortal({ name: `dt-del-${stamp}`, billingStatus: "trial", isDemo: true } as any);
   const realT: any = await createPortal({ name: `dt-real-${stamp}`, billingStatus: "trial" } as any);
@@ -301,6 +311,19 @@ async function main() {
   process.exit(failures.length ? 1 : 0);
 }
 
-main().catch(async (e: any) => { console.error("threw:", e); await disconnectDb().catch(() => { /* */ }); process.exit(1); });
+main().catch(async (e: any) => {
+  console.error("threw:", e);
+  // CLEAN UP EVEN ON A THROW. Without this a crash abandons its tenants, and the next run
+  // starts against a dirtier database than the one that just crashed - which is exactly how
+  // this suite accumulated dozens of leftovers.
+  try {
+    const rows = await (prisma as any).tenant.findMany({ where: { isDemo: true }, select: { id: true, name: true } });
+    for (const t of rows.filter((x: any) => /^dt-(empty|del|real)-\d{13}$/.test(x.name))) {
+      await (prisma as any).tenant.delete({ where: { id: t.id } }).catch(() => { /* */ });
+    }
+  } catch { /* best-effort */ }
+  await disconnectDb().catch(() => { /* */ });
+  process.exit(1);
+});
 
 export {};

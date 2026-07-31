@@ -63,10 +63,17 @@ adminRouter.get("/portals/record-type-options", async (_req: Request, res: Respo
 // router-level requireRole("OWNER","SUPER_ADMIN","AUDITOR") at the top of this file - the
 // same gate Developer Tools already sits behind. No second gate is invented.
 
-/** The built templates, for the builder's own list. */
+/**
+ * The built templates, for the builder's own list - plus the automation-library flavours the
+ * picker may offer. The OPTIONS ARE SERVED, never hardcoded on the screen: a flavour is the
+ * one code-bound thing a template carries, so the list has to come from the code that owns it
+ * or the two drift.
+ */
 adminRouter.get("/template-rows", async (_req: Request, res: Response) => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { libraryFlavorOptions } = require("../automation/presets");
   const rows = await (prisma as any).tenantTemplateRow.findMany({ orderBy: { createdAt: "asc" } });
-  res.json({ rows });
+  res.json({ rows, flavors: libraryFlavorOptions() });
 });
 
 /**
@@ -79,9 +86,18 @@ adminRouter.get("/template-rows", async (_req: Request, res: Response) => {
 adminRouter.post("/template-rows", async (req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { reservedTemplateKeys, slugTemplateKey } = require("../services/tenantTemplates");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { isLibraryFlavor } = require("../automation/presets");
   const { id, label, description, spec } = (req.body ?? {}) as Record<string, any>;
   const clean = String(label || "").trim();
   if (!clean) { res.status(400).json({ error: "Give the template a name." }); return; }
+  // REFUSED AT THE DOOR, not silently dropped. An invented flavour would do nothing at all,
+  // so the person deserves to be told rather than to wonder why their library looks ordinary.
+  const flavor = (spec || {}).libraryFlavor;
+  if (flavor != null && flavor !== "" && !isLibraryFlavor(flavor)) {
+    res.status(400).json({ error: "That automation library isn't one we offer." });
+    return;
+  }
   try {
     if (id) {
       const existing = await (prisma as any).tenantTemplateRow.findUnique({ where: { id: String(id) } });

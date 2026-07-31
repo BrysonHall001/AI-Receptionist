@@ -1919,6 +1919,8 @@
     let rows = [];
     let draft = null;        // { id, label, description, spec }
     let modules = [];        // [{ key, labelPlural, togglable }] - the SAME list step 4 loads
+    let flavors = [];        // [{ key, label }] SERVED by the endpoint - never hardcoded here,
+                             // because a flavour names a curation that lives in code
 
     // ---- the honest limits, on screen ----
     function limitsNote() {
@@ -1934,6 +1936,7 @@
       try {
         const r = await App.api("/api/admin/template-rows");
         rows = (r && r.rows) || [];
+        flavors = (r && r.flavors) || [];
         // The module list comes from the endpoint step 4 already uses, so a module added to
         // the product appears here with no change to this screen - and `togglable` carries
         // the same core-module rule rather than this screen inventing a second one.
@@ -1975,7 +1978,7 @@
     function openForm(row) {
       draft = row
         ? { id: row.id, label: row.label, description: row.description || "", spec: JSON.parse(JSON.stringify(row.spec || {})) }
-        : { id: null, label: "", description: "", spec: { pagesOffPrefill: [], modulesHiddenPrefill: [], aiVoiceMode: null, fieldTweaks: [], pageLabelOverrides: {}, moduleRelabels: {}, customLcOffer: false } };
+        : { id: null, label: "", description: "", spec: { pagesOffPrefill: [], modulesHiddenPrefill: [], aiVoiceMode: null, libraryFlavor: null, fieldTweaks: [], pageLabelOverrides: {}, moduleRelabels: {}, customLcOffer: false } };
       listHost.classList.add("u-hidden");
       formHost.classList.remove("u-hidden");
       formHost.innerHTML = "";
@@ -2033,6 +2036,22 @@
       aiRight.appendChild(el("p", "adm-ai-desc cell-muted", "What the receptionist does on a tenant made from this template. The hub can still change it per tenant."));
       aiHost.appendChild(aiRight);
       formHost.appendChild(aiHost);
+
+      // ---- the automation library ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "Automation library"));
+      formHost.appendChild(el("p", "cell-muted tb-note", "Pick a ready-made ordering for the automation library a new tenant starts with, so the suggestions most useful to that trade come first. Leave it as None for the standard order."));
+      const flavRow = el("div", "add-user acct-row");
+      const flavSel = el("select", "input");
+      const noneOpt = el("option", null, "None \u2014 standard order");
+      noneOpt.value = "";
+      flavSel.appendChild(noneOpt);
+      // Options come from the server. If a flavour is added in code it appears here with no
+      // change to this screen, and a key that does not exist can never be chosen.
+      flavors.forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; flavSel.appendChild(o); });
+      flavSel.value = draft.spec.libraryFlavor || "";
+      flavSel.onchange = () => { draft.spec.libraryFlavor = flavSel.value || null; };
+      flavRow.appendChild(flavSel);
+      formHost.appendChild(flavRow);
 
       // ---- extra fields ----
       formHost.appendChild(el("label", "field-label u-mt-8", "Extra fields"));

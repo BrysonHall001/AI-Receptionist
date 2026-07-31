@@ -16,6 +16,7 @@ const {
   specToTemplate, slugTemplateKey, reservedTemplateKeys,
 } = require("../services/tenantTemplates");
 const { createApp } = require("../app");
+const { LIBRARY_FLAVORS, libraryFlavorOptions, isLibraryFlavor, applyLibraryFlavor, PRESET_CATEGORIES } = require("../automation/presets");
 const { createUser } = require("../services/userService");
 const { createSession } = require("../auth/session");
 
@@ -140,6 +141,38 @@ async function main() {
   check(stillGeneral.label === getTemplate("general").label,
     "even if a colliding row existed, code WINS \u2014 a built row can never shadow a built-in");
 
+  // ---------- (5b) the automation-library picker ----------
+  console.log("\n(5b) the automation library a built template can borrow:");
+  const opts = libraryFlavorOptions();
+  check(opts.length === Object.keys(LIBRARY_FLAVORS).length && opts.every((o: any) => o.key && o.label && o.label !== o.key),
+    `the picker is offered exactly the flavours that exist, each with a real label (${opts.map((o: any) => o.label).join(", ")})`);
+  check(isLibraryFlavor(opts[0].key) && !isLibraryFlavor("not_a_flavour") && !isLibraryFlavor(null),
+    "\u2026and only a real key validates \u2014 this is the one code-bound field a template carries");
+
+  const flavKey = opts[0].key;
+  const fRow: any = await db.tenantTemplateRow.create({ data: { key: `${key}_f`, label: `Flav ${stamp}`, description: "", spec: { ...spec, libraryFlavor: flavKey } } });
+  cleanupRows.push(fRow.id);
+  const fTpl = await resolveTemplate(`${key}_f`);
+  check(fTpl.hooks.libraryFlavor === flavKey, `a built template carries a REAL flavour through to hooks (${flavKey})`);
+
+  const bogus: any = await db.tenantTemplateRow.create({ data: { key: `${key}_b`, label: `Bogus ${stamp}`, description: "", spec: { ...spec, libraryFlavor: "not_a_flavour" } } });
+  cleanupRows.push(bogus.id);
+  check((await resolveTemplate(`${key}_b`)).hooks.libraryFlavor === null,
+    "\u2026an invented one becomes null rather than being stored as-is \u2014 refused, not trusted");
+  check((await resolveTemplate(key)).hooks.libraryFlavor === null, "\u2026and a template that picked nothing gets none");
+
+  // it must actually DO something, or the picker is decoration
+  const plain = applyLibraryFlavor(null, PRESET_CATEGORIES, []);
+  const flavoured = applyLibraryFlavor(flavKey, PRESET_CATEGORIES, []);
+  check(JSON.stringify(plain.categories.map((c: any) => c.key)) !== JSON.stringify(flavoured.categories.map((c: any) => c.key)),
+    "\u2026and choosing it really does reorder the automation library");
+  check(JSON.stringify(applyLibraryFlavor("not_a_flavour", PRESET_CATEGORIES, []).categories.map((c: any) => c.key))
+    === JSON.stringify(plain.categories.map((c: any) => c.key)),
+    "\u2026while an unknown key is a safe no-op at the consumer too \u2014 two layers, not one");
+  // and the rest of hooks stays empty: this batch's scope, stated not accidental
+  check(fTpl.hooks.dashboards.length === 0 && fTpl.hooks.analytics.length === 0 && fTpl.hooks.commDrafts.length === 0,
+    "\u2026while dashboards, analytics and comm drafts stay empty, which is scope rather than a limit");
+
   // ---------- (6) only Developer Tools' audience can reach it ----------
   console.log("\n(6) who can reach the builder:");
   const server = createApp().listen(0);
@@ -151,7 +184,17 @@ async function main() {
     return `air_session=${await createSession(u.id)}`;
   };
   const hit = async (cookie: string) => (await fetch(base + "/api/admin/template-rows", { headers: { Cookie: cookie } })).status;
-  check((await hit(await mk("OWNER", null))) === 200, "an OWNER reaches it");
+  const ownerJar = await mk("OWNER", null);
+  const ownerRes = await fetch(base + "/api/admin/template-rows", { headers: { Cookie: ownerJar } });
+  check(ownerRes.status === 200, "an OWNER reaches it");
+  const listPayload: any = await ownerRes.json().catch(() => null);
+  check(!!listPayload && Array.isArray(listPayload.flavors) && listPayload.flavors.length === opts.length,
+    "\u2026and the endpoint SERVES the flavour options, so the screen never hardcodes them");
+  const rejected = await fetch(base + "/api/admin/template-rows", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: ownerJar },
+    body: JSON.stringify({ label: `Bad ${stamp}`, description: "", spec: { libraryFlavor: "not_a_flavour" } }),
+  });
+  check(rejected.status === 400, `saving an invented flavour is REFUSED at the door (${rejected.status}), not silently dropped`);
   const clientStatus = await hit(await mk("CLIENT_USER", built.id));
   check(clientStatus === 401 || clientStatus === 403,
     `a portal user does NOT (${clientStatus}) \u2014 the same gate Developer Tools already sits behind, not a second one`);

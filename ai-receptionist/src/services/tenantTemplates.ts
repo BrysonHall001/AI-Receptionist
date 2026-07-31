@@ -548,9 +548,21 @@ export function slugTemplateKey(label: string): string {
  *
  * Anything missing falls back to the empty/neutral value, so a spec saved by an older
  * version of the builder still produces a valid template rather than throwing downstream.
- * hooks are ALWAYS empty for a built template - see the model comment.
+ *
+ * ON HOOKS, FOR WHOEVER PICKS THIS UP NEXT: hooks are DATA, not functions. They are plain
+ * JSON - widget definitions with ids, sources and filters - so a built template COULD carry
+ * dashboards, analytics and comm drafts. It does not yet because nothing on the builder
+ * screen authors them, which is a deferred SCOPE CHOICE and not a technical limit. Do not
+ * rediscover this the hard way: the storage is already shaped to hold them.
+ *
+ * libraryFlavor IS THE EXCEPTION and the one genuinely code-bound field. It names a curation
+ * that lives in src/automation/presets.ts, so it is validated against LIBRARY_FLAVORS here
+ * and offered as a PICKER on the screen. It must never become free text: an invented key
+ * would silently do nothing at all.
  */
 export function specToTemplate(row: { key: string; label: string; description: string; spec: any }): TenantTemplate {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { isLibraryFlavor } = require("../automation/presets");
   const s = (row.spec || {}) as any;
   const arr = (v: any) => (Array.isArray(v) ? v : []);
   const obj = (v: any) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
@@ -567,7 +579,12 @@ export function specToTemplate(row: { key: string; label: string; description: s
     pageLabelOverrides: obj(s.pageLabelOverrides),
     customLcOffer: !!s.customLcOffer,
     moduleRelabels: obj(s.moduleRelabels),
-    hooks: { ...EMPTY_HOOKS },
+    hooks: {
+      ...EMPTY_HOOKS,
+      // Validated, never trusted: anything that is not a real flavour becomes null, which
+      // applyLibraryFlavor already treats as "no curation".
+      libraryFlavor: isLibraryFlavor(s.libraryFlavor) ? String(s.libraryFlavor) : null,
+    },
   } as TenantTemplate;
 }
 
