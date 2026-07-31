@@ -210,6 +210,128 @@
    * .seg-fill-* classes; --seg-count drives its width and offset so a
    * two-segment control needs no second stylesheet.
    */
+  // ---------------------------------------------------------------------------
+  /** The template card's geometry. Reference Canva units at 1px scale; no tokens exist for
+   *  these bespoke measures, so they are applied inline and the suites assert the ratios. */
+  const TEMPLATE_CARD_DIMS = { mainW: 192, mainH: 87, crestW: 133, crestH: 38.5, tabW: 167, tabH: 38.5, bandH: 24 };
+
+  /**
+   * THE TEMPLATE CARD — one component, two screens.
+   *
+   * Lifted VERBATIM out of the create wizard's paintTemplateCards. The markup below is
+   * byte-for-byte what the wizard produced before this extraction; only the two things the
+   * MARKUP depended on became parameters (which card is selected, and whether its Learning
+   * Center box is ticked). Everything the card DOES on click belongs to the caller, because
+   * that is the only real difference between the two screens: the wizard SELECTS a template
+   * to build from, the builder OPENS one to edit.
+   *
+   * opts: { selectedKey, lcChecked, onPick(t, event), onDelete(t) }
+   * onDelete is omitted by the wizard, so the wizard's cards gain nothing at all - which is
+   * how the "no visual regression" requirement is met by construction rather than by care.
+   */
+  function templateCard(t, opts) {
+    const o = opts || {};
+    const isSel = o.selectedKey === t.key;
+    const D = TEMPLATE_CARD_DIMS;
+        const card = el("button", "adm-tpl-card" + (isSel ? " active" : ""));
+        card.type = "button";
+        card.style.setProperty("width", D.mainW + "px"); // height is CONTENT-DRIVEN (regression fix: never fixed)
+        const icSvg = App.icons ? App.icons.forTemplateKey(t.key) : "";
+        // z2: crest (69% of main) — upper half protrudes above the main rect.
+        const crest = el("span", "tpl-crest");
+        crest.style.setProperty("width", D.crestW + "px"); crest.style.setProperty("height", D.crestH + "px");
+        // z3: the icon — tucked: its lower edge dips below the main rect's top.
+        const glyph = el("span", "tpl-glyph", icSvg);
+        glyph.style.setProperty("top", (D.crestH / 2 - 26) + "px");
+        // z4: the main rect (frontmost surface) — IN FLOW, height determined
+        // BY ITS CONTENT; the 87px reference is a MINIMUM. It clears the crest
+        // by margin, not absolute offset. Nothing inside it may be clipped.
+        const main = el("span", "tpl-main");
+        main.style.setProperty("width", D.mainW + "px"); main.style.setProperty("min-height", D.mainH + "px"); main.style.setProperty("margin-top", (D.crestH / 2) + "px");
+        // (RM-1: the backsplash photo layer is REMOVED by owner reversal — the
+        // composition is crest / glyph / main / text+strip / tab, nothing else.)
+        const txt = el("span", "tpl-text");
+        txt.innerHTML = `<span class="adm-tpl-name">${esc(t.label)}</span><span class="adm-tpl-desc">${esc(t.description)}</span>`;
+        main.appendChild(txt);
+        // z2: bottom tab (87% of main, WIDER than the crest so its line fits);
+        // lower half protrudes below the main rect.
+        // REGRESSION FIX: the tab WIDENS to 100% of the main-rect width — at
+        // the specced 87% the full strings measurably cannot fit on one line at
+        // any legible size (stated in the summary). It rides IN FLOW, pulled up
+        // by half its height so its lower half still protrudes below the main.
+        const tab = el("span", "tpl-tab");
+        tab.style.setProperty("width", D.mainW + "px"); tab.style.setProperty("height", D.tabH + "px"); tab.style.setProperty("margin-top", (-D.tabH / 2) + "px");
+        if (t.customLcOffer) {
+          const lcId = "tpl-lc-cb-" + t.key;
+          tab.innerHTML = `<input type="checkbox" id="${lcId}" class="tpl-lc-cb"><span>Custom-configure Learning Center?</span>`;
+          const cb = tab.querySelector("input");
+          // FIX 1 (multi-select screenshot): the checkbox is only MEANINGFUL on
+          // the SELECTED card — a deselected sibling always renders unchecked.
+          // (The bug: every offer-card painted from the one shared draft flag,
+          // so selecting RM re-rendered FS's box checked too.) `isSel` is the
+          // component's own, computed once at the top.
+          cb.checked = isSel && !!o.lcChecked;
+          cb.onclick = (e) => { if (isSel) e.stopPropagation(); }; // on the selected card the box toggles in place; on a sibling the click SELECTS the card (auto-check runs)
+          cb.onchange = () => { if (isSel) draft.customLearningCenter = cb.checked; };
+        } else {
+          tab.innerHTML = `<span>Default Learning Center configuration</span>`;
+        }
+        card.appendChild(crest);
+        card.appendChild(glyph);
+        card.appendChild(main);
+        card.appendChild(tab);
+        card.appendChild(crest);
+        card.appendChild(glyph);
+        card.appendChild(main);
+        card.appendChild(tab);
+        if (o.onPick) card.onclick = (e) => o.onPick(t, e);
+        // THE DELETE CONTROL. Rendered only when a caller supplies onDelete AND the template
+        // did not come from code. The wizard supplies neither, so its cards are untouched.
+        // This is the VISUAL half of the rule; the server refuses a built-in key regardless,
+        // because a hidden control is not a rule.
+        if (o.onDelete && t.builtIn !== true) {
+          const x = el("span", "tpl-x", "\u00d7");
+          x.setAttribute("role", "button");
+          x.setAttribute("tabindex", "0");
+          x.setAttribute("title", "Delete this template");
+          x.setAttribute("aria-label", "Delete " + t.label);
+          const go = (e) => { if (e) { e.stopPropagation(); e.preventDefault(); } o.onDelete(t); };
+          x.onclick = go;
+          x.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") go(e); };
+          card.appendChild(x);
+        }
+        return card;
+  }
+
+  /**
+   * Wire a template row for sideways scrolling: end affordances, and the band's gradient
+   * shifting slightly with the scroll so the row reads as movable.
+   *
+   * REDUCED MOTION IS HONOURED HERE TOO, not only in CSS: someone who asked their system for
+   * less motion gets no gradient movement at all, rather than a smaller one.
+   */
+  function wireTemplateRow(zone, row, band) {
+    if (!zone || !row) return;
+    const reduced = typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
+    function sync() {
+      const max = row.scrollWidth - row.clientWidth;
+      const x = row.scrollLeft;
+      zone.classList.toggle("has-left", x > 2);
+      zone.classList.toggle("has-right", max > 2 && x < max - 2);
+      if (band && !reduced) {
+        // 0 -> 40% of the extra background width, matching background-size: 140%.
+        const pct = max > 0 ? (x / max) * 40 : 0;
+        band.style.setProperty("background-position", pct.toFixed(2) + "% 0%");
+      }
+    }
+    row.addEventListener("scroll", sync, { passive: true });
+    if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("resize", sync);
+    sync();
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(sync); // after layout
+    return sync;
+  }
+
   /** The AI-mode glyphs. Hoisted from inside the create wizard so the template builder uses
    *  the SAME icons rather than a second copy of this line. */
   const aiIcon = (mode) => (App.icons && App.icons.AI_STATE_ICONS && App.icons.AI_STATE_ICONS[mode]) || "";
@@ -1266,7 +1388,7 @@
     // no tokens exist for these bespoke measures) and is applied as inline
     // styles so the suite asserts the exact ratios; colors/shadows/radius stay
     // tokenized in CSS.
-    const TPL_DIMS = { mainW: 192, mainH: 87, crestW: 133, crestH: 38.5, tabW: 167, tabH: 38.5, bandH: 24 };
+    const TPL_DIMS = TEMPLATE_CARD_DIMS;   // hoisted: ONE geometry source for both screens
     const tplWrap = el("div"); tplWrap.classList.add("adm-tpl-zone");
     tplWrap.innerHTML = `<label class="field-label">Template</label>`;
     const tplBand = el("span", "adm-tpl-band");
@@ -1468,73 +1590,31 @@
     }
     function paintTemplateCards() {
       tplRow.innerHTML = "";
-      const D = TPL_DIMS;
       templatesMeta.forEach((t) => {
-        const card = el("button", "adm-tpl-card" + (draft.template === t.key ? " active" : ""));
-        card.type = "button";
-        card.style.setProperty("width", D.mainW + "px"); // height is CONTENT-DRIVEN (regression fix: never fixed)
-        const icSvg = App.icons ? App.icons.forTemplateKey(t.key) : "";
-        // z2: crest (69% of main) — upper half protrudes above the main rect.
-        const crest = el("span", "tpl-crest");
-        crest.style.setProperty("width", D.crestW + "px"); crest.style.setProperty("height", D.crestH + "px");
-        // z3: the icon — tucked: its lower edge dips below the main rect's top.
-        const glyph = el("span", "tpl-glyph", icSvg);
-        glyph.style.setProperty("top", (D.crestH / 2 - 26) + "px");
-        // z4: the main rect (frontmost surface) — IN FLOW, height determined
-        // BY ITS CONTENT; the 87px reference is a MINIMUM. It clears the crest
-        // by margin, not absolute offset. Nothing inside it may be clipped.
-        const main = el("span", "tpl-main");
-        main.style.setProperty("width", D.mainW + "px"); main.style.setProperty("min-height", D.mainH + "px"); main.style.setProperty("margin-top", (D.crestH / 2) + "px");
-        // (RM-1: the backsplash photo layer is REMOVED by owner reversal — the
-        // composition is crest / glyph / main / text+strip / tab, nothing else.)
-        const txt = el("span", "tpl-text");
-        txt.innerHTML = `<span class="adm-tpl-name">${esc(t.label)}</span><span class="adm-tpl-desc">${esc(t.description)}</span>`;
-        main.appendChild(txt);
-        // z2: bottom tab (87% of main, WIDER than the crest so its line fits);
-        // lower half protrudes below the main rect.
-        // REGRESSION FIX: the tab WIDENS to 100% of the main-rect width — at
-        // the specced 87% the full strings measurably cannot fit on one line at
-        // any legible size (stated in the summary). It rides IN FLOW, pulled up
-        // by half its height so its lower half still protrudes below the main.
-        const tab = el("span", "tpl-tab");
-        tab.style.setProperty("width", D.mainW + "px"); tab.style.setProperty("height", D.tabH + "px"); tab.style.setProperty("margin-top", (-D.tabH / 2) + "px");
-        if (t.customLcOffer) {
-          const lcId = "tpl-lc-cb-" + t.key;
-          tab.innerHTML = `<input type="checkbox" id="${lcId}" class="tpl-lc-cb"><span>Custom-configure Learning Center?</span>`;
-          const cb = tab.querySelector("input");
-          // FIX 1 (multi-select screenshot): the checkbox is only MEANINGFUL on
-          // the SELECTED card — a deselected sibling always renders unchecked.
-          // (The bug: every offer-card painted from the one shared draft flag,
-          // so selecting RM re-rendered FS's box checked too.)
-          const isSel = draft.template === t.key;
-          cb.checked = isSel && !!draft.customLearningCenter;
-          cb.onclick = (e) => { if (draft.template === t.key) e.stopPropagation(); }; // on the selected card the box toggles in place; on a sibling the click SELECTS the card (auto-check runs)
-          cb.onchange = () => { if (draft.template === t.key) draft.customLearningCenter = cb.checked; };
-        } else {
-          tab.innerHTML = `<span>Default Learning Center configuration</span>`;
-        }
-        card.appendChild(crest);
-        card.appendChild(glyph);
-        card.appendChild(main);
-        card.appendChild(tab);
-        card.onclick = (e) => {
-          if (e.target && e.target.classList && e.target.classList.contains("tpl-lc-cb") && draft.template === t.key) return; // the SELECTED card's checkbox owns itself; a sibling's click selects the card
-          if (draft.template === t.key) return;
-          draft.template = t.key;
-          // A template OFFERING the custom-LC checkbox auto-checks it on
-          // selection; anything else resets it (clean re-prefill — the owner
-          // may uncheck afterwards). Data-driven since RM-1.
-          draft.customLearningCenter = !!t.customLcOffer;
-          paintTemplateCards();
-          applyTemplatePrefill(t);
-          // The RESET MOMENT (approved rule): switching re-prefills CLEANLY —
-          // no silent merge — and says so; manual edits AFTER this still win.
-          tplReset.textContent = "Reset to the " + t.label + " starting point \u2014 adjust anything below.";
-        };
+        // The SHARED component. The wizard passes no onDelete, so its cards are exactly what
+        // they were before the extraction - the card gains nothing here.
+        const card = templateCard(t, {
+          selectedKey: draft.template,
+          lcChecked: draft.customLearningCenter,
+          onPick: (tpl, e) => {
+            if (e && e.target && e.target.classList && e.target.classList.contains("tpl-lc-cb") && draft.template === tpl.key) return; // the SELECTED card's checkbox owns it
+            if (draft.template === tpl.key) return;
+            draft.template = tpl.key;
+            // A template OFFERING the custom-LC checkbox auto-checks it on selection; anything
+            // else resets it (clean re-prefill - the owner may uncheck afterwards).
+            draft.customLearningCenter = !!tpl.customLcOffer;
+            paintTemplateCards();
+            applyTemplatePrefill(tpl);
+            // The RESET MOMENT (approved rule): switching re-prefills CLEANLY - no silent
+            // merge - and says so; manual edits AFTER this still win.
+            tplReset.textContent = "Reset to the " + tpl.label + " starting point \u2014 adjust anything below.";
+          },
+        });
         tplRow.appendChild(card);
       });
       positionTplBand();
       if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => positionTplBand()); // after layout settles
+      wireTemplateRow(tplWrap, tplRow, tplBand);   // tplWrap carries .adm-tpl-zone
     }
     App.api("/api/admin/tenant-templates").then((r) => {
       templatesMeta = (r && r.templates) || [];
@@ -1919,6 +1999,7 @@
     let rows = [];
     let draft = null;        // { id, label, description, spec }
     let modules = [];        // [{ key, labelPlural, togglable }] - the SAME list step 4 loads
+    let allTemplates = [];   // every template the wizard offers, in the wizard's own order
     let flavors = [];        // [{ key, label }] SERVED by the endpoint - never hardcoded here,
                              // because a flavour names a curation that lives in code
 
@@ -1937,6 +2018,10 @@
         const r = await App.api("/api/admin/template-rows");
         rows = (r && r.rows) || [];
         flavors = (r && r.flavors) || [];
+        // The SAME payload the wizard's row is built from, so both screens show the same
+        // templates in the same order without this screen assembling its own list.
+        const tr = await App.api("/api/admin/tenant-templates");
+        allTemplates = (tr && tr.templates) || [];
         // The module list comes from the endpoint step 4 already uses, so a module added to
         // the product appears here with no change to this screen - and `togglable` carries
         // the same core-module rule rather than this screen inventing a second one.
@@ -1946,8 +2031,76 @@
       paintList();
     }
 
+    /** The SAME row of cards the Create Tenant wizard shows, so you can see what already
+     *  exists while building something new. Same component, same look, same order - the only
+     *  difference is what a click does: here it opens that template for editing. */
+    /** Deleting asks for the password, the way approving a charge does - reusing that modal's
+     *  furniture rather than authoring a new one. A wrong password is refused by the SERVER,
+     *  which also rate-limits it and audits it exactly like a failed sign-in. */
+    function confirmDeleteTemplate(tpl) {
+      const own = rows.find((r) => r.key === tpl.key);
+      if (!own) { toast("Built-in templates can't be deleted.", true); return; }
+      const inner = el("div");
+      inner.innerHTML = `<div class="modal-head"><h2>Delete this template?</h2><button class="icon-btn" id="td-close">&times;</button></div>
+        <div class="modal-body">
+          <p class="cell-muted adm-t32">${esc(tpl.label)} will no longer be offered when creating a tenant. Tenants you already made from it are not affected and keep working exactly as they are.</p>
+          <label class="field-label">Your password</label>
+          <input id="td-pass" class="input" type="password" autocomplete="current-password" />
+          <p id="td-err" class="cell-muted adm-t32"></p>
+        </div>
+        <div class="modal-foot"><button class="btn btn-ghost btn-sm" id="td-cancel">Cancel</button><button class="btn btn-primary btn-sm" id="td-go">Delete template</button></div>`;
+      // EXACTLY the pattern confirmApprove uses: modal(inner) returns the overlay, and
+      // closing is overlay.remove(). No new modal furniture is authored.
+      const overlay = modal(inner);
+      const $ = (sel) => inner.querySelector(sel);
+      const shut = () => overlay.remove();
+      $("#td-close").onclick = shut;
+      $("#td-cancel").onclick = shut;
+      $("#td-go").onclick = async () => {
+        const btn = $("#td-go");
+        btn.disabled = true;
+        try {
+          await App.api("/api/admin/template-rows/" + encodeURIComponent(own.id) + "/delete", {
+            method: "POST", body: JSON.stringify({ password: $("#td-pass").value }),
+          });
+          shut();
+          toast("Template deleted");
+          await load();
+        } catch (e) {
+          $("#td-err").textContent = /invalid email or password|password/i.test(e.message || "") ? "Incorrect password \u2014 nothing was deleted." : (e.message || "Couldn't delete that template.");
+          btn.disabled = false;
+        }
+      };
+    }
+
+    function paintTemplateRow() {
+      const zone = el("div"); zone.classList.add("adm-tpl-zone");
+      const band = el("span", "adm-tpl-band");
+      const row = el("div", "adm-tpl-row");
+      zone.appendChild(band); zone.appendChild(row);
+      allTemplates.forEach((t) => {
+        row.appendChild(templateCard(t, {
+          // Nothing is "selected" on this screen - it is a list of what exists.
+          onPick: (tpl) => {
+            const own = rows.find((r) => r.key === tpl.key);
+            if (own) openForm(own);                    // a template you built: open it to edit
+            else toast(tpl.label + " is a built-in template \u2014 it can't be edited here.");
+          },
+          onDelete: (tpl) => confirmDeleteTemplate(tpl),
+        }));
+      });
+      // the band spans the row's own height; the wizard positions its band against measured
+      // card geometry, which needs no equivalent here because this row has no label block
+      band.style.setProperty("top", "50%");
+      band.style.setProperty("height", TEMPLATE_CARD_DIMS.bandH + "px");
+      band.style.setProperty("margin-top", (-TEMPLATE_CARD_DIMS.bandH / 2) + "px");
+      wireTemplateRow(zone, row, band);
+      return zone;
+    }
+
     function paintList() {
       listHost.innerHTML = "";
+      if (allTemplates.length) listHost.appendChild(paintTemplateRow());
       const bar = el("div", "add-user acct-row");
       const add = el("button", "btn btn-primary btn-sm", "+ New template");
       add.onclick = () => openForm(null);

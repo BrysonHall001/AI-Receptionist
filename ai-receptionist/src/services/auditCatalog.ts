@@ -51,6 +51,9 @@ export const AUDIT_ACTIONS = {
   MFA_CODES_REGENERATED: "auth.mfa.codes_regenerated",
   MFA_CLEARED_CLI: "auth.mfa.cleared_cli",
   PASSWORD_CHANGED: "auth.password_changed",
+  // Template builder. Deleting a template is a soft delete, so the row survives - but the
+  // ACT of deleting is worth a line in the log, and so is a failed password confirmation.
+  TEMPLATE_DELETED: "template.deleted",
   IMPERSONATION_START: "auth.impersonation.start",
   IMPERSONATION_END: "auth.impersonation.end",
   // data movement (counts in meta)

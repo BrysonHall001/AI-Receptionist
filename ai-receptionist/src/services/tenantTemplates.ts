@@ -602,6 +602,10 @@ export async function resolveTemplate(key: string | null | undefined): Promise<T
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { prisma } = require("../db/client");
+    // NO deletedAt FILTER, on purpose. "Deleted" means no longer available to USE - it does
+    // not mean erased. A tenant created from this template still resolves it, so its
+    // automation-library ordering and Learning Center variant keep working exactly as before
+    // the deletion. Adding a filter here would silently change an existing tenant.
     const row = await (prisma as any).tenantTemplateRow.findUnique({ where: { key: String(key) } });
     return row ? specToTemplate(row) : null;
   } catch { return null; }
@@ -613,7 +617,9 @@ export async function listAllTemplates(): Promise<TenantTemplate[]> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { prisma } = require("../db/client");
-    const rows = await (prisma as any).tenantTemplateRow.findMany({ orderBy: { createdAt: "asc" } });
+    // DELETED ROWS ARE HIDDEN HERE and only here. resolveTemplate below deliberately still
+    // finds them, so a tenant created from a deleted template carries on exactly as it is.
+    const rows = await (prisma as any).tenantTemplateRow.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "asc" } });
     const reserved = new Set(reservedTemplateKeys());
     for (const r of rows) if (!reserved.has(r.key)) out.push(specToTemplate(r));
   } catch { /* no table yet, or no database: the built-ins alone are a valid answer */ }

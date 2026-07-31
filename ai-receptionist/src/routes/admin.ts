@@ -23,6 +23,7 @@ import { getBillingConfig, updateBillingConfig } from "../services/billingConfig
 import { computeSuggestedCharge } from "../services/chargeComputeService";
 import { listCharges, listAllCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
 import { verifyPassword } from "../auth/passwords";
+import { rateLimit } from "../middleware/rateLimit";
 import { ensureStripeCustomer } from "../services/stripeCustomerService";
 import { StripeNotConfiguredError, isStripeConfigured, isStripeTestMode, stripeMode } from "../services/stripeService";
 import { createInvoiceForCharge, sendInvoiceForCharge } from "../services/stripeInvoiceService";
@@ -35,6 +36,18 @@ import { logger } from "../utils/logger";
 // Master (SUPER_ADMIN) surface: manage all portals and all users.
 export const adminRouter = Router();
 adminRouter.use(requireRole("OWNER", "SUPER_ADMIN", "AUDITOR"));
+
+// Deleting a template is password-confirmed, so the confirmation is guessable and must be
+// throttled - the same shape the account-sensitive routes use.
+const templateDeleteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10,
+  keyFn: (req: any) => `${req.ip}:${(req.user && req.user.id) || "anon"}`,
+  message: "Too many attempts. Please wait a few minutes and try again.",
+});
+const templateDeleteIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 40,
+  message: "Too many attempts from this connection. Please wait and try again.",
+});
 // Batch B lockout: an impersonating super-admin must NOT reach the master hub
 // (no creating portals/users while "acting as" someone). Evaluated on the overlay
 // presence (req.impersonation is only ever set for a real super-admin).
@@ -72,7 +85,7 @@ adminRouter.get("/portals/record-type-options", async (_req: Request, res: Respo
 adminRouter.get("/template-rows", async (_req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { libraryFlavorOptions } = require("../automation/presets");
-  const rows = await (prisma as any).tenantTemplateRow.findMany({ orderBy: { createdAt: "asc" } });
+  const rows = await (prisma as any).tenantTemplateRow.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "asc" } });
   res.json({ rows, flavors: libraryFlavorOptions() });
 });
 
@@ -125,6 +138,50 @@ adminRouter.post("/template-rows", async (req: Request, res: Response) => {
   } catch (e) { res.status(400).json({ error: (e as Error).message }); }
 });
 
+/**
+ * DELETE A BUILT TEMPLATE - soft, password-confirmed, and impossible for a built-in.
+ *
+ * THE BUILT-IN REFUSAL IS SERVER-SIDE AND UNCONDITIONAL. The screen hides the "x" on the four
+ * code templates, but a hidden control is not a rule: this checks the key against
+ * reservedTemplateKeys() no matter what arrives, so a hand-made request cannot delete one.
+ *
+ * The password gate follows the pattern used by /account/mfa/disable rather than the older
+ * charge-approval one: password + rate limit + an audit row identical to a failed sign-in.
+ * The charge route re-verifies a password but does neither of the other two, and a delete
+ * deserves all three.
+ */
+adminRouter.post("/template-rows/:id/delete", templateDeleteIpLimiter, templateDeleteLimiter, async (req: Request, res: Response) => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { reservedTemplateKeys } = require("../services/tenantTemplates");
+  const { password } = (req.body ?? {}) as { password?: string };
+
+  const row = await (prisma as any).tenantTemplateRow.findUnique({ where: { id: String(req.params.id) } });
+  if (!row || row.deletedAt) { res.status(404).json({ error: "That template no longer exists." }); return; }
+  // Belt and braces: a row can only exist with a non-reserved key, but the check is cheap and
+  // this is the endpoint that must never remove a built-in.
+  if (reservedTemplateKeys().includes(row.key)) {
+    res.status(400).json({ error: "Built-in templates can't be deleted." });
+    return;
+  }
+  if (!password || typeof password !== "string") { res.status(400).json({ error: "Password confirmation required" }); return; }
+  const me = req.user?.id ? await prisma.user.findUnique({ where: { id: req.user.id } }) : null;
+  if (!me || !(await verifyPassword(password, me.passwordHash))) {
+    // The SAME audit action a failed sign-in writes, so a run of these is visible in one place.
+    audit({ tenantId: null, actorType: "user", actorId: me?.id ?? null, actorLabel: me?.email ?? "unknown",
+      action: AUDIT_ACTIONS.AUTH_LOGIN_FAILED, subjectType: "auth", meta: { ip: req.ip || null, at: "template-delete" } });
+    res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+  await (prisma as any).tenantTemplateRow.update({
+    where: { id: row.id },
+    data: { deletedAt: new Date(), deletedById: me.id },
+  });
+  audit({ tenantId: null, actorType: "user", actorId: me.id, actorLabel: me.name || me.email,
+    action: AUDIT_ACTIONS.TEMPLATE_DELETED, subjectType: "template", subjectId: row.id,
+    meta: { key: row.key, label: row.label } });
+  res.json({ ok: true });
+});
+
 // TENANT TEMPLATES: the wizard's template cards (one truth — the constants).
 adminRouter.get("/tenant-templates", async (_req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -132,7 +189,12 @@ adminRouter.get("/tenant-templates", async (_req: Request, res: Response) => {
   const TENANT_TEMPLATES = await listAllTemplates();
   // CREATE-UI-2: fieldTweaks (labels per module) + pageLabelOverrides ride the
   // payload so the wizard swaps chips + row titles LIVE on a card click.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { reservedTemplateKeys: reserved } = require("../services/tenantTemplates");
+  const builtIns = new Set(reserved());
   res.json({ templates: TENANT_TEMPLATES.map((t: any) => ({
+    // The client must never infer "built-in" from position in the list. It is stated.
+    builtIn: builtIns.has(t.key),
     key: t.key, label: t.label, description: t.description,
     pagesOffPrefill: t.pagesOffPrefill, modulesHiddenPrefill: t.modulesHiddenPrefill,
     pageLabelOverrides: t.pageLabelOverrides || {},

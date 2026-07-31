@@ -2904,6 +2904,15 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
   75%  { transform: translate(-180px, 80px) rotate(-4deg); }
   100% { transform: translate(0, 0) rotate(4deg); }
 }
+/* SOMEONE WHO ASKED THEIR SYSTEM FOR LESS MOTION GETS A STATIC BACKGROUND. The row still
+   scrolls - that is navigation, not decoration - but it jumps rather than glides, and the
+   band stops moving entirely. The end fades stay, because they are information. */
+@media (prefers-reduced-motion: reduce) {
+  .adm-tpl-band { transition: none; background-position: 0% 0% !important; background-size: 100% 100%; }
+  .adm-tpl-row { scroll-behavior: auto; }
+  .adm-tpl-zone::before, .adm-tpl-zone::after { transition: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #theme-scene .sc, #theme-scene .tw, #theme-scene .flick,
   #theme-scene .drone, #theme-scene .bubble, #theme-scene .bfly-path,
@@ -4166,8 +4175,31 @@ tbody tr.adm-audit-pending td { opacity: 0.55; }
 .adm-ai-desc { margin: 0; font-size: var(--text-sm); line-height: 1.45; }
 /* ---- the card composition ---- */
 .adm-tpl-zone { position: relative; }
-.adm-tpl-band { position: absolute; left: 0; right: 0; z-index: 0; background: linear-gradient(to right, var(--accent), var(--tpl-band-stop)); } /* vertical position is DERIVED from the rendered card row (admin.js positionTplBand) — the old fixed 64px offset predated content-driven heights and is gone */ /* crosses the cards at ~their vertical midline; square edges, no shadow */
-.adm-tpl-row { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 32px; margin-top: 8px; }
+/* The band behind the row. Its gradient SHIFTS slightly as the row scrolls, so the row reads
+   as something you can move rather than something that got cut off. The shift is applied as
+   background-position by the scroll handler; the size below is what gives it room to move. */
+.adm-tpl-band { position: absolute; left: 0; right: 0; z-index: 0; background: linear-gradient(to right, var(--accent), var(--tpl-band-stop)); background-size: 140% 100%; background-position: 0% 0%; transition: background-position var(--dur-2, .18s) linear; } /* vertical position is DERIVED from the rendered card row (admin.js positionTplBand) — the old fixed 64px offset predated content-driven heights and is gone */ /* crosses the cards at ~their vertical midline; square edges, no shadow */
+/* TEMPLATE ROW - SCROLLS SIDEWAYS RATHER THAN WRAPPING (part 2).
+   The cards are bespoke artwork at fixed widths, so wrapping them onto a second line breaks
+   the band behind them and squashing them is not an option. `nowrap` + `overflow-x: auto`
+   keeps every card at its designed size; `flex: 0 0 auto` is what stops flexbox shrinking
+   them to fit. With few enough cards to fit, this is visually identical to the old wrap. */
+.adm-tpl-row { position: relative; z-index: 1; display: flex; flex-wrap: nowrap; gap: 32px; margin-top: 8px; overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; scrollbar-width: thin; }
+.adm-tpl-row > .adm-tpl-card { flex: 0 0 auto; }
+/* The cards protrude ABOVE and BELOW their row (crest and tab), so a scroll container would
+   clip them. Padding restores the room the overflow takes away. */
+.adm-tpl-row { padding: 24px 2px 24px; margin-top: -16px; }
+/* End affordances: it should be obvious there is more one way and not the other. Set by the
+   scroll handler, which adds/removes these classes. */
+.adm-tpl-zone::before, .adm-tpl-zone::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40px; z-index: 2; pointer-events: none; opacity: 0; transition: opacity var(--dur-2, .18s) ease; }
+.adm-tpl-zone::before { left: 0; background: linear-gradient(to right, var(--panel), transparent); }
+.adm-tpl-zone::after { right: 0; background: linear-gradient(to left, var(--panel), transparent); }
+.adm-tpl-zone.has-left::before { opacity: 1; }
+.adm-tpl-zone.has-right::after { opacity: 1; }
+/* The delete control. It sits on the crest, which protrudes above the main rect, so it never
+   overlaps the card's artwork or its text. Only rendered on templates you built. */
+.tpl-x { position: absolute; top: 2px; right: 10px; z-index: 5; width: 20px; height: 20px; line-height: 18px; text-align: center; border-radius: 50%; cursor: pointer; color: var(--ink-faint); background: var(--panel); border: 1px solid var(--line); font-size: var(--text-sm); }
+.tpl-x:hover, .tpl-x:focus-visible { color: var(--red); border-color: var(--red); outline: none; }
 /* REGRESSION FIX (content-driven rebuild): the fixed-height main rect with
    clipped overflow is BANNED on these cards — the main rect is now IN FLOW,
    its height driven by its content (87px is a MINIMUM), with overflow VISIBLE

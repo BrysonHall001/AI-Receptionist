@@ -293,6 +293,16 @@ model TenantTemplateRow {
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  /// SOFT DELETE. "Deleted" means no longer available to USE, not erased. The row stays so
+  /// that a tenant created from it can still say where it came from, and so its key stays
+  /// reserved forever - reusing a key for a different template would silently rewrite the
+  /// history of every tenant made from the original.
+  ///
+  /// listAllTemplates() HIDES a deleted row from both pickers. resolveTemplate() does NOT:
+  /// tenants already made from it carry on exactly as they are, keeping their automation
+  /// library ordering and Learning Center variant. That asymmetry is the whole design.
+  deletedAt   DateTime?
+  deletedById String?
 }
 
 model UserSsoLink {
