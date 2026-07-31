@@ -71,7 +71,7 @@ async function main() {
   check(!!cl && cl.id === "cl_rm_template_1_20260726", "the changelog row landed (idempotent migration)");
   const rm: any = getTemplate("recruitment_marketing");
   // AI RECEPTIONIST TEMPLATE (authorised): a fourth template shipped. The count is a real fact, so it moves rather than loosens.
-  check(TENANT_TEMPLATES.length === 4 && !!rm && rm.label === "Recruitment Marketing", "the third template resolves");
+  check(TENANT_TEMPLATES.length === 5 && !!rm && rm.label === "Recruitment Marketing", "the third template resolves");
   check(rm.aiIntake === false && rm.aiSchedulingTarget === "booking" && rm.pagesOffPrefill.length === 0
       && JSON.stringify([...rm.modulesHiddenPrefill].sort()) === JSON.stringify([...RM_HIDDEN].sort()),
     `engine shape: intake OFF, target booking, all pages on, exactly the ${RM_HIDDEN.length} hidden modules`);
@@ -185,9 +185,10 @@ async function main() {
   (await until(() => H$("button").find((b: any) => b.textContent.trim() === "+ Create tenant"))).click();
   await until(() => H$(".adm-tpl-card").length >= 3);
   const names = H$(".adm-tpl-card").map((c: any) => c.querySelector(".adm-tpl-name").textContent);
-  // AI RECEPTIONIST TEMPLATE (authorised): a fourth card, second in the row. Still an exact
-  // ordered comparison - same strictness, new truth.
-  check(JSON.stringify(names) === JSON.stringify(["General", "AI Receptionist Only", "Field Services", "Recruitment Marketing"]), "four cards, in order");
+  // FOOD SERVICE (authorised): a fifth card, last in the row. Still an exact ordered
+  // comparison - same strictness, new truth.
+  check(JSON.stringify(names) === JSON.stringify(["General", "AI Receptionist Only", "Field Services", "Recruitment Marketing", "Food Service"]),
+    `five cards, in order (${names.join(", ")})`);
   const rmCard = () => H$(".adm-tpl-card").find((c: any) => c.textContent.includes("Recruitment Marketing"));
   check(!!rmCard().querySelector(".tpl-glyph svg path") && rmCard().querySelector(".tpl-glyph").innerHTML !== H$(".adm-tpl-card")[1].querySelector(".tpl-glyph").innerHTML,
     "the HANDSHAKE glyph mounts on the crest (registry-served, distinct from the FS tools)");

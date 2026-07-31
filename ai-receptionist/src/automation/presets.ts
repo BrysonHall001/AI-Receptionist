@@ -54,6 +54,7 @@ export const PRESET_CATEGORIES: PresetCategory[] = [
 export const LIBRARY_FLAVOR_LABELS: Record<string, string> = {
   field_services: "Field Services",
   recruitment_marketing: "Recruitment Marketing",
+  food_service: "Food Service",
 };
 
 /** What the builder's dropdown offers. "None" is the absence of a key, not an entry here. */
@@ -77,6 +78,21 @@ export const LIBRARY_FLAVORS: Record<string, { categoryOrder: string[]; surfaceV
   recruitment_marketing: {
     categoryOrder: ["lead_capture", "follow_ups", "pipeline", "stay_in_touch"],
     surfaceVerticals: ["recruiting"],
+  },
+  // FOOD SERVICE — the order a kitchen actually works in. Enquiries arrive
+  // (lead capture), the booking gets confirmed and reminded (follow-ups),
+  // guests are brought back (stay in touch), and catering quotes move last
+  // because they are the slowest thread.
+  //
+  // surfaceVerticals is ["general"] ON PURPOSE and it is the honest choice:
+  // surfacing floats presets TAGGED with a vertical to the top, and no preset
+  // carries a food tag. Inventing a "food_service" vertical with nothing tagged
+  // to it would surface exactly nothing while looking like it did something.
+  // The eighteen general presets - reminders, confirmations, review requests -
+  // are the ones a restaurant runs, so those are what rise.
+  food_service: {
+    categoryOrder: ["lead_capture", "follow_ups", "stay_in_touch", "pipeline"],
+    surfaceVerticals: ["general"],
   },
 };
 

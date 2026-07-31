@@ -140,9 +140,10 @@ async function main() {
   segTo("Premium");
   check(/seg-fill-right/.test(fillClass()), "\u2026Premium (right) \u2192 the mirrored right shape");
   segTo("Off");
-  // AI RECEPTIONIST TEMPLATE (authorised): four shipped templates + this suite's own
-  // "Fixture Deluxe" = five cards.
-  check(!!(await until(() => $$(".adm-tpl-card").length === 5 && $(".adm-tpl-card.active") && $(".adm-tpl-card.active").textContent.includes("General") && $$(".adm-tpl-card").filter((c: any) => c.classList.contains("active")).length === 1)),
+  // FOOD SERVICE (authorised): FIVE shipped templates + this suite's own "Fixture Deluxe"
+  // = six cards. Count-agnostic would be better, but this assertion also proves exactly one
+  // is active, so it keeps an exact count and moves with the shipped set.
+  check(!!(await until(() => $$(".adm-tpl-card").length === 6 && $(".adm-tpl-card.active") && $(".adm-tpl-card.active").textContent.includes("General") && $$(".adm-tpl-card").filter((c: any) => c.classList.contains("active")).length === 1)),
     "template CARDS mount \u2014 General preselected, EXACTLY ONE active (the row holds any count cleanly)");
   // ---- the LAYERED COMPOSITION (ui-fidelity v3) ----
   const card0: any = $$(".adm-tpl-card")[0];

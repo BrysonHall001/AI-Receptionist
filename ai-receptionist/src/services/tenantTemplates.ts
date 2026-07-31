@@ -367,6 +367,89 @@ export const TENANT_TEMPLATES: TenantTemplate[] = [
       ],
     },
   },
+  // ==========================================================================
+  // FOOD SERVICE — the fifth first-class template (restaurants, caterers, food
+  // trucks). Built in CODE alongside the other four, not on the builder screen,
+  // because it carries the things the builder deliberately cannot: its own
+  // automation-library flavour, its own Learning Center pack, its own dashboards
+  // and a bespoke glyph.
+  //
+  // RELABELS, NOT NEW MODULES. A reservation IS a booking (a time and a party),
+  // a menu item IS a product (Products already ships sku/price/unit/category),
+  // a catering quote IS an estimate. Inventing system modules for these would be
+  // a far larger commitment for no capability. The one genuine gap is a takeaway
+  // ORDER; estimates carry it acceptably (line items, totals) and a real Orders
+  // module belongs in its own batch rather than smuggled into this one.
+  {
+    key: "food_service",
+    label: "Food Service",
+    description: "For restaurants, caterers and food trucks: calls become reservations and catering quotes, with a menu behind them.",
+    pagesOffPrefill: [], // all pages on
+    // A kitchen dispatches nothing: no work orders, no equipment fleet, no
+    // vehicles or properties, no recruiting pipeline, no service plans.
+    modulesHiddenPrefill: ["work_order", "equipment", "vehicle", "property", "job", "service_plan"],
+    aiVoiceMode: null, // the hub picker still decides
+    aiSchedulingTarget: "booking", // = Reservations after the relabel below
+    // FALSE, and this is the settings-level difference between this receptionist
+    // and a contractor's: a restaurant's phone takes a reservation or answers a
+    // question. It does not triage a fault, which is what service-request intake
+    // is for.
+    aiIntake: false,
+    fieldTweaks: [
+      { moduleKey: "booking", field: { label: "Party size", type: "number" } },
+      { moduleKey: "booking", field: { label: "Seating preference", type: "single_select", options: ["No preference", "Indoors", "Outdoors", "Bar", "Quiet table", "Accessible"] } },
+      { moduleKey: "booking", field: { label: "Occasion", type: "single_select", options: ["None", "Birthday", "Anniversary", "Business", "Celebration", "Other"] } },
+      { moduleKey: "contact", field: { label: "Allergies", type: "multi_select", options: ["Peanuts", "Tree nuts", "Dairy", "Eggs", "Gluten", "Shellfish", "Fish", "Soy", "Sesame"] } },
+      { moduleKey: "contact", field: { label: "Dietary notes", type: "text" } },
+      { moduleKey: "estimate", field: { label: "Headcount", type: "number" } },
+      { moduleKey: "estimate", field: { label: "Service style", type: "single_select", options: ["Drop-off", "Buffet", "Plated", "Family style", "Food truck", "Cocktail"] } },
+      { moduleKey: "estimate", field: { label: "Event date", type: "date" } },
+    ],
+    pageLabelOverrides: {},
+    customLcOffer: true,
+    moduleRelabels: {
+      booking: { label: "Reservation", labelPlural: "Reservations" },
+      product: { label: "Menu item", labelPlural: "Menu" },
+      estimate: { label: "Catering quote", labelPlural: "Catering quotes" },
+      task: { label: "Prep task", labelPlural: "Prep tasks" },
+    },
+    hooks: {
+      // The home row, in the order someone running a service actually looks:
+      // what is happening today, then how the week is filling, then the money
+      // waiting on a decision, then the phone.
+      dashboards: [
+        {
+          name: "__home__",
+          widgets: [
+            { id: "food_home_today", title: "Today's reservations", type: "list", source: "booking", measure: { op: "count" }, groupBy: [], series: [], columns: ["title", "appointmentAt", "stageKey"], filters: [{ field: "appointmentAt", op: "today", value: "", conj: "AND" }] },
+            { id: "food_home_week_covers", title: "Reservations this week", type: "kpi", source: "booking", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "appointmentAt", op: "previous", value: "7", conj: "AND" }] },
+            { id: "food_home_quotes", title: "Catering quotes by stage", type: "pie", source: "estimate", measure: { op: "count" }, groupBy: [{ key: "stageKey" }], series: [], filters: [] },
+            { id: "food_home_calls", title: "Calls answered (last 7 days)", type: "kpi", source: "calls", measure: { op: "count" }, groupBy: [], series: [], filters: [{ field: "createdAt", op: "previous", value: "7", conj: "AND" }] },
+          ],
+        },
+      ],
+      analytics: [
+        {
+          name: "Covers & reservations",
+          widgets: [
+            { id: "food_an_res_by_day", title: "Reservations by day", type: "bar", source: "booking", measure: { op: "count" }, groupBy: [{ key: "appointmentAt" }], series: [], filters: [] },
+            { id: "food_an_party", title: "Average party size", type: "kpi", source: "booking", measure: { op: "avg", field: "party_size" }, groupBy: [], series: [], filters: [] },
+            { id: "food_an_occasion", title: "Reservations by occasion", type: "pie", source: "booking", measure: { op: "count" }, groupBy: [{ key: "occasion" }], series: [], filters: [] },
+          ],
+        },
+        {
+          name: "Catering",
+          widgets: [
+            { id: "food_an_quote_value", title: "Quoted value by stage", type: "bar", source: "estimate", measure: { op: "sum", field: "total" }, groupBy: [{ key: "stageKey" }], series: [], filters: [] },
+            { id: "food_an_service_style", title: "Jobs by service style", type: "pie", source: "estimate", measure: { op: "count" }, groupBy: [{ key: "service_style" }], series: [], filters: [] },
+          ],
+        },
+      ],
+      libraryFlavor: "food_service",
+      commDrafts: [],
+      aiInstructionSections: [],
+    },
+  },
 ];
 
 export function getTemplate(key?: string | null): TenantTemplate | null {

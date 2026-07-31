@@ -145,15 +145,69 @@
         "commDrafts": 4,
         "aiInstructionSections": 1
       }
+    },
+    "food_service": {
+      "label": "Food Service",
+      "description": "For restaurants, caterers and food trucks: calls become reservations and catering quotes, with a menu behind them.",
+      "pagesOffPrefill": [],
+      "modulesHiddenPrefill": [
+        "equipment",
+        "job",
+        "property",
+        "service_plan",
+        "vehicle",
+        "work_order"
+      ],
+      "aiVoiceMode": null,
+      "aiSchedulingTarget": "booking",
+      "aiIntake": false,
+      "customLcOffer": true,
+      "pageLabelOverrides": {},
+      "moduleRelabels": {
+        "booking": {
+          "label": "Reservation",
+          "labelPlural": "Reservations"
+        },
+        "product": {
+          "label": "Menu item",
+          "labelPlural": "Menu"
+        },
+        "estimate": {
+          "label": "Catering quote",
+          "labelPlural": "Catering quotes"
+        },
+        "task": {
+          "label": "Prep task",
+          "labelPlural": "Prep tasks"
+        }
+      },
+      "fieldTweaks": [
+        "booking:Occasion:single_select",
+        "booking:Party size:number",
+        "booking:Seating preference:single_select",
+        "contact:Allergies:multi_select",
+        "contact:Dietary notes:text",
+        "estimate:Event date:date",
+        "estimate:Headcount:number",
+        "estimate:Service style:single_select"
+      ],
+      "hooks": {
+        "dashboards": 1,
+        "analytics": 2,
+        "libraryFlavor": "food_service",
+        "commDrafts": 0,
+        "aiInstructionSections": 0
+      }
     }
   },
   "shape": {
     "keys": [
       "ai_receptionist",
       "field_services",
+      "food_service",
       "general",
       "recruitment_marketing"
     ],
-    "cellCount": 119
+    "cellCount": 154
   }
 }

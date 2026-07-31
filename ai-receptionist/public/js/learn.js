@@ -703,7 +703,8 @@
   const RM_GUIDES = {}; // RM-3: the recruitment-marketing variant's own guides
   // Every variant map, in one place: assembly + deep-link resolution read this
   // list, so a future variant is one entry — no new machinery.
-  const VARIANT_GUIDE_MAPS = [FS_GUIDES, RM_GUIDES];
+  const FOOD_GUIDES = {}; // Food Service variant guides
+  const VARIANT_GUIDE_MAPS = [FS_GUIDES, RM_GUIDES, FOOD_GUIDES];
   function variantGuideById(id) {
     for (const m of VARIANT_GUIDE_MAPS) { if (m[id]) return m[id]; }
     return null;
@@ -1065,6 +1066,152 @@
     ],
   };
 
+  // -------- FOOD SERVICE variant guides --------
+  // Voice rule: the words a restaurant actually uses. Reservations, covers,
+  // service, prep, front of house. Never "work order", never "job".
+  FOOD_GUIDES["food-home-dashboard"] = {
+    id: "food-home-dashboard", features: ["always"],
+    title: "Your home screen: tonight at a glance",
+    blocks: [
+      { p: "Your home screen is built for service. Today's reservations sit at the top so you can read the book without opening anything, with the week's count beside it, your catering quotes by stage, and how many calls the phone answered." },
+      { steps: [
+        "Open [[#/dashboard|Home]] — today's bookings are listed in time order.",
+        "Press a reservation to open it: party size, seating preference, and any allergies on the customer.",
+        "Press the pencil on any widget to change it, or add your own — nothing here is fixed.",
+      ] },
+      { visual: "home-dashboard", note: "the home row for a food business" },
+    ],
+  };
+  FOOD_GUIDES["food-customers"] = {
+    id: "food-customers", features: ["always"],
+    title: "Customers: regulars, allergies and preferences",
+    blocks: [
+      { p: "[[#/contacts|Customers]] holds everyone who has eaten with you or asked about catering. Two fields matter more here than anywhere else: allergies and dietary notes. They travel with the customer, so a reservation made months later still carries the warning." },
+      { steps: [
+        "Open a customer and set Allergies — it is a multi-select, so tick as many as apply.",
+        "Use Dietary notes for anything that is not an allergy: no coriander, always the corner table, dog friendly.",
+        "Check Related on any customer to see every reservation and catering quote they have had.",
+      ] },
+      { tip: "Allergies show on the customer, not the reservation, because the person is what stays the same. Anything specific to one night belongs in that reservation's notes." },
+    ],
+  };
+  FOOD_GUIDES["food-reservations"] = {
+    id: "food-reservations", features: ["rt:booking"],
+    title: "Reservations: the book",
+    blocks: [
+      { p: "A reservation is a table, a time and a number of people. Yours carry a party size, a seating preference and an occasion, so the book tells you what the night looks like before it starts." },
+      { steps: [
+        "Open [[#/bookings|Reservations]] and press Create, or let the receptionist take one over the phone.",
+        "Set the time and party size; seating preference and occasion are optional but they are what makes a regular feel known.",
+        "Switch to the calendar view to see the night laid out, or the board to move bookings between stages.",
+      ] },
+      { visual: "views-switcher", note: "table, board and calendar views of the book" },
+    ],
+  };
+  FOOD_GUIDES["food-menu"] = {
+    id: "food-menu", features: ["rt:product"],
+    title: "Menu: what you sell and what it costs",
+    blocks: [
+      { p: "[[#/records/product|Menu]] is your dish list. Each item carries a price, a unit and a category, which is what lets a catering quote add up on its own instead of being typed by hand." },
+      { steps: [
+        "Add your dishes with a price and a category — starters, mains, sides, drinks.",
+        "Use the category to group the menu the way it reads on the board.",
+        "When you build a catering quote, pick items from here rather than retyping them.",
+      ] },
+      { tip: "Change a price here and future quotes use the new one. Quotes already sent keep the price they were sent at." },
+    ],
+  };
+  FOOD_GUIDES["food-catering-quotes"] = {
+    id: "food-catering-quotes", features: ["rt:estimate"],
+    title: "Catering quotes: an enquiry with a number on it",
+    blocks: [
+      { p: "A catering quote is where an enquiry becomes a price. Yours carry a headcount, a service style and an event date, which are the three things every caterer asks before quoting anything." },
+      { steps: [
+        "Open [[#/records/estimate|Catering quotes]] and press Create, linking it to the customer who asked.",
+        "Set headcount, service style and the event date, then add menu items as lines.",
+        "Send it, and track it on the board as it moves from quoted to accepted.",
+      ] },
+      { visual: "estimate-public", note: "what the customer sees when you send a quote" },
+    ],
+  };
+  FOOD_GUIDES["food-invoices"] = {
+    id: "food-invoices", features: ["rt:invoice"],
+    title: "Invoices: getting paid for the catering",
+    blocks: [
+      { p: "An accepted quote becomes an invoice without retyping it. Everything the quote carried — the lines, the headcount, the customer — comes across." },
+      { steps: [
+        "Open the accepted catering quote and convert it to an invoice.",
+        "Check the lines still match what was actually served; adjust if the headcount moved on the day.",
+        "Send it, and watch its status on [[#/records/invoice|Invoices]].",
+      ] },
+    ],
+  };
+  FOOD_GUIDES["food-prep-tasks"] = {
+    id: "food-prep-tasks", features: ["rt:task"],
+    title: "Prep tasks: the list before service",
+    blocks: [
+      { p: "[[#/records/task|Prep tasks]] is an ordinary to-do list pointed at the kitchen. It is most useful attached to a catering job, so the prep for Saturday sits on Saturday's quote rather than in someone's head." },
+      { steps: [
+        "Create a prep task and link it to the catering quote it belongs to.",
+        "Give it a date so it appears when it matters, not weeks early.",
+        "Tick it off during prep; the history stays on the job.",
+      ] },
+    ],
+  };
+  FOOD_GUIDES["food-phone-rings"] = {
+    id: "food-phone-rings", features: ["receptionist"],
+    title: "When the phone rings",
+    blocks: [
+      { p: "Most calls to a restaurant are one of four things: a table booking, a catering enquiry, a question about hours or where you are, or someone changing a booking they already made. Your receptionist is set up for the first three without a person picking up." },
+      { steps: [
+        "A table booking becomes a reservation with the party size and time the caller gave.",
+        "A catering enquiry becomes a customer and a note; you turn it into a quote when you have priced it.",
+        "Hours, address and parking are answered from what you tell it — see the next guide.",
+      ] },
+      { tip: "Every call is on [[#/calls|Calls]] with a transcript, so a booking taken wrong is easy to find and fix." },
+    ],
+  };
+  FOOD_GUIDES["food-receptionist-knowledge"] = {
+    id: "food-receptionist-knowledge", features: ["receptionist"],
+    title: "What to tell your receptionist",
+    blocks: [
+      { p: "The receptionist only knows what you give it. For a food business the list is short and worth getting right, because these are the questions that come in all day." },
+      { steps: [
+        "Opening hours, including the days you are closed and any kitchen close time earlier than the bar.",
+        "Where you are, where to park, and whether there is step-free access.",
+        "Whether you take walk-ins, your largest table, and how far ahead you take bookings.",
+        "What you can do about the common allergies, and what you would rather discuss in person.",
+      ] },
+      { p: "Keep the promises honest. If you cannot guarantee a gluten-free kitchen, say so there rather than letting the phone say something you would not." },
+    ],
+  };
+  FOOD_GUIDES["food-service-night"] = {
+    id: "food-service-night", features: ["rt:booking"],
+    title: "A service, from open to close",
+    blocks: [
+      { p: "The shape of a normal night, using the parts you already have." },
+      { steps: [
+        "Before service: open [[#/dashboard|Home]] and read today's reservations — party sizes, occasions, and any allergies flagged on the customer.",
+        "During service: move reservations along the board as tables are seated and finished.",
+        "After service: anything that needs following up — a complaint, a big table worth thanking — goes on the customer so it is there next time.",
+      ] },
+      { visual: "kanban-drag", note: "moving reservations through the night" },
+    ],
+  };
+  FOOD_GUIDES["food-catering-enquiry"] = {
+    id: "food-catering-enquiry", features: ["rt:estimate"],
+    title: "An enquiry, from first call to invoice",
+    blocks: [
+      { p: "The catering thread is slower than the reservation one and worth following properly, because it is where the larger money is." },
+      { steps: [
+        "The call arrives and becomes a customer with a note about what they want.",
+        "You price it: a catering quote with headcount, service style, event date and menu lines.",
+        "They accept, and the quote becomes an invoice with nothing retyped.",
+        "The prep tasks for that date hang off the same job, so the kitchen sees it too.",
+      ] },
+    ],
+  };
+
   const LC_VARIANTS = {
     field_services: {
       sections: [
@@ -1093,6 +1240,25 @@
         { cat: "Your modules", items: [{ id: "rm-candidates" }, { id: "rm-job-openings" }, { id: "rm-interviews" }] },
         { cat: "Workflows", items: [{ id: "rm-ad-to-candidate" }, { id: "rm-nurturing" }, { id: "rm-booking-interviews" }, { id: "rm-client-reporting" }] },
         { cat: "Your receptionist", page: "#/calls", items: [{ ref: "receptionist-setup" }, { id: "rm-receptionist-knowledge" }, { ref: "call-log" }, { ref: "lead-capture" }] },
+        { cat: "Admin", items: [{ ref: "staff-resources" }, { ref: "business-hours" }, { ref: "invite-team" }, { ref: "modules-fields" }, { ref: "appearance" }, { ref: "rename-pages" }, { ref: "integrations" }, { ref: "billing" }, { ref: "data-admin" }] },
+        { stockCat: "Working with records" },
+        { stockCat: "Finding & organizing" },
+        { stockCat: "Analytics & dashboards" },
+        { stockCat: "Communication" },
+        { stockCat: "Automations" },
+        { stockCat: "Scheduling & team" },
+        { stockCat: "Housekeeping" },
+      ],
+    },
+    // FOOD SERVICE — same assembly rules as the other two: stock guides ride BY
+    // REFERENCE so no capability loses its help, and only the genuinely
+    // different surfaces get their own guide.
+    food_service: {
+      sections: [
+        { cat: "Getting started", items: [{ ref: "orientation" }, { id: "food-home-dashboard" }, { ref: "notifications" }, { ref: "suggestions" }, { ref: "account-basics" }] },
+        { cat: "Your modules", items: [{ id: "food-customers" }, { id: "food-reservations" }, { id: "food-menu" }, { id: "food-catering-quotes" }, { id: "food-invoices" }, { id: "food-prep-tasks" }] },
+        { cat: "Workflows", items: [{ id: "food-service-night" }, { id: "food-catering-enquiry" }] },
+        { cat: "Your receptionist", page: "#/calls", items: [{ ref: "receptionist-setup" }, { id: "food-phone-rings" }, { id: "food-receptionist-knowledge" }, { ref: "call-log" }, { ref: "lead-capture" }] },
         { cat: "Admin", items: [{ ref: "staff-resources" }, { ref: "business-hours" }, { ref: "invite-team" }, { ref: "modules-fields" }, { ref: "appearance" }, { ref: "rename-pages" }, { ref: "integrations" }, { ref: "billing" }, { ref: "data-admin" }] },
         { stockCat: "Working with records" },
         { stockCat: "Finding & organizing" },

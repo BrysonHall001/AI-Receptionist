@@ -40,7 +40,7 @@ async function main() {
   const cl = await db.changeLogEntry.findFirst({ where: { commitSha: "batch-tenant-templates-1-20260725" } });
   check(!!cl && cl.id === "cl_tenant_templates_1_20260725", "the changelog row landed (idempotent migration)");
   // AI RECEPTIONIST TEMPLATE (authorised): a fourth template shipped. The count is a real fact, so it moves rather than loosens.
-  check(TENANT_TEMPLATES.length === 4 && !!getTemplate("general") && !!getTemplate("field_services") && !!getTemplate("recruitment_marketing") && getTemplate("nope") === null,
+  check(TENANT_TEMPLATES.length === 5 && !!getTemplate("general") && !!getTemplate("field_services") && !!getTemplate("recruitment_marketing") && getTemplate("nope") === null,
     "three shipped templates resolve by key; unknown keys resolve null"); // repinned: RM-1
   let threw = false; try { validateTemplates(SYSTEM_RECORD_TYPES.map((d: any) => d.key)); } catch { threw = true; }
   check(!threw, "boot validation passes on the real registry");

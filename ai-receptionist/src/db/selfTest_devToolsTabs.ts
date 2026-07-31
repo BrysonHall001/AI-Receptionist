@@ -187,8 +187,14 @@ async function main() {
   await until(() => $$(".dd-table-host tbody tr .adm-rowname").some((c: any) => c.textContent === demoA.name), 12000);
   await until(() => $$(".dd-table-host tbody tr .adm-rowname").some((c: any) => c.textContent === demoB.name), 12000);
   const names = $$(".dd-table-host tbody tr .adm-rowname").map((c: any) => c.textContent);
+  // INSTRUMENTED, not fixed. This assertion has failed on a used database for several
+  // batches and I have not been able to reproduce it. Rather than guess again, the label now
+  // reports what the table ACTUALLY contained, so the next failure identifies the cause:
+  // an empty list means the table never rendered; a populated list without our fixtures means
+  // they were filtered or sorted out of reach; a near-match means the cell text is not the
+  // bare tenant name.
   check(names.includes(demoA.name) && names.includes(demoB.name) && !names.includes(realT.name),
-    "GUARD: only isDemo tenants appear \u2014 the non-demo fixture is absent");
+    `GUARD: only isDemo tenants appear \u2014 the non-demo fixture is absent [rows=${names.length}; looking for "${demoA.name}"; saw: ${names.slice(0, 6).map((n: string) => JSON.stringify(n)).join(", ")}${names.length > 6 ? ", \u2026" : ""}]`);
 
   // ---------- (5) row actions ----------
   console.log("\n(5) row actions \u2014 seed gating, wipe, delete:");

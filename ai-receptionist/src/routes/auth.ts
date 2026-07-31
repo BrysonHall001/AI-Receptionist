@@ -176,7 +176,7 @@ authRouter.get("/me", async (req: Request, res: Response) => {
     // The ONE variant seam (batch-24). RM-3 joins it honestly: a template that
     // HAS a shipped variant + the owner's opt-in = that variant; anything else
     // (no variant, box unchecked, any pre-existing tenant) = stock, untouched.
-    const LC_VARIANT_TEMPLATES: Record<string, string> = { field_services: "field_services", recruitment_marketing: "recruitment_marketing" };
+    const LC_VARIANT_TEMPLATES: Record<string, string> = { field_services: "field_services", recruitment_marketing: "recruitment_marketing", food_service: "food_service" };
     if (trow && trow.customLearningCenter === true && LC_VARIANT_TEMPLATES[String(trow.templateKey || "")]) {
       lcVariant = LC_VARIANT_TEMPLATES[String(trow.templateKey)];
     }

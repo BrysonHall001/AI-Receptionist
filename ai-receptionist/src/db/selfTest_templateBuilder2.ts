@@ -50,7 +50,10 @@ async function main() {
   // ---------- (1) THE ONE THAT MATTERS: a built-in cannot be deleted ----------
   console.log("\n(1) the four built-in templates:");
   const builtInKeys: string[] = reservedTemplateKeys();
-  check(builtInKeys.length === 4, `there are ${builtInKeys.length} built-in keys (${builtInKeys.join(", ")})`);
+  // FOOD SERVICE (authorised): a fifth built-in. Count-agnostic now - what matters is that
+  // the reserved list IS the code templates, whatever that number becomes.
+  check(builtInKeys.length === TENANT_TEMPLATES.length && builtInKeys.every((k: string) => TENANT_TEMPLATES.some((t: any) => t.key === k)),
+    `the reserved keys are exactly the code templates (${builtInKeys.join(", ")})`);
   // There is no row to address them by, so the only way to try is to forge one - which is
   // exactly what a bypass would do. Make a row carrying a built-in key and aim the endpoint
   // at it: the SERVER must refuse on the key, not on the absence of a row.
@@ -68,7 +71,10 @@ async function main() {
   const ok = await post(`/api/admin/template-rows/${control.id}/delete`, { password: PW }, ownerJar);
   check(ok.status === 200,
     `NEGATIVE: the identical request against a template you BUILT succeeds (${ok.status}) \u2014 the refusal is the built-in check, not a dead endpoint`);
-  check(TENANT_TEMPLATES.length === 4, "the four built-ins are still in code, untouched by any of this");
+  // FOOD SERVICE (authorised): a fifth built-in shipped. The point of this assertion is that
+  // the builder never adds to or removes from the CODE templates, which is count-agnostic.
+  check(TENANT_TEMPLATES.length === reservedTemplateKeys().length,
+    `the built-ins are still in code, untouched by any of this (${TENANT_TEMPLATES.length})`);
 
   // ---------- (2) the password gate ----------
   console.log("\n(2) deleting asks for the password:");
@@ -77,9 +83,16 @@ async function main() {
   const badPw = await post(`/api/admin/template-rows/${row.id}/delete`, { password: "not-my-password" }, ownerJar);
   check(badPw.status === 401 && badPw.body?.error === "Invalid email or password",
     "a wrong password is refused with the same generic message a failed sign-in gives");
-  const auditRow = await db.auditEvent.findFirst({
-    where: { actorId: owner.id, action: "auth.login_failed" }, orderBy: { createdAt: "desc" },
-  }).catch(() => null);
+  // audit() RETURNS VOID - it is deliberately fire-and-forget so a slow audit never delays a
+  // response. Reading the row the instant the request returns is therefore a race, which is
+  // what this assertion used to do. Wait for it instead, briefly.
+  let auditRow: any = null;
+  for (let i = 0; i < 40 && !auditRow; i++) {
+    auditRow = await db.auditEvent.findFirst({
+      where: { actorId: owner.id, action: "auth.login_failed" }, orderBy: { createdAt: "desc" },
+    }).catch(() => null);
+    if (!auditRow) await new Promise((r) => setTimeout(r, 50));
+  }
   check(!!auditRow, "\u2026and it writes the SAME audit row a failed sign-in writes");
   check((await db.tenantTemplateRow.findUnique({ where: { id: row.id } })).deletedAt === null,
     "\u2026and nothing was deleted by the failed attempt");
@@ -95,7 +108,7 @@ async function main() {
     "\u2026as a SOFT delete: the row survives, stamped with who did it and when");
   const offered = (await listAllTemplates()).map((t: any) => t.key);
   check(!offered.includes(key), "\u2026it is no longer offered when creating a tenant");
-  check(offered.length === 4, `\u2026leaving exactly the four built-ins (${offered.length})`);
+  check(offered.length === TENANT_TEMPLATES.length, `\u2026leaving exactly the built-in templates (${offered.length})`);
   const resolved = await resolveTemplate(key);
   check(!!resolved && resolved.key === key,
     "\u2026but it STILL RESOLVES, so a tenant made from it carries on exactly as it is");

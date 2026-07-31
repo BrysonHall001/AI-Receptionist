@@ -92,6 +92,20 @@
     // handset inside - it reads as messaging, not calls, and its inner detail
     // disappears below about 24px.)
     ai_receptionist: S(`<path d="M5.6 2.9 3.2 3.7a1.4 1.4 0 0 0-.9 1.6c.5 2.6 1.9 4.9 3.8 6.5a1.4 1.4 0 0 0 1.8.1l1.9-1.5-1.6-2.1-1.3.6a8.4 8.4 0 0 1-1.6-2.7l1.1-.9-.8-2.4Z"${K}/><path d="M10.8 5.1c.9.6 1.4 1.6 1.5 2.7"${K}/><path d="M11.4 2.7c1.9.9 3.1 2.8 3.1 4.9"${K}/>`),
+    // FOOD SERVICE — a burger, and the drawing decision matters here.
+    //
+    // REJECTED: three stacked horizontal lines. At the small crest size that is
+    // the universal "menu" button and reads as navigation, not food — the very
+    // thing this icon must not be mistaken for.
+    //
+    // DRAWN INSTEAD: a domed bun cap, two fillings, and a flat base. The DOME is
+    // what makes it food; a curve on top can only be a bun, never a menu button.
+    // The middle fillings are deliberately UNEQUAL — one wavy (lettuce), one
+    // straight (patty) — so that even when the strokes merge at 16px the
+    // silhouette still reads as a stack of different things rather than a
+    // hamburger menu's three identical bars. Two sesame dots sit on the dome;
+    // they vanish gracefully at small sizes without changing the read.
+    food_service: S(`<path d="M2.6 6.4a5.4 5.4 0 0 1 10.8 0Z"${K}/><path d="M2.4 8.2h11.2"${K}/><path d="M2.6 10.1c1.4.7 2.4-.7 3.7 0s2.4-.7 3.7 0 2.4-.7 3.4 0"${K}/><path d="M3.2 12.2a1.6 1.6 0 0 0 1.6 1.4h6.4a1.6 1.6 0 0 0 1.6-1.4Z"${K}/><path d="M6.4 4.4h.01M9.4 4.9h.01"${K}/>`),
     __default: CUSTOM_DEFAULT,
   };
   // UI-fidelity v3 (owner's mockup): power / telephone / diamond.

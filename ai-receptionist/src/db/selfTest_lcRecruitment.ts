@@ -118,7 +118,14 @@ async function main() {
   check(vText().includes("From ad click to candidate") && vText().includes("Nurturing candidates automatically") && vText().includes("Booking interviews") && vText().includes("Reporting to your client"),
     "the four workflow guides render");
   check(!/Work Orders: the jobs themselves|A day of dispatch/.test(vText()), "ZERO field-services content leaks into the RM tree");
-  const rmBodies = learnSrc.slice(learnSrc.indexOf('RM_GUIDES["rm-home-dashboard"]'), learnSrc.indexOf("const LC_VARIANTS"));
+  // BOUNDED TO THE RM GUIDES. This used to run to "const LC_VARIANTS", which meant any
+  // variant defined after Recruitment Marketing was scanned as if it were RM's - so a voice
+  // problem in one variant was reported against another. It now ends at the next variant's
+  // first guide, or at LC_VARIANTS if RM is the last one.
+  const rmStart = learnSrc.indexOf('RM_GUIDES["rm-home-dashboard"]');
+  const nextVariant = learnSrc.indexOf("FOOD_GUIDES[", rmStart);
+  const rmEnd = nextVariant > -1 ? nextVariant : learnSrc.indexOf("const LC_VARIANTS");
+  const rmBodies = learnSrc.slice(rmStart, rmEnd);
   check(!/\btenants?\b|\btemplates?\b|\bhub\b|multi-tenant|other tenants|platform admin/i.test(rmBodies),
     "LC VOICE: the RM guide bodies never mention the hub, templates, other tenants, or platform administration");
   // search, both directions
