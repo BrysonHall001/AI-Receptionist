@@ -186,6 +186,19 @@ async function main() {
   // table size, and is why this failed on a used database while passing on a fresh one.
   await until(() => $$(".dd-table-host tbody tr .adm-rowname").some((c: any) => c.textContent === demoA.name), 12000);
   await until(() => $$(".dd-table-host tbody tr .adm-rowname").some((c: any) => c.textContent === demoB.name), 12000);
+  // THE HALF THAT HAD NO WAIT AT ALL.
+  //
+  // The two waits above are correct by the house rule: each polls for the SPECIFIC fixture it
+  // is about to assert on. But this assertion has two halves, and the second is a NEGATIVE -
+  // that the non-demo tenant is ABSENT. Polling cannot establish an absence: "not there yet"
+  // and "never going to be there" look identical to a poll, so it would pass the instant it
+  // looked, which is worthless.
+  //
+  // A negative needs a DELIBERATE SETTLE instead, and this is the one honest use of a sleep.
+  // What it is waiting out, specifically: the tenants table renders its rows from a single
+  // fetch, so once demoA and demoB are both present the list is in its final state; this
+  // pause lets any remaining row land before we conclude that realT never will.
+  await sleep(250);
   const names = $$(".dd-table-host tbody tr .adm-rowname").map((c: any) => c.textContent);
   // INSTRUMENTED, not fixed. This assertion has failed on a used database for several
   // batches and I have not been able to reproduce it. Rather than guess again, the label now

@@ -194,7 +194,29 @@ async function main() {
   const baselineRef: { v: string } = { v: "" };
   const baseline = await applyAndSettle([], false);
   baselineRef.v = baseline;
-  check(baseline.length > 0, "the fixture's card is on screen and re-renders when the picker is applied (the lock-step check below is only meaningful if it does)");
+
+  // THE GUARD, MADE HONEST.
+  //
+  // This assertion used to read `baseline.length > 0` under the label "the card is on screen
+  // AND RE-RENDERS when the picker is applied". It proved only the first half. That gap is
+  // precisely why a failure here was unreadable for three rounds: every one of the nine keys
+  // came back "ignored", which looks like a product defect, when the truth was that applying
+  // the picker was not repainting the grid at all and the loop was measuring nothing.
+  //
+  // So it is now two separate checks, each proving exactly what it says:
+  //   1. the card exists           - cheap, and true even when nothing repaints
+  //   2. applying the picker REPAINTS IT - which is the precondition the loop depends on
+  //
+  // If (2) fails the loop below is meaningless, and the failure now SAYS SO instead of
+  // blaming the product for ignoring nine fields it actually renders correctly.
+  check(baseline.length > 0, "the fixture's card is on screen");
+  const probeKey = picker.keys[0];
+  const probed = await applyAndSettle([probeKey]);
+  await applyAndSettle([], false);                       // put it back before the real loop
+  check(probed !== baseline,
+    probed !== baseline
+      ? `applying the picker REPAINTS the card (hiding "${probeKey}" changed it) \u2014 so the lock-step loop below is measuring something real`
+      : `THE GRID IS NOT REPAINTING: hiding "${probeKey}" left the card byte-identical, so every result below is meaningless. This is a TEST-ENVIRONMENT failure, not a product defect \u2014 buildCard reads all ${picker.keys.length} keys. Check that renderCards is not early-returning on a null panelGrid.`);
   const ignored: string[] = [];
   for (const k of picker.keys) {
     if (await applyAndSettle([k]) === baseline) ignored.push(k);

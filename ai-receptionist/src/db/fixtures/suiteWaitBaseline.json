@@ -1,0 +1,27 @@
+{
+  "note": "sleep-then-sample sites per suite",
+  "total": 54,
+  "per": {
+    "bellOrganic": 1,
+    "builderViewsPipelines": 1,
+    "demoPanelScrubbers": 5,
+    "demoTenantSafety": 3,
+    "demoTooling": 1,
+    "devToolsTabs": 1,
+    "hubHistoryPanels": 1,
+    "hubPolish": 2,
+    "hubUiConsistency": 7,
+    "lcFieldServices": 3,
+    "lcRecruitment": 2,
+    "multiVisitCardFix": 10,
+    "notifPolish": 4,
+    "notifUiFit": 1,
+    "notifications1": 1,
+    "rmTemplate1": 2,
+    "servicePlans": 1,
+    "settingsSweep": 3,
+    "suggestions1": 3,
+    "tenantIdentity": 1,
+    "transcriptInsights": 1
+  }
+}
