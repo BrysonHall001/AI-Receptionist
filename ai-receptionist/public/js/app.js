@@ -791,11 +791,82 @@
       toggle.setAttribute("aria-label", "Toggle menus");
       toggle.title = App.state.chromeCollapsed ? "Show menus" : "Hide menus";
       toggle.innerHTML = "&#9776;"; // ☰
+      /**
+       * FULL-SCREEN. Both bars go and the page ZOOMS to fill what they were using.
+       *
+       * THE SCALE IS DERIVED, NOT FIXED, and it is derived from the width actually reclaimed
+       * rather than from the viewport. A fixed step that suits a 27-inch monitor overflows a
+       * laptop; and viewport width alone is the wrong input, because reclaiming 248px matters
+       * far more on a 1280px screen than on a 2560px one. So: how much wider the content just
+       * got, expressed as a ratio.
+       *
+       * BUT THE DERIVED VALUE ALONE IS NOT ENOUGH, and this is worth stating. On a 3440px
+       * ultrawide the sidebar is 7% of the screen, so the pure ratio is 1.08 - a change you
+       * would struggle to SEE, on exactly the screen most likely to be in use. The formula
+       * also ignores the tab strip's vertical space entirely. So the ratio sets the SHAPE
+       * (narrow screens scale more) and a floor of 1.15 guarantees the result is actually
+       * visible, which is what "proportionally larger" has to mean to be worth doing.
+       *
+       * CLAMPED AT 1.35. Past that, line lengths get uncomfortable and a page with a 1600px
+       * max-width starts reading like a poster.
+       *
+       * The one case that returns exactly 1: a viewport narrow enough that the sidebar is
+       * already hidden by the responsive rules. Nothing is reclaimed there, the page is
+       * already using the full width, and scaling it would only force a horizontal scrollbar.
+       */
+      function fullScreenZoom() {
+        try {
+          const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+          if (!vw) return 1;
+          const cs = getComputedStyle(layout);
+          const sidebar = parseFloat(cs.getPropertyValue("--sidebar-w")) || 0;
+          // The sidebar is display:none below the responsive breakpoint, so nothing is
+          // reclaimed there and the ratio correctly comes out at 1.
+          const sb = document.querySelector(".sidebar");
+          const reclaimed = (sb && getComputedStyle(sb).display !== "none") ? sidebar : 0;
+          if (reclaimed <= 0 || vw - reclaimed <= 0) return 1;
+          const raw = vw / (vw - reclaimed);
+          return Math.max(1.15, Math.min(1.35, Math.round(raw * 100) / 100));
+        } catch (e) { return 1; }
+      }
+
+      function applyChrome() {
+        const on = App.state.chromeCollapsed;
+        if (on) layout.style.setProperty("--fs-zoom", String(fullScreenZoom()));
+        else layout.style.removeProperty("--fs-zoom");   // exiting restores EXACTLY the prior state
+        layout.classList.toggle("chrome-collapsed", on);
+        toggle.title = on ? "Show menus (Esc)" : "Hide menus";
+        toggle.setAttribute("aria-pressed", on ? "true" : "false");
+        const old = document.querySelector(".fs-hint");
+        if (old) old.remove();
+        if (on) {
+          // Discoverable without being permanent: it says how to get out, then fades.
+          const hint = el("div", "fs-hint", "Press Esc or the menu button to exit full screen");
+          document.body.appendChild(hint);
+          setTimeout(function () { if (hint.parentNode) hint.remove(); }, 3400);
+        }
+      }
+
       toggle.onclick = function () {
         App.state.chromeCollapsed = !App.state.chromeCollapsed;
-        layout.classList.toggle("chrome-collapsed", App.state.chromeCollapsed);
-        toggle.title = App.state.chromeCollapsed ? "Show menus" : "Hide menus";
+        applyChrome();
       };
+      // ESCAPE EXITS. Bound once on the document; it only acts when full-screen is on, so it
+      // cannot swallow an Escape meant for a modal or a popover.
+      if (!App._fsEscBound) {
+        App._fsEscBound = true;
+        document.addEventListener("keydown", function (e) {
+          if (e.key !== "Escape" || !App.state.chromeCollapsed) return;
+          const shell = document.querySelector(".app-shell.chrome-collapsed");
+          if (!shell) return;
+          App.state.chromeCollapsed = false;
+          shell.classList.remove("chrome-collapsed");
+          shell.style.removeProperty("--fs-zoom");
+          const t = document.querySelector(".chrome-toggle");
+          if (t) { t.title = "Hide menus"; t.setAttribute("aria-pressed", "false"); t.focus(); }
+          const h = document.querySelector(".fs-hint"); if (h) h.remove();
+        });
+      }
       main.appendChild(toggle);
     }
 

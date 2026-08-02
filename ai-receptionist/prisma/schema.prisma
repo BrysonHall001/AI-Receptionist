@@ -175,6 +175,16 @@ model User {
   // user's chosen avatar-dot color (validated hex, e.g. "#a34bd0"). Both additive/nullable.
   lastSeenAt       DateTime?
   dotColor         String?
+  // WHICH TENANT THIS PERSON IS LOOKING AT, stamped by the presence heartbeat that already
+  // runs. Ordinary members answer "who is in tenant X" from their own tenantId; an admin-tier
+  // user has no tenantId, so without this there is nothing to say which tenant they are
+  // currently viewing and they can never appear anywhere.
+  // It needs NO clearing rule of its own: the presence query already filters on
+  // lastSeenAt >= cutoff, so a stale value stops being visible the moment the heartbeat
+  // stops - on sign-out, on going idle, or on closing the tab. Switching tenants overwrites
+  // it on the next beat. A field that expires by the same clock everything else uses cannot
+  // leave a square sitting on a tenant nobody is looking at.
+  viewingTenantId  String?
   expiresAt        DateTime?
   disabled         Boolean   @default(false)
   signature        String?
@@ -220,6 +230,7 @@ model User {
 
   @@index([tenantId])
   @@index([tenantId, lastSeenAt])
+  @@index([viewingTenantId, lastSeenAt])
 }
 
 /// A confirmed link between an existing user and one identity provider.

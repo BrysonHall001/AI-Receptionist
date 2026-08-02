@@ -320,15 +320,41 @@ body {
    Settings gear - which is why the dots vanished the moment you went full-screen. The
    row now collapses to just that cluster, right-aligned, so the reclaimed space is the
    tabs' and the sidebar's, and nothing the user needs disappears with them. */
-.app-shell.chrome-collapsed .pages-scroll { display: none; }
-.app-shell.chrome-collapsed .portal-pages-row { justify-content: flex-end; }
+/* FULL-SCREEN, REVISED. The rules above hid the tab strip but KEPT the top row, so the page
+   got a wider column and nothing else - the hamburger was stranded at the left with a gap
+   beside it and the search box stretched to fill the reclaimed width.
+   Both bars go now. The row's right-hand cluster - presence, the bell, the gear - is not lost:
+   it is reachable again the moment you come back out, and full-screen means the page and
+   nothing else, which is the whole point of it. */
+.app-shell.chrome-collapsed .portal-pages-row { display: none; }
 /* THE CONTENT GROWS, IT DOES NOT SLIDE. Hiding the sidebar frees its width; without this
    the whole main column would slide that far left, which is exactly the "it slid" report.
    Padding the main column by the sidebar's own width holds the page title, the content
    and the corner toggle at the SAME horizontal position they had, and hands the freed
    space to the right edge instead. One derived declaration, and it follows the sidebar
    if that width ever changes. */
-.app-shell.chrome-collapsed .main { padding-left: var(--sidebar-w); }
+/* THE CONTENT GROWS. The old rule padded the main column by the sidebar's width so the page
+   held its horizontal position and handed the freed space to the right edge - the content
+   stayed exactly the same size in a wider column. That is what "it just sits in a wider
+   column" was describing, and it is what this replaces.
+   ZOOM, NOT TRANSFORM. transform: scale() would leave layout untouched (the page would
+   overflow its own scrollbars) and, worse, a transform makes a containing block for
+   position:fixed descendants - the burger menu is fixed and rendered inside this subtree, so
+   it would anchor to the scaled box instead of the viewport. zoom re-lays-out at the new
+   size, so text stays crisp and nothing is resampled.
+   --fs-zoom is set by the shell from the width actually reclaimed, and defaults to 1 so this
+   rule is inert if the script never runs. */
+.app-shell.chrome-collapsed .main { zoom: var(--fs-zoom, 1); }
+/* The way out. The toggle is the same button that got you in, kept in the corner rather than
+   floating over the content - it is the only chrome left, and it is where the hand already
+   is. Escape works too; both are wired in the shell. */
+.app-shell.chrome-collapsed .chrome-toggle { position: fixed; top: 10px; left: 10px; z-index: 60; opacity: 0.55; transition: opacity var(--motion-quick); }
+.app-shell.chrome-collapsed .chrome-toggle:hover,
+.app-shell.chrome-collapsed .chrome-toggle:focus-visible { opacity: 1; }
+/* A brief word on entry so the way out is discoverable without a permanent overlay. It fades
+   on its own; it is not a control and never intercepts a click. */
+.fs-hint { position: fixed; top: 12px; left: 52px; z-index: 60; padding: var(--sp-1) var(--sp-3); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); font-size: var(--text-xs); color: var(--ink-soft); pointer-events: none; animation: fsHintOut 3.2s ease forwards; }
+@keyframes fsHintOut { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 /* Sign out + Impersonate side by side (admin-tier, bottom-left): equal-width, each
    a little under half thanks to the gap between them. */
 .user-actions { display: flex; gap: var(--sp-2); align-items: stretch; flex-wrap: wrap; min-width: 0; } /* hardening: the Sign out + Impersonate row wraps instead of cramping the sidebar (acceptance case 2) */
@@ -2784,6 +2810,10 @@ body[data-theme="contrast"] tbody td, body[data-theme="dusk"] tbody td, body[dat
 .tbl-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 0 2px; }
 .pres-dot { width: 27px; height: 27px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: 700; user-select: none; flex: 0 0 auto; background: var(--swatch); color: var(--dot-ink, var(--ink)); border: 2px solid var(--topbar-bg); box-shadow: var(--shadow); }
 .pres-dot.overlap { margin-left: -8px; }
+/* STAFF ARE SQUARES. Same size, same swatch, same initial - only the corners differ, which is
+   enough to read as a different kind of person without needing a legend. A small radius
+   rather than none: a hard square next to circles looks like a rendering fault. */
+.pres-dot.pres-staff { border-radius: 5px; }
 .pres-dot.pres-more { background: var(--gray-soft); color: var(--ink); box-shadow: none; }
 .toast-fading { transition: opacity var(--transition); opacity: 0; }
 .u-mt-6 { margin-top: 6px; }

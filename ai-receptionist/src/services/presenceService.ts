@@ -43,7 +43,7 @@ export const PRESENCE_WINDOW_MS = 90_000;
 export const PRESENCE_MEMBER_ROLES: Role[] = ["PORTAL_ADMIN", "CLIENT_USER"];
 export const DOT_COLOR_RE = /^#[0-9a-f]{6}$/;
 
-export interface PresenceEntry { id: string; name: string; initial: string; color: string }
+export interface PresenceEntry { id: string; name: string; initial: string; color: string; staff?: boolean }
 
 export function presenceInitial(name?: string | null, email?: string | null): string {
   const n = (name || "").trim();
@@ -69,25 +69,84 @@ export function presenceFallbackColor(id: string): string {
   return hslToHex(h % 360, 62, 55);
 }
 
-// Present MEMBERS of one tenant (scoped, no cross-tenant leak; caller included if a member).
-export async function listPresentMembers(tenantId: string, now: Date = new Date()): Promise<PresenceEntry[]> {
+/** The roles that render as a SQUARE and are visible only to each other. */
+export const PRESENCE_STAFF_ROLES: Role[] = ["OWNER", "SUPER_ADMIN", "AUDITOR"];
+export function isStaffRole(role?: string | null): boolean {
+  return PRESENCE_STAFF_ROLES.indexOf(String(role || "") as Role) !== -1;
+}
+
+/**
+ * Present people in one tenant.
+ *
+ * TWO GROUPS, AND THE SECOND IS PRIVATE.
+ *
+ *  - MEMBERS of the tenant (portal admin, client user), found by their own tenantId. Circles.
+ *    Everyone who can see presence at all sees these, exactly as before.
+ *
+ *  - STAFF (owner, super admin, auditor) currently VIEWING this tenant, found by the
+ *    viewingTenantId the heartbeat stamps - they have no tenantId of their own. Squares.
+ *
+ * THE PRIVACY RULE IS ENFORCED IN THE QUERY, not on the client. An ordinary member's request
+ * never SELECTS a staff row: the second query is not issued at all unless the person asking
+ * is staff. Returning data and then hiding it in the browser would mean the data still
+ * travelled, which is not privacy - it is a curtain.
+ *
+ * viewerRole is optional and defaults to a member's view, so any caller that has not been
+ * updated gets the safe answer rather than the leaky one.
+ */
+export async function listPresentMembers(
+  tenantId: string,
+  now: Date = new Date(),
+  viewerRole?: string | null,
+): Promise<PresenceEntry[]> {
   const cutoff = new Date(now.getTime() - PRESENCE_WINDOW_MS);
-  const users = await prisma.user.findMany({
+  const shape = { id: true, name: true, email: true, dotColor: true, role: true } as const;
+  const members = await prisma.user.findMany({
     where: { tenantId, role: { in: PRESENCE_MEMBER_ROLES }, disabled: false, lastSeenAt: { gte: cutoff } },
-    select: { id: true, name: true, email: true, dotColor: true },
+    select: shape,
     orderBy: { lastSeenAt: "desc" },
     take: 50,
   });
-  return users.map((u: { id: string; name: string | null; email: string; dotColor: string | null }) => ({
+
+  // ONLY STAFF ASK FOR STAFF. To a member this query does not run, so their response cannot
+  // contain a staff row even by accident.
+  const staff = isStaffRole(viewerRole)
+    ? await prisma.user.findMany({
+        where: { viewingTenantId: tenantId, role: { in: PRESENCE_STAFF_ROLES }, disabled: false, lastSeenAt: { gte: cutoff } },
+        select: shape,
+        orderBy: { lastSeenAt: "desc" },
+        take: 50,
+      })
+    : [];
+
+  type Row = { id: string; name: string | null; email: string; dotColor: string | null; role: string };
+  return ([...staff, ...members] as Row[]).map((u) => ({
     id: u.id,
     name: u.name || (u.email ? u.email.split("@")[0] : "Member"),
     initial: presenceInitial(u.name, u.email),
     color: u.dotColor || presenceFallbackColor(u.id),
+    // The only new field on the wire, and it is only ever true for a viewer who is staff.
+    staff: isStaffRole(u.role),
   }));
 }
 
-export async function stampHeartbeat(userId: string): Promise<void> {
-  try { await prisma.user.update({ where: { id: userId }, data: { lastSeenAt: new Date() } }); }
+/**
+ * The heartbeat. It now also records WHICH TENANT is being looked at, which is the only way
+ * an admin-tier person can appear in presence at all: they have no tenantId of their own.
+ *
+ * Same request, same cadence - the endpoint already fires on this schedule and already knows
+ * the tenant in scope. tenantId is optional so any other caller keeps working unchanged.
+ *
+ * NO CLEARING RULE IS NEEDED. The presence query filters lastSeenAt >= cutoff, so a stale
+ * viewingTenantId stops being visible the moment the heartbeat stops - signing out, going
+ * idle, closing the tab. Switching tenants overwrites it on the next beat. Writing null on
+ * sign-out would be belt-and-braces, but a field that expires by the same clock as everything
+ * else cannot strand a square on a tenant nobody is watching.
+ */
+export async function stampHeartbeat(userId: string, tenantId?: string | null): Promise<void> {
+  const data: { lastSeenAt: Date; viewingTenantId?: string | null } = { lastSeenAt: new Date() };
+  if (tenantId !== undefined) data.viewingTenantId = tenantId || null;
+  try { await prisma.user.update({ where: { id: userId }, data }); }
   catch (e) { /* fail quietly (e.g. user row gone) */ }
 }
 

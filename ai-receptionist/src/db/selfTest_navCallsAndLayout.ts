@@ -91,9 +91,13 @@ check(/\.chrome-toggle \{[^}]*top: 11px/.test(css) && /\.portal-pages-row \{[^}]
 // jumped left instead of growing. The intent behind this assertion (full-screen must not
 // leave the content jammed into the corner) is now met by holding the main column in place,
 // so it is asserted on the rule that actually does that - and on the ABSENCE of the old one.
-check(/\.app-shell\.chrome-collapsed \.main \{ padding-left: var\(--sidebar-w\); \}/.test(css)
+// RE-PINNED (full-screen zoom batch): holding the content in place was the previous answer,
+// and it produced "the same content in a wider column". Full-screen now scales the content
+// into the reclaimed space instead. The half of this that still matters - no fixed numbers
+// re-padding the content - is unchanged and still asserted.
+check(/\.app-shell\.chrome-collapsed \.main \{ zoom: var\(--fs-zoom, 1\); \}/.test(css)
   && !/\.app-shell\.chrome-collapsed \.content \{/.test(css),
-  "collapsed full-screen holds the content in place (the main column is padded by the sidebar's own width) instead of re-padding it with fixed numbers");
+  "collapsed full-screen SCALES the content into the reclaimed space, with no fixed numbers re-padding it");
 // Item 4: JS-sized independent scroll.
 check(!/sizeMfFieldsScroll/.test(portal) && /\.mf-fields-wrap \{ position: absolute; inset: 0;/.test(css), "Fields column height derives from the layout (fills its grid row) — the JS viewport sizer is retired (space pass)");
 check(/\.mf-grid \{[^}]*align-items: stretch/.test(css), "the grid stretches both columns to the same row height (no resize listener needed)");

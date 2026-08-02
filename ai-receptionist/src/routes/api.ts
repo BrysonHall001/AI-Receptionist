@@ -1313,7 +1313,9 @@ apiRouter.patch("/account/signature", async (req: Request, res: Response) => {
 // Strictly per-tenant; exposes only name, first initial and color (no email/PII).
 // ===========================================================================
 apiRouter.post("/presence/heartbeat", async (req: Request, res: Response) => {
-  await stampHeartbeat((req.realUser || req.user)!.id); // REAL identity — impersonation never records a dot
+  // REAL identity — impersonation never records a dot. The tenant in scope rides along on the
+  // request that already exists, so nothing new is sent and the cadence is unchanged.
+  await stampHeartbeat((req.realUser || req.user)!.id, resolveTenantScope(req));
   res.json({ ok: true });
 });
 
@@ -1321,10 +1323,13 @@ apiRouter.get("/presence", async (req: Request, res: Response) => {
   const tenantId = resolveTenantScope(req);
   if (!tenantId) { res.json({ present: [] }); return; }
   // Stamp the caller first (REAL identity) so the self-view can never be empty due to
-  // poll/heartbeat ordering. Admins have no member row/tenant match, so this is a no-op
-  // for their visibility — they still never appear.
-  await stampHeartbeat((req.realUser || req.user)!.id);
-  res.json({ present: await listPresentMembers(tenantId) });
+  // poll/heartbeat ordering. The tenant in scope goes with it: that is what lets a staff
+  // member appear at all, since they have no tenantId of their own.
+  const real = (req.realUser || req.user)!;
+  await stampHeartbeat(real.id, tenantId);
+  // The viewer's REAL role decides whether staff are returned. Impersonation deliberately
+  // uses the real identity here: someone acting as a member should see what a member sees.
+  res.json({ present: await listPresentMembers(tenantId, new Date(), real.role) });
 });
 
 apiRouter.patch("/account/dot-color", async (req: Request, res: Response) => {

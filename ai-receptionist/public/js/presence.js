@@ -36,8 +36,13 @@
    *  .presence-dot nor .presence-more has ever had any CSS. Same for the overflow chip.) */
   function dotEl(p, overlap) {
     const d = document.createElement("div");
-    d.title = p.name || "Member";
-    d.className = "pres-dot" + (overlap ? " overlap" : "");
+    d.className = "pres-dot" + (overlap ? " overlap" : "") + (p.staff ? " pres-staff" : "");
+    // A SQUARE MEANS STAFF, and only staff ever receive one - the server does not return
+    // staff rows to an ordinary member at all, so this branch cannot run for them. The hover
+    // says who can and cannot see it, because a shape on its own explains nothing.
+    d.title = p.staff
+      ? (p.name || "Staff") + " \u2014 shown as a square because they're staff. People in this tenant can't see them here; only other staff can."
+      : (p.name || "Member");
     paintDot(d, p.color, p.initial);
     return d;
   }

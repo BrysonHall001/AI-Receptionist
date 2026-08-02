@@ -54,15 +54,23 @@ function main() {
   const sidebarW = px(rule(".app-shell"), "--sidebar-w");
   check(sidebarW !== null && px(rule(".sidebar"), "width") === sidebarW,
     `the sidebar's width is declared once (${sidebarW}px) and the sidebar reads it \u2014 nothing repeats the number`);
+  // RE-PINNED (full-screen zoom batch): the main column used to be PADDED by the sidebar's
+  // width, which held the content at the same size in a wider column. That is exactly what
+  // "it just sits in a wider column" described, and it has been replaced: full-screen now
+  // ZOOMS the content into the reclaimed space. What this line still protects is that the
+  // rule is derived from the shared token rather than repeating a number.
   const collapsedMain = rule(".app-shell.chrome-collapsed .main");
-  check(px(collapsedMain, "padding-left") === sidebarW,
-    "collapsed, the main column is padded by exactly the width the sidebar gave up");
-  // the whole point, as arithmetic: where does the content's left edge sit in each state?
+  check(/zoom:\s*var\(--fs-zoom, 1\)/.test(collapsedMain) && !/padding-left/.test(collapsedMain),
+    "collapsed, the main column SCALES into the width the sidebar gave up rather than being padded by it");
+  // RE-PINNED with the rule above. Holding the content's left edge in place was the point of
+  // the PADDING design: the page stayed put and the freed width went to the right of it. Under
+  // the zoom design the content correctly moves left - the sidebar is gone and the page fills
+  // the screen - so asserting the old arithmetic would now be asserting the bug.
+  // What replaces it is the guarantee that actually matters: the content keeps its OWN padding
+  // in both states, so nothing is ever flush against the edge of the screen.
   const contentPadL = (() => { const m = /padding:\s*[\d.]+px\s+([\d.]+)px/.exec(rule(".content")); return m ? parseFloat(m[1]) : null; })();
-  const normalLeft = (sidebarW || 0) + (contentPadL || 0);
-  const collapsedLeft = (px(collapsedMain, "padding-left") || 0) + (contentPadL || 0);
-  check(normalLeft === collapsedLeft && normalLeft > 0,
-    `the content starts at the SAME place in both states (${normalLeft}px) \u2014 it grows to the right instead of sliding`);
+  check(!!contentPadL && contentPadL > 0 && !/\.app-shell\.chrome-collapsed \.content \{/.test(css),
+    `the content keeps its own padding (${contentPadL}px) in BOTH states \u2014 nothing re-pads it when the bars go, so it is never flush to the screen edge`);
   check(rule(".app-shell.chrome-collapsed .topbar") === "" && rule(".app-shell.chrome-collapsed .content") === "",
     "the three hardcoded values that caused the slide are gone \u2014 no collapsed override on the topbar or the content");
   check(/max-width:\s*1600px/.test(rule(".content")) && contentPadL !== null,
@@ -81,17 +89,25 @@ function main() {
   check((tx || 0) + (tsz || 0) + gap > (tx || 0) + (tsz || 0),
     `\u2026and the clearance (${(tx || 0) + (tsz || 0) + gap}px) exceeds the toggle's right edge (${(tx || 0) + (tsz || 0)}px), so it can no longer sit on top of the page title`);
 
-  // ---------- (3) presence survives full-screen ----------
-  console.log("\n(3) the presence dots in full-screen:");
-  check(rule(".app-shell.chrome-collapsed .pages-scroll").includes("display: none"),
-    "collapsed hides the TAB STRIP");
-  check(!rule(".app-shell.chrome-collapsed .portal-pages-row").includes("display: none"),
-    "\u2026but NOT the row itself \u2014 hiding the row is what deleted the dots, the notification bell and the settings gear");
+  // ---------- (3) the top row in full-screen ----------
+  //
+  // REVERSED DELIBERATELY (full-screen zoom batch). This section used to assert that the row
+  // SURVIVES full-screen, because an earlier batch hid it and lost the presence dots, the bell
+  // and the gear with it - so I made it hide only the tab strip and keep the cluster.
+  //
+  // The owner has since asked for the opposite, explicitly: "BOTH bars go... the page content
+  // and nothing else". The cluster is not destroyed by that, only put away - one Escape brings
+  // it back. So the constraint this section encoded was mine, not his, and it is now inverted.
+  // What still matters, and is still asserted, is that the strip is built ONCE and lives in
+  // the cluster: whatever the collapsed state does, there is only one presence strip to lose.
+  console.log("\n(3) the top row in full-screen:");
+  check(rule(".app-shell.chrome-collapsed .portal-pages-row").includes("display: none"),
+    "collapsed hides the WHOLE top row \u2014 full-screen means the page and nothing else");
   check((appJs.match(/app-presence-strip/g) || []).length === 1,
     "the strip is built exactly ONCE \u2014 presence is not duplicated to survive a second state");
   const stripIdx = appJs.indexOf("app-presence-strip"), rightIdx = appJs.indexOf('el("div", "pages-row-right")');
   check(rightIdx > -1 && stripIdx > rightIdx && appJs.slice(rightIdx, stripIdx + 400).includes("pagesRight.appendChild(presenceStrip)"),
-    "\u2026and it lives in the row's right-hand cluster, which is the part that stays visible");
+    "\u2026and it lives in the row's right-hand cluster, so it returns intact the moment you come back out");
 
   // ---------- (4) the dot component, by running it ----------
   console.log("\n(4) the dot itself:");

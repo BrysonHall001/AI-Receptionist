@@ -1,0 +1,11 @@
+-- Changelog: full-screen scales the page; presence shows staff as squares
+INSERT INTO "ChangeLogEntry" ("id","date","type","description","commitSha","createdAt")
+VALUES (
+  'cl_fullscreen_presence_20260802',
+  '2026-08-02',
+  'Improvement',
+  'Two things. First, full screen actually does what it sounds like now. Pressing the menu button used to hide the side menu but leave the bar across the top, and the page simply sat in a wider column at the same size, which is not really full screen at all. Both bars go now, and the page grows into the space they were using. Same amount on screen, just bigger, the way zooming in works. How much bigger depends on your screen, which is deliberate. A setting that looks right on a large monitor is too much on a laptop, so the app works it out from how much room it just freed up. In practice it is between fifteen and twenty five percent larger, more on a smaller screen because the side menu was taking up a bigger share of it. On a phone or a narrow window, where the side menu is already tucked away, nothing is freed so nothing grows and you just get the bars out of the way. There are three ways back out. Press Escape, click the menu button which stays in the top left corner, or follow the note that appears for a few seconds when you go in and then fades so it is not sitting on top of your work. Everything comes back exactly as it was. Second, the coloured circles showing who is currently in a portal. Staff now appear too, as a rounded square rather than a circle, so you can tell at a glance who is a customer and who is one of us. The important part, and it is worth being clear about it: people inside a tenant cannot see staff at all. That is not a matter of hiding them on screen, which would be no privacy at all. Their computer is never sent the information in the first place. Only other staff can see staff. Hovering a square explains exactly that. One thing to expect: there is currently one person on the hub, so until there is a second staff member you will see a single square, which is yourself, and nothing else. That is the feature working, not a fault.',
+  'batch-fullscreen-presence-20260802',
+  NOW()
+)
+ON CONFLICT ("commitSha") DO NOTHING;
