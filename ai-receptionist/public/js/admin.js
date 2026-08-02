@@ -2094,10 +2094,21 @@
       allTemplates.forEach((t) => {
         row.appendChild(templateCard(t, {
           // Nothing is "selected" on this screen - it is a list of what exists.
-          onPick: (tpl) => {
+          // CLICKING A CARD LOADS THAT TEMPLATE'S WHOLE CONFIGURATION, either way. What differs
+          // is what SAVING does, and the form says which before you get there:
+          //   a template you built  -> you are editing it; saving updates it
+          //   one of the five       -> you are starting a NEW one pre-filled from it; saving
+          //                            adds a template and the built-in is untouched, because
+          //                            code templates cannot be edited from a screen.
+          onPick: async (tpl) => {
             const own = rows.find((r) => r.key === tpl.key);
-            if (own) openForm(own);                    // a template you built: open it to edit
-            else toast(tpl.label + " is a built-in template \u2014 it can't be edited here.");
+            if (own) { openForm(own); return; }
+            try {
+              const full = await App.api("/api/admin/tenant-templates/" + encodeURIComponent(tpl.key) + "/spec");
+              openForm(null, { label: tpl.label, spec: (full && full.spec) || {} });
+            } catch (e) {
+              toast("Couldn't load " + tpl.label, true);
+            }
           },
           onDelete: (tpl) => confirmDeleteTemplate(tpl),
         }));
@@ -2141,13 +2152,32 @@
       listHost.appendChild(tbl);
     }
 
-    function openForm(row) {
+    function openForm(row, basedOn) {
       draft = row
         ? { id: row.id, label: row.label, description: row.description || "", spec: JSON.parse(JSON.stringify(row.spec || {})) }
+        : basedOn
+        ? { id: null, label: "", description: "", spec: JSON.parse(JSON.stringify(basedOn.spec || {})) }
         : { id: null, label: "", description: "", spec: { pagesOffPrefill: [], modulesHiddenPrefill: [], aiVoiceMode: null, libraryFlavor: null, fieldTweaks: [], pageLabelOverrides: {}, moduleRelabels: {}, customLcOffer: false } };
       listHost.classList.add("u-hidden");
       formHost.classList.remove("u-hidden");
       formHost.innerHTML = "";
+
+      // WHICH OF THE TWO THINGS AM I DOING? Stated at the top, before anything can be saved.
+      // Finding out afterwards that "editing Field Services" had quietly created a sixth
+      // template would be a nasty surprise; finding out the reverse would be worse.
+      const mode = el("div", "tb-mode");
+      if (row) {
+        mode.appendChild(el("h3", "tb-mode-title", "Editing: " + esc(row.label)));
+        mode.appendChild(el("p", "cell-muted tb-mode-note", "Saving updates this template. Tenants you already made from it are not changed."));
+      } else if (basedOn) {
+        mode.appendChild(el("h3", "tb-mode-title", "New template, based on " + esc(basedOn.label)));
+        mode.appendChild(el("p", "cell-muted tb-mode-note",
+          esc(basedOn.label) + " is one of the built-in templates and cannot be edited, so this starts a new one with everything it has. Saving adds a template and leaves " + esc(basedOn.label) + " exactly as it is."));
+      } else {
+        mode.appendChild(el("h3", "tb-mode-title", "New template"));
+        mode.appendChild(el("p", "cell-muted tb-mode-note", "Saving adds it to the list of templates offered when creating a tenant."));
+      }
+      formHost.appendChild(mode);
       formHost.appendChild(limitsNote());
 
       // ---- name + description ----
@@ -2160,15 +2190,15 @@
       descCol.appendChild(el("label", "field-label", "Description"));
       const descInp = el("input", "input"); descInp.value = draft.description; descInp.setAttribute("placeholder", "Kitchens and counters \u2014 orders, not jobs.");
       descCol.appendChild(descInp);
-      idRow.appendChild(nameCol); idRow.appendChild(descCol);
-      formHost.appendChild(idRow);
-
-      // ---- icon ----
-      formHost.appendChild(el("label", "field-label u-mt-8", "Icon"));
-      formHost.appendChild(el("p", "cell-muted tb-note", "The picture shown on this template's button. Leave it unset to use the plain default."));
+      const iconCol = el("div", "adm-fcol");
+      iconCol.appendChild(el("label", "field-label", "Icon"));
       const iconHost = el("div", "tb-iconpick");
-      formHost.appendChild(iconHost);
+      iconCol.appendChild(iconHost);
+      iconCol.appendChild(el("p", "cell-muted tb-note", "The picture shown on this template's button. Leave it unset to use the plain default."));
+      idRow.appendChild(nameCol); idRow.appendChild(descCol); idRow.appendChild(iconCol);
+      formHost.appendChild(idRow);
       buildIconPicker(iconHost);
+
       if (draft.id) {
         const k = el("p", "cell-muted tb-key", "");
         k.textContent = "This template's identifier never changes, so tenants already made from it stay linked. Renaming changes the words only.";
@@ -2183,9 +2213,29 @@
 
       // ---- modules ----
       formHost.appendChild(el("label", "field-label u-mt-8", "Modules a new tenant starts with"));
-      const modHost = el("div");
+      const modHost = el("div", "tb-modules");
       formHost.appendChild(modHost);
       buildModuleToggles(modHost);
+
+      // ---- extra fields ----
+      // The selected module's FIELDS, directly beneath its chips - the arrangement the tenant's
+      // Modules & Fields screen uses. It used to sit three sections lower, which is what made
+      // this screen stop reading as a mirror of that one.
+      formHost.appendChild(el("label", "field-label u-mt-8", "Fields"));
+      const fieldsHost = el("div", "tb-fields");
+      formHost.appendChild(fieldsHost);
+      buildFieldEditor(fieldsHost);
+
+      // ---- views, for the selected module ----
+      formHost.appendChild(el("label", "field-label u-mt-8", "Views"));
+      const viewsHost = el("div", "tb-views");
+      formHost.appendChild(viewsHost);
+      buildViewsForBlueprint(viewsHost);
+
+      // ---- structure & behavior, for the selected module ----
+      const structHost = el("div", "tb-structure");
+      formHost.appendChild(structHost);
+      buildStructureForBlueprint(structHost);
 
       // ---- the AI receptionist, the SAME segmented control ----
       formHost.appendChild(el("label", "field-label u-mt-8", "AI receptionist"));
@@ -2209,51 +2259,6 @@
       aiRight.appendChild(el("p", "adm-ai-desc cell-muted", "What the receptionist does on a tenant made from this template. The hub can still change it per tenant."));
       aiHost.appendChild(aiRight);
       formHost.appendChild(aiHost);
-
-      // ---- the automation library ----
-      formHost.appendChild(el("label", "field-label u-mt-8", "Automation library"));
-      formHost.appendChild(el("p", "cell-muted tb-note", "Pick a ready-made ordering for the automation library a new tenant starts with, so the suggestions most useful to that trade come first. Leave it as None for the standard order."));
-      const flavRow = el("div", "add-user acct-row");
-      const flavSel = el("select", "input");
-      const noneOpt = el("option", null, "None \u2014 standard order");
-      noneOpt.value = "";
-      flavSel.appendChild(noneOpt);
-      // Options come from the server. If a flavour is added in code it appears here with no
-      // change to this screen, and a key that does not exist can never be chosen.
-      flavors.forEach((f) => { const o = el("option", null, esc(f.label)); o.value = f.key; flavSel.appendChild(o); });
-      flavSel.value = draft.spec.libraryFlavor || "";
-      flavSel.onchange = () => { draft.spec.libraryFlavor = flavSel.value || null; };
-      flavRow.appendChild(flavSel);
-      formHost.appendChild(flavRow);
-
-      // ---- extra fields ----
-      formHost.appendChild(el("label", "field-label u-mt-8", "Extra fields"));
-      const fieldsHost = el("div", "tb-fields");
-      formHost.appendChild(fieldsHost);
-      buildFieldEditor(fieldsHost);
-
-      // ---- views, for the selected module ----
-      formHost.appendChild(el("label", "field-label u-mt-8", "Views"));
-      const viewsHost = el("div", "tb-views");
-      formHost.appendChild(viewsHost);
-      buildViewsForBlueprint(viewsHost);
-
-      // ---- structure & behavior, for the selected module ----
-      const structHost = el("div", "tb-structure");
-      formHost.appendChild(structHost);
-      buildStructureForBlueprint(structHost);
-
-      // ---- the starting dashboard ----
-      formHost.appendChild(el("label", "field-label u-mt-8", "Home dashboard"));
-      const dashHost = el("div", "tb-dash");
-      formHost.appendChild(dashHost);
-      buildDashboardEditor(dashHost);
-
-      // ---- optional report pages ----
-      formHost.appendChild(el("label", "field-label u-mt-8", "Report pages"));
-      const anaHost = el("div", "tb-analytics");
-      formHost.appendChild(anaHost);
-      buildAnalyticsEditor(anaHost);
 
       // ---- save / cancel ----
       const actions = el("div", "add-user acct-row u-mt-8");
@@ -2327,6 +2332,18 @@
         const vh = document.querySelector(".tb-views"); if (vh) buildViewsForBlueprint(vh);
         const sh = document.querySelector(".tb-structure"); if (sh) buildStructureForBlueprint(sh);
       }, adapter);
+
+      // A struck-through chip must read as a deliberate exclusion, not a rendering fault.
+      // The strike and the dimming come from the shared component; this adds the sentence that
+      // explains them, which is the part a picture cannot carry on its own.
+      const excluded = new Set(draft.spec.modulesHiddenPrefill || []);
+      host.querySelectorAll(".mf-mod-tab").forEach((tab) => {
+        const k = tab.dataset ? tab.dataset.key : null;
+        if (!k) return;
+        tab.setAttribute("title", excluded.has(k)
+          ? "Left out of this template \u2014 a tenant made from it will not have this module. Use the \u22ee menu to add it back."
+          : "In this template. Use the \u22ee menu to rename, reorder or remove it.");
+      });
     }
 
     /** The ⋮ menu, over the blueprint. Same four actions the tenant screen offers. */
@@ -2344,9 +2361,19 @@
       item("Move up", idx === 0, () => moveBlueprintModule(t, -1, ordered, host));
       item("Move down", idx === ordered.length - 1, () => moveBlueprintModule(t, 1, ordered, host));
       const isHidden = (draft.spec.modulesHiddenPrefill || []).indexOf(t.key) !== -1;
+      // DELETE, NOT HIDE. "Hide" was the wrong word here: there is nobody to hide a module
+      // from in a template - the portal admin of a tenant made from it is the person who will
+      // use it. What this really does is leave the module OUT: a tenant created from this
+      // template simply will not have it.
+      //
+      // The chip is struck through IN PLACE rather than leaving the row, so an excluded module
+      // stays visible as a deliberate choice and can be put back from this same menu without
+      // rebuilding anything. The storage is unchanged - modulesHiddenPrefill already means
+      // exactly "a new tenant starts without this" - so nothing about what gets created moves.
+      //
       // Contacts is core on a tenant and core here: the server's own togglable flag decides,
       // so the two screens cannot disagree about it.
-      item(isHidden ? "Show" : "Hide", !t.togglable, () => {
+      item(isHidden ? "Add back to template" : "Delete from template", !t.togglable, () => {
         const set = new Set(draft.spec.modulesHiddenPrefill || []);
         if (set.has(t.key)) set.delete(t.key); else set.add(t.key);
         draft.spec.modulesHiddenPrefill = Array.from(set);
@@ -2472,6 +2499,9 @@
           canEdit: () => true,
           onDragStart: (t) => { dragType = t; },
           onDragEnd: () => { dragType = null; },
+          // The SAME "+ Add field" the tenant screen has. On a tenant it creates a real field;
+          // here it adds one to the blueprint, which is the only difference that should exist.
+          onAdd: () => addFieldModal(host, selected, "text"),
         });
       } else {
         colLib.appendChild(el("p", "cell-muted", "The field library is unavailable."));
@@ -2484,8 +2514,29 @@
       colFields.appendChild(el("p", "muted mf-fields-intro", "Drag a type from the library, or press Add field. Tenants made from this template start with these."));
 
       const list = el("div", "field-list");
+
+      // THE MODULE'S STOCK FIELDS, FIRST AND LOCKED.
+      //
+      // Without these every module looked identical apart from its name, and the panel was not
+      // a starting point at all - it was an empty box. These are the fields the module really
+      // ships with, sent by the server alongside the module list, so the builder shows exactly
+      // what a tenant would get. They are LOCKED for the same reason the tenant screen locks
+      // its system fields: they arrive with the module and there is nothing to decide about
+      // them here. Anything the owner adds is listed after them and stays editable.
+      const stock = (selMod.fieldDefs || []);
+      stock.forEach((f) => {
+        const row = el("div", "field-row field-row--locked");
+        row.appendChild(el("span", "field-row-name", esc(f.label)));
+        row.appendChild(el("span", "cell-muted field-row-type",
+          (App.fields && App.fields.TYPE_LABELS && App.fields.TYPE_LABELS[f.type]) || f.type || "Text"));
+        const lock = el("span", "cell-muted field-row-lock", "Comes with " + esc(selLabel));
+        lock.title = "Every " + esc(selLabel) + " record has this field. It arrives with the module, so it cannot be removed here.";
+        row.appendChild(lock);
+        list.appendChild(row);
+      });
+
       const mine = tweaks.map((tw, i) => ({ tw, i })).filter((x) => x.tw.moduleKey === selected);
-      if (!mine.length) list.appendChild(el("p", "cell-muted", "No extra fields on " + esc(selLabel) + " yet."));
+      if (!mine.length && !stock.length) list.appendChild(el("p", "cell-muted", "No fields on " + esc(selLabel) + " yet."));
       mine.forEach(({ tw, i }, n) => {
         const row = el("div", "field-row");
         row.appendChild(el("span", "field-row-name", esc(tw.field.label)));
@@ -2654,213 +2705,83 @@
      * The list comes from App.icons.iconLibrary(); an entry that resolved to nothing would be
      * a bug, so it is shown as a visible problem rather than an empty box.
      */
+    /**
+     * THE ICON CONTROL: a button showing the current choice, and a popup showing every icon.
+     *
+     * NO CAPTIONS IN THE POPUP - the shapes speak for themselves and a grid of words next to
+     * small pictures is harder to scan, not easier. Each icon still carries its NAME as its
+     * accessible label and its tooltip, so nothing is lost to anyone using a screen reader or
+     * hovering; it is only the printed caption that goes.
+     *
+     * It is a BUTTON WITH A POPUP, not a dropdown: the trigger reports aria-expanded, the
+     * popup is house .col-popover furniture, Escape and a click away both close it, and every
+     * icon inside is a real button so Tab and Enter reach it without a mouse.
+     */
     function buildIconPicker(host) {
       host.innerHTML = "";
       if (!(App.icons && App.icons.iconLibrary)) { host.appendChild(el("p", "cell-muted", "The icon library is unavailable.")); return; }
-      const grid = el("div", "tb-icongrid");
-      const name = "tb-icon-" + Math.random().toString(36).slice(2, 8);
-      const entries = [{ id: "", name: "Default", svg: App.icons.forTemplateKey("__default") }].concat(App.icons.iconLibrary());
-      entries.forEach(function (ic) {
-        const lab = el("label", "tb-iconopt");
-        const rb = el("input"); rb.type = "radio"; rb.name = name; rb.value = ic.id;
-        rb.checked = (draft.spec.icon || "") === ic.id;
-        rb.className = "tb-iconradio";
-        rb.onchange = function () { draft.spec.icon = ic.id || null; paintIconSelection(grid); };
-        const glyph = el("span", "tb-iconglyph", ic.svg || "");
-        if (!ic.svg) { glyph.textContent = "?"; glyph.title = "This icon is missing: " + ic.id; lab.classList.add("tb-iconopt--broken"); }
-        const txt = el("span", "tb-iconname", esc(ic.name));
-        lab.setAttribute("title", ic.name);
-        lab.appendChild(rb); lab.appendChild(glyph); lab.appendChild(txt);
-        grid.appendChild(lab);
-      });
-      host.appendChild(grid);
-      paintIconSelection(grid);
-    }
+      const wrap = el("div", "tb-iconwrap");
+      const btn = el("button", "btn btn-ghost tb-iconbtn");
+      btn.type = "button";
+      btn.setAttribute("aria-haspopup", "true");
+      btn.setAttribute("aria-expanded", "false");
 
-    function paintIconSelection(grid) {
-      Array.prototype.forEach.call(grid.querySelectorAll(".tb-iconopt"), function (l) {
-        const rb = l.querySelector("input");
-        l.classList.toggle("selected", !!(rb && rb.checked));
-      });
-    }
-
-    /**
-     * DASHBOARD WIDGETS, authored on the template.
-     *
-     * This reuses the REAL widget editor - App.reports.openWidgetEditor - rather than a
-     * lookalike. That editor takes everything it needs as parameters (sources, the widget,
-     * and an onSave callback) and performs NO network call of its own, so pointing it at a
-     * blueprint needs no adapter and gives it no route to a live tenant.
-     *
-     * The sources it is handed are assembled from what the TEMPLATE declares: its visible
-     * modules, and the fields it adds to them. So you can only build a widget out of things
-     * the template actually creates - which is the authoring-time half of the validation.
-     */
-    function buildDashboardEditor(host) {
-      host.innerHTML = "";
-      if (!(App.reports && App.reports.openWidgetEditor)) {
-        host.appendChild(el("p", "cell-muted", "The widget editor is unavailable."));
-        return;
-      }
-      // FLAT on the spec, like every other key it stores - libraryFlavor, moduleViews, icon.
-      // They are nested under `hooks` on the RESOLVED template, but the spec is flat, and
-      // mixing the two shapes is exactly how the authored widgets went nowhere the first time.
-      const home = (draft.spec.dashboards = draft.spec.dashboards || []);
-      // The home row is one seed named __home__, the shape the seeder already expects.
-      let seed = home.find(function (d) { return d.name === "__home__"; });
-      if (!seed) { seed = { name: "__home__", widgets: [] }; home.push(seed); }
-      seed.widgets = seed.widgets || [];
-
-      host.appendChild(el("p", "cell-muted tb-note",
-        "Widgets a new tenant starts with on its Home Dashboard. It can edit, move or delete them afterwards like any others."));
-
-      const list = el("div", "field-list");
-      if (!seed.widgets.length) list.appendChild(el("p", "cell-muted", "No widgets yet \u2014 a new tenant would open to an empty dashboard."));
-      seed.widgets.forEach(function (w, i) {
-        const row = el("div", "field-row");
-        row.appendChild(el("span", "field-row-name", esc(w.title || "Untitled")));
-        row.appendChild(el("span", "cell-muted field-row-type", (w.type || "") + " \u00b7 " + (w.source || "")));
-        const up = el("button", "btn btn-ghost btn-sm", "\u2191"); up.disabled = i === 0;
-        up.onclick = function () { seed.widgets.splice(i - 1, 0, seed.widgets.splice(i, 1)[0]); buildDashboardEditor(host); };
-        const down = el("button", "btn btn-ghost btn-sm", "\u2193"); down.disabled = i === seed.widgets.length - 1;
-        down.onclick = function () { seed.widgets.splice(i + 1, 0, seed.widgets.splice(i, 1)[0]); buildDashboardEditor(host); };
-        const edit = el("button", "btn btn-ghost btn-sm", "Edit");
-        edit.onclick = function () { openTemplateWidget(host, seed, w); };
-        const del = el("button", "btn btn-ghost btn-sm", "\u00d7");
-        del.onclick = function () { seed.widgets.splice(i, 1); buildDashboardEditor(host); };
-        row.appendChild(up); row.appendChild(down); row.appendChild(edit); row.appendChild(del);
-        list.appendChild(row);
-      });
-      host.appendChild(list);
-
-      const bar = el("div", "add-user acct-row u-mt-8");
-      const add = el("button", "btn btn-ghost btn-sm", "Add widget");
-      add.onclick = function () { openTemplateWidget(host, seed, null); };
-      bar.appendChild(add);
-      host.appendChild(bar);
-    }
-
-    /**
-     * ANALYTICS BOARDS, authored on the template.
-     *
-     * Same editor, same sources, same save path - the only difference is that these are NAMED
-     * boards rather than the one home row, and the seeder already creates a named dashboard
-     * for each. Recruitment Marketing ships none of these and is still a full template, so
-     * this is genuinely optional and the screen says so.
-     */
-    function buildAnalyticsEditor(host) {
-      host.innerHTML = "";
-      if (!(App.reports && App.reports.openWidgetEditor)) { host.appendChild(el("p", "cell-muted", "The widget editor is unavailable.")); return; }
-      const boards = (draft.spec.analytics = draft.spec.analytics || []);
-      host.appendChild(el("p", "cell-muted tb-note",
-        "Optional. Extra report pages a new tenant starts with, beside its Home Dashboard."));
-      if (!boards.length) host.appendChild(el("p", "cell-muted", "No report pages \u2014 the tenant starts with just its dashboard."));
-      boards.forEach(function (b, bi) {
-        const card = el("div", "card mf-structure-card");
-        const head = el("div", "add-user acct-row");
-        head.appendChild(el("span", "field-row-name", esc(b.name)));
-        const delB = el("button", "btn btn-ghost btn-sm", "\u00d7");
-        delB.onclick = function () { boards.splice(bi, 1); buildAnalyticsEditor(host); };
-        head.appendChild(delB);
-        card.appendChild(head);
-        (b.widgets || []).forEach(function (wg, wi) {
-          const row = el("div", "add-user acct-row");
-          row.appendChild(el("span", "cell-muted", esc(wg.title || "Untitled") + " \u00b7 " + (wg.type || "")));
-          const e = el("button", "btn btn-ghost btn-sm", "Edit");
-          e.onclick = function () { openBoardWidget(host, b, wg); };
-          const x = el("button", "btn btn-ghost btn-sm", "\u00d7");
-          x.onclick = function () { b.widgets.splice(wi, 1); buildAnalyticsEditor(host); };
-          row.appendChild(e); row.appendChild(x);
-          card.appendChild(row);
-        });
-        const addW = el("button", "btn btn-ghost btn-sm", "Add widget");
-        addW.onclick = function () { openBoardWidget(host, b, null); };
-        card.appendChild(addW);
-        host.appendChild(card);
-      });
-      const bar = el("div", "add-user acct-row u-mt-8");
-      const nameI = el("input", "input"); nameI.placeholder = "Report page name";
-      const addB = el("button", "btn btn-ghost btn-sm", "Add report page");
-      addB.onclick = function () {
-        const n = nameI.value.trim();
-        if (!n) { toast("Name the report page", true); return; }
-        if (n === "__home__") { toast("That name is reserved for the home dashboard", true); return; }
-        if (boards.some(function (x) { return x.name === n; })) { toast("There is already a page called that", true); return; }
-        boards.push({ name: n, widgets: [] });
-        buildAnalyticsEditor(host);
+      const paintBtn = () => {
+        btn.innerHTML = "";
+        const chosen = draft.spec.icon ? App.icons.iconById(draft.spec.icon) : null;
+        const glyph = el("span", "tb-iconbtn-glyph", chosen || App.icons.forTemplateKey("__default"));
+        const name = draft.spec.icon
+          ? (App.icons.iconLibrary().find((x) => x.id === draft.spec.icon) || {}).name
+          : "Default";
+        btn.appendChild(glyph);
+        btn.appendChild(el("span", "tb-iconbtn-label", esc(name || "Default")));
+        btn.setAttribute("aria-label", "Icon: " + (name || "Default") + ". Click to change.");
       };
-      bar.appendChild(nameI); bar.appendChild(addB);
-      host.appendChild(bar);
+
+      const close = () => {
+        wrap.querySelectorAll(".tb-iconpop").forEach((n) => n.remove());
+        btn.setAttribute("aria-expanded", "false");
+      };
+      const open = () => {
+        if (btn.getAttribute("aria-expanded") === "true") { close(); return; }
+        const pop = el("div", "col-popover tb-iconpop");
+        pop.setAttribute("role", "dialog");
+        pop.setAttribute("aria-label", "Choose an icon");
+        const grid = el("div", "tb-icongrid");
+        const choose = (id) => { draft.spec.icon = id || null; close(); paintBtn(); btn.focus(); };
+        // "Default" first, then the library. No captions - just the shapes.
+        const entries = [{ id: "", name: "Default", svg: App.icons.forTemplateKey("__default") }].concat(App.icons.iconLibrary());
+        entries.forEach((ic) => {
+          const b = el("button", "tb-iconopt" + ((draft.spec.icon || "") === ic.id ? " selected" : ""));
+          b.type = "button";
+          b.innerHTML = ic.svg || "";
+          b.setAttribute("title", ic.name);
+          b.setAttribute("aria-label", ic.name);
+          b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); choose(ic.id); };
+          grid.appendChild(b);
+        });
+        pop.appendChild(grid);
+        wrap.appendChild(pop);
+        btn.setAttribute("aria-expanded", "true");
+        const first = pop.querySelector("button"); if (first && first.focus) first.focus();
+      };
+
+      btn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); open(); };
+      btn.onkeydown = (e) => { if (e.key === "Escape") { close(); btn.focus(); } };
+      wrap.addEventListener("keydown", (e) => { if (e.key === "Escape") { close(); btn.focus(); } });
+      // Click away closes it. The listener is added once per picker and removed with the host.
+      const away = (e) => { if (!wrap.contains(e.target)) close(); };
+      document.addEventListener("click", away);
+      host.appendChild(wrap);
+      wrap.appendChild(btn);
+      paintBtn();
     }
 
-    function openBoardWidget(host, board, existing) {
-      const sources = blueprintSources();
-      const keys = Object.keys(sources);
-      if (!keys.length) { toast("Add a module before adding a widget", true); return; }
-      App.reports.openWidgetEditor({
-        sources: sources, sourceKeys: keys,
-        defaultSourceKey: (existing && sources[existing.source]) ? existing.source : keys[0],
-        widget: existing || null, showScope: false,
-        onSave: function (widget) {
-          if (!widget.id) widget.id = "tplw_" + Math.random().toString(36).slice(2, 10);
-          board.widgets = board.widgets || [];
-          const at = existing ? board.widgets.indexOf(existing) : -1;
-          if (at >= 0) board.widgets[at] = widget; else board.widgets.push(widget);
-          buildAnalyticsEditor(host);
-        },
-      });
-    }
 
-    /**
-     * The sources a template widget may draw from: the modules this template leaves visible,
-     * each carrying the fields the template adds plus the ones every module has.
-     * Shape is the editor's own contract - { label, reportFields, defaultGroupByKey }.
-     */
-    function blueprintSources() {
-      const hidden = new Set(draft.spec.modulesHiddenPrefill || []);
-      const relabels = draft.spec.moduleRelabels || {};
-      const tweaks = draft.spec.fieldTweaks || [];
-      const out = {};
-      modules.forEach(function (m) {
-        if (hidden.has(m.key)) return;
-        const rl = relabels[m.key] || {};
-        // Every record carries these, whatever the module.
-        const base = [
-          { key: "title", label: "Title", type: "text" },
-          { key: "stageKey", label: "Stage", type: "text" },
-          { key: "createdAt", label: "Created", type: "date" },
-        ];
-        const own = tweaks.filter(function (t) { return t.moduleKey === m.key; })
-          .map(function (t) { return { key: slugField(t.field.label), label: t.field.label, type: t.field.type }; });
-        out[m.key] = {
-          label: rl.labelPlural || rl.label || m.labelPlural || m.label || m.key,
-          reportFields: base.concat(own),
-          defaultGroupByKey: "stageKey",
-        };
-      });
-      return out;
-    }
+    // (The dashboard-widget and report-page editors lived here. They were removed with
+    //  their controls: a template's stored widgets are still carried and still seeded,
+    //  but there is no longer a screen for authoring them - see the changelog.)
 
-    /** Open the REAL editor against the blueprint, and save into the draft. */
-    function openTemplateWidget(host, seed, existing) {
-      const sources = blueprintSources();
-      const keys = Object.keys(sources);
-      if (!keys.length) { toast("Add a module before adding a widget", true); return; }
-      App.reports.openWidgetEditor({
-        sources: sources,
-        sourceKeys: keys,
-        defaultSourceKey: (existing && sources[existing.source]) ? existing.source : keys[0],
-        widget: existing || null,
-        showScope: false,
-        onSave: function (widget) {
-          // A stable id, so reordering or re-editing never collides.
-          if (!widget.id) widget.id = "tplw_" + Math.random().toString(36).slice(2, 10);
-          const at = existing ? seed.widgets.indexOf(existing) : -1;
-          if (at >= 0) seed.widgets[at] = widget; else seed.widgets.push(widget);
-          buildDashboardEditor(host);
-        },
-      });
-    }
 
     /** The same rule the server uses to derive a field key from its label. */
     function slugField(label) {

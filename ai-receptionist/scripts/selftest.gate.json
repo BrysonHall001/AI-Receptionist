@@ -1,4 +1,5 @@
 [
+  "selfTest_builderRework",
   "selfTest_suiteWaits",
   "selfTest_helpTips",
   "selfTest_motionPolish",

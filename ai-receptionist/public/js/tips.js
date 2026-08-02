@@ -103,7 +103,18 @@
    */
   function guideIsVisible(id) {
     try {
-      if (!id || !App.learn || typeof App.learn.activeGuides !== "function") return false;
+      if (!id) return false;
+      // THE LINK MUST BE REACHABLE FROM WHERE THE TIP IS SHOWN.
+      //
+      // #/learn is a TENANT route. On the hub the router sends an admin with no tenant
+      // selected to #/admin/portals instead, so a Learning Center link shown on a hub screen
+      // - the template builder, the tenant modules list - silently went to the wrong place.
+      // It looked like a dead link because, from where it was clicked, it was one.
+      //
+      // A tip with no reachable destination carries NO LINK, which is the rule everywhere
+      // else here too: no link is honest, a link that goes somewhere else is not.
+      if (!App.state || !App.state.currentPortalId) return false;
+      if (!App.learn || typeof App.learn.activeGuides !== "function") return false;
       var tree = App.learn.activeGuides() || [];
       for (var i = 0; i < tree.length; i++) {
         var items = tree[i].items || [];

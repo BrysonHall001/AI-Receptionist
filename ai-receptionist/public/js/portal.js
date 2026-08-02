@@ -5,6 +5,9 @@
   let current = "dashboard";
   let fieldDropHandled = false; // set true when a field is dropped on a section list
   let mfLibraryDragType = null; // non-null while dragging a type out of the Field library
+  // Set by renderFields to the "+ Add field" action for the module currently selected, so the
+  // SHARED library adapter can offer the same button the Fields column always had.
+  let mfAddFieldHook = null;
 
   function view() { return App.util.$("#view"); }
   function setView(v) { current = v; }
@@ -3057,6 +3060,11 @@
     // Create a new field of a library-dragged TYPE in the given section, then open its
     // Edit dialog so the user can name it. Uses the same create API + permission as
     // "+ Add field" (createField also accepts the sectionId for placement).
+    // The shared library's "+ Add field" opens the SAME creation path dragging does - a text
+    // field placed in the default section, then its Edit dialog so it can be named. Set on
+    // every render so it always refers to the module currently selected.
+    mfAddFieldHook = function () { createFieldFromLibrary("text", null); };
+
     async function createFieldFromLibrary(type, sectionId) {
       if (!App.fields.TYPE_LABELS[type]) return;
       const label = App.fields.TYPE_LABELS[type] || "Field";
@@ -4059,7 +4067,19 @@
     const libTitle = el("div", "mf-col-title", "Field library");
     if (App.tips) App.tips.attach(libTitle, "field_key_rename");
     col.appendChild(libTitle);
-    col.appendChild(el("p", "mf-col-hint", "Drag a field type onto a section to add it."));
+    col.appendChild(el("p", "mf-col-hint", "Drag a field type onto a section to add it, or press Add field."));
+    // ADD FIELD, alongside the dragging. The tenant screen has always had both - the button
+    // simply lived outside this component, so the template builder inherited a drag-only
+    // library and the two screens behaved differently for no reason. It is part of the shared
+    // component now, so they cannot drift again. A caller that supplies no onAdd gets no
+    // button, which is how a surface with nothing to add to opts out.
+    if (a.onAdd) {
+      const addBtn = el("button", "btn btn-ghost btn-sm mf-lib-add", "+ Add field");
+      addBtn.type = "button";
+      addBtn.disabled = !a.canEdit();
+      addBtn.onclick = function () { a.onAdd(); };
+      col.appendChild(addBtn);
+    }
     const list = el("div", "mf-lib-list");
     const canEdit = a.canEdit();
     Object.keys(App.fields.TYPE_LABELS).forEach(function (t) {
@@ -4092,6 +4112,8 @@
     canEdit: function () { return App.state.me.role !== "CLIENT_USER"; },
     onDragStart: function (t) { mfLibraryDragType = t; },
     onDragEnd: function () { mfLibraryDragType = null; },
+    // The tenant's own "Add field" - the same modal the Fields column has always opened.
+    onAdd: function () { if (mfAddFieldHook) mfAddFieldHook(); },
   };
 
   // Reorder a module by moving its nav href up/down relative to the neighbouring

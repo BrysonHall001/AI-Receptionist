@@ -791,6 +791,40 @@ function sanitiseSeeds(raw: any): any[] {
   return out;
 }
 
+/**
+ * THE INVERSE OF specToTemplate: a template, expressed as the blueprint that would produce it.
+ *
+ * This exists so clicking a BUILT-IN template on the builder screen can load its full
+ * configuration as a starting point. The card payload cannot do that job - it is a display
+ * shape and drops moduleRelabels, the AI settings, the hooks and the real field definitions.
+ *
+ * It is READ-ONLY and produces a NEW blueprint: the caller gets no id and no key, so saving
+ * creates an additional template and the code template it was based on cannot be touched.
+ * Keys are emitted only when they carry something, which keeps a copied blueprint the same
+ * shape a hand-built one has.
+ */
+export function templateToSpec(t: TenantTemplate | null | undefined): Record<string, unknown> {
+  if (!t) return {};
+  const hooks: any = (t as any).hooks || {};
+  const spec: Record<string, unknown> = {
+    pagesOffPrefill: [...(t.pagesOffPrefill || [])],
+    modulesHiddenPrefill: [...(t.modulesHiddenPrefill || [])],
+    fieldTweaks: JSON.parse(JSON.stringify(t.fieldTweaks || [])),
+  };
+  if (t.aiVoiceMode) spec.aiVoiceMode = t.aiVoiceMode;
+  if ((t as any).aiSchedulingTarget) spec.aiSchedulingTarget = (t as any).aiSchedulingTarget;
+  if (typeof (t as any).aiIntake === "boolean") spec.aiIntake = (t as any).aiIntake;
+  if (t.pageLabelOverrides && Object.keys(t.pageLabelOverrides).length) spec.pageLabelOverrides = { ...t.pageLabelOverrides };
+  if ((t as any).moduleRelabels && Object.keys((t as any).moduleRelabels).length) spec.moduleRelabels = JSON.parse(JSON.stringify((t as any).moduleRelabels));
+  if ((t as any).customLcOffer === true) spec.customLcOffer = true;
+  if ((t as any).icon) spec.icon = (t as any).icon;
+  // The hooks are FLAT on a spec - the same arrangement the builder writes.
+  if (hooks.libraryFlavor) spec.libraryFlavor = hooks.libraryFlavor;
+  if (Array.isArray(hooks.dashboards) && hooks.dashboards.length) spec.dashboards = JSON.parse(JSON.stringify(hooks.dashboards));
+  if (Array.isArray(hooks.analytics) && hooks.analytics.length) spec.analytics = JSON.parse(JSON.stringify(hooks.analytics));
+  return spec;
+}
+
 export function specToTemplate(row: { key: string; label: string; description: string; spec: any }): TenantTemplate {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { isLibraryFlavor } = require("../automation/presets");

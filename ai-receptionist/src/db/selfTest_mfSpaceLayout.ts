@@ -36,9 +36,14 @@ const iStruct = sf.indexOf("panel.appendChild(structurePanel);");
 check(iTabs >= 0 && iStrip > iTabs && iGrid > iStrip && iStruct > iGrid, "DOM order: module tabs -> Views strip -> grid -> Structure panel (full width, beneath both columns)");
 check(/const structurePanel = el\("div", "mf-structure-panel"\);/.test(sf) && /structureMount = structurePanel;/.test(sf), "secFields exposes the panel as the structure mount");
 const rf = portal.slice(portal.indexOf("async function renderFields("), portal.indexOf("async function secFields(panel)"));
-check(/if \(structureMount\) \{ structureMount\.innerHTML = ""; structureMount\.appendChild\(structureSection\(\)\); \}/.test(rf), "renderFields mounts Structure & behavior into the panel (cleared each repaint)");
+// RE-PINNED (fields-screen fix): structureSection no longer DEFAULTS to its tenant adapter -
+// that adapter lives inside renderFields and was invisible from the function's module scope,
+// which is what made this screen fail to load at all. The adapter is passed explicitly now.
+// The behaviour this line guards - mounting into the panel, cleared on every repaint - is
+// unchanged, so that is what it still checks.
+check(/if \(structureMount\) \{ structureMount\.innerHTML = ""; structureMount\.appendChild\(structureSection\(STRUCTURE_TENANT_ADAPTER\)\); \}/.test(rf), "renderFields mounts Structure & behavior into the panel (cleared each repaint)");
 check(!/scroll\.appendChild\(structureSection\(\)\);\s*\n\s*wrap\.appendChild\(scroll\)/.test(rf), "…and no longer appends it inside the Fields scroller");
-check(/else scroll\.appendChild\(structureSection\(\)\);/.test(rf), "…with the in-column fallback kept for any mount-less caller");
+check(/else scroll\.appendChild\(structureSection\(STRUCTURE_TENANT_ADAPTER\)\);/.test(rf), "…with the in-column fallback kept for any mount-less caller");
 check(/if \(canEdit && selectedType\) \{/.test(rf), "the permission gate is unchanged (canEdit + a selected module)");
 // CONVERTED (views & pipelines batch): the slice anchored on "function structureSection()",
 // a signature that gained an adapter, so the slice became empty and the check vacuous. The

@@ -502,6 +502,14 @@ export function systemRecordTypeOptions() {
     // Tenant-templates batch (ADDITIVE): the module's seeded field labels, for
     // the create-wizard's chips. [] where a module seeds none.
     fields: [...builtinFieldLabels(d), ...(SEED_FIELDS_BY_MODULE[d.key] || []).map((f) => String(f.label))],
+    // ADDITIVE, alongside `fields` and never replacing it: the same stock fields WITH their
+    // types. `fields` is a list of strings that three callers already render as chips, so it
+    // stays exactly what it is. The template builder needs types to show a module's real
+    // starting fields the way a tenant does, which strings cannot carry.
+    fieldDefs: [
+      ...builtinFieldLabels(d).map((label) => ({ key: null as string | null, label: String(label), type: "text", stock: true })),
+      ...(SEED_FIELDS_BY_MODULE[d.key] || []).map((f: any) => ({ key: f.key ?? null, label: String(f.label), type: String(f.type || "text"), stock: true })),
+    ],
   }));
 }
 // The record-type keys that MAY be hidden at creation (everything except contact).

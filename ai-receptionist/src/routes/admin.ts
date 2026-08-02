@@ -96,6 +96,23 @@ adminRouter.get("/template-rows", async (_req: Request, res: Response) => {
  * templateKey, so renaming a template must not orphan the tenants made from it. Editing the
  * label afterwards changes the words, not the identity.
  */
+/**
+ * The full configuration of ONE template, as the blueprint that would produce it.
+ *
+ * Read-only, and it exists for one reason: clicking a template on the builder screen loads it
+ * as a starting point, and the card list is a display shape that drops most of a template.
+ * Works for a code template and a built one alike. The caller gets no id and no key, so what
+ * it opens is always a NEW blueprint - a code template cannot be edited from a screen, and
+ * this endpoint gives no way to try.
+ */
+adminRouter.get("/tenant-templates/:key/spec", async (req: Request, res: Response) => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { resolveTemplate, templateToSpec } = require("../services/tenantTemplates");
+  const t = await resolveTemplate(String(req.params.key || ""));
+  if (!t) { res.status(404).json({ error: "Template not found" }); return; }
+  res.json({ key: t.key, label: t.label, description: t.description, spec: templateToSpec(t) });
+});
+
 adminRouter.post("/template-rows", async (req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { reservedTemplateKeys, slugTemplateKey } = require("../services/tenantTemplates");

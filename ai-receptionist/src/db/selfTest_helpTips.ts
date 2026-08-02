@@ -27,7 +27,11 @@ const PLACED_IN = ["admin.js", "portal.js", "app.js"];
 function boot(guides?: any) {
   const w: any = new JSDOM("<body></body>", { runScripts: "outside-only", url: "http://localhost/" }).window;
   (globalThis as any).document = w.document; (globalThis as any).window = w;
-  w.App = guides === undefined ? {} : { learn: { activeGuides: () => guides } };
+  // currentPortalId matters now: a Learning Center link only renders where #/learn can
+  // actually be reached, which is inside a tenant. On the hub it went to the portals list.
+  w.App = guides === undefined
+    ? { state: { currentPortalId: "T1" } }
+    : { state: { currentPortalId: "T1" }, learn: { activeGuides: () => guides } };
   new Function("window", "App", TIPS_SRC)(w, w.App);
   return { w, App: w.App };
 }
@@ -113,6 +117,19 @@ async function main() {
   check(!!n3.querySelector(".tip-panel") && !n3.querySelector("a.tip-link"),
     "\u2026and with no Learning Center loaded at all, still renders, still no dead link");
   // every declared learn id is a real guide id somewhere, or it could never resolve
+  // THE DEAD LINK, and the rule that replaced it.
+  const onHub: any = new JSDOM("<body></body>", { runScripts: "outside-only", url: "http://localhost/" }).window;
+  (globalThis as any).document = onHub.document; (globalThis as any).window = onHub;
+  onHub.App = { state: { currentPortalId: null }, learn: { activeGuides: () => FULL_TREE } };
+  new Function("window", "App", TIPS_SRC)(onHub, onHub.App);
+  const hubNode = onHub.App.tips.tip("field_key_rename");
+  onHub.document.body.appendChild(hubNode);
+  hubNode.querySelector(".tip-mark").click();
+  check(!hubNode.querySelector("a.tip-link"),
+    "on the HUB, where #/learn cannot be reached, a tip carries NO link \u2014 the dead link is gone");
+  check(/Renaming a field is safe/.test(hubNode.textContent),
+    "\u2026while the tip itself still renders in full");
+
   const learnSrc = readFileSync(resolvePath(R, "public", "js", "learn.js"), "utf8");
   const declaredLearn = [...TIPS_SRC.matchAll(/learn: "([a-z0-9-]+)"/g)].map((m) => m[1]);
   const unknown = declaredLearn.filter((g) => learnSrc.indexOf(`id: "${g}"`) === -1);
