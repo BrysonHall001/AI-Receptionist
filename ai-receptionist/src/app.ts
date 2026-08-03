@@ -66,11 +66,12 @@ export function createApp(): express.Express {
   });
 
   // PUBLIC Quick-Reference Guide download. No authentication: it is mounted here,
-  // outside every auth-gated router, so anyone with the link can fetch it (auditor
-  // invites now link to this instead of carrying a PDF attachment). It streams the
-  // repo file at request time, so swapping the guide later is just "replace
-  // assets/Clarity_QRG.pdf and redeploy" — no code change. A missing file returns a
-  // clean 404 rather than crashing the request.
+  // outside every auth-gated router, so anyone with the link can fetch it. Linked
+  // from the admin-tier sidebar (public/js/app.js) and from the default AUDITOR
+  // invite email (src/services/inviteService.ts) — no PDF attachment anywhere. It
+  // streams the repo file at request time, so swapping the guide later is just
+  // "replace assets/Clarity_QRG.pdf and redeploy" — no code change. A missing file
+  // returns a clean 404 rather than crashing the request.
   //   Live URL: https://clarity.vaala.io/quick-reference-guide.pdf
   app.get("/quick-reference-guide.pdf", (_req, res) => {
     const pdfPath = path.resolve(process.cwd(), "assets", "Clarity_QRG.pdf");

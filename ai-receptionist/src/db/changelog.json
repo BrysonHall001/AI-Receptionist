@@ -946,5 +946,11 @@
     "type": "UI",
     "description": "Charts now use hand-curated colors that belong to each theme (Neon Dusk gets magentas, cyans and violets instead of harsh red, brown and yellow), billing status badges and timeline dots follow the theme's own green/red/amber/accent tokens, and dropdown menus are finally readable on dark themes (native popups match the theme, every option list is styled, and every select uses on-control colors).",
     "commitSha": "batch-theme-true-colors-20260803"
+  },
+  {
+    "date": "2026-08-03",
+    "type": "Feature",
+    "description": "The Quick-Reference Guide is now reachable: admin-tier users (owners, super admins, auditors) get a quiet sidebar link to it in both the master hub and inside any tenant, and auditor invitation emails include the link. The guide itself is unchanged and still swapped by replacing one file.",
+    "commitSha": "batch-qrg-reachable-20260803"
   }
 ]

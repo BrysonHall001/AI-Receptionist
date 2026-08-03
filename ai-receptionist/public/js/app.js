@@ -759,6 +759,17 @@
       logoutBtn.id = "logout-btn";
       userBox.appendChild(logoutBtn);
     }
+    // Admin-tier only (OWNER / SUPER_ADMIN / AUDITOR — the same isAdminTier computed for
+    // this render): a quiet link to the public Quick-Reference Guide. ONE site on purpose:
+    // this shell renders in both the Master Hub and inside a portal, so this line covers
+    // both surfaces. Portal-tier roles never see it.
+    if (isAdminTier) {
+      const qrg = el("a", "sidebar-qrg", "Quick-Reference Guide");
+      qrg.href = "/quick-reference-guide.pdf";
+      qrg.target = "_blank";
+      qrg.rel = "noopener";
+      userBox.appendChild(qrg);
+    }
     // Admin-tier viewing a portal: the "← All tenants" + portal-name block lives at the
     // BOTTOM of the left column now — right-aligned, two lines stacked, sitting directly
     // ABOVE the thin divider that tops the user block. (Removed from beside the logo.)

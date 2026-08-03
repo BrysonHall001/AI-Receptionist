@@ -642,6 +642,10 @@ tbody tr:hover { background-color: var(--row-hover); background-size: 100% 2px; 
    below. */
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .sidebar-user { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+/* Quick-Reference Guide link (admin-tier only, rendered by the shared shell in app.js).
+   Quiet like the tagline/back-link family: small, soft ink, brightens on hover. */
+.sidebar-qrg { font-size: var(--text-xs); color: var(--ink-faint); text-decoration: none; }
+.sidebar-qrg:hover { color: var(--accent); text-decoration: underline; }
 .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 6px; min-width: 0; }
 .user-chip .user-meta { min-width: 0; } /* hardening: lets the name/role truncate inside the sidebar */
 .user-avatar { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: var(--text-sm); }

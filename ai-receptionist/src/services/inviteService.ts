@@ -10,11 +10,13 @@ import { resolveMergeTags } from "./mergeTags";
 import { env } from "../config/env";
 import { MASTER_HUB_NAME } from "../config/masterHub";
 
-// The Quick-Reference Guide is no longer emailed as an attachment. It is served
-// at a public, same-domain URL instead (GET /quick-reference-guide.pdf, wired up
-// in src/app.ts), which streams the repo file assets/Clarity_QRG.pdf. To swap the
-// guide later, replace that single file and redeploy — no code change, and invites
-// carry no attachment at all.
+// The Quick-Reference Guide is not emailed as an attachment. It is served at a
+// public, same-domain URL (GET /quick-reference-guide.pdf, wired up in src/app.ts),
+// which streams the repo file assets/Clarity_QRG.pdf; to swap the guide, replace
+// that single file and redeploy. Where it is actually linked from: the admin-tier
+// sidebar (public/js/app.js userBox, both hub and portal surfaces), and one line in
+// the default AUDITOR invite email below. Custom invites say whatever their writer
+// wrote; other roles' invites carry no guide link.
 
 // The Prisma client is regenerated (with the Invite model) by the migration step.
 // Until the person runs that, we reach the table via a cast so the build still
@@ -62,6 +64,18 @@ export async function sendInvite(
   meta?: { sentById?: string | null; tenantId?: string | null },
 ): Promise<boolean> {
   const blurb = ROLE_BLURB[invite.role || ""] || "access to the CRM";
+  // AUDITOR invites carry one extra quiet line pointing at the public Quick-Reference
+  // Guide. The origin comes from the invite link itself (the one origin we know reaches
+  // this deployment), never from a hardcoded domain. If the link somehow fails to parse,
+  // the guide line is simply omitted rather than sent broken.
+  let guideLine = "";
+  if (invite.role === "AUDITOR") {
+    try {
+      const origin = new URL(link).origin;
+      guideLine = `
+      <p style="margin:0 0 20px;font-size:13px;color:#4b5563;line-height:1.5">New here? The Quick-Reference Guide covers every screen: <a href="${origin}/quick-reference-guide.pdf" style="color:#4f46e5">${origin}/quick-reference-guide.pdf</a></p>`;
+    } catch { /* unparseable link — send without the guide line */ }
+  }
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1f2430">
       <h2 style="margin:0 0 12px">You've been invited to Clarity CRM</h2>
@@ -69,7 +83,7 @@ export async function sendInvite(
       <p style="margin:0 0 20px;font-size:15px;line-height:1.5">Click below to set your password and finish setting up your account.</p>
       <p style="margin:0 0 24px">
         <a href="${link}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:15px">Set your password</a>
-      </p>
+      </p>${guideLine}
       <p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5">If the button doesn't work, paste this link into your browser:<br>${link}</p>
     </div>`;
   try {
