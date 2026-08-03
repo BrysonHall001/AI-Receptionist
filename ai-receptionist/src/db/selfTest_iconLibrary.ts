@@ -106,35 +106,9 @@ async function main() {
   const builtIn = glyphOf(card, { key: "food_service", label: "Food Service", description: "d", builtIn: true });
   check(builtIn === asRendered(cardWin, baseline.templates.food_service), "a code template still renders its own bespoke glyph through the same card");
 
-  // ---------- (4) the picker ----------
-  console.log("\n(4) the picker:");
-  const adminSrc = readFileSync(resolvePath(R, "public", "js", "admin.js"), "utf8");
-  // RE-PINNED (builder rework): the picker was a wall of labelled tiles built from hidden
-  // radio inputs. It is now a BUTTON that opens a popup showing every icon at once, with no
-  // printed captions - the shapes are the point, and a grid of words beside small pictures is
-  // harder to scan. The GUARANTEE these two lines protect is unchanged and is what they now
-  // assert: every choice is reachable and operable without a mouse.
-  const pick = adminSrc.slice(adminSrc.indexOf("function buildIconPicker(host)"), adminSrc.indexOf("function slugField"));
-  check(/el\("button", "tb-iconopt/.test(pick),
-    "each choice is a real <button> \u2014 tab order and Enter come from the element, not from re-implementation");
-  check(/aria-haspopup/.test(pick) && /aria-expanded/.test(pick),
-    "\u2026the trigger is a button that reports its popup state, so it is announced correctly");
-  check(/e\.key === "Escape"/.test(pick),
-    "\u2026and Escape closes it, so a keyboard user is never trapped in the popup");
-  const css = readFileSync(resolvePath(R, "public", "styles.css"), "utf8");
-  const optRule = css.slice(css.indexOf(".tb-iconopt {"), css.indexOf("}", css.indexOf(".tb-iconopt {")));
-  check(optRule.indexOf("display: none") === -1 && css.indexOf(".tb-iconopt:focus-visible") !== -1,
-    "\u2026each choice keeps a visible focus ring rather than being hidden from the keyboard");
-  // :focus-within was right for the OLD design, where the focusable radio sat INSIDE a label
-  // and the label had to show the ring on its child's behalf. The option is now the button
-  // itself, so the ring belongs on it directly - which the check above already asserts via
-  // :focus-visible. What this line adds is that the ring is a real outline and not a colour
-  // change alone, since a colour shift is invisible in a high-contrast theme.
-  const focusRule = css.slice(css.indexOf(".tb-iconopt:focus-visible"), css.indexOf("}", css.indexOf(".tb-iconopt:focus-visible")));
-  check(/outline:\s*\d+px/.test(focusRule),
-    "\u2026and the option shows a visible focus OUTLINE when tabbed to, not just a colour change");
-  check(/setAttribute\("aria-label", ic\.name\)/.test(pick) && /setAttribute\("title", ic\.name\)/.test(pick),
-    "\u2026and every glyph carries its name for hover and for screen readers, though the printed captions are gone");
+  // (4) removed with the Create a Template tool: it asserted keyboard accessibility of
+  // the builder's icon PICKER (buildIconPicker + .tb-iconopt CSS), which no longer exists.
+  // Choosing an icon is gone; RENDERING a chosen icon is what sections (3) and (5) keep.
 
   // ---------- (5) the round trip ----------
   console.log("\n(5) saving and reopening:");

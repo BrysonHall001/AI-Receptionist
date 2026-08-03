@@ -164,9 +164,10 @@ async function main() {
   await until(() => w.document.querySelector(".dd-table-host"), 12000);
   await until(() => $$(".settings-tabs .settings-tab").length > 0, 12000);
   const strip = $$(".settings-tabs .settings-tab").map((b: any) => b.textContent.trim());
-  // TEMPLATE BUILDER (authorised): a second tool joined the strip, which is what the strip
-  // was built for. Demo Data stays first and stays the default.
-  check(strip[0] === "Demo Data" && strip.includes("Create a Template"),
+  // CREATE A TEMPLATE REMOVED (authorised): the strip is deliberately one tab again. Demo
+  // Data stays first and stays the default; the strip itself stays so a future tool is a
+  // one-line addition to the registry.
+  check(strip[0] === "Demo Data" && !strip.includes("Create a Template"),
     `Tools renders a sub-tab strip led by "Demo Data" (${strip.join(", ")})`);
   check($$(".settings-tabs .settings-tab.active").length === 1, "\u2026and that tab is active");
   check(($$(".tool-card .tool-h")[0] || {}).textContent === "Demo Data", "the tool's heading reads \u201cDemo Data\u201d");

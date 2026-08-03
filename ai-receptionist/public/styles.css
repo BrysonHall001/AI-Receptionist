@@ -767,31 +767,11 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
    shrinking that panel. A password field spanning the whole card told the reader nothing
    about how much to type; these are sized to what actually goes in them. */
 .acct-row .input { flex: 0 1 auto; width: 22ch; max-width: 100%; }
-/* TEMPLATE BUILDER. House components throughout - .tool-card, .mini-table, .add-user rows,
-   the wizard's own page/module checklists. These four rules are layout only. */
-.tb-limits { background: var(--gray-soft); border-radius: var(--radius-sm); padding: var(--sp-3); margin: var(--sp-3) 0; }
-/* THREE COLUMNS OF ROUGHLY EQUAL WIDTH: name, description, icon. They were two full-width
-   inputs far wider than their content needed. min-width: 0 lets each shrink rather than
-   forcing the row to overflow; they wrap to a stack on a narrow screen. */
-.tb-idrow { display: flex; flex-wrap: wrap; gap: var(--sp-4); margin-bottom: var(--sp-2); }
-.tb-idrow > .adm-fcol { flex: 1 1 200px; min-width: 0; }
-.tb-idrow .adm-fcol { flex: 1 1 260px; min-width: 0; }
-.tb-key { font-size: var(--text-xs); margin: 0 0 var(--sp-2); }
-.tb-note { font-size: var(--text-xs); margin: 0 0 var(--sp-2); }
-/* WHICH THING AM I DOING. Editing an existing template, or starting a new one from a built-in?
-   Stated at the top of the form so it is answered before anything can be saved. */
-/* THE MODULES SECTION runs the FULL width of the form. It is the same shared chip row the
-   tenant screen uses, but it was sitting in a column narrow enough that eleven chips wrapped
-   one-per-line and read as a vertical stack - the component was right, its container was not. */
-.tb-modules { width: 100%; min-width: 0; }
-.tb-mode { margin-bottom: var(--sp-3); }
 /* A module's STOCK fields, shown first and locked: they arrive with the module, so there is
    nothing to decide about them here. Dimmed rather than greyed out entirely - they are real
    fields the tenant will have, not disabled controls. */
 .field-row--locked .field-row-name { opacity: 0.75; }
 .field-row-lock { font-size: var(--text-xs); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.tb-mode-title { font-size: var(--text-md); font-weight: 600; margin: 0 0 2px; }
-.tb-mode-note { font-size: var(--text-xs); margin: 0; }
 /* HELP TIPS. The marker is a real button so Tab reaches it; the panel is absolutely
    positioned inside the marker's own wrapper, so opening and closing it shift NOTHING on the
    page. It opens to the RIGHT of the marker, and the marker always sits after the label, so
@@ -806,24 +786,6 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 .tip-title { font-size: var(--text-sm); font-weight: 600; color: var(--ink); margin-bottom: 4px; }
 .tip-body { font-size: var(--text-xs); color: var(--ink-soft); margin: 0; line-height: 1.5; }
 .tip-link { display: inline-block; margin-top: var(--sp-2); font-size: var(--text-xs); color: var(--accent); }
-/* The icon picker. Radio inputs are visually hidden but NOT display:none, so they keep their
-   focus ring, tab order and screen-reader name; the label is what is styled. */
-/* THE ICON CONTROL. A button showing the current choice; a popup showing every icon at once.
-   The popup carries NO captions - the shapes are the point and a grid of words beside small
-   pictures is harder to scan. Each icon keeps its name as a title and an aria-label, so
-   hovering and screen readers lose nothing. */
-.tb-iconwrap { position: relative; display: inline-flex; }
-.tb-iconbtn { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.tb-iconbtn-glyph { display: inline-flex; width: 18px; height: 18px; color: var(--accent); flex: none; }
-.tb-iconbtn-glyph svg { width: 18px; height: 18px; display: block; }
-.tb-iconbtn-label { font-size: var(--text-sm); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tb-iconpop { top: calc(100% + 6px); left: 0; width: 260px; max-width: calc(100vw - 32px); padding: var(--sp-2); }
-.tb-icongrid { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
-.tb-iconopt { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--ink); cursor: pointer; transition: border-color var(--motion-quick), color var(--motion-quick); }
-.tb-iconopt svg { width: 18px; height: 18px; display: block; }
-.tb-iconopt:hover { border-color: var(--accent); color: var(--accent); }
-.tb-iconopt.selected { border-color: var(--accent); color: var(--accent); }
-.tb-iconopt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .acct-row .acct-code { width: 10ch; }
 /* The enrolment block: the QR at a scannable size, the typable key grouped and legible,
    and the one-time recovery codes in a block a person can read down and copy. */
@@ -1068,8 +1030,6 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 /* ---------- Composer extras ---------- */
 .compose-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin: 4px 0 10px; }
 .email-toolbar.wrap { flex-wrap: wrap; }
-.tb-select { font-size: var(--text-xs); padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--panel); font-family: var(--font-ui); color: var(--ink); }
-.tb-color { width: 30px; height: 30px; padding: 0; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--panel); cursor: pointer; }
 .sms-body { resize: vertical; }
 .sms-count { font-size: var(--text-xs); margin-top: 4px; }
 .email-header-img { border-radius: 6px; }

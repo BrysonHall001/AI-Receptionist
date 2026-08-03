@@ -10,8 +10,6 @@
   "selfTest_builderViewsPipelines",
   "selfTest_builderModulesFields",
   "selfTest_foodServiceTemplate",
-  "selfTest_templateBuilder2",
-  "selfTest_templateBuilder",
   "selfTest_perModulePerms",
   "selfTest_mfa",
   "selfTest_ssoSignIn",

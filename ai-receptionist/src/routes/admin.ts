@@ -23,7 +23,6 @@ import { getBillingConfig, updateBillingConfig } from "../services/billingConfig
 import { computeSuggestedCharge } from "../services/chargeComputeService";
 import { listCharges, listAllCharges, getCharge, createCharge, updateCharge, setChargeStatus, voidCharge, recordPayment, approveCharge } from "../services/chargeService";
 import { verifyPassword } from "../auth/passwords";
-import { rateLimit } from "../middleware/rateLimit";
 import { ensureStripeCustomer } from "../services/stripeCustomerService";
 import { StripeNotConfiguredError, isStripeConfigured, isStripeTestMode, stripeMode } from "../services/stripeService";
 import { createInvoiceForCharge, sendInvoiceForCharge } from "../services/stripeInvoiceService";
@@ -37,17 +36,6 @@ import { logger } from "../utils/logger";
 export const adminRouter = Router();
 adminRouter.use(requireRole("OWNER", "SUPER_ADMIN", "AUDITOR"));
 
-// Deleting a template is password-confirmed, so the confirmation is guessable and must be
-// throttled - the same shape the account-sensitive routes use.
-const templateDeleteLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, max: 10,
-  keyFn: (req: any) => `${req.ip}:${(req.user && req.user.id) || "anon"}`,
-  message: "Too many attempts. Please wait a few minutes and try again.",
-});
-const templateDeleteIpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, max: 40,
-  message: "Too many attempts from this connection. Please wait and try again.",
-});
 // Batch B lockout: an impersonating super-admin must NOT reach the master hub
 // (no creating portals/users while "acting as" someone). Evaluated on the overlay
 // presence (req.impersonation is only ever set for a real super-admin).
@@ -71,31 +59,6 @@ adminRouter.get("/portals/record-type-options", async (_req: Request, res: Respo
   res.json({ options: systemRecordTypeOptions() });
 });
 
-// ============================ TEMPLATE BUILDER (part 1) ============================
-// Built templates are rows; the four built-ins stay in code. Everything here is gated by the
-// router-level requireRole("OWNER","SUPER_ADMIN","AUDITOR") at the top of this file - the
-// same gate Developer Tools already sits behind. No second gate is invented.
-
-/**
- * The built templates, for the builder's own list - plus the automation-library flavours the
- * picker may offer. The OPTIONS ARE SERVED, never hardcoded on the screen: a flavour is the
- * one code-bound thing a template carries, so the list has to come from the code that owns it
- * or the two drift.
- */
-adminRouter.get("/template-rows", async (_req: Request, res: Response) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { libraryFlavorOptions } = require("../automation/presets");
-  const rows = await (prisma as any).tenantTemplateRow.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "asc" } });
-  res.json({ rows, flavors: libraryFlavorOptions() });
-});
-
-/**
- * Save a built template - create when there is no id, update when there is.
- *
- * THE KEY IS SET ONCE, at creation, and never changes: it is what a created tenant stores in
- * templateKey, so renaming a template must not orphan the tenants made from it. Editing the
- * label afterwards changes the words, not the identity.
- */
 /**
  * The full configuration of ONE template, as the blueprint that would produce it.
  *
@@ -111,92 +74,6 @@ adminRouter.get("/tenant-templates/:key/spec", async (req: Request, res: Respons
   const t = await resolveTemplate(String(req.params.key || ""));
   if (!t) { res.status(404).json({ error: "Template not found" }); return; }
   res.json({ key: t.key, label: t.label, description: t.description, spec: templateToSpec(t) });
-});
-
-adminRouter.post("/template-rows", async (req: Request, res: Response) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { reservedTemplateKeys, slugTemplateKey } = require("../services/tenantTemplates");
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { isLibraryFlavor } = require("../automation/presets");
-  const { id, label, description, spec } = (req.body ?? {}) as Record<string, any>;
-  const clean = String(label || "").trim();
-  if (!clean) { res.status(400).json({ error: "Give the template a name." }); return; }
-  // REFUSED AT THE DOOR, not silently dropped. An invented flavour would do nothing at all,
-  // so the person deserves to be told rather than to wonder why their library looks ordinary.
-  const flavor = (spec || {}).libraryFlavor;
-  if (flavor != null && flavor !== "" && !isLibraryFlavor(flavor)) {
-    res.status(400).json({ error: "That automation library isn't one we offer." });
-    return;
-  }
-  try {
-    if (id) {
-      const existing = await (prisma as any).tenantTemplateRow.findUnique({ where: { id: String(id) } });
-      if (!existing) { res.status(404).json({ error: "That template no longer exists." }); return; }
-      const updated = await (prisma as any).tenantTemplateRow.update({
-        where: { id: String(id) },
-        data: { label: clean, description: String(description || ""), spec: spec || {} },
-      });
-      res.json({ row: updated });
-      return;
-    }
-    const key = slugTemplateKey(clean);
-    if (reservedTemplateKeys().includes(key)) {
-      res.status(409).json({ error: `"${clean}" clashes with a built-in template. Pick a different name.` });
-      return;
-    }
-    if (await (prisma as any).tenantTemplateRow.findUnique({ where: { key } })) {
-      res.status(409).json({ error: `You already have a template called "${clean}". Pick a different name.` });
-      return;
-    }
-    const created = await (prisma as any).tenantTemplateRow.create({
-      data: { key, label: clean, description: String(description || ""), spec: spec || {}, createdById: (req.user as any)?.id ?? null },
-    });
-    res.json({ row: created });
-  } catch (e) { res.status(400).json({ error: (e as Error).message }); }
-});
-
-/**
- * DELETE A BUILT TEMPLATE - soft, password-confirmed, and impossible for a built-in.
- *
- * THE BUILT-IN REFUSAL IS SERVER-SIDE AND UNCONDITIONAL. The screen hides the "x" on the four
- * code templates, but a hidden control is not a rule: this checks the key against
- * reservedTemplateKeys() no matter what arrives, so a hand-made request cannot delete one.
- *
- * The password gate follows the pattern used by /account/mfa/disable rather than the older
- * charge-approval one: password + rate limit + an audit row identical to a failed sign-in.
- * The charge route re-verifies a password but does neither of the other two, and a delete
- * deserves all three.
- */
-adminRouter.post("/template-rows/:id/delete", templateDeleteIpLimiter, templateDeleteLimiter, async (req: Request, res: Response) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { reservedTemplateKeys } = require("../services/tenantTemplates");
-  const { password } = (req.body ?? {}) as { password?: string };
-
-  const row = await (prisma as any).tenantTemplateRow.findUnique({ where: { id: String(req.params.id) } });
-  if (!row || row.deletedAt) { res.status(404).json({ error: "That template no longer exists." }); return; }
-  // Belt and braces: a row can only exist with a non-reserved key, but the check is cheap and
-  // this is the endpoint that must never remove a built-in.
-  if (reservedTemplateKeys().includes(row.key)) {
-    res.status(400).json({ error: "Built-in templates can't be deleted." });
-    return;
-  }
-  if (!password || typeof password !== "string") { res.status(400).json({ error: "Password confirmation required" }); return; }
-  const me = req.user?.id ? await prisma.user.findUnique({ where: { id: req.user.id } }) : null;
-  if (!me || !(await verifyPassword(password, me.passwordHash))) {
-    // The SAME audit action a failed sign-in writes, so a run of these is visible in one place.
-    audit({ tenantId: null, actorType: "user", actorId: me?.id ?? null, actorLabel: me?.email ?? "unknown",
-      action: AUDIT_ACTIONS.AUTH_LOGIN_FAILED, subjectType: "auth", meta: { ip: req.ip || null, at: "template-delete" } });
-    res.status(401).json({ error: "Invalid email or password" });
-    return;
-  }
-  await (prisma as any).tenantTemplateRow.update({
-    where: { id: row.id },
-    data: { deletedAt: new Date(), deletedById: me.id },
-  });
-  audit({ tenantId: null, actorType: "user", actorId: me.id, actorLabel: me.name || me.email,
-    action: AUDIT_ACTIONS.TEMPLATE_DELETED, subjectType: "template", subjectId: row.id,
-    meta: { key: row.key, label: row.label } });
-  res.json({ ok: true });
 });
 
 // TENANT TEMPLATES: the wizard's template cards (one truth — the constants).

@@ -77,10 +77,9 @@ async function main() {
     `NOT ONE network call from opening, editing or saving a widget (${calls.length}) \u2014 with currentPortalId pointing at a live tenant`);
   await w.App.portalApi("/api/dashboards", { method: "PATCH" });
   check(calls.length === 1 && calls[0].m === "PATCH", "NEGATIVE: a deliberate call IS recorded \u2014 the zero above is real");
-  const adminSrc = readFileSync(resolvePath(R, "public", "js", "admin.js"), "utf8");
-  const authoring = adminSrc.slice(adminSrc.indexOf("function buildDashboardEditor(host)"), adminSrc.indexOf("function slugField"));
-  check(!/portalApi|App\.api\(|fetch\(/.test(authoring),
-    "\u2026and the builder's own dashboard code names no network call at all");
+  // (a source check removed with the Create a Template tool: it sliced the deleted
+  // buildDashboardEditor out of admin.js to prove it named no network call — against the
+  // now-missing markers the slice was empty and the check passed vacuously, so it is gone.)
 
   // ---------- (3) authored widgets arrive on the tenant ----------
   console.log("\n(3) a template with authored widgets:");

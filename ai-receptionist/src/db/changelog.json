@@ -934,5 +934,11 @@
     "type": "Feature",
     "description": "Added the Change Log — a master-hub page listing every change shipped to the app.",
     "commitSha": "2f616844bda0d1559557dcce76a183e5984a68b1"
+  },
+  {
+    "date": "2026-08-03",
+    "type": "Feature",
+    "description": "Removed the Create a Template developer tool (builder screen and its /template-rows API). Templates already built with it are untouched: they still appear in Create Tenant and still create tenants exactly as before.",
+    "commitSha": "batch-remove-template-builder-20260803"
   }
 ]

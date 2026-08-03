@@ -13,58 +13,24 @@ const { TENANT_TEMPLATES, getTemplate, resolveTemplate, specToTemplate, template
 const { systemRecordTypeOptions, listRecordTypes } = require("../services/recordTypeService");
 const { readFileSync } = require("fs");
 const { resolve: resolvePath } = require("path");
-const { JSDOM } = require("jsdom");
 
 const db = prisma as any;
 const failures: string[] = [];
 function check(cond: boolean, label: string) { console.log(`  ${cond ? "\u2713" : "\u2717"} ${label}`); if (!cond) failures.push(label); }
 const cleanup: string[] = [];
 const R = resolvePath(__dirname, "..", "..");
-const ADMIN = readFileSync(resolvePath(R, "public", "js", "admin.js"), "utf8");
 const PORTAL = readFileSync(resolvePath(R, "public", "js", "portal.js"), "utf8");
 const dashBaseline = require("./fixtures/templateDashboardBaseline.json");
-
-/** admin.js in a window whose every network entry point records instead of sending. */
-function spiedWindow() {
-  const w: any = new JSDOM("<body></body>", { runScripts: "outside-only", url: "http://localhost/" }).window;
-  const el = (t: string, c?: string, h?: string) => { const n = w.document.createElement(t); if (c) n.className = c; if (h !== undefined) n.innerHTML = h; return n; };
-  const calls: any[] = [];
-  w.App = {
-    util: { el, esc: (x: any) => String(x == null ? "" : x), toast: () => { /* */ }, $: (s: string) => w.document.querySelector(s), $$: () => [] },
-    icons: { forTemplateKey: () => "<svg/>", forTemplate: () => "<svg/>", iconLibrary: () => [{ id: "lib:legal", name: "Legal", svg: "<svg/>" }], iconById: () => "<svg/>" },
-    fields: { TYPE_LABELS: { text: "Text" }, TYPE_ICONS: {} },
-    state: { me: { role: "OWNER" }, currentPortalId: "A-REAL-LIVE-TENANT" },
-    api: async (u: string, o: any) => { calls.push({ u, m: (o && o.method) || "GET" }); return {}; },
-    portalApi: async (u: string, o: any) => { calls.push({ u, m: (o && o.method) || "GET" }); return {}; },
-  };
-  w.fetch = async (u: any, o: any) => { calls.push({ u: String(u), m: (o && o.method) || "GET" }); return { ok: true, json: async () => ({}) }; };
-  (globalThis as any).document = w.document; (globalThis as any).window = w;
-  return { w, el, calls };
-}
 
 async function main() {
   console.log("CREATE A TEMPLATE, REWORKED \u2014 self-test");
   console.log("========================================");
   const stamp = Date.now();
 
-  // ---------- (1) THE PRIME DIRECTIVE ----------
-  console.log("\n(1) the builder cannot reach a live tenant:");
-  const { calls } = spiedWindow();
-  // Every place this batch newly touched that could conceivably write:
-  //   the delete-from-template action, the icon popup, the stock-field panel.
-  // They are all draft mutations. The source is the proof that no write EXISTS to find.
-  const form = ADMIN.slice(ADMIN.indexOf("function openForm(row, basedOn)"), ADMIN.indexOf("function buildModuleToggles"));
-  const menu = ADMIN.slice(ADMIN.indexOf("function moduleMenu("), ADMIN.indexOf("function renameBlueprintModule"));
-  const icon = ADMIN.slice(ADMIN.indexOf("function buildIconPicker(host)"), ADMIN.indexOf("function slugField"));
-  const writes = /portalApi\([^)]*method:\s*"(POST|PUT|PATCH|DELETE)"|App\.api\([^)]*method:\s*"(POST|PUT|PATCH|DELETE)"/;
-  check(!writes.test(menu), "the module menu \u2014 including Delete from template \u2014 contains no write call at all");
-  check(!writes.test(icon), "the icon popup contains no write call");
-  check(/modulesHiddenPrefill/.test(menu) && !/recordType|\/api\/record-types/.test(menu),
-    "\u2026Delete edits modulesHiddenPrefill on the DRAFT and never names a record-type endpoint");
-  // NEGATIVE: the detector must actually catch a write
-  check(writes.test('App.api("/x", { method: "DELETE" })'),
-    "NEGATIVE: a real write IS detected, so the three checks above mean something");
-  check(calls.length === 0, `loading the screen made no network call (${calls.length})`);
+  // (1) removed with the Create a Template tool. It proved the builder SCREEN could not
+  // reach a live tenant (source slices of moduleMenu / buildIconPicker asserted no write
+  // calls). The screen no longer exists, so there is nothing to prove; what a saved
+  // template still DOES is covered by (4) below.
 
   // ---------- (2) clicking a card ----------
   console.log("\n(2) clicking a template card:");
@@ -77,11 +43,9 @@ async function main() {
   check(JSON.stringify(rebuilt.modulesHiddenPrefill.slice().sort()) === JSON.stringify(orig.modulesHiddenPrefill.slice().sort())
     && JSON.stringify(rebuilt.fieldTweaks) === JSON.stringify(orig.fieldTweaks),
     "\u2026and it really is the same configuration, not a partial copy");
-  check(/openForm\(null, \{ label: tpl\.label, spec:/.test(ADMIN),
-    "a built-in opens a NEW form pre-filled from it");
-  check(/if \(own\) \{ openForm\(own\); return; \}/.test(ADMIN), "\u2026while one you built opens for editing");
-  check(/New template, based on /.test(ADMIN) && /Editing: /.test(ADMIN),
-    "\u2026and the form states which of the two it is, before anything can be saved");
+  // (three checks removed with the tool: they asserted the builder FORM in admin.js —
+  // openForm pre-fill and the "New template, based on"/"Editing:" banner. The spec
+  // round-trip above is the part that outlived the screen and it stays asserted.)
 
   // ---------- (3) stock fields ----------
   console.log("\n(3) a module's stock fields:");
@@ -92,8 +56,8 @@ async function main() {
   const job = opts.find((o: any) => o.key === "work_order");
   check(!!job && job.fieldDefs.length > 0 && job.fieldDefs.every((f: any) => f.label && f.type && f.stock === true),
     `\u2026each with a label, a type and marked as stock (${job ? job.fieldDefs.length : 0} on work_order)`);
-  check(/field-row--locked/.test(ADMIN) && /Comes with /.test(ADMIN),
-    "the builder renders them locked, marked as arriving with the module");
+  // (a fourth check removed with the tool: it asserted the builder rendered stock fields
+  // locked with "Comes with …" — that screen is gone; the service shape above stays.)
 
   // ---------- (4) an older template still creates what it did ----------
   console.log("\n(4) a template saved before this batch:");
