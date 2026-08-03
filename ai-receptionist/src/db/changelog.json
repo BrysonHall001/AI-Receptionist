@@ -952,5 +952,11 @@
     "type": "Feature",
     "description": "The Quick-Reference Guide is now reachable: admin-tier users (owners, super admins, auditors) get a quiet sidebar link to it in both the master hub and inside any tenant, and auditor invitation emails include the link. The guide itself is unchanged and still swapped by replacing one file.",
     "commitSha": "batch-qrg-reachable-20260803"
+  },
+  {
+    "date": "2026-08-03",
+    "type": "Feature",
+    "description": "The Quick-Reference Guide has been rewritten for the product as it is today: the Master Hub and tenant portals as they actually look, the current pages and settings, sixteen fresh screenshots, a clickable table of contents, and the same friendly explore-and-report guidance for auditors.",
+    "commitSha": "batch-qrg-rebuilt-20260803"
   }
 ]
