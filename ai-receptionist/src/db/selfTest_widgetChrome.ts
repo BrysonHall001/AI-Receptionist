@@ -44,7 +44,10 @@ const deltaE = (a: number[], b: number[]) => { const A = rgb2lab(a), B = rgb2lab
 /** THE RULE, as a pure function, so the negative cases can drive the same code path the
  *  positive assertion uses. Returns the problems found; empty means the ramp is sound. */
 const MIN_CONTRAST = 3.0;   // WCAG 1.4.11 non-text contrast - the standard for graphical objects
-const MIN_DELTA_E = 30;     // measured worst case across all 18 contexts is 32.7, so this has margin
+const MIN_DELTA_E = 20;     // was 30, which forced maximum-separation ramps full of clashing hues
+                            // (traffic-light yellow next to brown). 20 still means every pair is
+                            // clearly tellable apart (~2x a "noticeable" dE of 10) while leaving
+                            // room for ramps that stay inside a theme's own hue family.
 function rampProblems(ramp: string[], panel: string): string[] {
   const bad: string[] = [];
   if (ramp.length !== 10) bad.push(`only ${ramp.length} colours`);

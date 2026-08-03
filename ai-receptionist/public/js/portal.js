@@ -74,7 +74,7 @@
   // cost/markup internals; read-only except the Stripe "Pay now" link. Renders with App.table.
   function billingMoney(n, cur) { return (cur && cur !== "USD" ? "" : "$") + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2) + (cur && cur !== "USD" ? " " + cur : ""); }
   function billingStatePill(status) {
-    const color = { Paid: "#16a34a", Overdue: "#b45309", Due: "#2563eb" }[status] || "#6b7280";
+    const color = { Paid: "var(--green)", Overdue: "var(--amber)", Due: "var(--accent)" }[status] || "var(--ink-faint)";
     return `<span class="state-pill" style="--pill-bg:${esc(color)}">${esc(status)}</span>`;
   }
   async function renderBillingSettings(panel) {

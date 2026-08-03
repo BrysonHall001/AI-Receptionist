@@ -940,5 +940,11 @@
     "type": "Feature",
     "description": "Removed the Create a Template developer tool (builder screen and its /template-rows API). Templates already built with it are untouched: they still appear in Create Tenant and still create tenants exactly as before.",
     "commitSha": "batch-remove-template-builder-20260803"
+  },
+  {
+    "date": "2026-08-03",
+    "type": "UI",
+    "description": "Charts now use hand-curated colors that belong to each theme (Neon Dusk gets magentas, cyans and violets instead of harsh red, brown and yellow), billing status badges and timeline dots follow the theme's own green/red/amber/accent tokens, and dropdown menus are finally readable on dark themes (native popups match the theme, every option list is styled, and every select uses on-control colors).",
+    "commitSha": "batch-theme-true-colors-20260803"
   }
 ]

@@ -4163,13 +4163,13 @@
   }
 
   function chargeStatusBadge(c) {
-    const map = { draft: "#6b7280", approved: "#2563eb", paid: "#16a34a", unpaid: "#dc2626", void: "#9ca3af" };
+    const map = { draft: "var(--ink-faint)", approved: "var(--accent)", paid: "var(--green)", unpaid: "var(--red)", void: "var(--ink-faint)" };
     const b = el("span", "adm-badge", cap(c.status)); if (map[c.status]) b.style.setProperty("--badge-bg", map[c.status]);
     return b;
   }
 
   function chargeStatusBadgeHTML(c) {
-    const map = { draft: "#6b7280", approved: "#2563eb", paid: "#16a34a", unpaid: "#dc2626", void: "#9ca3af" };
+    const map = { draft: "var(--ink-faint)", approved: "var(--accent)", paid: "var(--green)", unpaid: "var(--red)", void: "var(--ink-faint)" };
     return `<span class="adm-badge" style="--badge-bg:${map[c.status] || "var(--ink-faint)"}">${esc(cap(c.status))}</span>`;
   }
 
@@ -4187,13 +4187,13 @@
   }
   function chargeStatePillHTML(c) {
     const label = chargeStateLabel(c);
-    const color = { Void: "#9ca3af", Paid: "#16a34a", Failed: "#dc2626", Overdue: "#b45309", Draft: "#6b7280", Approved: "#2563eb", Unpaid: "#dc2626" }[label] || "#6b7280";
+    const color = { Void: "var(--ink-faint)", Paid: "var(--green)", Failed: "var(--red)", Overdue: "var(--amber)", Draft: "var(--ink-faint)", Approved: "var(--accent)", Unpaid: "var(--red)" }[label] || "var(--ink-faint)";
     return `<span class="adm-badge" style="--badge-bg:${color}">${esc(label)}</span>`;
   }
 
   function invoiceStatusHTML(c) {
     if (!c.stripeInvoiceId) return `<span class="cell-muted">Not invoiced</span>`;
-    const map = { draft: "#6b7280", open: "#2563eb", paid: "#16a34a", void: "#9ca3af", uncollectible: "#dc2626" };
+    const map = { draft: "var(--ink-faint)", open: "var(--accent)", paid: "var(--green)", void: "var(--ink-faint)", uncollectible: "var(--red)" };
     const st = c.stripeInvoiceStatus || "open";
     const badge = `<span class="adm-badge" style="--badge-bg:${map[st] || "var(--ink-faint)"}">${esc(cap(st))}</span>`;
     const link = c.stripeInvoiceUrl ? ` <a href="${esc(c.stripeInvoiceUrl)}" target="_blank" rel="noopener" class="link-btn" class="adm-link">payment link</a>` : "";
@@ -4405,8 +4405,8 @@
 
   // Action icon/color + label for an audit action.
   function auditDot(action) {
-    const map = { charge_created: "#6b7280", charge_updated: "#d97706", status_changed: "#7c3aed", charge_approved: "#2563eb", charge_voided: "#9ca3af", payment_recorded: "#16a34a", terms_updated: "#0ea5e9", invoice_created: "#0ea5e9", invoice_sent: "#0ea5e9", invoice_paid: "#16a34a", payment_failed: "#dc2626", invoice_voided: "#9ca3af", invoice_uncollectible: "#dc2626" };
-    return map[action] || "#6b7280";
+    const map = { charge_created: "var(--ink-faint)", charge_updated: "var(--amber)", status_changed: "var(--accent)", charge_approved: "var(--accent)", charge_voided: "var(--ink-faint)", payment_recorded: "var(--green)", terms_updated: "var(--accent)", invoice_created: "var(--accent)", invoice_sent: "var(--accent)", invoice_paid: "var(--green)", payment_failed: "var(--red)", invoice_voided: "var(--ink-faint)", invoice_uncollectible: "var(--red)" };
+    return map[action] || "var(--ink-faint)";
   }
   function auditActionLabel(action) {
     const map = { charge_created: "Created", charge_updated: "Edited", status_changed: "Status changed", charge_approved: "Approved", charge_voided: "Voided", payment_recorded: "Payment recorded", terms_updated: "Terms updated", invoice_created: "Invoice created", invoice_sent: "Invoice sent", invoice_paid: "Invoice paid", payment_failed: "Payment failed", invoice_voided: "Invoice voided", invoice_uncollectible: "Invoice uncollectible" };
@@ -4466,15 +4466,15 @@
       }
       // Fallback: synthesize created/approved/payments from the charge object.
       const events = [];
-      events.push({ t: charge.createdAt, dot: "#6b7280", label: "Created", who: "", sub: `${fmtMoney(charge.amount)} ${charge.currency || ""} charge created` });
-      if (charge.approvedAt) events.push({ t: charge.approvedAt, dot: "#2563eb", label: "Approved", who: "", sub: "Charge finalized — awaiting payment" });
+      events.push({ t: charge.createdAt, dot: "var(--ink-faint)", label: "Created", who: "", sub: `${fmtMoney(charge.amount)} ${charge.currency || ""} charge created` });
+      if (charge.approvedAt) events.push({ t: charge.approvedAt, dot: "var(--accent)", label: "Approved", who: "", sub: "Charge finalized — awaiting payment" });
       const paysAsc = (charge.payments || []).slice().sort((a, b2) => new Date(a.paidAt).getTime() - new Date(b2.paidAt).getTime());
       let running = 0;
       paysAsc.forEach((p) => {
         running = Math.round((running + p.amount) * 100) / 100;
         const out = Math.max(0, Math.round((charge.amount - running) * 100) / 100);
         const bits = []; if (p.method) bits.push(esc(p.method)); bits.push(`paid ${esc(fmtMoney(running))}`); bits.push(`outstanding ${esc(fmtMoney(out))}`); if (p.notes) bits.push(esc(p.notes));
-        events.push({ t: p.paidAt, dot: out <= 0 ? "#16a34a" : "#0ea5e9", label: `Payment ${fmtMoney(p.amount)}`, who: "", sub: bits.join(" · ") });
+        events.push({ t: p.paidAt, dot: out <= 0 ? "var(--green)" : "var(--accent)", label: `Payment ${fmtMoney(p.amount)}`, who: "", sub: bits.join(" · ") });
       });
       return events;
     }

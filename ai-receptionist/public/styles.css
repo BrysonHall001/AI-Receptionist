@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light; /* native widgets (select popups, scrollbars) render light unless a dark theme overrides below */
   --bg: #fbfbfa;
   --panel: #ffffff;
   /* Fun-theme decoration intensity, 0..1. Default 0 => every fun theme renders
@@ -182,11 +183,12 @@
   --border-c: var(--line);               /* the chrome-ring color (Border-color pick; neutral = --line) */
   --list-row-pad: 8px;                   /* list-row vertical padding (density slider, scaled off --table-row-pad) */
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #04034e; --chart-2: #9f14f5; --chart-3: #d364bb; --chart-4: #f00a34; --chart-5: #4f2b11; --chart-6: #8f910d; --chart-7: #214b07; --chart-8: #0aa32b; --chart-9: #2d9f8a; --chart-10: #148fe6;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #5b59d6; --chart-2: #177a52; --chart-3: #b8560f; --chart-4: #0f7fa8; --chart-5: #9333b5; --chart-6: #c23a6b; --chart-7: #4d6e12; --chart-8: #1c2f8f; --chart-9: #8a6b10; --chart-10: #a1157e;
 
 }
 
@@ -666,6 +668,11 @@ tbody tr:hover { background-color: var(--row-hover); background-size: 100% 2px; 
 .btn-block { width: 100%; justify-content: center; margin-bottom: 10px; }
 
 /* ---------- Inputs ---------- */
+/* DROPDOWN LEGIBILITY, part 2 of 3 (part 1 is color-scheme on :root/themes; part 3 is the
+   per-select class sweep in the JS). Option lists had NO styling at all, so the browser
+   painted them with its own colours - light-mode defaults under dark themes. Every option
+   everywhere now states the on-control pair explicitly. */
+select option { background: var(--panel); color: var(--control-ink); }
 .input {
   width: 100%; font-family: var(--font-ui); font-size: var(--text-base);
   padding: 8px 12px; border: 1px solid var(--control-border);
@@ -1211,7 +1218,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 
 /* ---------- Home dashboard host ---------- */
 .home-dashboard { margin-bottom: 10px; min-height: 80px; }
-.w-size-select { font-size: var(--text-xs); padding: 2px 4px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.w-size-select { font-size: var(--text-xs); padding: 2px 4px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--control-bg); color: var(--control-ink); } /* ON-CONTROL pair (dropdown legibility, part 3) */
 
 .section-divider { border-top: 2px solid var(--line); margin: 24px 0 24px; }
 
@@ -1282,6 +1289,7 @@ textarea.input { resize: vertical; min-height: 0; line-height: var(--leading-bod
 
 /* ---- Dark (basic) ---- */
 body[data-theme="dark"] {
+  color-scheme: dark; /* native select popups/scrollbars match this theme's surface */
   --gray-soft: #23232f;
   --bg: #15151a; --panel: #1e1e26; --panel-2: #22222b;
   --ink: #e9e9f0; --ink-soft: #a9a9b8; --ink-faint: #8e8e95;
@@ -1293,11 +1301,12 @@ body[data-theme="dark"] {
   --control-ink: #e9e9f0; --control-placeholder: #8e8e95; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #d3d3ee; --chart-2: #a523f6; --chart-3: #ba4fa3; --chart-4: #f00a34; --chart-5: #9e663d; --chart-6: #f1f514; --chart-7: #39830b; --chart-8: #14f545; --chart-9: #31f6d2; --chart-10: #0a90f0;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #8482f5; --chart-2: #34c98a; --chart-3: #d8a23c; --chart-4: #5ab8e8; --chart-5: #c98ae0; --chart-6: #e0685a; --chart-7: #9fd06a; --chart-8: #e8a0c8; --chart-9: #5adfc8; --chart-10: #b8b8d0;
   --ext-ink: #7b8da6;
   --paper-placeholder: #7d889b;
   --flow-yes: #ea580c;
@@ -1306,6 +1315,7 @@ body[data-theme="dark"] {
 
 /* ---- Neutral / professional (basic) ---- */
 body[data-theme="neutral"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #f5f6f7; --panel: #ffffff; --panel-2: #f9fafb;
   --ink: #22282e; --ink-soft: #586069; --ink-faint: #656b73;
   --line: #e6e8ea; --line-strong: #898d92;
@@ -1315,11 +1325,12 @@ body[data-theme="neutral"] {
   --control-ink: #22282e; --control-placeholder: #656b73; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #172f3b; --chart-2: #0a19f0; --chart-3: #a770d7; --chart-4: #f514d7; --chart-5: #f00a47; --chart-6: #692807; --chart-7: #988e06; --chart-8: #27480a; --chart-9: #0aa31f; --chart-10: #2d9f81;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #2f6f8f; --chart-2: #177a52; --chart-3: #a1522a; --chart-4: #5b59c2; --chart-5: #8a3f9e; --chart-6: #b83a5e; --chart-7: #5c6e14; --chart-8: #20418f; --chart-9: #8a6b10; --chart-10: #0e7a78;
   --star: #b58401;
   --paper-placeholder: #657185;
   --flow-yes: #c1490a;
@@ -1327,6 +1338,7 @@ body[data-theme="neutral"] {
 
 /* ---- Frutiger Aero (fun, flagship) ---- */
 body[data-theme="aero"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #cfeeff;
   /* SOLID surfaces (was frosted translucent) so scenery never shows through text. */
   --panel: #f4fbff; --panel-2: #e8f5fd;
@@ -1343,11 +1355,12 @@ body[data-theme="aero"] {
   --control-ink: #0c3a52; --control-placeholder: #1e4356; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #17303b; --chart-2: #0a23f0; --chart-3: #a273d3; --chart-4: #f514e0; --chart-5: #f00a51; --chart-6: #692407; --chart-7: #988806; --chart-8: #29480a; --chart-9: #0ea01b; --chart-10: #119c71;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #0a709a; --chart-2: #0a7650; --chart-3: #a34f16; --chart-4: #3a45c8; --chart-5: #7a3aa8; --chart-6: #b83a68; --chart-7: #527208; --chart-8: #134f5c; --chart-9: #8a6b10; --chart-10: #a8127a;
   --star: #a97b01;
   --paper-placeholder: #5d687a;
   --flow-yes: #b34309;
@@ -1376,6 +1389,7 @@ body[data-theme="aero"] .btn-primary::before {
 
 /* ---- Neon Dusk (fun, synthwave) ---- */
 body[data-theme="dusk"] {
+  color-scheme: dark; /* native select popups/scrollbars match this theme's surface */
   --gray-soft: #211a52;
   --bg: #0d0a26; --panel: #171336; --panel-2: #1d1842;
   --ink: #f3ecff; --ink-soft: #bcb1ee; --ink-faint: #908aa5;
@@ -1394,11 +1408,12 @@ body[data-theme="dusk"] {
   --control-ink: #f3ecff; --control-placeholder: #908aa5; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #eed3ec; --chart-2: #f00a54; --chart-3: #9e583d; --chart-4: #f5da14; --chart-5: #427808; --chart-6: #14f525; --chart-7: #7bf9d1; --chart-8: #187395; --chart-9: #4057f7; --chart-10: #a177cf;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #ff3df0; --chart-2: #22e0ff; --chart-3: #9d7bff; --chart-4: #ff5d7a; --chart-5: #3a9dff; --chart-6: #ff9de0; --chart-7: #6ffce0; --chart-8: #c04dff; --chart-9: #ffcf4d; --chart-10: #a8b8ff;
   --ext-ink: #7b8da6;
   --paper-placeholder: #768296;
   --flow-yes: #de540b;
@@ -1416,6 +1431,7 @@ body[data-theme="dusk"] .btn-primary {
 
 /* ---- Cottage Warm (fun, cottagecore) ---- */
 body[data-theme="cottage"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #f4ecdd; --panel: #fbf6ec; --panel-2: #f1e8d6;
   --ink: #4a3f33; --ink-soft: #736654; /* contrast system: ON-PANEL soft clears 4.5:1 on --panel-2 */ --ink-faint: #716555;
   --line: #e4d8c3; --line-strong: #958874;
@@ -1428,11 +1444,12 @@ body[data-theme="cottage"] {
   --control-ink: #4a3f33; --control-placeholder: #716555; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #203b17; --chart-2: #069838; --chart-3: #159991; --chart-4: #0a74f0; --chart-5: #2a0af0; --chart-6: #341240; --chart-7: #f514a9; --chart-8: #f00a18; --chart-9: #bc7b2f; --chart-10: #6a7817;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #5e6e58; --chart-2: #a1571f; --chart-3: #2e7d55; --chart-4: #8a3f7e; --chart-5: #2a628f; --chart-6: #b03a30; --chart-7: #7d7a10; --chart-8: #3a3f9e; --chart-9: #6b5a2a; --chart-10: #701a3a;
   --star: #ac7e01;
   --paper-placeholder: #606b7e;
   --flow-yes: #b94509;
@@ -1487,6 +1504,7 @@ body[data-theme="cottage"] .btn-primary { background: var(--accent); color: var(
 
 /* ---- Basic: Warm Light ---- */
 body[data-theme="warm"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #fbf8f3; --panel: #fffdf9; --panel-2: #f6f1e8;
   --ink: #2b2722; --ink-soft: #5f584e; --ink-faint: #726a62;
   --line: #efe9df; --line-strong: #948f85;
@@ -1496,11 +1514,12 @@ body[data-theme="warm"] {
   --control-ink: #2b2722; --control-placeholder: #726a62; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #04034e; --chart-2: #9f14f5; --chart-3: #d364bb; --chart-4: #f00a34; --chart-5: #4f2b11; --chart-6: #8f910d; --chart-7: #214b07; --chart-8: #0aa32b; --chart-9: #1e9f87; --chart-10: #148fe6;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #5b59d6; --chart-2: #177a52; --chart-3: #b8560f; --chart-4: #0f7fa8; --chart-5: #9333b5; --chart-6: #c23a6b; --chart-7: #4d6e12; --chart-8: #1c2f8f; --chart-9: #8a6b10; --chart-10: #a1157e;
   --star: #b88601;
   --paper-placeholder: #667285;
   --flow-yes: #c44a0a;
@@ -1508,6 +1527,7 @@ body[data-theme="warm"] {
 
 /* ---- Basic: Slate ---- */
 body[data-theme="slate"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #eef1f4; --panel: #ffffff; --panel-2: #f6f8fa;
   --ink: #2b3440; --ink-soft: #5a6675; --ink-faint: #636d79;
   --line: #e1e6eb; --line-strong: #89919b;
@@ -1517,11 +1537,12 @@ body[data-theme="slate"] {
   --control-ink: #2b3440; --control-placeholder: #636d79; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #15293c; --chart-2: #2b14f5; --chart-3: #b870d7; --chart-4: #67094b; --chart-5: #f00a21; --chart-6: #a97542; --chart-7: #879509; --chart-8: #1e430f; --chart-9: #0aa338; --chart-10: #0ea091;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #4a6076; --chart-2: #177a52; --chart-3: #9e4f22; --chart-4: #4a4ecf; --chart-5: #853a92; --chart-6: #ad3a62; --chart-7: #5a6e12; --chart-8: #123e73; --chart-9: #8a6b10; --chart-10: #96186a;
   --star: #af8001;
   --paper-placeholder: #616d80;
   --flow-yes: #bb460a;
@@ -1529,6 +1550,7 @@ body[data-theme="slate"] {
 
 /* ---- Basic: Steel Blue ---- */
 body[data-theme="steel"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #f4f6f9; --panel: #ffffff; --panel-2: #f5f8fb;
   --ink: #1f2733; --ink-soft: #51607a; --ink-faint: #626c7b;
   --line: #e2e7ee; --line-strong: #88919c;
@@ -1538,11 +1560,12 @@ body[data-theme="steel"] {
   --control-ink: #1f2733; --control-placeholder: #626c7b; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #05244d; --chart-2: #3914f5; --chart-3: #c06cda; --chart-4: #78084f; --chart-5: #f00a13; --chart-6: #a97c42; --chart-7: #809806; --chart-8: #1b430f; --chart-9: #2d9f56; --chart-10: #358885;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #2a4d7a; --chart-2: #0e7a5a; --chart-3: #a1522a; --chart-4: #5f5ac8; --chart-5: #8a3a8e; --chart-6: #b03a5a; --chart-7: #586e12; --chart-8: #0a7a92; --chart-9: #8a6b10; --chart-10: #611a33;
   --star: #b58401;
   --paper-placeholder: #657185;
   --flow-yes: #c1490a;
@@ -1550,6 +1573,7 @@ body[data-theme="steel"] {
 
 /* ---- Basic: Sand ---- */
 body[data-theme="sand"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #f3ecdf; --panel: #fbf6ec; --panel-2: #f0e7d6;
   --ink: #43392b; --ink-soft: #6f6453; --ink-faint: #716553;
   --line: #e6dcc8; --line-strong: #938873;
@@ -1560,11 +1584,12 @@ body[data-theme="sand"] {
   --control-ink: #43392b; --control-placeholder: #716553; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #3b2a17; --chart-2: #7f8e10; --chart-3: #194b07; --chart-4: #119c3e; --chart-5: #35978f; --chart-6: #0a77f0; --chart-7: #260af0; --chart-8: #39054d; --chart-9: #f514ac; --chart-10: #f00a1c;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #875f33; --chart-2: #187953; --chart-3: #4a5aa8; --chart-4: #a04a2a; --chart-5: #7a3f8e; --chart-6: #a83a58; --chart-7: #61701a; --chart-8: #2a6b7a; --chart-9: #8a2f6a; --chart-10: #4f4f4f;
   --star: #ac7e01;
   --paper-placeholder: #606b7e;
   --flow-yes: #b94509;
@@ -1572,6 +1597,7 @@ body[data-theme="sand"] {
 
 /* ---- Basic: High Contrast (accessibility-friendly) ---- */
 body[data-theme="contrast"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #ffffff; --panel: #ffffff; --panel-2: #f2f2f2;
   --ink: #000000; --ink-soft: #1d1d1d; --ink-faint: #474747;
   --line: #1c1c1c; --line-strong: #000000;
@@ -1582,11 +1608,12 @@ body[data-theme="contrast"] {
   --control-ink: #000000; --control-placeholder: #474747; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #03214e; --chart-2: #4114f5; --chart-3: #bd64d3; --chart-4: #78084b; --chart-5: #f00a0a; --chart-6: #a98042; --chart-7: #7b9806; --chart-8: #1e3b17; --chart-9: #3d9e64; --chart-10: #317d7d;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #0b5bd3; --chart-2: #0a7a3f; --chart-3: #b00000; --chart-4: #8a5a00; --chart-5: #6d28c9; --chart-6: #c2186e; --chart-7: #00696e; --chart-8: #31589f; --chart-9: #5c6a00; --chart-10: #7a2d10;
   --star: #be8b01;
   --paper-placeholder: #69768a;
   --flow-yes: #ca4c0a;
@@ -1596,6 +1623,7 @@ body[data-theme="contrast"] .btn-primary:disabled { opacity: 0.55; }
 
 /* ---- Basic: Graphite (dim) ---- */
 body[data-theme="graphite"] {
+  color-scheme: dark; /* native select popups/scrollbars match this theme's surface */
   --bg: #2b2d31; --panel: #34373c; --panel-2: #3a3d43;
   --ink: #e7e8ea; --ink-soft: #b3b6bc; --ink-faint: #a8abb1;
   --line: #3f4248; --line-strong: #82858a;
@@ -1606,11 +1634,12 @@ body[data-theme="graphite"] {
   --control-ink: #e7e8ea; --control-placeholder: #a8abb1; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #d4d3ee; --chart-2: #be5df8; --chart-3: #cf77bc; --chart-4: #f74061; --chart-5: #f9b07b; --chart-6: #f0f514; --chart-7: #5a9735; --chart-8: #14f546; --chart-9: #5df8dd; --chart-10: #0a8ff0;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #a09ef3; --chart-2: #46c98f; --chart-3: #d6a23a; --chart-4: #68c0e8; --chart-5: #e4867a; --chart-6: #e0b0f0; --chart-7: #a8d068; --chart-8: #f0b8d0; --chart-9: #5adfd0; --chart-10: #e8e8f8;
   --ext-ink: #9aa7bb;
   --flow-yes: #f58144;
   --paper-placeholder: #98a1b0;
@@ -1619,6 +1648,7 @@ body[data-theme="graphite"] {
 
 /* ---- Basic: Midnight (deep true-dark) ---- */
 body[data-theme="midnight"] {
+  color-scheme: dark; /* native select popups/scrollbars match this theme's surface */
   --bg: #07070b; --panel: #101018; --panel-2: #14141e;
   --ink: #e6e7ee; --ink-soft: #9fa1b0; --ink-faint: #808294;
   --line: #1e1f2b; --line-strong: #666774;
@@ -1629,11 +1659,12 @@ body[data-theme="midnight"] {
   --control-ink: #e6e7ee; --control-placeholder: #808294; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #d3d3ee; --chart-2: #980af0; --chart-3: #a94293; --chart-4: #f00a34; --chart-5: #935e39; --chart-6: #f2f514; --chart-7: #39830b; --chart-8: #14f545; --chart-9: #31f6d2; --chart-10: #086db5;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #7674f1; --chart-2: #2fbf86; --chart-3: #cf9a3a; --chart-4: #4da8e0; --chart-5: #df6557; --chart-6: #b07be0; --chart-7: #8ac050; --chart-8: #e08ab8; --chart-9: #3fd0c0; --chart-10: #a8a8c8;
   --ext-ink: #6d819c;
   --paper-placeholder: #727f93;
   --flow-yes: #d8520b;
@@ -1642,6 +1673,7 @@ body[data-theme="midnight"] {
 
 /* ---- Fun: Vaporwave (bg: grid over gradient) ---- */
 body[data-theme="vaporwave"] {
+  color-scheme: dark; /* native select popups/scrollbars match this theme's surface */
   --bg: #1a1130; --panel: #281a4d; --panel-2: #311f59;
   --ink: #f6ecff; --ink-soft: #cdb9ec; --ink-faint: #ab99cc;
   --line: #43306e; --line-strong: #7b66a5;
@@ -1660,11 +1692,12 @@ body[data-theme="vaporwave"] {
   --control-ink: #f6ecff; --control-placeholder: #ab99cc; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #eed3e6; --chart-2: #f00a25; --chart-3: #a76c35; --chart-4: #e3f514; --chart-5: #32830b; --chart-6: #abf8c0; --chart-7: #2d8076; --chart-8: #0a81f0; --chart-9: #6a5df8; --chart-10: #db98fb;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #ff6ad5; --chart-2: #6be1ff; --chart-3: #a888ff; --chart-4: #ffcf6a; --chart-5: #7bffc8; --chart-6: #ff8a8a; --chart-7: #f0c8ff; --chart-8: #68a0ff; --chart-9: #fff0c8; --chart-10: #20b888;
   --ext-ink: #8092aa;
   --flow-yes: #f05a0c;
   --paper-placeholder: #828d9f;
@@ -1676,6 +1709,7 @@ body[data-theme="vaporwave"] .btn-primary { box-shadow: 0 0 14px rgba(255,106,21
 
 /* ---- Fun: Deep Woods / Forest (bg: leaves) ---- */
 body[data-theme="forest"] {
+  color-scheme: dark; /* native select popups/scrollbars match this theme's surface */
   --bg: #1c2a22; --panel: #243a2e; --panel-2: #2a4435;
   --ink: #eef0e6; --ink-soft: #bcc7b4; --ink-faint: #a1af9b;
   --line: #2f4a3a; --line-strong: #738a7a;
@@ -1689,11 +1723,12 @@ body[data-theme="forest"] {
   --control-ink: #eef0e6; --control-placeholder: #a1af9b; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #d6fdc4; --chart-2: #0af04d; --chart-3: #099585; --chart-4: #1487f5; --chart-5: #d0cdf4; --chart-6: #c34ff8; --chart-7: #c760a9; --chart-8: #f74054; --chart-9: #f8a95d; --chart-10: #e1f514;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #7fae6a; --chart-2: #d2a24a; --chart-3: #d98a6a; --chart-4: #8ac8d6; --chart-5: #d8f0a8; --chart-6: #c89ad0; --chart-7: #efe0c0; --chart-8: #4a9e8a; --chart-9: #e8b8b0; --chart-10: #a0aee8;
   --ext-ink: #91a0b5;
   --flow-yes: #f57d3e;
   --paper-placeholder: #97a0af;
@@ -1703,6 +1738,7 @@ body[data-theme="forest"] .page-title, body[data-theme="forest"] .settings-h { f
 
 /* ---- Fun: Golden Hour / Sunset (warm gradient, no image) ---- */
 body[data-theme="sunset"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #fbe3cf;
   /* SOLID surfaces (was translucent) so scenery never shows through text. */
   --panel: #fff6ec; --panel-2: #fdeede;
@@ -1718,11 +1754,12 @@ body[data-theme="sunset"] {
   --control-ink: #3a2a33; --control-placeholder: #3e3238; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #3b2217; --chart-2: #958909; --chart-3: #284b07; --chart-4: #0ea01f; --chart-5: #119c75; --chart-6: #0d91ce; --chart-7: #0a1df0; --chart-8: #3a0967; --chart-9: #f514db; --chart-10: #f00a4b;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #a0512c; --chart-2: #3f7055; --chart-3: #c22d55; --chart-4: #7d5c0a; --chart-5: #7a3f9e; --chart-6: #b8288a; --chart-7: #556e14; --chart-8: #3a4fa8; --chart-9: #20707a; --chart-10: #611f10;
   --star: #a97b01;
   --paper-placeholder: #5c6779;
   --flow-yes: #b34309;
@@ -1730,6 +1767,7 @@ body[data-theme="sunset"] {
 
 /* ---- Fun: Dreamcore (soft surreal pastel dreamscape) ---- */
 body[data-theme="dreamcore"] {
+  color-scheme: light; /* native select popups/scrollbars match this theme's surface */
   --bg: #efe4fb; --panel: #fdf7fb; --panel-2: #f5ecf7;
   --ink: #43384e; --ink-soft: #574c63; --ink-faint: #665a72;
   --line: #ecdcf2; --line-strong: #9686a1;
@@ -1744,11 +1782,12 @@ body[data-theme="dreamcore"] {
   --control-ink: #43384e; --control-placeholder: #665a72; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #3e142f; --chart-2: #f00a12; --chart-3: #ae7c3d; --chart-4: #353b17; --chart-5: #329c11; --chart-6: #358853; --chart-7: #286765; --chart-8: #1476f5; --chart-9: #300af0; --chart-10: #750698;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #92527b; --chart-2: #42705d; --chart-3: #7460d6; --chart-4: #a5563a; --chart-5: #2f7285; --chart-6: #b02a72; --chart-7: #6d7024; --chart-8: #1f1f8e; --chart-9: #8a622a; --chart-10: #7a0aa8;
   --star: #a97b01;
   --paper-placeholder: #5d687a;
   --flow-yes: #b34309;
@@ -1756,6 +1795,7 @@ body[data-theme="dreamcore"] {
 
 /* ---- Fun: Dark Academia (moody candlelit library) ---- */
 body[data-theme="academia"] {
+  color-scheme: dark; /* native select popups/scrollbars match this theme's surface */
   --bg: #1a130d; --panel: #241a12; --panel-2: #2c2016;
   --ink: #ece0cf; --ink-soft: #c9b79c; --ink-faint: #b09a7e;
   --line: #3a2c1e; --line-strong: #7e6d5c;
@@ -1770,11 +1810,12 @@ body[data-theme="academia"] {
   --control-ink: #ece0cf; --control-placeholder: #b09a7e; /* …and the control pair, same explicit rule */
 
 
-  /* CHART RAMP: ten series colours anchored to this theme's own accent hue, each >=3:1
-     against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=30 Lab dE from every
-     other entry. Generated and validated, not hand-picked; selfTest_widgetChrome re-checks
-     every theme on every run, so a new theme without a ramp fails loudly. */
-  --chart-1: #fdecc4; --chart-2: #b2f514; --chart-3: #36802d; --chart-4: #14f584; --chart-5: #08a4b5; --chart-6: #2362f6; --chart-7: #c2acf6; --chart-8: #de14f5; --chart-9: #d3096e; --chart-10: #f0210a;
+  /* CHART RAMP: ten series colours HAND-CURATED around this theme's own accent hue, each
+     >=3:1 against this theme's --panel (WCAG 1.4.11 non-text contrast) and >=20 Lab dE from
+     every other entry. The first three or four - the series people actually see - are chosen
+     to sit well together; selfTest_widgetChrome re-checks every theme on every run, so a new
+     theme without a ramp fails loudly. */
+  --chart-1: #c8a24a; --chart-2: #8a9a5b; --chart-3: #cf7457; --chart-4: #7ea8c0; --chart-5: #b58ad6; --chart-6: #e0a8b8; --chart-7: #b0d068; --chart-8: #f0d8a0; --chart-9: #68b898; --chart-10: #d88a2e;
   --ext-ink: #7487a1;
   --paper-placeholder: #798599;
   --flow-yes: #e4560b;

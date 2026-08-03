@@ -23,7 +23,7 @@
       .ib-map{margin:12px 0 0;border-top:1px solid var(--line);padding-top:10px}
       .ib-map-h{font-size:13px;font-weight:600;margin-bottom:2px}
       .ib-map-row{display:flex;align-items:center;gap:8px;margin:6px 0}
-      .ib-in{border:1px solid var(--line);border-radius:6px;padding:7px 9px;background:var(--panel);color:inherit;font-size:13px}
+      .ib-in{border:1px solid var(--line);border-radius:6px;padding:7px 9px;background:var(--control-bg);color:var(--control-ink);font-size:13px}
       .ib-in.k{flex:1}
       .ib-arrow{color:var(--ink-faint)}
       .ib-x{cursor:pointer;color:var(--ink-faint);border:none;background:none;font-size:16px;padding:2px 6px}
